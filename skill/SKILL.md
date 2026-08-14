@@ -78,6 +78,23 @@ plainly: proceed whole-repo, or run glossarize per sub-project? Vocabulary is
 usually healthier per sub-project. Never proceed silently on a flagged
 monorepo.
 
+### Existing glossary — resume, don't restart
+
+Also check for `glossarize-out/glossary.json`. If it exists, this repo's
+vocabulary is already partly settled, and you are resuming a maintained
+glossary, not opening a fresh brainstorm:
+
+- **`canonical` concepts are decided.** Do not re-nominate or re-propose
+  them; list them briefly as "already canonical, keeping" and only revisit
+  one if the user asks or if you find a genuine conflict worth surfacing.
+- **`proposed` concepts are the open items.** Pick the brainstorm up there.
+- **`deprecated`/`discouraged`/`alias` entries are constraints** on new
+  proposals: never propose a term the glossary already discourages, and note
+  when a candidate collides with an existing alias.
+- Nominate **new** candidates only for parts no existing concept covers.
+- If the file fails to load, say so and treat the glossary as absent —
+  never guess at half-read vocabulary. (`glossarize show` displays it.)
+
 ## Step 1 — Scan the repo from its root
 
 Build a mental map of what this codebase is and what its parts are:
@@ -191,6 +208,34 @@ carries both the terms AND the reasoning. Structure:
   that shaped the vocabulary (the coined words, the splits, the renames that
   might surprise someone), so the reasoning survives past the conversation.
 - *The one load-bearing rule* at the end, if there is one.
+
+Alongside GLOSSARY.md, write the machine-readable
+`glossarize-out/glossary.json`:
+
+```json
+{
+  "schema_version": 1,
+  "concepts": [
+    {
+      "id": "payment",
+      "term": "Payment",
+      "definition": "An attempt to collect money for an order.",
+      "status": "canonical",
+      "aliases": [
+        {"term": "charge", "status": "discouraged",
+         "note": "the gateway operation only"}
+      ],
+      "notes": "optional freeform"
+    }
+  ]
+}
+```
+
+Statuses: `canonical` (human-settled — **only** terms the user explicitly
+locked), `proposed` (still open at session end), `alias`, `discouraged`,
+`deprecated`, `unknown`. Both files together are the glossary: GLOSSARY.md
+carries the reasoning for people, glossary.json carries the state for
+machines (resumption, `glossarize show`, and future drift detection).
 
 Optionally offer to rename code comments/identifiers and update docs to match —
 but only the ones the user approves, and as its own reviewable change.

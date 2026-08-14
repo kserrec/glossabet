@@ -48,6 +48,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     analyze.add_argument("path", nargs="?", default=".", help="repository root")
 
+    show = sub.add_parser("show", help="display the current glossary")
+    show.add_argument("path", nargs="?", default=".", help="repository root")
+
     return parser
 
 
@@ -68,6 +71,11 @@ def _run(argv: list[str] | None) -> int:
         from glossarize.evidence import analyze_command
 
         return analyze_command(args.path)
+
+    if args.command == "show":
+        from glossarize.glossary import show_command
+
+        return show_command(args.path)
 
     parser.error(f"unknown command {args.command!r}")
     return EXIT_DEFECT  # unreachable; error() exits

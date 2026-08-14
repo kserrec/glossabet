@@ -16,6 +16,16 @@ def test_skill_exists_with_evidence_protocol():
     assert "stale" in text.lower()
 
 
+def test_skill_glossary_protocol_matches_engine():
+    from glossarize.glossary import STATUSES
+
+    text = SKILL.read_text()
+    assert "glossarize-out/glossary.json" in text
+    assert "resume" in text.lower() and "restart" in text.lower()
+    for status in STATUSES:  # every engine status is defined for the skill
+        assert f"`{status}`" in text, status
+
+
 def test_skill_referenced_fields_exist_in_evidence(tmp_path):
     (tmp_path / "a.py").write_text("payment_service = 1\n")
     evidence = build_evidence(tmp_path)

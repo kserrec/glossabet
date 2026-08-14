@@ -275,7 +275,7 @@ Steps:
 Acceptance: importance ranking on a known repo is sane and every nomination
 carries its reasons.
 
-### Phase 6 — Persistent glossary
+### Phase 6 — Persistent glossary ✅ (2026-08-14)
 Steps:
 1. `glossary.json` minimal schema (see Artifacts) with status lifecycle;
    writer/reader in the engine; `glossarize show`.
