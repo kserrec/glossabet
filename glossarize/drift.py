@@ -252,7 +252,7 @@ def drift_command(path_arg: str) -> int:
             file=sys.stderr,
         )
         return 1
-    evidence = build_evidence(root)
+    evidence = build_evidence(root, cache=True)
     write_evidence(root, evidence)
     drift = build_drift(evidence, glossary)
     (root / OUT_DIR / DRIFT_FILE).write_text(

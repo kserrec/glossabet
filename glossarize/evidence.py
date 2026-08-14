@@ -17,6 +17,7 @@ from pathlib import Path
 from itertools import combinations
 
 from glossarize import __version__
+from glossarize.cache import entry_if_valid, load_cache, save_cache
 from glossarize.imports import build_imports_section, extract_imports
 from glossarize.importance import build_naming_candidates
 from glossarize.scanner import detect_monorepo, walk_repository
@@ -81,9 +82,39 @@ def _read_text(path: Path) -> str | None:
     return text
 
 
-def build_evidence(root: Path, limits: Limits = Limits()) -> dict:
+def _extract_code_entry(text: str, language: str) -> dict:
+    identifiers: Counter = Counter()
+    for name in iter_identifiers(text):
+        identifiers[name] += 1
+    return {
+        "kind": "code",
+        "language": language,
+        "bytes": len(text),
+        "identifiers": dict(sorted(identifiers.items())),
+        "imports": extract_imports(text, language),
+    }
+
+
+def _extract_doc_entry(text: str) -> dict:
+    words = doc_words(text)
+    counts = Counter(words)
+    return {
+        "kind": "doc",
+        "words": dict(sorted(counts.items())),
+        "word_total": len(words),
+    }
+
+
+def build_evidence(root: Path, limits: Limits = Limits(),
+                   cache: bool = False, stats: dict | None = None) -> dict:
+    """Cold and warm scans share this one aggregation path, so a cached run
+    is byte-identical to a fresh one by construction."""
     root = root.resolve()
     walk = walk_repository(root)
+    git_stamp = _git_stamp(root)
+    cached = load_cache(root) if cache else None
+    cache_files: dict[str, dict] = {}
+    reused = extracted = 0
 
     token_counts: Counter = Counter()
     token_files: dict[str, Counter] = defaultdict(Counter)
@@ -98,29 +129,50 @@ def build_evidence(root: Path, limits: Limits = Limits()) -> dict:
     file_imports: list[tuple[str, list[str]]] = []
     code_bytes = 0
 
+    def fetch_entry(rel: str, kind: str, extractor) -> dict | None:
+        nonlocal reused, extracted
+        try:
+            st = (root / rel).stat()
+        except OSError:
+            return None
+        entry = entry_if_valid(cached, rel, kind, st.st_mtime_ns, st.st_size)
+        if entry is None:
+            text = _read_text(root / rel)
+            if text is None:
+                return None
+            entry = extractor(text)
+            entry["mtime_ns"] = st.st_mtime_ns
+            entry["size"] = st.st_size
+            extracted += 1
+        else:
+            reused += 1
+        cache_files[rel] = entry
+        return entry
+
     for rel, language in walk.code_files:
-        text = _read_text(root / rel)
-        if text is None:
+        entry = fetch_entry(
+            rel, "code", lambda text: _extract_code_entry(text, language)
+        )
+        if entry is None:
             continue
-        code_bytes += len(text)
+        code_bytes += entry["bytes"]
         languages[language] += 1
         module = rel.rsplit("/", 1)[0] if "/" in rel else "."
         modules[module]["code_files"] += 1
         modules[module]["languages"].add(language)
-        specs = extract_imports(text, language)
-        if specs:
-            file_imports.append((rel, specs))
-        for name in iter_identifiers(text):
-            identifier_counts[name] += 1
+        if entry["imports"]:
+            file_imports.append((rel, entry["imports"]))
+        for name, count in sorted(entry["identifiers"].items()):
+            identifier_counts[name] += count
             tokens = tokenize_identifier(name)
             uniq = sorted(set(tokens))
             for token in tokens:
-                token_counts[token] += 1
-                token_files[token][rel] += 1
-                token_modules[token][module] += 1
+                token_counts[token] += count
+                token_files[token][rel] += count
+                token_modules[token][module] += count
             for a, b in combinations(uniq, 2):
-                neighbors[a][b] += 1
-                neighbors[b][a] += 1
+                neighbors[a][b] += count
+                neighbors[b][a] += count
             for token in uniq:
                 seen = module_neighbor_sets[token][module]
                 if len(seen) < 30:  # bounded context sample per (term, module)
@@ -130,13 +182,17 @@ def build_evidence(root: Path, limits: Limits = Limits()) -> dict:
     doc_entries = []
     doc_word_total = 0
     for rel in walk.doc_files:
-        text = _read_text(root / rel)
-        if text is None:
+        entry = fetch_entry(rel, "doc", _extract_doc_entry)
+        if entry is None:
             continue
-        words = doc_words(text)
-        doc_word_total += len(words)
-        doc_term_counts.update(words)
-        doc_entries.append({"path": rel, "words": len(words)})
+        doc_word_total += entry["word_total"]
+        doc_term_counts.update(entry["words"])
+        doc_entries.append({"path": rel, "words": entry["word_total"]})
+
+    if cache:
+        save_cache(root, cache_files, git_stamp)
+    if stats is not None:
+        stats.update({"reused": reused, "extracted": extracted})
 
     def token_entry(term: str, count: int) -> dict:
         per_file = token_files[term]
@@ -163,7 +219,7 @@ def build_evidence(root: Path, limits: Limits = Limits()) -> dict:
     return {
         "schema_version": SCHEMA_VERSION,
         "generator": {"name": "glossarize", "version": __version__},
-        "repository": {"git": _git_stamp(root)},
+        "repository": {"git": git_stamp},
         "totals": {
             "code_files": len(walk.code_files),
             "doc_files": len(walk.doc_files),
@@ -284,8 +340,14 @@ def _scan(path_arg: str, report: bool) -> int:
     if not root.is_dir():
         print(f"glossarize: not a directory: {path_arg}", file=sys.stderr)
         return 1
-    evidence = build_evidence(root)
+    stats: dict = {}
+    evidence = build_evidence(root, cache=True, stats=stats)
     out_path = write_evidence(root.resolve(), evidence)
+    if stats.get("reused"):
+        print(
+            f"cache: reused {stats['reused']} extraction(s), "
+            f"re-extracted {stats['extracted']}"
+        )
     totals = evidence["totals"]
     print(
         f"scanned {totals['code_files']} code files, "

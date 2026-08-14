@@ -298,7 +298,10 @@ Steps:
 Acceptance: seeded drift in a test repo (rename a concept in new code) is
 detected and reported with correct evidence.
 
-### Phase 8 — Incremental indexing
+### Phase 8 — Incremental indexing ✅ (2026-08-14)
+In-phase decision: invalidation is uniform per-file mtime_ns+size (not
+git-diff) — same complexity, robust across tracked/untracked/dirty
+states; whole-cache invalidation on generator version change.
 Steps:
 1. `.glossarize/` cache keyed on git state; `scan` updates only changed files
    (git diff against the stamped HEAD, falling back to mtimes when unstamped).
