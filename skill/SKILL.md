@@ -225,11 +225,21 @@ Alongside GLOSSARY.md, write the machine-readable
         {"term": "charge", "status": "discouraged",
          "note": "the gateway operation only"}
       ],
+      "bindings": [
+        {"ref": "symbol:PaymentService"},
+        {"ref": "module:src/billing"}
+      ],
       "notes": "optional freeform"
     }
   ]
 }
 ```
+
+`bindings` are optional and connect a concept to its implementation for
+`glossarize validate`. Write them only when the user confirms the mapping,
+and only against stable identities — `symbol:`, `file:`, `module:` — never
+graph community or node ids, which change across rebuilds. A binding that
+later stops resolving is reported as drift, not an error.
 
 Statuses: `canonical` (human-settled — **only** terms the user explicitly
 locked), `proposed` (still open at session end), `alias`, `discouraged`,

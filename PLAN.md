@@ -323,7 +323,7 @@ Steps:
 Acceptance: same repo scanned with and without Graphify present yields
 compatible evidence, with structural groups only in the with-graph case.
 
-### Phase 10 — Reconciliation and bindings
+### Phase 10 — Reconciliation and bindings ✅ (2026-08-14)
 Steps:
 1. Bindings in `glossary.json`: concept → symbols/files/modules (stable
    identities only), written during skill finalization when the user confirms

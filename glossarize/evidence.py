@@ -204,6 +204,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
             "term": term,
             "count": count,
             "files": len(per_file),
+            "modules": len(token_modules.get(term, ())),
             "locations": [{"path": p, "count": c} for p, c in kept],
             "locations_truncated": len(locations) > len(kept),
         }

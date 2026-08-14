@@ -19,6 +19,9 @@ OUT_DIR = "glossarize-out"
 STATUSES = frozenset(
     {"canonical", "proposed", "alias", "discouraged", "deprecated", "unknown"}
 )
+# Bindings target stable identities only (PLAN principle 7): never graph
+# community numbers or node ids, which shift across rebuilds.
+BINDING_KINDS = frozenset({"symbol", "file", "module"})
 _REQUIRED_CONCEPT_KEYS = ("id", "term", "definition", "status")
 
 
@@ -72,6 +75,19 @@ def validate_glossary(glossary: dict) -> list[str]:
                 errors.append(
                     f"{aw} status {alias.get('status')!r} not one of "
                     f"{sorted(STATUSES)}"
+                )
+        for j, binding in enumerate(concept.get("bindings", [])):
+            bw = f"{where}.bindings[{j}]"
+            ref = binding.get("ref") if isinstance(binding, dict) else None
+            if not isinstance(ref, str) or ":" not in ref:
+                errors.append(f"{bw} needs a 'ref' like 'symbol:Name'")
+                continue
+            kind = ref.split(":", 1)[0]
+            if kind not in BINDING_KINDS:
+                errors.append(
+                    f"{bw} unsupported ref kind {kind!r} — bindings target "
+                    f"stable identities only ({sorted(BINDING_KINDS)}); "
+                    "community/node ids are not stable across graph rebuilds"
                 )
     return errors
 

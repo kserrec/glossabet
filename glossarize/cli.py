@@ -64,6 +64,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     drift.add_argument("path", nargs="?", default=".", help="repository root")
 
+    validate = sub.add_parser(
+        "validate",
+        help="reconcile the glossary against evidence and the graphify graph",
+    )
+    validate.add_argument("path", nargs="?", default=".", help="repository root")
+
     return parser
 
 
@@ -94,6 +100,11 @@ def _run(argv: list[str] | None) -> int:
         from glossarize.drift import drift_command
 
         return drift_command(args.path)
+
+    if args.command == "validate":
+        from glossarize.reconcile import validate_command
+
+        return validate_command(args.path)
 
     parser.error(f"unknown command {args.command!r}")
     return EXIT_DEFECT  # unreachable; error() exits
