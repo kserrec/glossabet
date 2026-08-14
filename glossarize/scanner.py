@@ -352,7 +352,7 @@ def _read_root_manifest(
             if rel not in walk.skipped_oversized:
                 walk.skipped_oversized.append(rel)
             return None
-        return path.read_text(errors="ignore")
+        return path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return None
 

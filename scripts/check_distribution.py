@@ -119,6 +119,7 @@ def _check_sdist(sdist: Path, version: str, canonical_skill: bytes) -> None:
             "RELEASING.md",
             "SECURITY.md",
             "docs/WALKTHROUGH.md",
+            "examples/payment-service/glossarize-out/glossary.json",
             "examples/payment-service/src/payment_service.py",
             "glossarize/installer.py",
             "pyproject.toml",

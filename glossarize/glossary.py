@@ -254,7 +254,7 @@ def load_glossary(root: Path) -> dict | None:
             f"{path}: larger than {MAX_JSON_BYTES} bytes — refusing to load"
         )
     try:
-        glossary = json.loads(path.read_text())
+        glossary = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError, RecursionError) as exc:
         # RecursionError: deeply nested JSON, raised outside the ValueError
         # hierarchy — a hostile glossary must fail cleanly, not crash.

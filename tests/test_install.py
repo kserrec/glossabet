@@ -24,7 +24,7 @@ def test_default_agent_destinations_are_the_documented_personal_locations(tmp_pa
 
 
 def test_packaged_or_source_skill_matches_the_canonical_file():
-    assert canonical_skill_text() == CANONICAL_SKILL.read_text()
+    assert canonical_skill_text() == CANONICAL_SKILL.read_text(encoding="utf-8")
 
 
 def test_install_writes_canonical_skill_and_is_idempotent(tmp_path, capsys):
@@ -32,7 +32,9 @@ def test_install_writes_canonical_skill_and_is_idempotent(tmp_path, capsys):
 
     assert main(["install", "--destination", str(destination)]) == EXIT_OK
     target = destination / "SKILL.md"
-    assert target.read_text() == CANONICAL_SKILL.read_text()
+    assert target.read_text(encoding="utf-8") == CANONICAL_SKILL.read_text(
+        encoding="utf-8"
+    )
     assert "Installed" in capsys.readouterr().out
 
     assert main(["install", "--destination", str(destination)]) == EXIT_OK
@@ -63,7 +65,9 @@ def test_force_replaces_only_the_skill_file_and_leaves_no_temporary_file(
     assert main([
         "install", "--destination", str(destination), "--force"
     ]) == EXIT_OK
-    assert target.read_text() == CANONICAL_SKILL.read_text()
+    assert target.read_text(encoding="utf-8") == CANONICAL_SKILL.read_text(
+        encoding="utf-8"
+    )
     assert neighbor.read_text() == "keep\n"
     assert not list(destination.glob(".SKILL.md.*.tmp"))
     assert "Replaced" in capsys.readouterr().out

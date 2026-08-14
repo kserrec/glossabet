@@ -328,7 +328,8 @@ def test_non_ascii_concept_round_trips_through_validation(tmp_path):
     payments = tmp_path / "payments"
     payments.mkdir()
     payments.joinpath("service.py").write_text(
-        "支付Service = 1\n支付Gateway = 2\ncreate支付 = 3\n"
+        "支付Service = 1\n支付Gateway = 2\ncreate支付 = 3\n",
+        encoding="utf-8",
     )
     glossary = {
         "schema_version": 1,

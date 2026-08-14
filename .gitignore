@@ -8,6 +8,9 @@ dist/
 
 # Glossarize's own outputs when run on this repo (dogfooding)
 glossarize-out/
+!examples/payment-service/glossarize-out/
+examples/payment-service/glossarize-out/*
+!examples/payment-service/glossarize-out/glossary.json
 .glossarize/
 
 # Never committed

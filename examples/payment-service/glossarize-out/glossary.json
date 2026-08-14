@@ -1,0 +1,45 @@
+{
+  "concepts": [
+    {
+      "bindings": [
+        {
+          "ref": "symbol:PaymentAttempt"
+        }
+      ],
+      "definition": "One request to collect an order's amount.",
+      "id": "payment-attempt",
+      "status": "canonical",
+      "term": "Payment Attempt"
+    },
+    {
+      "aliases": [
+        {
+          "note": "Blurs the local boundary with the external provider.",
+          "status": "discouraged",
+          "term": "Processor"
+        }
+      ],
+      "bindings": [
+        {
+          "ref": "symbol:GatewayClient"
+        }
+      ],
+      "definition": "The boundary object that submits an attempt to the payment provider.",
+      "id": "gateway-client",
+      "status": "canonical",
+      "term": "Gateway Client"
+    },
+    {
+      "bindings": [
+        {
+          "ref": "symbol:authorize_payment"
+        }
+      ],
+      "definition": "The gateway's approval result for a payment attempt.",
+      "id": "authorization",
+      "status": "canonical",
+      "term": "Authorization"
+    }
+  ],
+  "schema_version": 1
+}

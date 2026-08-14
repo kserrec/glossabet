@@ -241,7 +241,7 @@ def test_sensitive_directories_pruned_and_reported(tmp_path):
 
 def test_code_bytes_counts_bytes_not_characters(tmp_path):
     path = tmp_path / "unicode.py"
-    path.write_text("# café résumé naïveté\nx = 1\n")
+    path.write_text("# café résumé naïveté\nx = 1\n", encoding="utf-8")
     evidence = build_evidence(tmp_path)
     assert evidence["totals"]["code_bytes"] == path.stat().st_size
     assert evidence["totals"]["source_bytes"] == path.stat().st_size
@@ -249,7 +249,8 @@ def test_code_bytes_counts_bytes_not_characters(tmp_path):
 
 def test_unicode_and_language_forms_round_trip_through_evidence(tmp_path):
     (tmp_path / "unicode.py").write_text(
-        "ÜberHTTP2Server = 1\n支付Service = 2\nданные_очереди = 3\n"
+        "ÜberHTTP2Server = 1\n支付Service = 2\nданные_очереди = 3\n",
+        encoding="utf-8",
     )
     (tmp_path / "queue.clj").write_text("(def pending-work 1)\n")
 

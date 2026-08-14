@@ -26,6 +26,8 @@ def test_ci_covers_supported_versions_and_platforms():
         assert f'"3.{minor}"' in workflow
     assert "scripts/check_distribution.py" in workflow
     assert "scripts/wheel_smoke.py" in workflow
+    attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+    assert "* text=auto eol=lf" in attributes
 
 
 def test_publish_workflow_is_manual_and_confirmation_gated():

@@ -64,7 +64,7 @@ def _load_graph(root: Path) -> tuple[dict | None, bool, list[str]]:
             "proceeding lexical-only"
         ]
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError, RecursionError):
         # RecursionError: deeply nested JSON. json raises it outside the
         # ValueError hierarchy, so it must be caught explicitly or a hostile

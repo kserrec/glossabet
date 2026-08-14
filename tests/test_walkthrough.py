@@ -10,10 +10,10 @@ def test_walkthrough_completes_from_an_isolated_copy():
     completed = subprocess.run(
         [sys.executable, str(root / "scripts" / "run_walkthrough.py")],
         cwd=root,
-        check=True,
         capture_output=True,
         text=True,
     )
 
+    assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "Walkthrough passed" in completed.stdout
     assert "0 finding(s)" in completed.stdout
