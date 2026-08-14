@@ -88,7 +88,6 @@ def _extract_code_entry(text: str, language: str) -> dict:
     return {
         "kind": "code",
         "language": language,
-        "bytes": len(text),
         "identifiers": dict(sorted(identifiers.items())),
         "imports": extract_imports(text, language),
     }
@@ -183,7 +182,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
         )
         if entry is None:
             continue
-        code_bytes += entry["bytes"]
+        code_bytes += entry["size"]  # on-disk bytes, not decoded characters
         languages[language] += 1
         module = module_of(rel)
         modules[module]["code_files"] += 1
@@ -387,7 +386,7 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
     skipped = evidence["skipped"]
     if skipped["sensitive"]:
         print(
-            f"excluded {len(skipped['sensitive'])} sensitive file(s) from evidence",
+            f"excluded {len(skipped['sensitive'])} sensitive path(s) from evidence",
             file=sys.stderr,
         )
     if skipped["oversized"]:

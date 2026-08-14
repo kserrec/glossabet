@@ -67,7 +67,11 @@ def validate_glossary(glossary: dict) -> list[str]:
             if folded in seen_terms:
                 errors.append(f"{where} duplicate term {term!r}")
             seen_terms.add(folded)
-        for j, alias in enumerate(concept.get("aliases", [])):
+        aliases = concept.get("aliases", [])
+        if not isinstance(aliases, list):
+            errors.append(f"{where}.aliases must be a list")
+            aliases = []
+        for j, alias in enumerate(aliases):
             aw = f"{where}.aliases[{j}]"
             if not isinstance(alias, dict) or not alias.get("term"):
                 errors.append(f"{aw} needs a 'term'")
@@ -77,7 +81,11 @@ def validate_glossary(glossary: dict) -> list[str]:
                     f"{aw} status {alias.get('status')!r} not one of "
                     f"{sorted(STATUSES)}"
                 )
-        for j, binding in enumerate(concept.get("bindings", [])):
+        bindings = concept.get("bindings", [])
+        if not isinstance(bindings, list):
+            errors.append(f"{where}.bindings must be a list")
+            bindings = []
+        for j, binding in enumerate(bindings):
             bw = f"{where}.bindings[{j}]"
             ref = binding.get("ref") if isinstance(binding, dict) else None
             if not isinstance(ref, str) or ":" not in ref:

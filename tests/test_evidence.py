@@ -118,3 +118,36 @@ def test_scan_command_end_to_end(tmp_path, capsys):
 
 def test_scan_on_missing_path_is_user_error(tmp_path):
     assert scan_command(str(tmp_path / "nope")) == 1
+
+
+def test_nested_glossary_md_excluded(tmp_path):
+    # Contamination rule holds at any depth, not just the repo root.
+    (tmp_path / "main.py").write_text("widget = 1\n")
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    (sub / "GLOSSARY.md").write_text("nestedglossaryword is canonical\n")
+    assert "nestedglossaryword" not in json.dumps(build_evidence(tmp_path))
+
+
+def test_sensitive_directories_pruned_and_reported(tmp_path):
+    # An innocuously named file inside a sensitive-named directory must
+    # never enter evidence, and the exclusion is reported, not silent.
+    (tmp_path / "main.py").write_text("x = 1\n")
+    sec = tmp_path / "secrets"
+    sec.mkdir()
+    (sec / "notes.txt").write_text("the master password is huntertwovalue\n")
+    nested = tmp_path / "config" / "credentials"
+    nested.mkdir(parents=True)
+    (nested / "db.txt").write_text("dbleakword access phrase\n")
+    evidence = build_evidence(tmp_path)
+    blob = json.dumps(evidence).lower()
+    assert "huntertwovalue" not in blob and "dbleakword" not in blob
+    assert "secrets" in evidence["skipped"]["sensitive"]
+    assert "config/credentials" in evidence["skipped"]["sensitive"]
+
+
+def test_code_bytes_counts_bytes_not_characters(tmp_path):
+    path = tmp_path / "unicode.py"
+    path.write_text("# café résumé naïveté\nx = 1\n")
+    evidence = build_evidence(tmp_path)
+    assert evidence["totals"]["code_bytes"] == path.stat().st_size

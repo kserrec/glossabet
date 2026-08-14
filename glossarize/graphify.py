@@ -109,8 +109,12 @@ def build_structural_groups(root: Path) -> dict:
         for i, comm in enumerate(communities):
             if not isinstance(comm, dict):
                 continue
-            gid = str(_first(comm, ("id", "label", "name")) or i)
-            members = [str(m) for m in comm.get("nodes", []) if str(m) in nodes]
+            gid_val = _first(comm, ("id", "label", "name"))
+            gid = str(i if gid_val is None else gid_val)  # id 0 is a real id
+            raw_members = comm.get("nodes")
+            if not isinstance(raw_members, list):
+                continue  # unrecognized shape: tolerate, don't crash
+            members = [str(m) for m in raw_members if str(m) in nodes]
             cohesion = comm.get("cohesion")
             groups[gid] = {
                 "label": str(_first(comm, ("label", "name")) or f"community {gid}"),

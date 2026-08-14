@@ -90,3 +90,28 @@ def test_bounds_reported(tmp_path):
     assert "external_truncated" in evidence["imports"]
     assert "modules_dropped" in evidence["naming_candidates"]
     assert "terms_dropped" in evidence["naming_candidates"]
+
+
+def test_bare_relative_import_creates_no_phantom_root_edge(tmp_path):
+    # `from . import b` used to resolve to a nonexistent module "." and
+    # fabricate an internal edge pkg -> ".".
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    (pkg / "a.py").write_text("from . import b\nvalue = 1\n")
+    (pkg / "b.py").write_text("x = 1\n")
+    imports = build_evidence(tmp_path)["imports"]
+    assert all(e["to"] != "." for e in imports["internal_edges"])
+
+
+def test_same_repo_include_resolves_internal(tmp_path):
+    # #include "helpers.h" used to be misfiled as an external dep "helpers"
+    # even with include/helpers.h present in the repo.
+    (tmp_path / "src").mkdir()
+    (tmp_path / "include").mkdir()
+    (tmp_path / "src" / "main.c").write_text('#include "helpers.h"\nint x;\n')
+    (tmp_path / "include" / "helpers.h").write_text("int helper(void);\n")
+    imports = build_evidence(tmp_path)["imports"]
+    assert ("src", "include") in {
+        (e["from"], e["to"]) for e in imports["internal_edges"]
+    }
+    assert "helpers" not in {e["name"] for e in imports["external_top"]}

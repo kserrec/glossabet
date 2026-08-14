@@ -143,3 +143,28 @@ def test_analyze_report_prints_structure_candidates(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "structure community 0 — " in out
     assert "members include PaymentService" in out
+
+
+def test_malformed_community_nodes_degrade_gracefully(tmp_path):
+    # A community whose "nodes" is not a list used to crash the whole scan;
+    # the adapter's contract is warn-and-degrade, never error.
+    graph = {
+        "nodes": [{"id": "a", "label": "A"}],
+        "communities": [{"id": "c1", "nodes": 5}],
+    }
+    structural = build_evidence(make_repo(tmp_path, graph))["structural_groups"]
+    assert structural["available"] is True
+    assert structural["groups"] == []
+    assert any("no community structure" in w for w in structural["warnings"])
+
+
+def test_community_id_zero_keeps_its_id(tmp_path):
+    graph = {
+        "nodes": [{"id": "a", "label": "A"}, {"id": "b", "label": "B"}],
+        "communities": [
+            {"id": "billing", "nodes": ["a"]},
+            {"id": 0, "nodes": ["b"]},
+        ],
+    }
+    structural = build_evidence(make_repo(tmp_path, graph))["structural_groups"]
+    assert {g["id"] for g in structural["groups"]} == {"billing", "0"}

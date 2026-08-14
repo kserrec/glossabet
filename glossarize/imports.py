@@ -72,14 +72,25 @@ class Resolver:
 
     def __init__(self, code_files: list[tuple[str, str]]):
         self.paths = {rel for rel, _ in code_files}
-        # "a/b/c" (extension stripped) -> rel path, shortest wins.
+        # "a/b/c" (extension stripped) -> rel path; collisions resolve to
+        # the alphabetically first path, deterministically.
         self.by_slug: dict[str, str] = {}
         self.by_stem: dict[str, str] = {}
+        # "helpers.h" -> rel path, for file-with-extension specs
+        # (#include "helpers.h", import "./x.js" fallthroughs).
+        self.by_name: dict[str, str] = {}
         for rel, _ in sorted(code_files):
             slug = rel.rsplit(".", 1)[0]
             self.by_slug.setdefault(slug, rel)
-            stem = slug.rsplit("/", 1)[-1].lower()
-            self.by_stem.setdefault(stem, rel)
+            self.by_stem.setdefault(slug.rsplit("/", 1)[-1].lower(), rel)
+            self.by_name.setdefault(rel.rsplit("/", 1)[-1].lower(), rel)
+        # Every package directory, so a bare relative import ("from . import
+        # x") resolves to the importer's own package, never a phantom module.
+        self.dirs: set[str] = set()
+        for rel in self.paths:
+            parts = rel.split("/")[:-1]
+            for i in range(1, len(parts) + 1):
+                self.dirs.add("/".join(parts[:i]))
         # Lowered: OCaml/Java-style specs capitalize what the filesystem
         # keeps lowercase (open Translate -> translate/).
         self.top_level = {
@@ -107,7 +118,15 @@ class Resolver:
                         candidate.rsplit(".", 1)[0]
                     ]
                     return "internal", module_of(hit)
+            if joined in self.dirs:  # a package itself, not a file in one
+                return "internal", joined
             return "internal", module_of(joined) if joined else None
+
+        # File-with-extension specs (C-family includes): by_name keys always
+        # contain a dot, so bare module specs ("os", "lodash") can't match.
+        name = spec.rsplit("/", 1)[-1].lower()
+        if name in self.by_name:
+            return "internal", module_of(self.by_name[name])
 
         slug = spec.replace(".", "/").replace("::", "/").rstrip("/")
         for known, rel in self.by_slug.items():

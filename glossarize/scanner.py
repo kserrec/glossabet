@@ -51,7 +51,9 @@ _SENSITIVE_RES = [
 # outputs (so its generated reports can't leak into doc vocabulary — the
 # graph is consumed through the adapter, never the lexical walk).
 SELF_DIRS = frozenset({"glossarize-out", ".glossarize", "graphify-out"})
-SELF_ROOT_FILES = frozenset({"GLOSSARY.md"})
+# Excluded at any depth: a monorepo sub-project's settled glossary echoes
+# through evidence exactly like the root one would.
+SELF_FILES = frozenset({"GLOSSARY.md"})
 
 MAX_FILE_BYTES = 2_000_000
 
@@ -88,11 +90,20 @@ def walk_repository(root: Path) -> WalkResult:
     root = root.resolve()
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
         rel_dir = os.path.relpath(dirpath, root)
-        dirnames[:] = sorted(
-            d for d in dirnames
-            if not d.startswith(".") and d not in NOISE_DIRS and d not in SELF_DIRS
-        )
         is_root = rel_dir == "."
+        kept_dirs = []
+        for d in sorted(dirnames):
+            # Sensitive classification precedes every other prune so the
+            # exclusion is reported, never silent (mirrors the file rule).
+            if is_sensitive(d):
+                result.skipped_sensitive.append(
+                    d if is_root else f"{rel_dir}/{d}"
+                )
+                continue
+            if d.startswith(".") or d in NOISE_DIRS or d in SELF_DIRS:
+                continue
+            kept_dirs.append(d)
+        dirnames[:] = kept_dirs
         if not is_root and any(
             m in filenames for m in PACKAGE_MANIFESTS
         ):
@@ -106,7 +117,7 @@ def walk_repository(root: Path) -> WalkResult:
                 continue
             if fname.startswith(".") and fname not in WORKSPACE_MANIFESTS:
                 continue
-            if is_root and fname in SELF_ROOT_FILES:
+            if fname in SELF_FILES:
                 continue
             if is_root and fname in WORKSPACE_MANIFESTS:
                 result.workspace_manifests.append(fname)

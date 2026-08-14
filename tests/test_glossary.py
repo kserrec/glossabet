@@ -116,3 +116,20 @@ def test_glossary_never_contaminates_evidence(tmp_path):
     save_glossary(tmp_path, GLOSSARY)
     blob = json.dumps(build_evidence(tmp_path))
     assert "billing" not in blob.lower()  # glossary text must not echo
+
+
+def test_non_list_aliases_and_bindings_are_errors_not_crashes(tmp_path):
+    # A hand-edited glossary with "aliases": null used to raise TypeError,
+    # which every command then misreported as an internal defect (exit 2).
+    base = {"id": "x", "term": "X", "definition": "d", "status": "canonical"}
+    bad_aliases = {"schema_version": 1, "concepts": [{**base, "aliases": None}]}
+    assert any("aliases must be a list" in e
+               for e in validate_glossary(bad_aliases))
+    bad_bindings = {"schema_version": 1,
+                    "concepts": [{**base, "bindings": "nope"}]}
+    assert any("bindings must be a list" in e
+               for e in validate_glossary(bad_bindings))
+    out = tmp_path / "glossarize-out"
+    out.mkdir()
+    (out / "glossary.json").write_text(json.dumps(bad_aliases))
+    assert main(["show", str(tmp_path)]) == 1  # user error, not defect

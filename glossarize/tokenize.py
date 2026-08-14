@@ -90,6 +90,7 @@ def doc_words(text: str) -> list[str]:
     """Prose words from a documentation file, lowercased, stopwords removed."""
     words = []
     for word in DOC_WORD_RE.findall(text.lower()):
+        word = word.rstrip("'")  # users' and users are one term
         if len(word) >= MIN_DOC_WORD_LEN and word not in DOC_STOPWORDS:
             words.append(word)
     return words

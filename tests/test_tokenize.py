@@ -28,3 +28,10 @@ def test_doc_words_filters_stopwords_and_short_words():
     words = doc_words("The Payment gateway is a boundary, and it is ours.")
     assert "payment" in words and "gateway" in words and "boundary" in words
     assert "the" not in words and "is" not in words and "it" not in words
+
+
+def test_doc_words_strip_possessive_apostrophes():
+    assert doc_words("the users' guide to the system") == [
+        "users", "guide", "system",
+    ]
+    assert doc_words("don't panic") == ["don't", "panic"]
