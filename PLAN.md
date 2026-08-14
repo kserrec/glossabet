@@ -175,7 +175,7 @@ Repo created at `~/Projects/glossarize`, git initialized; PLAN.md, README.md,
 CLAUDE.md, .gitignore written. Open decisions listed below for discussion
 before Phase 1.
 
-### Phase 1 — Package and CLI skeleton
+### Phase 1 — Package and CLI skeleton ✅ (2026-08-14)
 Steps:
 1. `pyproject.toml` (name `glossarize` — confirmed free on PyPI), package
    layout `glossarize/`, console entry point `glossarize`.

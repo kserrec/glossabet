@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "glossarize"
+description = "Make a codebase's vocabulary explicit, canonical, inspectable, and maintainable."
+readme = "README.md"
+license = "Apache-2.0"
+authors = [{ name = "Kyle Serrecchia" }]
+requires-python = ">=3.10"
+dynamic = ["version"]
+
+[project.scripts]
+glossarize = "glossarize.cli:main"
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.hatch.version]
+path = "glossarize/__init__.py"

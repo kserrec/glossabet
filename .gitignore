@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 dist/
 *.egg-info/
+.pytest_cache/
 
 # Glossarize's own outputs when run on this repo (dogfooding)
 glossarize-out/

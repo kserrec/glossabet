@@ -48,5 +48,8 @@ verbatim, never diluted by machinery.
 
 ## Commands
 
-None yet — Phase 1 establishes the package and CLI. This section is updated as
-phases land.
+```bash
+uv run pytest                    # test suite
+uv tool install . --reinstall    # (re)install the CLI at ~/.local/bin/glossarize
+glossarize --version
+```
