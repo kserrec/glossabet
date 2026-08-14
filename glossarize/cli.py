@@ -41,12 +41,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     scan = sub.add_parser("scan", help="build or refresh repository evidence")
     scan.add_argument("path", nargs="?", default=".", help="repository root")
+    scan.add_argument(
+        "--no-graphify", action="store_true",
+        help="ignore graphify-out/graph.json even if present",
+    )
 
     analyze = sub.add_parser(
         "analyze",
         help="scan plus a terminology report (register, overlaps, overloads)",
     )
     analyze.add_argument("path", nargs="?", default=".", help="repository root")
+    analyze.add_argument(
+        "--no-graphify", action="store_true",
+        help="ignore graphify-out/graph.json even if present",
+    )
 
     show = sub.add_parser("show", help="display the current glossary")
     show.add_argument("path", nargs="?", default=".", help="repository root")
@@ -70,12 +78,12 @@ def _run(argv: list[str] | None) -> int:
     if args.command == "scan":
         from glossarize.evidence import scan_command
 
-        return scan_command(args.path)
+        return scan_command(args.path, graphify=not args.no_graphify)
 
     if args.command == "analyze":
         from glossarize.evidence import analyze_command
 
-        return analyze_command(args.path)
+        return analyze_command(args.path, graphify=not args.no_graphify)
 
     if args.command == "show":
         from glossarize.glossary import show_command

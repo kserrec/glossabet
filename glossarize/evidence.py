@@ -18,6 +18,7 @@ from itertools import combinations
 
 from glossarize import __version__
 from glossarize.cache import entry_if_valid, load_cache, save_cache
+from glossarize.graphify import build_structural_groups, structure_candidates
 from glossarize.imports import build_imports_section, extract_imports
 from glossarize.importance import build_naming_candidates
 from glossarize.scanner import detect_monorepo, walk_repository
@@ -106,7 +107,8 @@ def _extract_doc_entry(text: str) -> dict:
 
 
 def build_evidence(root: Path, limits: Limits = Limits(),
-                   cache: bool = False, stats: dict | None = None) -> dict:
+                   cache: bool = False, stats: dict | None = None,
+                   graphify: bool = True) -> dict:
     """Cold and warm scans share this one aggregation path, so a cached run
     is byte-identical to a fresh one by construction."""
     root = root.resolve()
@@ -215,6 +217,15 @@ def build_evidence(root: Path, limits: Limits = Limits(),
         for path, info in sorted(modules.items())
     ]
     imports_section = build_imports_section(file_imports, walk.code_files)
+    structural = (
+        build_structural_groups(root) if graphify
+        else {"available": False, "warnings": []}
+    )
+    naming = build_naming_candidates(
+        imports_section, modules_list, token_counts, token_files,
+        token_modules, doc_term_counts,
+    )
+    naming.update(structure_candidates(structural))
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -230,10 +241,8 @@ def build_evidence(root: Path, limits: Limits = Limits(),
         "languages": dict(sorted(languages.items())),
         "modules": modules_list,
         "imports": imports_section,
-        "naming_candidates": build_naming_candidates(
-            imports_section, modules_list, token_counts, token_files,
-            token_modules, doc_term_counts,
-        ),
+        "naming_candidates": naming,
+        "structural_groups": structural,
         "files": {
             "code": [
                 {"path": p, "language": lang}
@@ -335,14 +344,23 @@ def _print_terminology_report(evidence: dict) -> None:
     )
 
 
-def _scan(path_arg: str, report: bool) -> int:
+def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
     root = Path(path_arg)
     if not root.is_dir():
         print(f"glossarize: not a directory: {path_arg}", file=sys.stderr)
         return 1
     stats: dict = {}
-    evidence = build_evidence(root, cache=True, stats=stats)
+    evidence = build_evidence(root, cache=True, stats=stats, graphify=graphify)
     out_path = write_evidence(root.resolve(), evidence)
+    structural = evidence["structural_groups"]
+    for warning in structural.get("warnings", []):
+        print(f"graphify adapter: {warning}", file=sys.stderr)
+    if structural.get("available"):
+        print(
+            f"graphify graph: {structural['nodes']} nodes, "
+            f"{len(structural['groups'])} structural group(s) "
+            f"(freshness unverified)"
+        )
     if stats.get("reused"):
         print(
             f"cache: reused {stats['reused']} extraction(s), "
@@ -378,9 +396,9 @@ def _scan(path_arg: str, report: bool) -> int:
     return 0
 
 
-def scan_command(path_arg: str) -> int:
-    return _scan(path_arg, report=False)
+def scan_command(path_arg: str, graphify: bool = True) -> int:
+    return _scan(path_arg, report=False, graphify=graphify)
 
 
-def analyze_command(path_arg: str) -> int:
-    return _scan(path_arg, report=True)
+def analyze_command(path_arg: str, graphify: bool = True) -> int:
+    return _scan(path_arg, report=True, graphify=graphify)

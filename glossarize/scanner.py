@@ -46,9 +46,11 @@ _SENSITIVE_RES = [
     )
 ]
 
-# Glossarize's own artifacts: excluded so the glossary can't echo through the
-# evidence and blind drift detection.
-SELF_DIRS = frozenset({"glossarize-out", ".glossarize"})
+# Tool artifacts, not repo content: glossarize's own outputs (so the glossary
+# can't echo through the evidence and blind drift detection) and graphify's
+# outputs (so its generated reports can't leak into doc vocabulary — the
+# graph is consumed through the adapter, never the lexical walk).
+SELF_DIRS = frozenset({"glossarize-out", ".glossarize", "graphify-out"})
 SELF_ROOT_FILES = frozenset({"GLOSSARY.md"})
 
 MAX_FILE_BYTES = 2_000_000

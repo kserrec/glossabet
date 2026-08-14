@@ -309,7 +309,7 @@ Steps:
 Acceptance: on a large repo, warm `scan` touches only changed files and
 matches a cold scan byte-for-byte.
 
-### Phase 9 — Graphify adapter
+### Phase 9 — Graphify adapter ✅ (2026-08-14)
 Steps:
 1. `GraphifyEvidenceAdapter`: `graphify-out/graph.json` → RepositoryEvidence —
    nodes → symbols/entities, communities (+ cohesion) → structural groups,
