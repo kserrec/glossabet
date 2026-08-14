@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+dist/
+*.egg-info/
+
+# Glossarize's own outputs when run on this repo (dogfooding)
+glossarize-out/
+.glossarize/
+
+# Never committed
+.env
+*.env
+.env.*
+*.env.*
