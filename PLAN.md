@@ -286,7 +286,7 @@ Steps:
 Acceptance: settle a small vocabulary on a test repo, rerun `/glossarize`,
 confirm it resumes rather than restarts.
 
-### Phase 7 — Drift and collision detection
+### Phase 7 — Drift and collision detection ✅ (2026-08-14)
 Steps:
 1. `glossarize drift .`: compare fresh evidence vocabulary against
    `glossary.json` — new prominent terms paralleling canonical ones

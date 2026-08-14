@@ -51,6 +51,11 @@ def build_parser() -> argparse.ArgumentParser:
     show = sub.add_parser("show", help="display the current glossary")
     show.add_argument("path", nargs="?", default=".", help="repository root")
 
+    drift = sub.add_parser(
+        "drift", help="check live vocabulary against the canonical glossary"
+    )
+    drift.add_argument("path", nargs="?", default=".", help="repository root")
+
     return parser
 
 
@@ -76,6 +81,11 @@ def _run(argv: list[str] | None) -> int:
         from glossarize.glossary import show_command
 
         return show_command(args.path)
+
+    if args.command == "drift":
+        from glossarize.drift import drift_command
+
+        return drift_command(args.path)
 
     parser.error(f"unknown command {args.command!r}")
     return EXIT_DEFECT  # unreachable; error() exits

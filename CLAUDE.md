@@ -54,4 +54,6 @@ uv tool install . --reinstall    # (re)install the CLI at ~/.local/bin/glossariz
 glossarize --version
 glossarize scan <repo>           # writes <repo>/glossarize-out/evidence.json
 glossarize analyze <repo>        # scan + terminology report (register, overlaps)
+glossarize show <repo>           # display the current glossary
+glossarize drift <repo>          # live vocabulary vs canonical glossary
 ```
