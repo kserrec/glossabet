@@ -345,7 +345,10 @@ def _print_terminology_report(evidence: dict) -> None:
         print(f"module {cand['path']} — {'; '.join(cand['reasons'])}")
     for cand in naming["terms"]:
         print(f"term {cand['term']} — {'; '.join(cand['reasons'])}")
-    dropped = naming["modules_dropped"] + naming["terms_dropped"]
+    for cand in naming["structures"]:
+        print(f"structure {cand['label']} — {'; '.join(cand['reasons'])}")
+    dropped = (naming["modules_dropped"] + naming["terms_dropped"]
+               + naming["structures_dropped"])
     if dropped:
         print(f"... and {dropped} more not shown")
     print(

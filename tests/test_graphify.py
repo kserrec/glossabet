@@ -135,3 +135,11 @@ def test_adapter_is_deterministic(tmp_path):
     first = build_evidence(root)["structural_groups"]
     second = build_evidence(root)["structural_groups"]
     assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
+
+
+def test_analyze_report_prints_structure_candidates(tmp_path, capsys):
+    root = make_repo(tmp_path)
+    assert main(["analyze", str(root)]) == 0
+    out = capsys.readouterr().out
+    assert "structure community 0 — " in out
+    assert "members include PaymentService" in out
