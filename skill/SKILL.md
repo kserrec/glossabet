@@ -70,6 +70,17 @@ locations) plus `modules` ranks material for Step 3's nominations;
 proposing: never nominate a part from counts alone (real parts only), and
 treat any list carrying a truncation marker as partial, not complete.
 
+**Graphify structural state:** `structural_groups.present` says whether the
+adapter found a graph file; `structural_groups.available` says whether it
+loaded usable community groups. These are not interchangeable. Never claim
+structural coverage when `available` is false, and surface every adapter
+warning. When groups are available, read `structural_groups.freshness`:
+`current` means the recorded Graphify `built_at_commit` matches a clean
+worktree; `stale` means the commits differ; `unverified` means the stamp or
+clean-worktree proof is unavailable. The stamp is repository-controlled and
+does not authenticate graph content. State stale or unverified status before
+using those groups and treat them as advisory rather than current fact.
+
 ### Monorepo alert
 
 If the evidence says `monorepo.detected: true`, **stop before nominating**.

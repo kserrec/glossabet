@@ -151,12 +151,32 @@ def test_drift_sections_embedded(tmp_path):
 def test_without_graph_structural_checks_skip_cleanly(tmp_path):
     validation = validation_for(tmp_path, graph=None)
     assert validation["graph_available"] is False
+    assert validation["graph"] == {
+        "present": False,
+        "usable": False,
+        "freshness": None,
+        "warnings": [],
+    }
     for key in ("unnamed_structure", "boundary_mismatch",
                 "overloaded_structural_region"):
         assert validation[key]["skipped"] is True
         assert validation[key]["items"] == []
+        assert "absent" in validation[key]["skip_reason"]
     # direction B still works
     assert validation["orphaned_concepts"]["items"]
+
+
+def test_present_but_unusable_graph_skips_structural_checks(tmp_path):
+    graph = {"nodes": [{"id": "a", "label": "A"}], "links": []}
+    validation = validation_for(tmp_path, graph=graph)
+
+    assert validation["graph"]["present"] is True
+    assert validation["graph"]["usable"] is False
+    assert validation["graph"]["warnings"]
+    for key in ("unnamed_structure", "boundary_mismatch",
+                "overloaded_structural_region"):
+        assert validation[key]["skipped"] is True
+        assert "no usable structural groups" in validation[key]["skip_reason"]
 
 
 def test_binding_validation_rejects_unstable_identities():
@@ -181,6 +201,7 @@ def test_validate_command_end_to_end(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "unnamed structure" in out
     assert "orphaned concepts" in out
+    assert "freshness unverified" in out
     assert "No one-to-one" in out
     assert (root / "glossarize-out" / "validation.json").is_file()
 
@@ -189,3 +210,18 @@ def test_validate_without_glossary_is_user_error(tmp_path, capsys):
     (tmp_path / "a.py").write_text("x_y = 1\n")
     assert main(["validate", str(tmp_path)]) == 1
     assert "no glossary" in capsys.readouterr().err
+
+
+def test_validate_cli_surfaces_adapter_warning_and_skipped_coverage(
+    tmp_path, capsys
+):
+    root = make_repo(
+        tmp_path,
+        graph={"nodes": [{"id": "a", "label": "A"}], "links": []},
+    )
+    assert main(["validate", str(root)]) == 0
+    captured = capsys.readouterr()
+    assert "graph present but no usable structural groups" in captured.out
+    assert "structural checks skipped" in captured.out
+    assert "graphify adapter:" in captured.err
+    assert "no community structure" in captured.err

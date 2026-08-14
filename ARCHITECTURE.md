@@ -99,7 +99,7 @@ is source-agnostic. Its top-level shape:
 | `languages`, `modules` | language tally; per-directory module inventory |
 | `imports` | best-effort internal edges + external dependency tally (lossy, tagged so) |
 | `naming_candidates` | ranked "likely deserves a name" nominations (modules, terms, structures) |
-| `structural_groups` | Graphify-derived groups, or `{available: false}` |
+| `structural_groups` | Graphify presence, usability, warnings, commit freshness, and normalized groups |
 | `files` | code files (path + language) and doc files |
 | `vocabulary` | capped `tokens`, `identifiers`, `doc_terms` frequency tables |
 | `terminology` | register stats, code-vs-doc layers, synonym and overload nominations |
@@ -177,12 +177,19 @@ The package is `glossarize/`. Grouped by role:
 
 **The optional structural source (evidence source #2)**
 - `graphify.py` — `build_structural_groups()` reads `graphify-out/graph.json`
-  if present and turns nodes/edges/communities into structural groups plus
-  importance signals. Deliberately tolerant: it extracts only shapes it
-  recognizes and degrades to lexical-only with a warning on anything else
-  (never an error). Nodes whose provenance traces to the glossary are discounted
-  so the vocabulary can't echo back as fake structural support. Graphify's
-  artifacts are read, never written.
+  if present and turns nodes/links/communities into structural groups plus
+  importance signals. The primary contract is Graphify 0.9.42's NetworkX
+  node-link export (`links`, `source_file`, `file_type`, per-node
+  `community_name`, and `built_at_commit`); older `edges`/`source` shapes stay
+  explicitly tested. `present` means a graph path was found, while `available`
+  means at least one usable community group was normalized. Commit freshness
+  is `current`, `stale`, or `unverified` against the evidence Git stamp. This
+  compares repository-controlled metadata; it detects ordinary staleness but
+  does not authenticate graph content.
+  Unrecognized or group-less data degrades to lexical-only with a warning,
+  never an error. Glossary-provenance nodes are discounted so vocabulary
+  cannot echo back as fake structural support. Graphify's artifacts are read,
+  never written.
 
 **Persistence and the health checks**
 - `cache.py` — the user-owned per-file extraction cache. It lives under the
@@ -227,14 +234,16 @@ indexes the glossary's canonical/watched tokens, runs the four checks, writes
 Requires a glossary. Builds fresh evidence (with the Graphify graph if present),
 matches canonical concepts against structural groups in both directions,
 delegates vocabulary-drift and concept-collision detection to `drift.py`, writes
-`glossarize-out/validation.json`, and prints the report.
+`glossarize-out/validation.json`, and prints the report. Validation embeds the
+adapter's presence/usability/freshness/warning state; all structural sections
+carry `skipped: true` plus a reason when usable groups were not loaded.
 
 ## Security and trust boundaries
 
 Glossarize is pointed at repositories that may be untrusted, so the scanned
 repo's contents are treated as attacker-controllable input. The enforced
 boundaries — sensitive-file/directory exclusion, symlink-escape prevention, no
-contamination, size caps on every read, neutralizing the scanned repo's git
+contamination, per-input size caps, neutralizing the scanned repo's git
 config so it can't execute code, and catching malformed input cleanly rather
 than crashing as a "defect" — are documented with their regression tests in
 `SECURITY.md`. Read that file before touching `scanner.py`, `evidence._git_stamp`,
@@ -260,12 +269,11 @@ These are settled in `PLAN.md`; the load-bearing ones for a new owner:
   filler.
 
 Known limitations, honestly: imports are regex-level and incomplete by design;
-Graphify graphs carry no git stamp, so their freshness is tagged unverified;
-and the engine deliberately does nothing autonomous with vocabulary — it
-nominates and grounds, and stops.
+legacy Graphify graphs without `built_at_commit` and graphs over dirty
+worktrees remain freshness-unverified; and the engine deliberately does
+nothing autonomous with vocabulary — it nominates and grounds, and stops.
 
 ## Where things stand
 
-`PLAN.md` is the authoritative roadmap. All planned phases (0–10) are complete;
-remaining ideas live under "Later / unscheduled" there. Do not duplicate that
-list here — read it directly.
+`PLAN.md` is the authoritative roadmap. Phases 0–12 are complete; Phase 13 is
+next. Do not duplicate the remaining roadmap here — read it directly.

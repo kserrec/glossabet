@@ -10,6 +10,7 @@ evidence for the team, never an automatic diagnosis.
 
 from __future__ import annotations
 
+import sys
 from itertools import combinations
 
 from glossarize.artifacts import repo_root, write_artifact
@@ -18,7 +19,7 @@ from glossarize.evidence import build_evidence, write_evidence
 from glossarize.glossary import require_glossary
 from glossarize.tokenize import tokenize_term
 
-VALIDATION_SCHEMA_VERSION = 1
+VALIDATION_SCHEMA_VERSION = 2
 VALIDATION_FILE = "validation.json"
 
 FINDINGS_CAP = 10
@@ -239,6 +240,13 @@ def build_validation(evidence: dict, glossary: dict) -> dict:
     }
     structural = evidence["structural_groups"]
     graph_ok = bool(structural.get("available"))
+    graph_present = structural.get("present") is True
+    if graph_ok:
+        skip_reason = None
+    elif graph_present:
+        skip_reason = "Graphify graph present but no usable structural groups loaded"
+    else:
+        skip_reason = "Graphify graph absent; structural checks require it"
 
     unnamed, boundary, overloaded = (
         _structure_findings(structural, canonical, vocab)
@@ -250,10 +258,20 @@ def build_validation(evidence: dict, glossary: dict) -> dict:
     drift = build_drift(evidence, glossary)
 
     sections = {
-        "unnamed_structure": {**_capped(unnamed), "skipped": not graph_ok},
-        "boundary_mismatch": {**_capped(boundary), "skipped": not graph_ok},
+        "unnamed_structure": {
+            **_capped(unnamed),
+            "skipped": not graph_ok,
+            "skip_reason": skip_reason,
+        },
+        "boundary_mismatch": {
+            **_capped(boundary),
+            "skipped": not graph_ok,
+            "skip_reason": skip_reason,
+        },
         "overloaded_structural_region": {
-            **_capped(overloaded), "skipped": not graph_ok
+            **_capped(overloaded),
+            "skipped": not graph_ok,
+            "skip_reason": skip_reason,
         },
         "orphaned_concepts": _capped(orphaned),
         "unresolved_bindings": _capped(unresolved),
@@ -265,6 +283,14 @@ def build_validation(evidence: dict, glossary: dict) -> dict:
     return {
         "schema_version": VALIDATION_SCHEMA_VERSION,
         "canonical_concepts": len(canonical),
+        "graph": {
+            "present": structural.get("present"),
+            "usable": graph_ok,
+            "freshness": structural.get("freshness"),
+            "warnings": list(structural.get("warnings", [])),
+        },
+        # Backward-compatible convenience flag; `graph` carries the complete
+        # state and distinguishes absent, unusable, stale, and unverified.
         "graph_available": graph_ok,
         "total_findings": total,
         **sections,
@@ -284,14 +310,27 @@ _TITLES = {
 
 
 def _print_report(validation: dict) -> None:
-    graph_note = (
-        "" if validation["graph_available"]
-        else " (no graphify graph: structural checks skipped)"
-    )
     print(
         f"validate: {validation['canonical_concepts']} canonical concept(s), "
-        f"{validation['total_findings']} finding(s){graph_note}"
+        f"{validation['total_findings']} finding(s)"
     )
+    graph = validation["graph"]
+    if graph["usable"]:
+        freshness = graph["freshness"] or {
+            "status": "unverified",
+            "detail": "freshness metadata unavailable",
+        }
+        print(
+            f"graphify: usable structural groups; freshness "
+            f"{freshness['status']} — {freshness['detail']}"
+        )
+    elif graph["present"]:
+        print(
+            "graphify: graph present but no usable structural groups; "
+            "structural checks skipped"
+        )
+    else:
+        print("graphify: no graph; structural checks skipped")
     for key, title in _TITLES.items():
         section = validation[key]
         if section.get("skipped"):
@@ -320,5 +359,7 @@ def validate_command(path_arg: str) -> int:
     write_evidence(root, evidence)
     validation = build_validation(evidence, glossary)
     write_artifact(root, VALIDATION_FILE, validation)
+    for warning in validation["graph"]["warnings"]:
+        print(f"graphify adapter: {warning}", file=sys.stderr)
     _print_report(validation)
     return 0

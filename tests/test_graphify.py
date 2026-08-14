@@ -8,6 +8,7 @@ import os
 
 from glossarize.cli import main
 from glossarize.evidence import build_evidence
+from glossarize.graphify import build_structural_groups
 
 GRAPH = {
     "directed": True,
@@ -30,6 +31,47 @@ GRAPH = {
         {"source": "n1", "target": "n3"},
         {"source": "n1", "target": "n4"},
         {"source": "n5", "target": "n6"},
+    ],
+}
+
+# Produced from Graphify 0.9.42's graphify.export.to_json contract. NetworkX's
+# node-link exporter writes `links`; Graphify supplies `source_file`,
+# `file_type`, per-node community metadata, and `built_at_commit`.
+GRAPHIFY_0_9_42 = {
+    "built_at_commit": "a" * 40,
+    "directed": True,
+    "graph": {},
+    "hyperedges": [],
+    "links": [
+        {
+            "source": "n1", "target": "n2", "relation": "calls",
+            "confidence": "EXTRACTED", "confidence_score": 1.0,
+        },
+        {
+            "source": "n1", "target": "n3", "relation": "references",
+            "confidence": "EXTRACTED", "confidence_score": 1.0,
+        },
+    ],
+    "multigraph": False,
+    "nodes": [
+        {
+            "id": "n1", "label": "Payment Service",
+            "source_file": "src/payment.py", "file_type": "code",
+            "community": 7, "community_name": "Payments",
+            "norm_label": "payment service",
+        },
+        {
+            "id": "n2", "label": "Stripe Gateway",
+            "source_file": "src/gateway.py", "file_type": "code",
+            "community": 7, "community_name": "Payments",
+            "norm_label": "stripe gateway",
+        },
+        {
+            "id": "n3", "label": "Billing Guide",
+            "source_file": "docs/billing.md", "file_type": "document",
+            "community": 7, "community_name": "Payments",
+            "norm_label": "billing guide",
+        },
     ],
 }
 
@@ -63,6 +105,31 @@ def test_groups_map_with_provenance_and_discounting(tmp_path):
     assert structural["god_nodes"][0]["label"] == "PaymentService"
 
 
+def test_graphify_0_9_42_export_contract_is_consumed(tmp_path):
+    root = make_repo(tmp_path, GRAPHIFY_0_9_42)
+    structural = build_structural_groups(
+        root, {"head": "a" * 40, "dirty": False}
+    )
+
+    assert structural["present"] is True
+    assert structural["available"] is True
+    assert structural["nodes"] == 3 and structural["edges"] == 2
+    assert structural["groups"] == [{
+        "id": "7",
+        "label": "Payments",
+        "cohesion": None,
+        "size": 3,
+        "members_sample": [
+            "Payment Service", "Billing Guide", "Stripe Gateway"
+        ],
+        "provenance": {"code": 2, "doc": 1, "glossary": 0},
+    }]
+    assert structural["god_nodes"][0] == {
+        "label": "Payment Service", "degree": 2
+    }
+    assert structural["freshness"]["status"] == "current"
+
+
 def test_top_level_communities_variant_with_cohesion(tmp_path):
     graph = {
         "nodes": [{"id": "a", "label": "A"}, {"id": "b", "label": "B"}],
@@ -90,6 +157,7 @@ def test_unrecognized_shape_degrades_with_warning(tmp_path):
     structural = build_evidence(
         make_repo(tmp_path, graph={"weird": True})
     )["structural_groups"]
+    assert structural["present"] is True
     assert structural["available"] is False
     assert any("no recognizable node list" in w for w in structural["warnings"])
 
@@ -105,6 +173,8 @@ def test_corrupt_graph_degrades_with_warning(tmp_path):
 def test_no_graphify_escape_hatch(tmp_path):
     root = make_repo(tmp_path)
     structural = build_evidence(root, graphify=False)["structural_groups"]
+    assert structural["adapter_enabled"] is False
+    assert structural["present"] is None
     assert structural["available"] is False and structural["warnings"] == []
 
 
@@ -126,7 +196,9 @@ def test_graphify_output_never_enters_lexical_walk(tmp_path):
 def test_scan_cli_reports_graph_and_flag_disables(tmp_path, capsys):
     root = make_repo(tmp_path)
     assert main(["scan", str(root)]) == 0
-    assert "structural group(s)" in capsys.readouterr().out
+    first = capsys.readouterr().out
+    assert "structural group(s)" in first
+    assert "freshness unverified" in first
     assert main(["scan", str(root), "--no-graphify"]) == 0
     assert "structural group(s)" not in capsys.readouterr().out
 
@@ -154,7 +226,8 @@ def test_malformed_community_nodes_degrade_gracefully(tmp_path):
         "communities": [{"id": "c1", "nodes": 5}],
     }
     structural = build_evidence(make_repo(tmp_path, graph))["structural_groups"]
-    assert structural["available"] is True
+    assert structural["present"] is True
+    assert structural["available"] is False
     assert structural["groups"] == []
     assert any("no community structure" in w for w in structural["warnings"])
 
@@ -192,6 +265,30 @@ def test_symlinked_graph_degrades_without_reading_target(tmp_path):
     os.symlink(outside, gout / "graph.json")
 
     structural = build_evidence(repo)["structural_groups"]
+    assert structural["present"] is True
     assert structural["available"] is False
     assert any("symlinked artifact" in warning
                for warning in structural["warnings"])
+
+
+def test_graph_freshness_distinguishes_stale_and_dirty(tmp_path):
+    root = make_repo(tmp_path, GRAPHIFY_0_9_42)
+    stale = build_structural_groups(
+        root, {"head": "b" * 40, "dirty": False}
+    )["freshness"]
+    dirty = build_structural_groups(
+        root, {"head": "a" * 40, "dirty": True}
+    )["freshness"]
+
+    assert stale["status"] == "stale"
+    assert "current HEAD" in stale["detail"]
+    assert dirty["status"] == "unverified"
+    assert "uncommitted changes" in dirty["detail"]
+
+
+def test_scan_cli_surfaces_unusable_graph_warning(tmp_path, capsys):
+    root = make_repo(tmp_path, {"nodes": [{"id": "only"}], "links": []})
+    assert main(["scan", str(root)]) == 0
+    captured = capsys.readouterr()
+    assert "present, but no usable structural groups" in captured.out
+    assert "no community structure" in captured.err

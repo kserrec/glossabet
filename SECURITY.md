@@ -131,9 +131,16 @@ safe to send to an unapproved service.
 
 ## Known trust decisions and limits
 
-- `graphify-out/graph.json` has no Git stamp Glossarize can verify, so accepted
-  structural evidence carries `freshness_unverified: true`. Phase 12 will make
-  this caveat more visible in validation output.
+- Graphify 0.9.42 exports `built_at_commit`. Glossarize reports its structural
+  evidence as `current` only when that commit matches the current repository
+  HEAD and the worktree is clean; a mismatch is `stale`. Legacy graphs without
+  the stamp, repositories without a readable HEAD, and matching commits over a
+  dirty or uncheckable worktree are `unverified`. These states and adapter
+  warnings are embedded in validation output; a present but unusable graph
+  causes structural checks to be explicitly skipped. `built_at_commit` is
+  repository-controlled metadata: the comparison detects ordinary staleness,
+  but a matching value is not proof that graph content is authentic or was
+  actually generated from that commit.
 - In-repository **source** symlinks are followed because their targets are
   repository content. Direct artifact symlinks are rejected for the separate
   read/write-redirection reasons above.

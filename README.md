@@ -15,6 +15,17 @@ against the structural graph — surfacing unnamed architecture, orphaned
 concepts, vocabulary drift, and boundary mismatches. Graphify is never
 required.
 
+The adapter supports Graphify 0.9.42's exported `links`, `source_file`,
+`file_type`, `community_name`, and `built_at_commit` fields as well as the
+older accepted `edges`/`source` shapes. Evidence distinguishes a graph file
+being present from usable community structure being loaded. When Graphify's
+commit stamp is available, Glossarize reports the structure as current, stale,
+or unverified against the repository's HEAD and worktree; structural
+validation is explicitly skipped when no usable groups were loaded. “Current”
+means the graph's recorded commit matches a clean checkout; because the graph
+file is repository-controlled input, this is a staleness signal rather than
+content authentication.
+
 ## Why repository vocabulary matters
 
 Glossarize is built on an empirically supported problem: names act as part of
@@ -65,8 +76,8 @@ better naming decisions. That product claim requires direct evaluation of
 Glossarize's precision, false-alarm rate, and usefulness on real repositories;
 that evaluation is tracked in `PLAN.md`.
 
-**Status: v0 engine complete through Phase 11; hardening roadmap active.**
-`PLAN.md` is the authoritative roadmap for Phases 12–17.
+**Status: v0 engine complete through Phase 12; hardening roadmap active.**
+`PLAN.md` is the authoritative roadmap for Phases 13–17.
 `skill/SKILL.md` is the canonical agent skill (install it by copying to your
 agent's skills directory, e.g. `~/.claude/skills/glossarize/SKILL.md`).
 The CLI installs with `uv tool install .`:

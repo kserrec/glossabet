@@ -19,14 +19,18 @@ from pathlib import Path
 from glossarize import __version__
 from glossarize.artifacts import repo_root, write_artifact
 from glossarize.cache import entry_if_valid, load_cache, save_cache
-from glossarize.graphify import build_structural_groups, structure_candidates
+from glossarize.graphify import (
+    build_structural_groups,
+    disabled_structural_groups,
+    structure_candidates,
+)
 from glossarize.imports import build_imports_section, extract_imports, module_of
 from glossarize.importance import build_naming_candidates
 from glossarize.scanner import detect_monorepo, walk_repository
 from glossarize.terminology import build_terminology
 from glossarize.tokenize import doc_words, iter_identifiers, tokenize_identifier
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 EVIDENCE_FILE = "evidence.json"
 
@@ -240,8 +244,8 @@ def build_evidence(root: Path, limits: Limits = Limits(),
     ]
     imports_section = build_imports_section(file_imports, walk.code_files)
     structural = (
-        build_structural_groups(root) if graphify
-        else {"available": False, "warnings": []}
+        build_structural_groups(root, git_stamp) if graphify
+        else disabled_structural_groups()
     )
     naming = build_naming_candidates(
         imports_section, modules_list, vocabulary.token_counts,
@@ -378,11 +382,15 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
     for warning in structural.get("warnings", []):
         print(f"graphify adapter: {warning}", file=sys.stderr)
     if structural.get("available"):
+        freshness = structural["freshness"]
         print(
             f"graphify graph: {structural['nodes']} nodes, "
-            f"{len(structural['groups'])} structural group(s) "
-            f"(freshness unverified)"
+            f"{structural['edges']} edges, "
+            f"{len(structural['groups'])} structural group(s); "
+            f"freshness {freshness['status']} — {freshness['detail']}"
         )
+    elif structural.get("present"):
+        print("graphify graph present, but no usable structural groups loaded")
     if stats.get("reused"):
         print(
             f"cache: reused {stats['reused']} extraction(s), "

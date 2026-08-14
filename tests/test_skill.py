@@ -42,3 +42,11 @@ def test_skill_referenced_fields_exist_in_evidence(tmp_path):
         assert f"vocabulary.{vocab_key}" in text
     assert "monorepo.detected" in text
     assert {"detected", "reasons", "sub_roots"} <= evidence["monorepo"].keys()
+    structural = evidence["structural_groups"]
+    assert {"present", "available", "warnings"} <= structural.keys()
+    for field in (
+        "structural_groups.present",
+        "structural_groups.available",
+        "structural_groups.freshness",
+    ):
+        assert field in text

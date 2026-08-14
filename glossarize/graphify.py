@@ -26,8 +26,6 @@ GROUP_CAP = 50
 GOD_NODE_CAP = 8
 MEMBER_SAMPLE = 6
 
-UNAVAILABLE = {"available": False, "warnings": []}
-
 
 def _first(d: dict, keys, types=None):
     for key in keys:
@@ -37,15 +35,31 @@ def _first(d: dict, keys, types=None):
     return None
 
 
-def _load_graph(root: Path) -> tuple[dict | None, list[str]]:
+def _unavailable(
+    *, present: bool | None, warnings: list[str], disabled: bool = False
+) -> dict:
+    return {
+        "adapter_enabled": not disabled,
+        "present": present,
+        "available": False,
+        "warnings": warnings,
+    }
+
+
+def disabled_structural_groups() -> dict:
+    """Evidence shape when the caller explicitly disables the adapter."""
+    return _unavailable(present=None, warnings=[], disabled=True)
+
+
+def _load_graph(root: Path) -> tuple[dict | None, bool, list[str]]:
     try:
         path = confined_artifact_path(root, GRAPH_PATH)
     except ArtifactError as exc:
-        return None, [f"{exc} — proceeding lexical-only"]
+        return None, True, [f"{exc} — proceeding lexical-only"]
     if not path.is_file():
-        return None, []
+        return None, False, []
     if oversized(path):
-        return None, [
+        return None, True, [
             f"{GRAPH_PATH}: larger than {MAX_JSON_BYTES} bytes — "
             "proceeding lexical-only"
         ]
@@ -55,23 +69,27 @@ def _load_graph(root: Path) -> tuple[dict | None, list[str]]:
         # RecursionError: deeply nested JSON. json raises it outside the
         # ValueError hierarchy, so it must be caught explicitly or a hostile
         # graph would crash the whole scan.
-        return None, [f"{GRAPH_PATH}: unreadable JSON — proceeding lexical-only"]
+        return None, True, [
+            f"{GRAPH_PATH}: unreadable JSON — proceeding lexical-only"
+        ]
     if (
         not isinstance(data, dict)
         or not isinstance(data.get("nodes"), list)
         or not data["nodes"]
     ):
-        return None, [
+        return None, True, [
             f"{GRAPH_PATH}: no recognizable node list — proceeding lexical-only"
         ]
-    return data, []
+    return data, True, []
 
 
 def _provenance(node: dict) -> str:
-    source = _first(node, ("source", "file", "path", "origin"), str) or ""
+    source = _first(
+        node, ("source_file", "source", "file", "path", "origin"), str
+    ) or ""
     if "glossarize-out" in source or source.endswith("GLOSSARY.md"):
         return "glossary"
-    ntype = (_first(node, ("type", "kind"), str) or "").lower()
+    ntype = (_first(node, ("file_type", "type", "kind"), str) or "").lower()
     if ntype in ("doc", "document", "paper", "markdown") or source.lower().endswith(
         (".md", ".rst", ".txt", ".pdf")
     ):
@@ -79,10 +97,78 @@ def _provenance(node: dict) -> str:
     return "code"
 
 
-def build_structural_groups(root: Path) -> dict:
-    graph, warnings = _load_graph(root)
+def _same_commit(built: str, current: str) -> bool:
+    return built == current or (
+        len(built) >= 7 and len(built) < len(current) and current.startswith(built)
+    )
+
+
+def _freshness(graph: dict, git_stamp: dict | None) -> dict:
+    built_raw = graph.get("built_at_commit")
+    built = built_raw.strip() if isinstance(built_raw, str) else None
+    current_raw = git_stamp.get("head") if isinstance(git_stamp, dict) else None
+    current = current_raw.strip() if isinstance(current_raw, str) else None
+    dirty = git_stamp.get("dirty") if isinstance(git_stamp, dict) else None
+    base = {
+        "built_at_commit": built,
+        "current_commit": current,
+        "worktree_dirty": dirty if isinstance(dirty, bool) else None,
+    }
+    if not built:
+        return {
+            **base,
+            "status": "unverified",
+            "detail": "Graphify graph has no built_at_commit stamp",
+        }
+    if not current:
+        return {
+            **base,
+            "status": "unverified",
+            "detail": "repository HEAD is unavailable; graph freshness cannot be verified",
+        }
+    if not _same_commit(built, current):
+        return {
+            **base,
+            "status": "stale",
+            "detail": (
+                f"Graphify records built_at_commit {built[:12]}, but current "
+                f"HEAD is {current[:12]}"
+            ),
+        }
+    if dirty is True:
+        return {
+            **base,
+            "status": "unverified",
+            "detail": (
+                "Graphify built_at_commit matches HEAD, but the worktree has "
+                "uncommitted changes"
+            ),
+        }
+    if dirty is not False:
+        return {
+            **base,
+            "status": "unverified",
+            "detail": (
+                "Graphify built_at_commit matches HEAD, but worktree cleanliness "
+                "is unavailable"
+            ),
+        }
+    return {
+        **base,
+        "status": "current",
+        "detail": (
+            "Graphify built_at_commit matches current HEAD and the worktree "
+            "is clean"
+        ),
+    }
+
+
+def build_structural_groups(
+    root: Path, git_stamp: dict | None = None
+) -> dict:
+    graph, present, warnings = _load_graph(root)
     if graph is None:
-        return {"available": False, "warnings": warnings}
+        return _unavailable(present=present, warnings=warnings)
 
     nodes: dict[str, dict] = {}
     for raw in graph["nodes"]:
@@ -96,28 +182,31 @@ def build_structural_groups(root: Path) -> dict:
             "label": str(_first(raw, ("label", "name", "id"))),
             "prov": _provenance(raw),
             "community": raw.get("community"),
+            "community_name": _first(raw, ("community_name",), str),
         }
     if not nodes:
-        return {
-            "available": False,
-            "warnings": warnings
-            + [f"{GRAPH_PATH}: nodes carry no usable ids — proceeding lexical-only"],
-        }
+        return _unavailable(
+            present=True,
+            warnings=warnings + [
+                f"{GRAPH_PATH}: nodes carry no usable ids — proceeding lexical-only"
+            ],
+        )
 
     degree: Counter = Counter()
-    edges = graph.get("edges")
-    if isinstance(edges, list):
-        for edge in edges:
-            if not isinstance(edge, dict):
-                continue
-            a = _first(edge, ("source", "from", "a"))
-            b = _first(edge, ("target", "to", "b"))
-            if a is None or b is None:
-                continue
-            a, b = str(a), str(b)
-            if a in nodes and b in nodes:
-                degree[a] += 1
-                degree[b] += 1
+    edge_count = 0
+    links = _first(graph, ("links", "edges"), list) or []
+    for edge in links:
+        if not isinstance(edge, dict):
+            continue
+        a = _first(edge, ("source", "from", "a"))
+        b = _first(edge, ("target", "to", "b"))
+        if a is None or b is None:
+            continue
+        a, b = str(a), str(b)
+        if a in nodes and b in nodes:
+            degree[a] += 1
+            degree[b] += 1
+            edge_count += 1
 
     glossary_nodes = {n for n, d in nodes.items() if d["prov"] == "glossary"}
 
@@ -145,9 +234,29 @@ def build_structural_groups(root: Path) -> dict:
             if community is None:
                 continue
             gid = str(community)
-            groups.setdefault(
-                gid, {"label": f"community {gid}", "cohesion": None, "members": []}
-            )["members"].append(nid)
+            group = groups.setdefault(
+                gid,
+                {
+                    "label": f"community {gid}",
+                    "cohesion": None,
+                    "members": [],
+                    "label_counts": Counter(),
+                },
+            )
+            group["members"].append(nid)
+            if node["community_name"]:
+                group["label_counts"][node["community_name"]] += 1
+        for gid, group in groups.items():
+            labels = group.pop("label_counts")
+            if labels:
+                group["label"] = sorted(
+                    labels.items(), key=lambda item: (-item[1], item[0])
+                )[0][0]
+                if len(labels) > 1:
+                    warnings.append(
+                        f"{GRAPH_PATH}: community {gid} has conflicting names; "
+                        f"using {group['label']!r}"
+                    )
     if not groups:
         warnings.append(
             f"{GRAPH_PATH}: no community structure found — groups unavailable"
@@ -156,6 +265,8 @@ def build_structural_groups(root: Path) -> dict:
     group_items = []
     for gid, group in groups.items():
         members = group["members"]
+        if not members:
+            continue
         visible = [m for m in members if m not in glossary_nodes]
         provenance = Counter(nodes[m]["prov"] for m in members)
         sample = sorted(visible, key=lambda m: (-degree[m], nodes[m]["label"]))
@@ -173,6 +284,11 @@ def build_structural_groups(root: Path) -> dict:
         })
     group_items.sort(key=lambda g: (-g["size"], g["id"]))
 
+    if not group_items and not any("no community structure" in w for w in warnings):
+        warnings.append(
+            f"{GRAPH_PATH}: no usable community members — groups unavailable"
+        )
+
     god_nodes = [
         {"label": nodes[nid]["label"], "degree": count}
         for nid, count in sorted(degree.items(), key=lambda kv: (-kv[1], kv[0]))
@@ -180,10 +296,13 @@ def build_structural_groups(root: Path) -> dict:
     ][:GOD_NODE_CAP]
 
     return {
-        "available": True,
+        "adapter_enabled": True,
+        "present": True,
+        "available": bool(group_items),
         "source": GRAPH_PATH,
-        "freshness_unverified": True,  # graphify stamps no git state we can check
+        "freshness": _freshness(graph, git_stamp),
         "nodes": len(nodes),
+        "edges": edge_count,
         "groups": group_items[:GROUP_CAP],
         "groups_dropped": max(0, len(group_items) - GROUP_CAP),
         "god_nodes": god_nodes,

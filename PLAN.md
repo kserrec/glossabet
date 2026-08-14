@@ -1,6 +1,6 @@
 # Glossarize — Plan
 
-Status: **phases 0–11 complete; Phase 12 is next** as of 2026-08-14.
+Status: **phases 0–12 complete; Phase 13 is next** as of 2026-08-14.
 Phases 11–17 turn the 2026-08-14 deep-dive findings into bounded,
 single-pass work.
 This document is the authoritative roadmap. Provenance: merged from the working
@@ -222,7 +222,7 @@ a repository-supplied legacy cache cannot inject evidence; malformed JSON
 shapes degrade according to the documented contract; oversized root manifests
 are skipped and reported; the complete test suite passes.
 
-### Phase 12 — Real Graphify interoperability and validation honesty
+### Phase 12 — Real Graphify interoperability and validation honesty ✅ 2026-08-14
 
 **Goal:** consume Graphify's observed public export schema rather than a
 look-alike fixture, and tell users exactly how much structural validation ran.
@@ -234,13 +234,16 @@ look-alike fixture, and tell users exactly how much structural validation ran.
    field names.
 2. Distinguish "graph file present" from "usable structural evidence loaded";
    lexical-only validation must say that structural checks were skipped.
-3. Surface Graphify adapter warnings and `freshness_unverified` in CLI and
-   validation output, with fixtures generated from the real exporter shape.
+3. Surface Graphify adapter warnings and structured freshness
+   (`current`/`stale`/`unverified`) in CLI and validation output. Use
+   Graphify's observed `built_at_commit` stamp when present, and pin the
+   contract with a fixture generated from the real exporter shape.
 
 **Acceptance:** a representative Graphify 0.9.42 fixture yields real edges,
 correct code/doc classification, preserved community names, and visible
-freshness/warning state; empty or malformed graphs never imply structural
-coverage.
+freshness/warning state; graph presence is distinct from usable structural
+coverage, and empty, group-less, or malformed graphs explicitly skip
+structural validation.
 
 ### Phase 13 — Honest git freshness and artifact lifecycle
 
