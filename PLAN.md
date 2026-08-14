@@ -1,6 +1,7 @@
 # Glossarize — Plan
 
-Status: **pre-implementation** (Phase 0 complete, Phase 1 not started).
+Status: **all planned phases (0–10) complete** as of 2026-08-14; remaining
+work lives in "Later / unscheduled".
 This document is the authoritative roadmap. Provenance: merged from the working
 sessions of 2026-08-14 — Claude's loop/reconciliation analysis, ChatGPT's
 "Robust Repository Vocabulary System" spec and repo-transition notes, and the
@@ -341,6 +342,12 @@ mismatch of each direction.
 ### Later / unscheduled
 - Graphify pass-2 relabeling guide (instruction-level recipe as a doc);
   upstream `--glossary` contribution to Graphify if welcomed.
+- External fact (2026-08-14): Graphify 0.9.42 (latest on PyPI and GitHub
+  main) silently ignores OCaml (`.ml`/`.mli` absent from its
+  CODE_EXTENSIONS; unknown extensions dropped). Its owner told Kyle OCaml
+  "should work now," but no OCaml support exists in any public release,
+  branch, PR, or issue as of this date — verify before any combined
+  glossarize+graphify run on an OCaml repo.
 - `glossarize install` (skill copier following Graphify's platform pattern).
 - Cross-repo / organization-wide vocabulary (design `glossary.json` so a
   shared mode isn't precluded; graphify `merge-graphs` is prior art).
