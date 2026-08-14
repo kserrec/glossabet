@@ -211,3 +211,56 @@ def test_deeply_nested_graph_json_does_not_crash(tmp_path):
     (gout / "graph.json").write_text("[" * depth + "]" * depth)
     evidence = build_evidence(tmp_path)  # must not raise RecursionError
     assert evidence["structural_groups"]["available"] is False
+
+
+def test_evidence_symlink_cannot_overwrite_outside_file(tmp_path, capsys):
+    outside = tmp_path / "outside.json"
+    outside.write_text("sentinel\n")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "main.py").write_text("ordinary_identifier = 1\n")
+    out = repo / "glossarize-out"
+    out.mkdir()
+    os.symlink(outside, out / "evidence.json")
+
+    assert main(["scan", str(repo)]) == 1
+    assert outside.read_text() == "sentinel\n"
+    assert "symlinked artifact" in capsys.readouterr().err
+
+
+def test_output_directory_symlink_cannot_redirect_writes(tmp_path, capsys):
+    outside = tmp_path / "outside-output"
+    outside.mkdir()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "main.py").write_text("ordinary_identifier = 1\n")
+    os.symlink(outside, repo / "glossarize-out")
+
+    assert main(["scan", str(repo)]) == 1
+    assert not (outside / "evidence.json").exists()
+    assert "symlinked artifact" in capsys.readouterr().err
+
+
+def test_oversized_root_workspace_manifest_is_skipped(tmp_path, monkeypatch):
+    monkeypatch.setattr("glossarize.scanner.MAX_FILE_BYTES", 50)
+    (tmp_path / "main.py").write_text("ordinary_identifier = 1\n")
+    (tmp_path / "package.json").write_text(
+        json.dumps({"workspaces": ["packages/*"], "padding": "x" * 100})
+    )
+
+    evidence = build_evidence(tmp_path)
+    assert evidence["monorepo"]["detected"] is False
+    assert "package.json" in evidence["skipped"]["oversized"]
+
+
+def test_escaping_root_workspace_manifest_symlink_is_not_read(tmp_path):
+    outside = tmp_path / "outside-Cargo.toml"
+    outside.write_text("[workspace]\nmembers = ['packages/*']\n")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "main.py").write_text("ordinary_identifier = 1\n")
+    os.symlink(outside, repo / "Cargo.toml")
+
+    evidence = build_evidence(repo)
+    assert evidence["monorepo"]["detected"] is False
+    assert "Cargo.toml" in evidence["skipped"]["symlinks_escaping_repo"]

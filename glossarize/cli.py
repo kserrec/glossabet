@@ -115,7 +115,14 @@ def main(argv: list[str] | None = None) -> int:
         return _run(argv)
     except SystemExit:
         raise
-    except Exception:
+    except Exception as exc:
+        # Imported lazily to keep CLI startup small and avoid pulling command
+        # modules into argparse-only paths.
+        from glossarize.artifacts import ArtifactError
+
+        if isinstance(exc, ArtifactError):
+            print(f"glossarize: {exc}", file=sys.stderr)
+            return EXIT_USER_ERROR
         traceback.print_exc()
         print(
             "glossarize: internal error — this is a defect in glossarize, "

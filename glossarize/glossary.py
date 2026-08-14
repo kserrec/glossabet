@@ -13,8 +13,10 @@ import sys
 from pathlib import Path
 
 from glossarize.artifacts import (
+    ArtifactError,
     MAX_JSON_BYTES,
     OUT_DIR,
+    confined_artifact_path,
     oversized,
     repo_root,
     write_artifact,
@@ -36,8 +38,10 @@ class GlossaryError(ValueError):
     """The glossary file exists but is not usable as written."""
 
 
-def validate_glossary(glossary: dict) -> list[str]:
+def validate_glossary(glossary: object) -> list[str]:
     errors: list[str] = []
+    if not isinstance(glossary, dict):
+        return ["top level must be an object"]
     if glossary.get("schema_version") != GLOSSARY_SCHEMA_VERSION:
         errors.append(
             f"schema_version must be {GLOSSARY_SCHEMA_VERSION}, "
@@ -113,7 +117,10 @@ def glossary_path(root: Path) -> Path:
 
 def load_glossary(root: Path) -> dict | None:
     """Return the validated glossary, None if absent, GlossaryError if bad."""
-    path = glossary_path(root)
+    try:
+        path = confined_artifact_path(root, f"{OUT_DIR}/{GLOSSARY_FILE}")
+    except ArtifactError as exc:
+        raise GlossaryError(str(exc)) from exc
     if not path.is_file():
         return None
     if oversized(path):

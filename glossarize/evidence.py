@@ -7,6 +7,7 @@ recorded in the artifact so truncated never reads as complete.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import subprocess
 import sys
@@ -81,14 +82,14 @@ def _capped(counter: Counter, cap: int, entry) -> dict:
     }
 
 
-def _read_text(path: Path) -> str | None:
+def _read_source(path: Path) -> tuple[bytes, str] | None:
     try:
-        text = path.read_text(errors="ignore")
+        content = path.read_bytes()
     except OSError:
         return None
-    if "\0" in text[:1024]:  # binary despite its extension
+    if b"\0" in content[:1024]:  # binary despite its extension
         return None
-    return text
+    return content, hashlib.sha256(content).hexdigest()
 
 
 def _extract_code_entry(text: str, language: str) -> dict:
@@ -168,21 +169,20 @@ def build_evidence(root: Path, limits: Limits = Limits(),
 
     def fetch_entry(rel: str, kind: str, extractor) -> dict | None:
         nonlocal reused, extracted
-        try:
-            st = (root / rel).stat()
-        except OSError:
+        source = _read_source(root / rel)
+        if source is None:
             return None
-        entry = entry_if_valid(cached, rel, kind, st.st_mtime_ns, st.st_size)
+        content, content_sha256 = source
+        entry = entry_if_valid(cached, rel, kind, content_sha256)
         if entry is None:
-            text = _read_text(root / rel)
-            if text is None:
-                return None
+            text = content.decode(errors="ignore")
             entry = extractor(text)
-            entry["mtime_ns"] = st.st_mtime_ns
-            entry["size"] = st.st_size
             extracted += 1
         else:
+            entry = dict(entry)
             reused += 1
+        entry["content_sha256"] = content_sha256
+        entry["size"] = len(content)
         cache_files[rel] = entry
         return entry
 

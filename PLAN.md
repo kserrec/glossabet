@@ -1,7 +1,8 @@
 # Glossarize — Plan
 
-Status: **all planned phases (0–10) complete** as of 2026-08-14; remaining
-work lives in "Later / unscheduled".
+Status: **phases 0–11 complete; Phase 12 is next** as of 2026-08-14.
+Phases 11–17 turn the 2026-08-14 deep-dive findings into bounded,
+single-pass work.
 This document is the authoritative roadmap. Provenance: merged from the working
 sessions of 2026-08-14 — Claude's loop/reconciliation analysis, ChatGPT's
 "Robust Repository Vocabulary System" spec and repo-transition notes, and the
@@ -14,6 +15,11 @@ anyone manages it. Left implicit, different people use different words for the
 same thing, one word accumulates several meanings, important architecture goes
 unnamed, and docs drift from code. Agents suffer the same way: they
 reconstruct what terms mean from raw code on every run.
+
+The empirical basis for treating repository vocabulary as a real
+comprehension problem—and the limits of what that research establishes for
+this product—is summarized in the README under "Why repository vocabulary
+matters."
 
 Glossarize makes a repository's vocabulary **explicit, canonical, inspectable,
 and maintainable**. It is a software system whose primary interface is the
@@ -123,9 +129,13 @@ sophistication belongs to adapters, not the core.
 │   ├── evidence.json     machine evidence (RepositoryEvidence, schema_version, git stamp)
 │   ├── glossary.json     machine-readable canonical vocabulary (from Phase 6)
 │   └── (analysis outputs as later phases add them)
-├── .glossarize/          incremental cache (Phase 8)
 └── GLOSSARY.md           human artifact at repo root, format per skill Step 6
 ```
+
+The incremental extraction cache is user-owned state outside the scanned
+repository, under the platform cache directory and keyed by the repository's
+resolved path. Repository-local `.glossarize/` remains excluded as a legacy
+artifact path but is never trusted or loaded.
 
 `GLOSSARY.md` stays the human-readable, reasoning-carrying document the skill
 already specifies (house-register line, headline distinctions as prose, detail
@@ -168,9 +178,8 @@ Users normally never type these — the skill orchestrates them.
 
 ## Phases
 
-All planned phases are complete (2026-08-14), each sized for one correct pass
-ending with an acceptance check and a commit naming the phase. Full step
-detail and acceptance criteria are archived verbatim in `PLAN-ARCHIVE.md`.
+Phases 0–10 are complete (2026-08-14). Their full step detail and acceptance
+criteria are archived verbatim in `PLAN-ARCHIVE.md`.
 
 - **Phase 0 — Bootstrap** ✅ 2026-08-14 → archived in PLAN-ARCHIVE.md
 - **Phase 1 — Package and CLI skeleton** ✅ 2026-08-14 → archived in PLAN-ARCHIVE.md
@@ -184,6 +193,155 @@ detail and acceptance criteria are archived verbatim in `PLAN-ARCHIVE.md`.
 - **Phase 9 — Graphify adapter** ✅ 2026-08-14 → archived in PLAN-ARCHIVE.md
 - **Phase 10 — Reconciliation and bindings** ✅ 2026-08-14 → archived in PLAN-ARCHIVE.md
 
+### Phase 11 — Research grounding and hostile-repository boundaries ✅ 2026-08-14
+
+**Goal:** ground the product premise honestly and make every direct artifact
+and cache path obey the hostile-repository threat model already claimed by the
+project.
+
+**Steps:**
+
+1. Add primary studies to the README covering identifier comprehension,
+   lexical inconsistency, naming divergence, and domain-specific dictionaries;
+   state plainly that this validates the problem, not Glossarize's efficacy.
+2. Centralize repository-confined direct-artifact reads and atomic JSON writes.
+   Reject symlinked direct artifact paths instead of reading through them, and
+   prevent output-directory symlinks from redirecting writes.
+3. Move incremental cache state out of the scanned repository into the user's
+   platform cache directory, key it by the repository's resolved path, and
+   validate reusable entries against a SHA-256 digest of current file bytes.
+   Treat malformed cache shapes as misses.
+4. Make wrong top-level glossary JSON a clean user error, and enforce the same
+   2 MB input bound on root workspace manifests as on walked source files.
+5. Rewrite `SECURITY.md` to match the verified boundary exactly, including the
+   distinction between path-based sensitive-file exclusion and secret-content
+   scanning, then pin every repaired boundary with regression tests.
+
+**Acceptance:** a direct artifact symlink cannot read or overwrite a file;
+a repository-supplied legacy cache cannot inject evidence; malformed JSON
+shapes degrade according to the documented contract; oversized root manifests
+are skipped and reported; the complete test suite passes.
+
+### Phase 12 — Real Graphify interoperability and validation honesty
+
+**Goal:** consume Graphify's observed public export schema rather than a
+look-alike fixture, and tell users exactly how much structural validation ran.
+
+**Steps:**
+
+1. Support Graphify 0.9.42's `links`, `source_file`, and `community_name`
+   fields while retaining explicitly tested compatibility with older accepted
+   field names.
+2. Distinguish "graph file present" from "usable structural evidence loaded";
+   lexical-only validation must say that structural checks were skipped.
+3. Surface Graphify adapter warnings and `freshness_unverified` in CLI and
+   validation output, with fixtures generated from the real exporter shape.
+
+**Acceptance:** a representative Graphify 0.9.42 fixture yields real edges,
+correct code/doc classification, preserved community names, and visible
+freshness/warning state; empty or malformed graphs never imply structural
+coverage.
+
+### Phase 13 — Honest git freshness and artifact lifecycle
+
+**Goal:** make the freshness promise true from the first scan without silently
+editing a target repository's ignore rules.
+
+**Steps:**
+
+1. Define and implement a git-state comparison that excludes only
+   Glossarize-owned generated paths while preserving all user changes.
+2. Use the same comparison in artifact stamps and the skill's freshness gate;
+   cover tracked, untracked, ignored, and no-git repositories.
+3. Document generated-file ownership and cleanup without modifying
+   `.gitignore` automatically.
+
+**Acceptance:** a first scan of a clean repository is immediately fresh;
+subsequent user changes make it stale; generated Glossarize artifacts alone do
+not; no target configuration is changed.
+
+### Phase 14 — Terminology precision foundations
+
+**Goal:** lower false alarms before adding more kinds of findings.
+
+**Steps:**
+
+1. Add repository configuration for extra ignored paths and explicit treatment
+   of tests, fixtures, generated code, and vendored code; defaults remain
+   deterministic and conservative.
+2. Require compound glossary terms to occur within one lexical unit or a
+   defined local context, rather than matching words that appear anywhere in a
+   file.
+3. Make finding totals include capped/dropped findings, reserve confidence
+   labels for measured or rule-proven certainty, and reject aliases that map to
+   multiple concepts.
+4. Recalibrate synonym and overload signals against production-code evidence
+   instead of allowing test vocabulary to dominate by default.
+
+**Acceptance:** pinned counterexamples no longer produce the observed
+cross-file-word, alias-collision, capped-total, or test-noise failures, while
+legitimate drift cases still report.
+
+### Phase 15 — Evaluation corpus and calibration
+
+**Goal:** learn whether Glossarize is useful before expanding or marketing its
+capabilities.
+
+**Steps:**
+
+1. Build a small, licensed corpus of varied repositories plus hand-labelled
+   terminology and drift expectations; keep external source out of this repo
+   unless its license permits inclusion.
+2. Measure precision, recall where a complete label set is practical,
+   false alarms per thousand files, truncation, cold/warm runtime, and reviewer
+   usefulness; record methodology and raw aggregate results.
+3. Derive and enforce deterministic whole-corpus file/byte/work limits from
+   those measurements, reporting any skipped remainder in evidence.
+4. Establish release thresholds and use failures to tune existing heuristics,
+   not to add ungrounded features.
+
+**Acceptance:** the README can cite a reproducible Glossarize evaluation—or
+continues to make no efficacy claim—with failures and corpus limitations
+reported alongside successes.
+
+### Phase 16 — Scoped vocabulary and language semantics
+
+**Goal:** represent concepts that legitimately vary by subsystem and improve
+lexical coverage without pretending regexes are a full parser.
+
+**Steps:**
+
+1. Add backward-compatible glossary scopes and enforce alias uniqueness within
+   each scope; update drift and reconciliation consumers together.
+2. Support Unicode identifiers and define how digits, acronyms, and common
+   language-specific identifier forms are tokenized.
+3. Reassess a parsing adapter only from Phase 15 evidence; accept a dependency
+   only if the demonstrated accuracy gain justifies its binary/transitive and
+   maintenance cost.
+
+**Acceptance:** scoped concepts and representative non-ASCII identifiers round
+trip deterministically through evidence, glossary, drift, and validation;
+dependency decisions include measured benefit and explicit cost.
+
+### Phase 17 — Distribution and release readiness
+
+**Goal:** let a new user install, understand, and safely evaluate the project
+without repository-owner knowledge.
+
+**Steps:**
+
+1. Add `glossarize install` for the canonical skill, an end-to-end sample
+   walkthrough, and explicit privacy/data-flow documentation for local and
+   agent-mediated use.
+2. Add CI across supported Python versions and platforms, packaging checks,
+   changelog/release metadata, and a reproducible smoke test from built wheel.
+3. Prepare—not perform—PyPI publication and public security-reporting steps;
+   actual account use and publication require Kyle's explicit authorization.
+
+**Acceptance:** a clean environment can install the built artifact, run the
+walkthrough, execute the full suite, and uninstall cleanly; release docs state
+exactly what remains manual and externally visible.
+
 ### Later / unscheduled
 - Graphify pass-2 relabeling guide (instruction-level recipe as a doc);
   upstream `--glossary` contribution to Graphify if welcomed.
@@ -193,11 +351,10 @@ detail and acceptance criteria are archived verbatim in `PLAN-ARCHIVE.md`.
   "should work now," but no OCaml support exists in any public release,
   branch, PR, or issue as of this date — verify before any combined
   glossarize+graphify run on an OCaml repo.
-- `glossarize install` (skill copier following Graphify's platform pattern).
 - Cross-repo / organization-wide vocabulary (design `glossary.json` so a
   shared mode isn't precluded; graphify `merge-graphs` is prior art).
 - Additional evidence adapters (LSP, other analyzers).
-- PyPI publication.
+- PyPI publication after Phase 17 and explicit authorization.
 
 ## Settled decisions (2026-08-14)
 
@@ -218,6 +375,8 @@ detail and acceptance criteria are archived verbatim in `PLAN-ARCHIVE.md`.
 7. **Terminology embeds in `evidence.json`** (Phase 4) — no sibling
    artifact, so the skill's existing evidence protocol covers it with no extra
    skill change; `analyze` = scan + human-readable report.
-8. **Cache invalidation: per-file `mtime_ns` + size** (Phase 8) — uniform, not
-   git-diff; robust across tracked/untracked/dirty states. Whole-cache
-   invalidation on a generator-version change.
+8. **Cache invalidation changed after adversarial verification.** Phase 8 used
+   per-file `mtime_ns` + size in a repository-local cache. A direct 2026-08-14
+   probe proved a hostile repository could pre-seed matching metadata and
+   fabricated extraction results. Phase 11 replaces that trust decision with
+   a user-owned, repository-keyed cache and current-content digests.

@@ -3,6 +3,7 @@ states drift detection depends on being impossible, deterministic writes,
 and the show command."""
 
 import json
+import os
 
 import pytest
 
@@ -157,3 +158,25 @@ def test_deeply_nested_glossary_json_is_clean_error(tmp_path):
     with pytest.raises(GlossaryError):  # not an uncaught RecursionError
         load_glossary(tmp_path)
     assert main(["show", str(tmp_path)]) == 1
+
+
+def test_wrong_top_level_glossary_json_is_clean_error(tmp_path, capsys):
+    out = tmp_path / "glossarize-out"
+    out.mkdir()
+    (out / "glossary.json").write_text("[]")
+    with pytest.raises(GlossaryError, match="top level must be an object"):
+        load_glossary(tmp_path)
+    assert main(["show", str(tmp_path)]) == 1
+    assert "top level must be an object" in capsys.readouterr().err
+
+
+def test_glossary_symlink_is_rejected_without_reading_target(tmp_path):
+    outside = tmp_path / "outside-glossary.json"
+    outside.write_text(json.dumps(GLOSSARY))
+    repo = tmp_path / "repo"
+    out = repo / "glossarize-out"
+    out.mkdir(parents=True)
+    os.symlink(outside, out / "glossary.json")
+
+    with pytest.raises(GlossaryError, match="symlinked artifact"):
+        load_glossary(repo)

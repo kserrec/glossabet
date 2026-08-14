@@ -4,6 +4,7 @@ escape hatch works, and graphify's own artifacts never leak into the
 lexical walk."""
 
 import json
+import os
 
 from glossarize.cli import main
 from glossarize.evidence import build_evidence
@@ -178,3 +179,19 @@ def test_oversized_graph_degrades_lexical_only(tmp_path, monkeypatch):
     structural = build_evidence(make_repo(tmp_path, graph))["structural_groups"]
     assert structural["available"] is False
     assert any("larger than" in w for w in structural["warnings"])
+
+
+def test_symlinked_graph_degrades_without_reading_target(tmp_path):
+    outside = tmp_path / "outside-graph.json"
+    outside.write_text(json.dumps(GRAPH))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "main.py").write_text("ordinary_identifier = 1\n")
+    gout = repo / "graphify-out"
+    gout.mkdir()
+    os.symlink(outside, gout / "graph.json")
+
+    structural = build_evidence(repo)["structural_groups"]
+    assert structural["available"] is False
+    assert any("symlinked artifact" in warning
+               for warning in structural["warnings"])

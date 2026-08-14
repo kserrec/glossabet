@@ -14,7 +14,12 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from glossarize.artifacts import MAX_JSON_BYTES, oversized
+from glossarize.artifacts import (
+    ArtifactError,
+    MAX_JSON_BYTES,
+    confined_artifact_path,
+    oversized,
+)
 
 GRAPH_PATH = "graphify-out/graph.json"
 GROUP_CAP = 50
@@ -33,7 +38,10 @@ def _first(d: dict, keys, types=None):
 
 
 def _load_graph(root: Path) -> tuple[dict | None, list[str]]:
-    path = root / GRAPH_PATH
+    try:
+        path = confined_artifact_path(root, GRAPH_PATH)
+    except ArtifactError as exc:
+        return None, [f"{exc} — proceeding lexical-only"]
     if not path.is_file():
         return None, []
     if oversized(path):

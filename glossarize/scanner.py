@@ -156,30 +156,49 @@ def walk_repository(root: Path) -> WalkResult:
     return result
 
 
-def _root_workspace_config(root: Path) -> list[str]:
-    """Workspace declarations that need content inspection at the root."""
+def _read_root_manifest(
+    root: Path, path: Path, walk: WalkResult
+) -> str | None:
+    """Read a root manifest under the same bounds as walked source files."""
+    rel = path.name
+    if path.is_symlink() and _escapes(str(path), root):
+        if rel not in walk.skipped_symlinks:
+            walk.skipped_symlinks.append(rel)
+        return None
+    if not path.is_file():
+        return None
+    try:
+        if path.stat().st_size > MAX_FILE_BYTES:
+            if rel not in walk.skipped_oversized:
+                walk.skipped_oversized.append(rel)
+            return None
+        return path.read_text(errors="ignore")
+    except OSError:
+        return None
+
+
+def _root_workspace_config(root: Path, walk: WalkResult) -> list[str]:
+    """Workspace declarations that need bounded inspection at the root."""
     reasons = []
     cargo = root / "Cargo.toml"
-    if cargo.is_file():
-        try:
-            if "[workspace]" in cargo.read_text(errors="ignore"):
-                reasons.append("Cargo.toml declares [workspace]")
-        except OSError:
-            pass
+    cargo_text = _read_root_manifest(root, cargo, walk)
+    if cargo_text is not None and "[workspace]" in cargo_text:
+        reasons.append("Cargo.toml declares [workspace]")
     pkg = root / "package.json"
-    if pkg.is_file():
+    package_text = _read_root_manifest(root, pkg, walk)
+    if package_text is not None:
         try:
-            data = json.loads(pkg.read_text(errors="ignore"))
+            data = json.loads(package_text)
             if isinstance(data, dict) and "workspaces" in data:
                 reasons.append("package.json declares workspaces")
-        except (OSError, ValueError):
+        except (ValueError, RecursionError):
             pass
     return reasons
 
 
 def detect_monorepo(root: Path, walk: WalkResult) -> dict:
     reasons = [f"workspace manifest {m}" for m in sorted(walk.workspace_manifests)]
-    reasons += _root_workspace_config(root)
+    reasons += _root_workspace_config(root.resolve(), walk)
     sub_roots = sorted(set(walk.sub_roots))
     if len(sub_roots) >= MONOREPO_SUBROOT_THRESHOLD:
         reasons.append(

@@ -129,9 +129,11 @@ The package is `glossarize/`. Grouped by role:
   defect. A custom parser remaps argparse's own exit-2-on-usage-error to `1`.
 - `artifacts.py` — the `glossarize-out/` plumbing shared by every command:
   `OUT_DIR`, `repo_root()` (the "is this a directory" check + resolve),
-  `write_artifact()` (deterministic JSON write: sorted keys, trailing newline),
-  and `oversized()` / `MAX_JSON_BYTES` (the size cap that bounds directly-read
-  JSON so a hostile artifact can't OOM the process).
+  `confined_artifact_path()` (direct artifacts may contain no symlink
+  component), `write_artifact()` / `write_json_atomic()` (deterministic,
+  same-directory atomic JSON replacement), and `oversized()` /
+  `MAX_JSON_BYTES` (the size cap that bounds directly-read JSON so a hostile
+  artifact cannot be loaded without limit).
 
 **The lexical scanner (evidence source #1)**
 - `scanner.py` — `walk_repository()` walks the tree and classifies files. This
@@ -140,7 +142,9 @@ The package is `glossarize/`. Grouped by role:
   are never read; Glossarize's own outputs and `GLOSSARY.md` (at any depth) are
   excluded so the glossary can't echo back into evidence (contamination);
   symlinks whose real target escapes the repo root (`_escapes`) are skipped so a
-  hostile repo can't read outside files. Also `detect_monorepo()`.
+  hostile repo can't read outside files. Root `Cargo.toml` and `package.json`
+  workspace probes use that same symlink boundary and 2 MB limit. Also
+  `detect_monorepo()`.
 - `tokenize.py` — the normalizer. `tokenize_identifier()` splits
   `PaymentService` / `payment_service` / `paymentService` into shared lowercase
   tokens `["payment", "service"]`; `tokenize_term()` does the same for
@@ -181,10 +185,12 @@ The package is `glossarize/`. Grouped by role:
   artifacts are read, never written.
 
 **Persistence and the health checks**
-- `cache.py` — the per-file extraction cache in `<repo>/.glossarize/`.
-  Invalidation is per-file `mtime_ns + size`; the whole cache invalidates on a
-  generator-version change. Any doubt (corruption, version mismatch, oversize)
-  reads as a miss, never as stale data — a cache is an optimization only.
+- `cache.py` — the user-owned per-file extraction cache. It lives under the
+  platform cache directory, outside the scanned repository, in a directory
+  keyed by the repository's resolved path. Reuse requires the current file's
+  SHA-256 digest plus a valid entry shape; the whole cache invalidates on a
+  cache-schema or generator-version change. Any doubt reads as a miss. An
+  override that resolves inside the target repository disables caching.
 - `glossary.py` — the persistent glossary (`glossarize-out/glossary.json`):
   schema validation (`validate_glossary`), load/save, the `show` command, and
   `require_glossary()` (the shared load-or-report-error helper). Bindings may
@@ -203,12 +209,14 @@ The package is `glossarize/`. Grouped by role:
 
 **`scan` / `analyze`** (`cli.py` → `evidence._scan` → `build_evidence`).
 `build_evidence` walks the repo (`scanner.walk_repository`), reads each code and
-doc file through the cache, folds identifiers into `_Vocabulary`, extracts
-imports, optionally builds structural groups from Graphify, computes naming
-candidates and terminology, and returns the evidence dict, which is written to
+doc file and hashes its bytes, reuses cached extraction only when that digest
+matches, folds identifiers into `_Vocabulary`, extracts imports, optionally
+builds structural groups from Graphify, computes naming candidates and
+terminology, and returns the evidence dict, which is atomically written to
 `glossarize-out/evidence.json`. `analyze` additionally prints a human-readable
-terminology report (`_print_terminology_report`). The cache makes a warm scan
-touch only changed files while remaining byte-identical to a cold scan.
+terminology report (`_print_terminology_report`). A warm scan still reads every
+included file to establish its digest, but avoids tokenization and import/doc
+extraction for unchanged content while remaining byte-identical to a cold scan.
 
 **`drift`** (`cli.py` → `drift.drift_command` → `build_drift`). Requires a
 glossary (`require_glossary`, exits `1` if absent). Builds fresh evidence,
