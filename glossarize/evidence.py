@@ -17,6 +17,8 @@ from pathlib import Path
 from itertools import combinations
 
 from glossarize import __version__
+from glossarize.imports import build_imports_section, extract_imports
+from glossarize.importance import build_naming_candidates
 from glossarize.scanner import detect_monorepo, walk_repository
 from glossarize.terminology import build_terminology
 from glossarize.tokenize import doc_words, iter_identifiers, tokenize_identifier
@@ -93,6 +95,7 @@ def build_evidence(root: Path, limits: Limits = Limits()) -> dict:
     identifier_counts: Counter = Counter()
     languages: Counter = Counter()
     modules: dict[str, dict] = defaultdict(lambda: {"code_files": 0, "languages": set()})
+    file_imports: list[tuple[str, list[str]]] = []
     code_bytes = 0
 
     for rel, language in walk.code_files:
@@ -104,6 +107,9 @@ def build_evidence(root: Path, limits: Limits = Limits()) -> dict:
         module = rel.rsplit("/", 1)[0] if "/" in rel else "."
         modules[module]["code_files"] += 1
         modules[module]["languages"].add(language)
+        specs = extract_imports(text, language)
+        if specs:
+            file_imports.append((rel, specs))
         for name in iter_identifiers(text):
             identifier_counts[name] += 1
             tokens = tokenize_identifier(name)
@@ -144,6 +150,16 @@ def build_evidence(root: Path, limits: Limits = Limits()) -> dict:
             "locations_truncated": len(locations) > len(kept),
         }
 
+    modules_list = [
+        {
+            "path": path,
+            "code_files": info["code_files"],
+            "languages": sorted(info["languages"]),
+        }
+        for path, info in sorted(modules.items())
+    ]
+    imports_section = build_imports_section(file_imports, walk.code_files)
+
     return {
         "schema_version": SCHEMA_VERSION,
         "generator": {"name": "glossarize", "version": __version__},
@@ -156,14 +172,12 @@ def build_evidence(root: Path, limits: Limits = Limits()) -> dict:
             "doc_words": doc_word_total,
         },
         "languages": dict(sorted(languages.items())),
-        "modules": [
-            {
-                "path": path,
-                "code_files": info["code_files"],
-                "languages": sorted(info["languages"]),
-            }
-            for path, info in sorted(modules.items())
-        ],
+        "modules": modules_list,
+        "imports": imports_section,
+        "naming_candidates": build_naming_candidates(
+            imports_section, modules_list, token_counts, token_files,
+            token_modules, doc_term_counts,
+        ),
         "files": {
             "code": [
                 {"path": p, "language": lang}
@@ -249,6 +263,16 @@ def _print_terminology_report(evidence: dict) -> None:
         print(f"{item['term']} across {mods} (dispersion {item['dispersion']})")
     if over["dropped_items"]:
         print(f"... and {over['dropped_items']} more not shown")
+
+    naming = evidence["naming_candidates"]
+    print("\n== naming candidates (import graph is best-effort) ==")
+    for cand in naming["modules"]:
+        print(f"module {cand['path']} — {'; '.join(cand['reasons'])}")
+    for cand in naming["terms"]:
+        print(f"term {cand['term']} — {'; '.join(cand['reasons'])}")
+    dropped = naming["modules_dropped"] + naming["terms_dropped"]
+    if dropped:
+        print(f"... and {dropped} more not shown")
     print(
         "\nThese are nominations with evidence, not verdicts — "
         "judge each against the code."

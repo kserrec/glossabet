@@ -263,7 +263,7 @@ Steps:
 Acceptance: on a real repo, analyze surfaces at least register stats,
 frequency tables, and any genuine overlap candidates, each with evidence refs.
 
-### Phase 5 — Import edges and importance signals
+### Phase 5 — Import edges and importance signals ✅ (2026-08-14)
 Steps:
 1. Best-effort import/include extraction by regex for the common languages in
    the scanned repo (Python, JS/TS, Go, Rust, Java, OCaml, …) — explicitly
