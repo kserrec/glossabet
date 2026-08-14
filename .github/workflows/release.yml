@@ -1,0 +1,38 @@
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type publish-glossarize-to-pypi to authorize the public upload
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  publish:
+    if: >-
+      github.ref_type == 'tag' &&
+      startsWith(github.ref_name, 'v') &&
+      inputs.confirmation == 'publish-glossarize-to-pypi'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/glossarize
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.11.33"
+      - run: uv build --no-sources --clear
+      - run: python scripts/check_distribution.py dist --tag "${{ github.ref_name }}"
+      - run: python scripts/wheel_smoke.py dist
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2

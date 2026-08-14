@@ -70,6 +70,28 @@ def build_parser() -> argparse.ArgumentParser:
     )
     validate.add_argument("path", nargs="?", default=".", help="repository root")
 
+    install = sub.add_parser(
+        "install",
+        help="install the canonical agent skill (Codex by default)",
+        description="Install the canonical agent skill (Codex by default).",
+    )
+    install.add_argument(
+        "--agent",
+        choices=("codex", "claude"),
+        default="codex",
+        help="agent host whose personal skill location should be used (default: codex)",
+    )
+    install.add_argument(
+        "--destination",
+        metavar="DIR",
+        help="override the skill directory; SKILL.md is written inside DIR",
+    )
+    install.add_argument(
+        "--force",
+        action="store_true",
+        help="replace a different existing SKILL.md at the destination",
+    )
+
     return parser
 
 
@@ -105,6 +127,13 @@ def _run(argv: list[str] | None) -> int:
         from glossarize.reconcile import validate_command
 
         return validate_command(args.path)
+
+    if args.command == "install":
+        from glossarize.installer import install_command
+
+        return install_command(
+            args.agent, args.destination, force=args.force
+        )
 
     parser.error(f"unknown command {args.command!r}")
     return EXIT_DEFECT  # unreachable; error() exits

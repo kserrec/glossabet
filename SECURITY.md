@@ -2,16 +2,20 @@
 
 ## Threat model
 
-The Glossarize CLI is a local, read-mostly analysis tool. It does not run a
-server, open a network socket, import target-project modules, evaluate source,
-or invoke a shell. Its one external process is `git`, called with argument
-lists and a timeout.
+The Glossarize CLI is a local tool. Its repository-analysis commands are
+read-mostly: they do not run a server, open a network socket, import
+target-project modules, evaluate source, or invoke a shell. Their one external
+process is `git`, called with argument lists and a timeout. The separate
+`install` command does not analyze a repository; it copies the wheel-bundled
+canonical skill to a reported personal or explicitly selected directory.
 
 The realistic attacker is a **hostile repository**: a user clones or receives
 an untrusted project and runs Glossarize against it. Repository-controlled
 inputs include source and documentation files, Git metadata, the two JSON
-artifacts read directly, and any paths pre-created where Glossarize writes:
+artifacts plus repository configuration read directly, and any paths
+pre-created where Glossarize writes:
 
+- `glossarize.json`
 - `graphify-out/graph.json`
 - `glossarize-out/glossary.json`
 - `glossarize-out/` output paths
@@ -22,39 +26,57 @@ user-owned local state outside the scanned repository.
 The enforced goal is that repository-controlled paths cannot make Glossarize
 read content outside the repository, redirect an artifact write, or execute
 repository code; individual inputs are size-bounded and malformed inputs
-degrade according to a documented contract. This is not yet a claim that
-arbitrarily large repositories cannot consume substantial aggregate time or
-memory: the current per-file and analysis caps do not include a whole-corpus
-file/byte budget. That remaining limit is tracked in Phase 15 of `PLAN.md`.
+degrade according to a documented contract. Aggregate lexical work is bounded
+per scan by source-file, source-byte, walked-entry, and per-directory-entry
+ceilings. These ceilings bound input work; they are not a fixed wall-clock or
+peak-memory guarantee because identifiers and repository layouts vary.
 
 ## Boundaries enforced in code
 
 ### Repository reads
 
-- **Walked source stays inside the repository.** `os.walk(followlinks=False)`
-  does not traverse directory symlinks. A source or documentation file symlink
+- **Walked source stays inside the repository.** The bounded manual
+  `os.scandir` traversal does not descend through directory symlinks. A source
+  or documentation file symlink
   whose real target is outside the repository is skipped and recorded under
   `skipped.symlinks_escaping_repo`; its target is not read. Root
   `Cargo.toml`/`package.json` workspace probes use the same escape check.
   Regressions: `test_symlink_escaping_repo_is_not_ingested`,
   `test_escaping_root_workspace_manifest_symlink_is_not_read`.
-- **Direct artifact paths are stricter than source paths.** Every component of
-  `graphify-out/graph.json` and `glossarize-out/glossary.json` must be a real
-  path, not a symlink. A graph violation becomes a visible lexical-only
-  warning; a glossary violation is a clean user error. This prevents a hostile
-  checkout from using an artifact symlink to read another file, including an
+- **Direct JSON paths are stricter than source paths.** Every component of
+  `glossarize.json`, `graphify-out/graph.json`, and
+  `glossarize-out/glossary.json` must be a real path, not a symlink. A graph
+  violation becomes a visible lexical-only warning; a configuration or
+  glossary violation is a clean user error. This prevents a hostile checkout
+  from using a direct-input symlink to read another file, including an
   unrelated file inside the repository. Regressions:
+  `test_symlinked_config_is_rejected_without_reading_target`,
   `test_symlinked_graph_degrades_without_reading_target`,
   `test_glossary_symlink_is_rejected_without_reading_target`.
 - **Reads are individually size-bounded.** Walked code, documentation, and
   inspected root manifests are capped at `MAX_FILE_BYTES` (2 MB). Direct JSON
   artifacts and the user cache are capped at `MAX_JSON_BYTES` (64 MB) before
-  `json.loads`. An oversized graph degrades to lexical-only, an oversized
-  glossary is a user error, an oversized cache is a miss, and an oversized
-  root manifest is skipped and reported. Regressions include
+  `json.loads`; `glossarize.json` has a tighter 1 MB cap. An oversized graph
+  degrades to lexical-only, an oversized configuration or glossary is a user
+  error, an oversized cache is a miss, and an oversized root manifest is
+  skipped and reported. Regressions include
+  `test_oversized_config_is_a_user_error`,
   `test_oversized_graph_degrades_lexical_only`,
   `test_oversized_glossary_refused_as_user_error`, and
   `test_oversized_root_workspace_manifest_is_skipped`.
+- **Aggregate lexical work is bounded and partial coverage is explicit.** A
+  scan includes at most 10,000 code/documentation files and 32,000,000 source
+  bytes, processes at most 100,000 directory entries, and accepts at most
+  10,000 entries from one directory. Source-file/byte exclusions retain exact
+  counts and a bounded path sample. A walk limit cannot count the unseen tree
+  without defeating itself, so it records a lower bound, reason/path sample,
+  and `exact: false`. An overfull directory is skipped whole rather than
+  selecting nondeterministically from filesystem order. Every budget stop sets
+  `skipped.corpus_budget.complete` false and emits a partial-evidence warning.
+  Regressions: `test_corpus_file_budget_is_deterministic_and_reported`,
+  `test_corpus_byte_budget_reports_skips_and_can_use_later_space`,
+  `test_walk_work_budget_marks_unknown_remainder`, and
+  `test_overfull_directory_is_skipped_whole_to_preserve_determinism`.
 
 ### Repository writes
 
@@ -69,6 +91,24 @@ file/byte budget. That remaining limit is tracked in Phase 15 of `PLAN.md`.
   temporary file. This prevents interrupted writes from leaving half a JSON
   document; it is not a guarantee against storage-device failure after the
   replacement. Regressions are in `tests/test_artifacts.py`.
+
+### Agent skill installation
+
+- **Existing user content is preserved by default.** `glossarize install` is
+  idempotent when the destination already has the canonical bytes. A different
+  existing `SKILL.md` is a user error and remains untouched unless `--force`
+  is explicit. Neighboring files are never replaced. Regression:
+  `test_install_refuses_different_existing_skill_without_force`.
+- **A symlink cannot redirect installation.** Every existing destination
+  component is checked before and after directory creation; symlinked
+  components and non-file targets are refused. The final file is written by a
+  same-directory temporary file plus `os.replace`. Regressions:
+  `test_install_refuses_symlinked_destination_components` and
+  `test_force_replaces_only_the_skill_file_and_leaves_no_temporary_file`.
+- **Package data is pinned to the repository source of truth.** Hatch maps
+  `skill/SKILL.md` directly to `glossarize/_skill/SKILL.md`; focused tests and
+  the built-wheel smoke test compare the bytes rather than maintaining an
+  independent hand-copied skill.
 
 ### Incremental cache
 
@@ -85,6 +125,7 @@ file/byte budget. That remaining limit is tracked in Phase 15 of `PLAN.md`.
   JSON, wrong top-level type, invalid entry shape, symlinked cache file, or I/O
   failure is a miss. Regressions include
   `test_same_size_same_mtime_rewrite_invalidates_by_content`,
+  `test_ascii_tokenizer_cache_version_is_invalidated`,
   `test_repository_supplied_legacy_cache_is_never_trusted`, and
   `test_wrong_top_level_cache_json_is_a_miss`.
 
@@ -104,24 +145,68 @@ Glossarize program or its output artifacts.
   evidence. Do not treat the output as sanitized. Regressions for the path
   boundary: `test_sensitive_files_never_enter_evidence`,
   `test_sensitive_directories_pruned_and_reported`.
+- **Repository configuration is data, not code.** `glossarize.json` accepts
+  only a version, literal repository-relative ignore prefixes, and literal
+  path-role prefixes. Absolute paths, parent traversal, glob syntax, unknown
+  fields/roles, duplicate equal-path roles, excessive path lengths/counts,
+  malformed JSON, and symlinks are rejected as user errors. Matching is plain
+  string-prefix comparison; configuration never causes a filesystem path to
+  be opened directly. Regressions are in `tests/test_config.py`.
+- **Glossary scopes are bounded data, not path reads.** Optional concept
+  scopes accept only a non-empty list of literal repository-relative path
+  prefixes. Absolute paths, parent traversal, globs, backslashes, empty lists,
+  duplicate paths, and unknown fields are rejected. Scope checks compare paths
+  already present in bounded evidence; they never open a path named by the
+  glossary. Terms and aliases are NFKC-casefolded for ownership checks so
+  canonically equivalent Unicode spellings cannot evade collision detection.
 - **Target Git configuration cannot name an executable.** Each
   `git rev-parse`/`git status` call overrides `core.fsmonitor` and
   `core.hooksPath`, uses no shell, disables credential prompts, and has a
-  timeout. Regression: `test_hostile_git_config_does_not_execute_code`.
+  timeout. The status call uses stable porcelain output, requests all
+  untracked files, disables rename detection, and excludes only the
+  top-level, Glossarize-owned `glossarize-out/` path relative to the directory
+  being scanned. This exclusion is an argument to Git, not a mutation of
+  `.gitignore`; it also works for subproject scans inside a larger worktree,
+  and moving a file across the boundary still exposes the non-output side.
+  Regressions:
+  `test_hostile_git_config_does_not_execute_code` and
+  `tests/test_freshness.py`.
 - **Malformed JSON is classified, not blamed on an internal defect.** Graph
-  problems warn and fall back to lexical evidence; glossary problems are user
-  errors; cache problems are misses. This includes wrong top-level types and
-  deeply nested JSON raising `RecursionError`.
+  problems warn and fall back to lexical evidence; configuration and glossary
+  problems are user errors; cache problems are misses. This includes wrong
+  top-level types and deeply nested JSON raising `RecursionError`.
 - **Generated evidence does not feed itself.** `glossarize-out/`, legacy
   `.glossarize/`, `graphify-out/`, and `GLOSSARY.md` are excluded from the
   lexical walk. Graphify is consumed only through its bounded adapter.
+- **Non-production code has an explicit boundary.** Tests and fixtures are
+  inventoried and cached with a visible role but do not feed lexical
+  vocabulary or heuristic signals. Generated and vendored paths are pruned
+  before content reads and reported. The optional configuration can override
+  conservative defaults or add ignores; sensitive and self-output exclusions
+  remain non-overridable.
 
 ## Data and network behavior
 
 The CLI itself makes no network requests. Its artifacts can contain repository
 paths, identifiers, import strings, aggregate documentation terms, Graphify
-labels, and human-written glossary definitions. They should be handled with
-the same confidentiality as the repository.
+labels, normalized configuration paths, and human-written glossary
+definitions. They should be handled with the same confidentiality as the
+repository.
+
+Phase 16 did not add a parsing library. The evaluated Tree-sitter language-pack
+candidate downloads native grammar binaries on first use and caches them; that
+would violate the CLI's current no-network behavior unless redesigned around
+an explicit installation/prefetch boundary. It was rejected because the new
+labels showed no remaining accuracy gain to justify that network, native-code,
+cache, and supply-chain surface. The exact package-cost snapshot is in
+`EVALUATION.md`.
+
+The developer-only `evaluation/run.py` helper is separate from the CLI. With
+an explicit `--fetch`, it asks `git` to retrieve only the public revisions
+pinned in `evaluation/corpus.json` into a temporary directory. It disables
+prompts and global/system Git configuration, uses no shell, and neither imports
+nor executes target-project code. The checked-out source is still untrusted
+input to the same scanner boundaries.
 
 The `/glossarize` skill is a separate agent-mediated interface. When it asks an
 agent to read code or generated evidence, that content is handled according to
@@ -129,8 +214,31 @@ the agent host and model provider's data policy. Glossarize cannot enforce that
 external policy, and the path-based exclusions above do not make artifacts
 safe to send to an unapproved service.
 
+`PRIVACY.md` gives the complete local and agent-mediated data flow, including
+the opt-in developer/release operations that do use the network.
+
 ## Known trust decisions and limits
 
+- The production/test/fixture/generated/vendored classification is
+  path-convention based, not parser- or provenance-proven. Conservative
+  defaults are recorded in the public docs, every included file records its
+  effective role, and `glossarize.json` can override project-specific layouts.
+  A misclassified path changes analysis scope; inspect per-role totals when
+  adopting the tool in an unconventional repository.
+- Identifier extraction is NFKC-normalized and Unicode-aware but remains a
+  lexical approximation. Identifier-like words in comments and strings can
+  enter evidence, and language forms beyond the pinned representative cases
+  may split imperfectly. This is not a parser-level symbol claim.
+- Evidence freshness uses Git's tracked/untracked worktree model. Generated
+  files under the reserved top-level `glossarize-out/` namespace are the only
+  excluded paths, whether tracked or untracked. `GLOSSARY.md`, Graphify output,
+  legacy `.glossarize/`, and all other paths inside the scanned root remain
+  visible. An explicitly scoped subproject scan does not include changes
+  elsewhere in the enclosing worktree. Files ignored by Git are not reported
+  by `git status` and therefore cannot dirty the stamp; this is a stated limit,
+  not a claim that ignored bytes were checked.
+  Repositories without a readable `HEAD`, or whose status cannot be checked,
+  receive `{head: null, dirty: null}` and are freshness-unverified.
 - Graphify 0.9.42 exports `built_at_commit`. Glossarize reports its structural
   evidence as `current` only when that commit matches the current repository
   HEAD and the worktree is clean; a mismatch is `stale`. Legacy graphs without
@@ -141,17 +249,31 @@ safe to send to an unapproved service.
   repository-controlled metadata: the comparison detects ordinary staleness,
   but a matching value is not proof that graph content is authentic or was
   actually generated from that commit.
+- Normalized Graphify groups do not currently carry repository paths. When a
+  glossary contains path-scoped concepts, lexical validation remains scoped,
+  but structural validation marks coverage partial and skips unnamed-structure
+  conclusions that could not be scoped safely.
 - In-repository **source** symlinks are followed because their targets are
   repository content. Direct artifact symlinks are rejected for the separate
   read/write-redirection reasons above.
 - The scanner assumes the repository is not being adversarially mutated
   concurrently between path validation and file access. Do not run it while an
   untrusted process is rewriting the same checkout.
-- Per-file and pairwise-analysis limits exist, but a deterministic
-  whole-corpus file/byte/work budget has not yet been implemented. Phase 15 is
-  the tracked work.
+- Corpus ceilings make lexical processing finite, but reaching one necessarily
+  makes repository coverage partial. `walk_remainder.exact: false` means the
+  number and nature of unseen paths are unknown; consumers must not interpret
+  an absent term or finding as repository-wide evidence in that state.
 
 ## Reporting
 
-This is a personal project not yet published. Before a public release, Phase
-17 requires a public security-reporting route.
+The source repository is public, but version 0.1.0 is not yet published to
+PyPI. Do not put vulnerability details in a public issue.
+
+The prepared private route is GitHub's **Report a vulnerability** form at
+<https://github.com/kserrec/glossarize/security/advisories/new>. Repository
+private vulnerability reporting is currently disabled (verified
+2026-08-14), so that form is not yet available. `RELEASING.md` makes enabling
+the setting and its notifications a hard precondition for package
+publication. Until that account-level action is explicitly authorized and
+completed, this project does not claim to offer a working private reporting
+channel.

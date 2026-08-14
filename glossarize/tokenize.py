@@ -1,19 +1,29 @@
-"""Identifier and document tokenization.
+"""Unicode-aware identifier and document tokenization.
 
-Normalizes PaymentService / payment_service / payment-service / paymentService
-to the shared tokens ["payment", "service"]. Lexer-level only — no parsing.
+Normalizes camelCase, PascalCase, snake_case, and supported kebab-case names
+to shared case-folded tokens. This is deliberately a lexical approximation,
+not a parser: language syntax determines which matches are real identifiers.
 """
 
 from __future__ import annotations
 
 import re
+import unicodedata
 
-IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-DOC_WORD_RE = re.compile(r"[A-Za-z][A-Za-z']+")
-
-# Splits a hunk into words: acronym runs (HTTPServer -> HTTP, Server),
-# capitalized words, lowercase runs, digit runs.
-_CAMEL_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+")
+# Clojure's ordinary word-like identifiers use hyphens. Other supported
+# languages treat ``a-b`` as subtraction or two tokens, so the source iterator
+# joins hyphenated spans only where the language contract makes that useful.
+_KEBAB_IDENTIFIER_LANGUAGES = frozenset({"clojure"})
+_IDENTIFIER_BASE = r"(?:[^\W\d]|_)\w*"
+_IDENTIFIER_RE = re.compile(_IDENTIFIER_BASE)
+_KEBAB_IDENTIFIER_RE = re.compile(
+    rf"{_IDENTIFIER_BASE}(?:-{_IDENTIFIER_BASE})*"
+)
+_WORD_HUNK_RE = re.compile(r"\w+")
+_DOC_WORD_RE = re.compile(r"[^\W\d_]+(?:['’][^\W\d_]+)*")
+_ASCII_WORD_RE = re.compile(
+    r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+\d*|[A-Z]+\d*|\d+"
+)
 
 # Cross-language keywords and near-universal syntax words, filtered from the
 # vocabulary because they describe the language, not the domain. Deliberately
@@ -47,25 +57,44 @@ MIN_TOKEN_LEN = 2
 MIN_DOC_WORD_LEN = 3
 
 
+def tokenization_contract() -> dict:
+    """Machine-readable summary of the lexical normalization semantics."""
+    return {
+        "unicode_normalization": "NFKC+casefold",
+        "identifier_characters": "Unicode-word; nonnumeric-start",
+        "acronyms": "preserved-run",
+        "digits": "suffix-to-preceding-word; standalone-dropped",
+        "forms": ["camelCase", "PascalCase", "snake_case", "clojure-kebab-case"],
+        "parser_backed": False,
+    }
+
+
 def tokenize_identifier(name: str) -> list[str]:
     """Split an identifier into normalized lowercase tokens.
 
-    Digit runs and keyword/short tokens are dropped.
+    Acronym runs stay intact (``HTTPServer`` -> ``http``, ``server``). A digit
+    run is retained as a suffix of the preceding word (``HTTP2Server`` ->
+    ``http2``, ``server``); standalone numeric hunks are dropped. Unicode is
+    normalized with NFKC and case-folded. Keyword and short tokens are dropped.
     """
+    normalized = (
+        name if name.isascii() else unicodedata.normalize("NFKC", name)
+    )
     tokens: list[str] = []
-    for hunk in name.split("_"):
-        for word in _CAMEL_RE.findall(hunk):
-            if word.isdigit():
+    for hunk in _identifier_hunks(normalized):
+        for word in _split_case_and_digits(hunk):
+            token = (
+                word.lower() if word.isascii()
+                else unicodedata.normalize("NFKC", word).casefold()
+            )
+            if token.isdigit():
                 continue
-            token = word.lower()
-            # DOC_STOPWORDS filtered here too: a lexer-level scan reads
-            # comments and string literals, so prose glue leaks into
-            # identifiers' vocabulary without this.
-            if (
-                len(token) < MIN_TOKEN_LEN
-                or token in KEYWORD_TOKENS
-                or token in DOC_STOPWORDS
-            ):
+            # DOC_STOPWORDS are filtered here too: a lexer-level scan reads
+            # comments and string literals, so prose glue otherwise leaks into
+            # identifiers' vocabulary.
+            if len(token) < MIN_TOKEN_LEN:
+                continue
+            if token in KEYWORD_TOKENS or token in DOC_STOPWORDS:
                 continue
             tokens.append(token)
     return tokens
@@ -74,14 +103,97 @@ def tokenize_identifier(name: str) -> list[str]:
 def tokenize_term(term: str) -> list[str]:
     """Tokens of a human-written glossary term, where spaces and hyphens
     separate words the way underscores do in identifiers."""
-    return tokenize_identifier(term.replace(" ", "_").replace("-", "_"))
+    return tokenize_identifier(term)
 
 
-def iter_identifiers(text: str):
-    """Yield identifier spellings worth counting from source text."""
-    for match in IDENTIFIER_RE.finditer(text):
+def _identifier_hunks(name: str) -> list[str]:
+    return _WORD_HUNK_RE.findall(name.replace("_", " "))
+
+
+def _kind(char: str) -> str:
+    if char.isascii():
+        if "0" <= char <= "9":
+            return "digit"
+        if "A" <= char <= "Z":
+            return "upper"
+        if "a" <= char <= "z":
+            return "lower"
+        return "letter"
+    if char.isdigit():
+        return "digit"
+    if unicodedata.category(char).startswith("M"):
+        return "mark"
+    if char.isupper():
+        return "upper"
+    if char.islower():
+        return "lower"
+    return "letter"
+
+
+def _split_case_and_digits(hunk: str) -> list[str]:
+    if not hunk:
+        return []
+    if hunk.isascii():
+        return _ASCII_WORD_RE.findall(hunk)
+    kinds = [_kind(char) for char in hunk]
+    words: list[str] = []
+    current = [hunk[0]]
+    for index in range(1, len(hunk)):
+        char = hunk[index]
+        current_kind = kinds[index]
+        previous_kind = kinds[index - 1]
+        next_kind = kinds[index + 1] if index + 1 < len(hunk) else None
+        boundary = (
+            (
+                current_kind == "upper"
+                and previous_kind in {"lower", "digit", "letter"}
+            )
+            or (
+                current_kind == "upper"
+                and previous_kind == "upper"
+                and next_kind == "lower"
+            )
+            or (
+                current_kind in {"upper", "lower", "letter"}
+                and previous_kind == "digit"
+            )
+            or (
+                current_kind == "letter"
+                and previous_kind in {"upper", "lower"}
+            )
+            or (
+                current_kind in {"upper", "lower"}
+                and previous_kind == "letter"
+            )
+        )
+        if boundary:
+            words.append("".join(current))
+            current = [char]
+        else:
+            current.append(char)
+    words.append("".join(current))
+    return words
+
+
+def iter_identifiers(text: str, language: str | None = None):
+    """Yield conservative Unicode identifier spellings from source text.
+
+    Unicode word characters with a nonnumeric start supply the lexical rule.
+    Source sigils, Rust/OCaml apostrophes, and Ruby/Elixir ``?``/``!`` suffixes
+    act as boundaries while the underlying word is retained. Clojure alone
+    joins internal hyphens into one spelling; all other forms split there.
+    """
+    normalized_text = (
+        text if text.isascii() else unicodedata.normalize("NFKC", text)
+    )
+    pattern = (
+        _KEBAB_IDENTIFIER_RE
+        if language in _KEBAB_IDENTIFIER_LANGUAGES
+        else _IDENTIFIER_RE
+    )
+    for match in pattern.finditer(normalized_text):
         name = match.group()
-        if len(name) < MIN_TOKEN_LEN or name.lower() in KEYWORD_TOKENS:
+        if len(name) < MIN_TOKEN_LEN or name.casefold() in KEYWORD_TOKENS:
             continue
         yield name
 
@@ -89,8 +201,13 @@ def iter_identifiers(text: str):
 def doc_words(text: str) -> list[str]:
     """Prose words from a documentation file, lowercased, stopwords removed."""
     words = []
-    for word in DOC_WORD_RE.findall(text.lower()):
-        word = word.rstrip("'")  # users' and users are one term
+    normalized_text = (
+        text if text.isascii() else unicodedata.normalize("NFKC", text)
+    )
+    for match in _DOC_WORD_RE.finditer(normalized_text):
+        raw = match.group()
+        word = raw.lower() if raw.isascii() else raw.casefold()
+        word = word.rstrip("'’")  # users' and users are one term
         if len(word) >= MIN_DOC_WORD_LEN and word not in DOC_STOPWORDS:
             words.append(word)
     return words

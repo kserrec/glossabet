@@ -1,0 +1,474 @@
+{
+  "schema_version": 1,
+  "reviewed_on": "2026-08-14",
+  "release_thresholds": {
+    "terminology_precision_min": 0.8,
+    "drift_precision_min": 0.9,
+    "drift_recall_min": 0.9,
+    "reviewer_usefulness_min": 0.8,
+    "false_alarms_per_1000_max": 50.0,
+    "cold_seconds_per_1000_source_files_max": 10.0,
+    "corpus_budget_truncations_max": 0,
+    "minimum_cache_reuse_min": 1.0,
+    "lexical_contract_min": 1.0
+  },
+  "sources": [
+    {
+      "id": "calibration-fixture",
+      "kind": "local",
+      "path": "evaluation/fixtures/calibration",
+      "primary_language": "Python",
+      "license_spdx": "Apache-2.0",
+      "license_url": "../LICENSE",
+      "license_path": "LICENSE",
+      "license_base": "project",
+      "provenance": "Original Glossarize fixture; no third-party source.",
+      "glossary": {
+        "schema_version": 1,
+        "concepts": [
+          {
+            "id": "run",
+            "term": "Run",
+            "definition": "A single pipeline invocation.",
+            "status": "canonical"
+          },
+          {
+            "id": "gateway",
+            "term": "Gateway",
+            "definition": "The collection boundary.",
+            "status": "canonical",
+            "aliases": [
+              {
+                "term": "Charge",
+                "status": "discouraged",
+                "note": "Operation wording that obscures the boundary."
+              }
+            ]
+          },
+          {
+            "id": "workspace",
+            "term": "Workspace",
+            "definition": "A retired working-area concept.",
+            "status": "canonical"
+          },
+          {
+            "id": "session",
+            "term": "Session",
+            "definition": "A deliberately overloaded fixture term.",
+            "status": "canonical"
+          }
+        ]
+      },
+      "expectations": {
+        "terminology": {
+          "recall_complete": true,
+          "correct": [
+            {
+              "key": "synonym:execution:run",
+              "useful": true,
+              "note": "The two terms occupy the same four identifier shapes."
+            },
+            {
+              "key": "overload:session",
+              "useful": true,
+              "note": "Session has intentionally disjoint auth, database, and ML contexts."
+            }
+          ]
+        },
+        "drift": {
+          "recall_kinds": [
+            "parallel-term",
+            "watched-term-in-use",
+            "canonical-fading",
+            "canonical-overloaded"
+          ],
+          "correct": [
+            {
+              "key": "parallel-term:run:execution",
+              "useful": true,
+              "note": "Execution duplicates Run's established shapes."
+            },
+            {
+              "key": "watched-term-in-use:gateway:charge",
+              "useful": true,
+              "note": "The discouraged word remains in production identifiers."
+            },
+            {
+              "key": "canonical-fading:workspace",
+              "useful": true,
+              "note": "Workspace is absent from the implementation."
+            },
+            {
+              "key": "canonical-overloaded:session",
+              "useful": true,
+              "note": "Session is split across three unrelated modules."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "language-semantics-fixture",
+      "kind": "local",
+      "path": "evaluation/fixtures/language-semantics",
+      "primary_language": "Python and Clojure multilingual fixture",
+      "license_spdx": "Apache-2.0",
+      "license_url": "../LICENSE",
+      "license_path": "LICENSE",
+      "license_base": "project",
+      "provenance": "Original Glossarize fixture; no third-party source.",
+      "glossary": {
+        "schema_version": 1,
+        "concepts": [
+          {
+            "id": "auth-session",
+            "term": "Session",
+            "definition": "An authenticated interaction.",
+            "status": "canonical",
+            "scope": {"path_prefixes": ["auth"]}
+          },
+          {
+            "id": "db-session",
+            "term": "Session",
+            "definition": "A database unit of work.",
+            "status": "canonical",
+            "scope": {"path_prefixes": ["db"]}
+          },
+          {
+            "id": "payment",
+            "term": "支付",
+            "definition": "Collecting money for an order.",
+            "status": "canonical",
+            "scope": {"path_prefixes": ["payments"]}
+          },
+          {
+            "id": "resume",
+            "term": "Résumé",
+            "definition": "A localized payment record.",
+            "status": "canonical",
+            "scope": {"path_prefixes": ["payments"]}
+          },
+          {
+            "id": "http2",
+            "term": "HTTP2",
+            "definition": "The versioned transport protocol.",
+            "status": "canonical",
+            "scope": {"path_prefixes": ["protocol"]}
+          },
+          {
+            "id": "pending-work",
+            "term": "Pending Work",
+            "definition": "Queued work not yet started.",
+            "status": "canonical",
+            "scope": {"path_prefixes": ["workers"]}
+          }
+        ]
+      },
+      "expectations": {
+        "lexical": {
+          "required_tokens": [
+            "http2", "json2", "pending", "résumé", "über", "данные",
+            "очереди", "支付"
+          ],
+          "forbidden_tokens": ["http", "json"],
+          "required_identifiers": {
+            "ÜberHTTP2Server": ["über", "http2", "server"],
+            "pending-work": ["pending", "work"],
+            "parseJSON2XML": ["parse", "json2", "xml"],
+            "данные_очереди": ["данные", "очереди"],
+            "支付Service": ["支付", "service"]
+          }
+        },
+        "terminology": {
+          "recall_complete": false,
+          "correct": []
+        },
+        "drift": {
+          "recall_kinds": [
+            "parallel-term",
+            "watched-term-in-use",
+            "canonical-fading",
+            "canonical-overloaded"
+          ],
+          "correct": []
+        }
+      }
+    },
+    {
+      "id": "requests",
+      "kind": "external-git",
+      "checkout_dir": "requests",
+      "url": "https://github.com/psf/requests.git",
+      "commit": "8068356288978c4f54661ae6f95afe0e0831885e",
+      "primary_language": "Python",
+      "license_spdx": "Apache-2.0",
+      "license_url": "https://github.com/psf/requests/blob/8068356288978c4f54661ae6f95afe0e0831885e/LICENSE",
+      "license_path": "LICENSE",
+      "provenance": "Pinned public repository; source is fetched for evaluation and is not vendored here.",
+      "glossary": {
+        "schema_version": 1,
+        "concepts": [
+          {
+            "id": "prepared-request",
+            "term": "Prepared Request",
+            "definition": "A request after session and environment preparation.",
+            "status": "canonical"
+          },
+          {
+            "id": "response",
+            "term": "Response",
+            "definition": "The result of an HTTP request.",
+            "status": "canonical"
+          },
+          {
+            "id": "session",
+            "term": "Session",
+            "definition": "Persistent request configuration and connection state.",
+            "status": "canonical"
+          },
+          {
+            "id": "http-adapter",
+            "term": "HTTP Adapter",
+            "definition": "The transport adapter mounted on a session.",
+            "status": "canonical"
+          },
+          {
+            "id": "cookie-jar",
+            "term": "Cookie Jar",
+            "definition": "The mutable cookie collection.",
+            "status": "canonical"
+          },
+          {
+            "id": "connection-api",
+            "term": "Get Connection With TLS Context",
+            "definition": "The current adapter connection-selection API.",
+            "status": "canonical",
+            "aliases": [
+              {
+                "term": "Get Connection",
+                "status": "deprecated",
+                "note": "Deprecated by Requests in favor of the TLS-context API."
+              }
+            ]
+          },
+          {
+            "id": "encoding-discovery",
+            "term": "Get Encoding From Headers",
+            "definition": "Header-based response encoding discovery.",
+            "status": "canonical",
+            "aliases": [
+              {
+                "term": "Get Encodings From Content",
+                "status": "deprecated",
+                "note": "Marked for removal in Requests 3.0."
+              }
+            ]
+          },
+          {
+            "id": "unicode-decoding",
+            "term": "Stream Decode Response Unicode",
+            "definition": "Incremental response decoding.",
+            "status": "canonical",
+            "aliases": [
+              {
+                "term": "Get Unicode From Response",
+                "status": "deprecated",
+                "note": "Marked for removal in Requests 3.0."
+              }
+            ]
+          },
+          {
+            "id": "prefetch",
+            "term": "Prefetch",
+            "definition": "A removed response-prefetch concept retained to test stale glossary recall.",
+            "status": "canonical"
+          }
+        ]
+      },
+      "expectations": {
+        "terminology": {
+          "recall_complete": false,
+          "correct": []
+        },
+        "drift": {
+          "recall_kinds": [
+            "watched-term-in-use",
+            "canonical-fading"
+          ],
+          "correct": [
+            {
+              "key": "watched-term-in-use:connection-api:get connection",
+              "useful": true,
+              "note": "The deprecated method remains implemented for compatibility."
+            },
+            {
+              "key": "watched-term-in-use:encoding-discovery:get encodings from content",
+              "useful": true,
+              "note": "The deprecated helper remains implemented."
+            },
+            {
+              "key": "watched-term-in-use:unicode-decoding:get unicode from response",
+              "useful": true,
+              "note": "The deprecated helper remains implemented."
+            },
+            {
+              "key": "canonical-fading:prefetch",
+              "useful": true,
+              "note": "Requests removed prefetch behavior while its history retains the word."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "hey",
+      "kind": "external-git",
+      "checkout_dir": "hey",
+      "url": "https://github.com/rakyll/hey.git",
+      "commit": "5626f79b8698df6daf9b25799c9805c6acc96740",
+      "primary_language": "Go",
+      "license_spdx": "Apache-2.0",
+      "license_url": "https://github.com/rakyll/hey/blob/5626f79b8698df6daf9b25799c9805c6acc96740/LICENSE",
+      "license_path": "LICENSE",
+      "provenance": "Pinned public repository; source is fetched for evaluation and is not vendored here.",
+      "glossary": {
+        "schema_version": 1,
+        "concepts": [
+          {
+            "id": "work",
+            "term": "Work",
+            "definition": "One configured load-generation job.",
+            "status": "canonical"
+          },
+          {
+            "id": "report",
+            "term": "Report",
+            "definition": "The aggregation of load-test results.",
+            "status": "canonical"
+          },
+          {
+            "id": "latency-distribution",
+            "term": "Latency Distribution",
+            "definition": "Percentile latency output.",
+            "status": "canonical"
+          },
+          {
+            "id": "request",
+            "term": "Request",
+            "definition": "The HTTP request sent by a worker.",
+            "status": "canonical"
+          },
+          {
+            "id": "response",
+            "term": "Response",
+            "definition": "The HTTP response measured by a worker.",
+            "status": "canonical"
+          },
+          {
+            "id": "duration",
+            "term": "Duration",
+            "definition": "Elapsed time for a measured request stage.",
+            "status": "canonical"
+          }
+        ]
+      },
+      "expectations": {
+        "terminology": {
+          "recall_complete": false,
+          "correct": []
+        },
+        "drift": {
+          "recall_kinds": [
+            "watched-term-in-use",
+            "canonical-fading"
+          ],
+          "correct": []
+        }
+      }
+    },
+    {
+      "id": "p-limit",
+      "kind": "external-git",
+      "checkout_dir": "p-limit",
+      "url": "https://github.com/sindresorhus/p-limit.git",
+      "commit": "df476048d023ff868cd45b35ee47f5fb0ca2b25a",
+      "primary_language": "JavaScript/TypeScript declarations",
+      "license_spdx": "MIT",
+      "license_url": "https://github.com/sindresorhus/p-limit/blob/df476048d023ff868cd45b35ee47f5fb0ca2b25a/license",
+      "license_path": "license",
+      "provenance": "Pinned public repository; source is fetched for evaluation and is not vendored here.",
+      "glossary": {
+        "schema_version": 1,
+        "concepts": [
+          {
+            "id": "limit",
+            "term": "Limit",
+            "definition": "The function that schedules constrained work.",
+            "status": "canonical"
+          },
+          {
+            "id": "concurrency",
+            "term": "Concurrency",
+            "definition": "The maximum simultaneous executions.",
+            "status": "canonical"
+          },
+          {
+            "id": "limit-function",
+            "term": "Limit Function",
+            "definition": "A self-contained concurrency-limited function.",
+            "status": "canonical"
+          },
+          {
+            "id": "active-count",
+            "term": "Active Count",
+            "definition": "The number of promises currently running.",
+            "status": "canonical"
+          },
+          {
+            "id": "pending-count",
+            "term": "Pending Count",
+            "definition": "The number of queued promises.",
+            "status": "canonical"
+          },
+          {
+            "id": "clear-queue",
+            "term": "Clear Queue",
+            "definition": "Discard pending work.",
+            "status": "canonical"
+          },
+          {
+            "id": "reject-on-clear",
+            "term": "Reject On Clear",
+            "definition": "Reject discarded work with an abort error.",
+            "status": "canonical"
+          },
+          {
+            "id": "pause-queue",
+            "term": "Pause Queue",
+            "definition": "A deliberately stale capability that belongs to p-queue, not p-limit.",
+            "status": "canonical"
+          }
+        ]
+      },
+      "expectations": {
+        "terminology": {
+          "recall_complete": false,
+          "correct": []
+        },
+        "drift": {
+          "recall_kinds": [
+            "watched-term-in-use",
+            "canonical-fading"
+          ],
+          "correct": [
+            {
+              "key": "canonical-fading:pause-queue",
+              "useful": true,
+              "note": "The README explicitly contrasts p-limit with p-queue's pause capability."
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

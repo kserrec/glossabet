@@ -6,7 +6,7 @@ import json
 
 from glossarize.cli import main
 from glossarize.drift import build_drift
-from glossarize.evidence import build_evidence
+from glossarize.evidence import Limits, build_evidence
 from glossarize.glossary import save_glossary
 
 GLOSSARY = {
@@ -78,7 +78,7 @@ def test_seeded_rename_is_detected_with_evidence(tmp_path):
     assert finding["canonical_term"] == "Run"
     assert finding["concept_id"] == "run"
     assert "record" in finding["evidence"]["shared_contexts"]
-    assert finding["confidence"] in ("high", "medium")
+    assert finding["signal_strength"] in ("strong", "moderate")
 
 
 def test_discouraged_term_in_use(tmp_path):
@@ -89,10 +89,57 @@ def test_discouraged_term_in_use(tmp_path):
     assert finding["evidence"]["locations"][0]["path"] == "gateway.py"
 
 
+def test_compound_watched_term_requires_one_lexical_unit(tmp_path):
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "request",
+            "term": "Request",
+            "definition": "A submitted operation.",
+            "status": "canonical",
+            "aliases": [{
+                "term": "Payment Request",
+                "status": "discouraged",
+            }],
+        }],
+    }
+    (tmp_path / "payment.py").write_text("payment_total = 1\n" * 3)
+    (tmp_path / "request.py").write_text("request_queue = 1\n" * 3)
+
+    drift = build_drift(build_evidence(tmp_path), glossary)
+
+    assert drift["watched_terms_in_use"]["items"] == []
+
+
+def test_compound_watched_term_reports_a_real_identifier_unit(tmp_path):
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "request",
+            "term": "Request",
+            "definition": "A submitted operation.",
+            "status": "canonical",
+            "aliases": [{
+                "term": "Payment Request",
+                "status": "discouraged",
+            }],
+        }],
+    }
+    (tmp_path / "payment.py").write_text("payment_request = 1\n")
+
+    drift = build_drift(build_evidence(tmp_path), glossary)
+    finding = drift["watched_terms_in_use"]["items"][0]
+
+    assert finding["term"] == "Payment Request"
+    assert finding["evidence"]["match_kind"] == "lexical-unit"
+    assert finding["certainty"] == "observed"
+    assert "confidence" not in finding
+
+
 def test_canonical_fading(tmp_path):
     fading = drift_for(tmp_path)["canonical_fading"]["items"]
     finding = next(f for f in fading if f["term"] == "Workspace")
-    assert finding["confidence"] == "high"
+    assert finding["signal_strength"] == "strong"
     assert finding["evidence"]["token_counts"] == {"workspace": 0}
 
 
@@ -117,6 +164,158 @@ def test_bounds_and_determinism(tmp_path):
     for key in ("parallel_terms", "watched_terms_in_use",
                 "canonical_fading", "canonical_overloaded"):
         assert "dropped_items" in first[key]
+
+
+def test_findings_use_observation_or_signal_strength_not_confidence(tmp_path):
+    drift = drift_for(tmp_path)
+    for key in (
+        "parallel_terms",
+        "watched_terms_in_use",
+        "canonical_fading",
+        "canonical_overloaded",
+    ):
+        for finding in drift[key]["items"]:
+            assert "confidence" not in finding
+            assert ("certainty" in finding) != ("signal_strength" in finding)
+
+
+def test_total_findings_includes_dropped_items(tmp_path, monkeypatch):
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "terms",
+            "term": "Current",
+            "definition": "Current term.",
+            "status": "proposed",
+            "aliases": [
+                {"term": term, "status": "discouraged"}
+                for term in ("alpha", "beta", "gamma")
+            ],
+        }],
+    }
+    (tmp_path / "terms.py").write_text("alpha = 1\nbeta = 2\ngamma = 3\n")
+    monkeypatch.setattr("glossarize.drift.FINDINGS_PER_KIND_CAP", 1)
+
+    drift = build_drift(build_evidence(tmp_path), glossary)
+
+    assert len(drift["watched_terms_in_use"]["items"]) == 1
+    assert drift["watched_terms_in_use"]["dropped_items"] == 2
+    assert drift["total_findings"] == 3
+
+
+def test_same_canonical_term_is_checked_independently_in_disjoint_scopes(tmp_path):
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": "auth-session",
+                "term": "Session",
+                "definition": "An authenticated interaction.",
+                "status": "canonical",
+                "scope": {"path_prefixes": ["auth"]},
+            },
+            {
+                "id": "db-session",
+                "term": "Session",
+                "definition": "A database unit of work.",
+                "status": "canonical",
+                "scope": {"path_prefixes": ["db"]},
+            },
+        ],
+    }
+    auth = tmp_path / "auth"
+    auth.mkdir()
+    auth.joinpath("session.py").write_text(
+        "session_cookie = 1\nsession_login = 2\nsession_user = 3\n"
+    )
+
+    drift = build_drift(build_evidence(tmp_path), glossary)
+
+    fading = drift["canonical_fading"]["items"]
+    assert [finding["concept_id"] for finding in fading] == ["db-session"]
+    assert fading[0]["scope"] == {
+        "kind": "path-prefixes", "path_prefixes": ["db"]
+    }
+
+
+def test_scoped_watched_alias_ignores_uses_in_another_subsystem(tmp_path):
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "auth-account",
+            "term": "Account",
+            "definition": "An authenticated identity.",
+            "status": "canonical",
+            "scope": {"path_prefixes": ["auth"]},
+            "aliases": [{"term": "Handle", "status": "discouraged"}],
+        }],
+    }
+    db = tmp_path / "db"
+    db.mkdir()
+    db.joinpath("records.py").write_text("handle_record = 1\n")
+
+    outside = build_drift(build_evidence(tmp_path), glossary)
+    assert outside["watched_terms_in_use"]["items"] == []
+
+    auth = tmp_path / "auth"
+    auth.mkdir()
+    auth.joinpath("account.py").write_text("handle_account = 1\n")
+    inside = build_drift(build_evidence(tmp_path), glossary)
+    finding = inside["watched_terms_in_use"]["items"][0]
+    assert finding["concept_id"] == "auth-account"
+    assert finding["evidence"]["locations"][0]["path"] == "auth/account.py"
+
+
+def test_scoped_reuse_does_not_look_like_a_global_concept_collision(tmp_path):
+    concepts = []
+    for subsystem in ("auth", "db", "ml"):
+        directory = tmp_path / subsystem
+        directory.mkdir()
+        contexts = {
+            "auth": ("cookie", "login", "user"),
+            "db": ("commit", "transaction", "query"),
+            "ml": ("model", "inference", "batch"),
+        }[subsystem]
+        directory.joinpath("session.py").write_text(
+            "\n".join(f"session_{context} = 1" for context in contexts) + "\n"
+        )
+        concepts.append({
+            "id": f"{subsystem}-session",
+            "term": "Session",
+            "definition": f"The {subsystem} meaning.",
+            "status": "canonical",
+            "scope": {"path_prefixes": [subsystem]},
+        })
+
+    drift = build_drift(
+        build_evidence(tmp_path),
+        {"schema_version": 1, "concepts": concepts},
+    )
+
+    assert drift["canonical_overloaded"]["items"] == []
+    assert drift["scope_summary"] == {"repository": 0, "path_scoped": 3}
+
+
+def test_truncated_locations_cannot_prove_a_scoped_term_is_absent(tmp_path):
+    for subsystem in ("a", "z"):
+        directory = tmp_path / subsystem
+        directory.mkdir()
+        directory.joinpath("session.py").write_text("session_record = 1\n")
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "z-session",
+            "term": "Session",
+            "definition": "The z subsystem session.",
+            "status": "canonical",
+            "scope": {"path_prefixes": ["z"]},
+        }],
+    }
+    evidence = build_evidence(tmp_path, limits=Limits(locations_per_term=1))
+
+    drift = build_drift(evidence, glossary)
+
+    assert drift["canonical_fading"]["items"] == []
 
 
 def test_drift_command_end_to_end(tmp_path, capsys):

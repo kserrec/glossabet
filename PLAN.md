@@ -1,6 +1,6 @@
 # Glossarize — Plan
 
-Status: **phases 0–12 complete; Phase 13 is next** as of 2026-08-14.
+Status: **phases 0–17 complete** as of 2026-08-14.
 Phases 11–17 turn the 2026-08-14 deep-dive findings into bounded,
 single-pass work.
 This document is the authoritative roadmap. Provenance: merged from the working
@@ -125,6 +125,7 @@ sophistication belongs to adapters, not the core.
 
 ```
 <scanned repo>/
+├── glossarize.json       optional literal-prefix ignore/path-role configuration
 ├── glossarize-out/
 │   ├── evidence.json     machine evidence (RepositoryEvidence, schema_version, git stamp)
 │   ├── glossary.json     machine-readable canonical vocabulary (from Phase 6)
@@ -155,6 +156,7 @@ glossarize analyze .     terminology + register analysis           (Phase 4)
 glossarize show          display current glossary                  (Phase 6)
 glossarize drift .       compare live vocabulary vs canonical      (Phase 7)
 glossarize validate .    glossary ↔ evidence/graph reconciliation  (Phase 10)
+glossarize install       install canonical agent skill             (Phase 17)
 ```
 
 Users normally never type these — the skill orchestrates them.
@@ -245,7 +247,7 @@ freshness/warning state; graph presence is distinct from usable structural
 coverage, and empty, group-less, or malformed graphs explicitly skip
 structural validation.
 
-### Phase 13 — Honest git freshness and artifact lifecycle
+### Phase 13 — Honest git freshness and artifact lifecycle ✅ 2026-08-14
 
 **Goal:** make the freshness promise true from the first scan without silently
 editing a target repository's ignore rules.
@@ -263,7 +265,7 @@ editing a target repository's ignore rules.
 subsequent user changes make it stale; generated Glossarize artifacts alone do
 not; no target configuration is changed.
 
-### Phase 14 — Terminology precision foundations
+### Phase 14 — Terminology precision foundations ✅ 2026-08-14
 
 **Goal:** lower false alarms before adding more kinds of findings.
 
@@ -285,7 +287,7 @@ not; no target configuration is changed.
 cross-file-word, alias-collision, capped-total, or test-noise failures, while
 legitimate drift cases still report.
 
-### Phase 15 — Evaluation corpus and calibration
+### Phase 15 — Evaluation corpus and calibration ✅ 2026-08-14
 
 **Goal:** learn whether Glossarize is useful before expanding or marketing its
 capabilities.
@@ -307,7 +309,7 @@ capabilities.
 continues to make no efficacy claim—with failures and corpus limitations
 reported alongside successes.
 
-### Phase 16 — Scoped vocabulary and language semantics
+### Phase 16 — Scoped vocabulary and language semantics ✅ 2026-08-14
 
 **Goal:** represent concepts that legitimately vary by subsystem and improve
 lexical coverage without pretending regexes are a full parser.
@@ -318,15 +320,15 @@ lexical coverage without pretending regexes are a full parser.
    each scope; update drift and reconciliation consumers together.
 2. Support Unicode identifiers and define how digits, acronyms, and common
    language-specific identifier forms are tokenized.
-3. Reassess a parsing adapter only from Phase 15 evidence; accept a dependency
-   only if the demonstrated accuracy gain justifies its binary/transitive and
-   maintenance cost.
+3. Reassess a parsing adapter against Phase 15's recorded no-dependency
+   baseline; accept one only if new labelled failures demonstrate an accuracy
+   gain that justifies its binary/transitive, security, and maintenance cost.
 
 **Acceptance:** scoped concepts and representative non-ASCII identifiers round
 trip deterministically through evidence, glossary, drift, and validation;
 dependency decisions include measured benefit and explicit cost.
 
-### Phase 17 — Distribution and release readiness
+### Phase 17 — Distribution and release readiness ✅ 2026-08-14
 
 **Goal:** let a new user install, understand, and safely evaluate the project
 without repository-owner knowledge.
@@ -363,8 +365,11 @@ exactly what remains manual and externally visible.
 
 1. **Implementation language: Python.** Same distribution story as Graphify
    (`uv tool install`), mature ecosystem if tree-sitter is ever wanted.
-2. **Skill source of truth: the repo.** `skill/SKILL.md` is canonical;
-   `~/.claude/skills/glossarize/` is an installed copy. The skill itself
+2. **Skill source of truth: the repo.** `skill/SKILL.md` is canonical and is
+   mapped byte-for-byte into the wheel. `glossarize install` defaults to the
+   current Codex personal location `~/.agents/skills/glossarize/`; the
+   explicit Claude Code target is `~/.claude/skills/glossarize/`. Both are
+   installed copies. The skill itself
    changes only twice, additively: the evidence protocol (Phase 3) and
    glossary resumption (Phase 6). Philosophy untouched.
 3. **Public, Apache-2.0** — matching Graphify (verified: Graphify is
@@ -383,3 +388,21 @@ exactly what remains manual and externally visible.
    probe proved a hostile repository could pre-seed matching metadata and
    fabricated extraction results. Phase 11 replaces that trust decision with
    a user-owned, repository-keyed cache and current-content digests.
+9. **Concept scopes are literal path regions.** An omitted glossary scope is
+   repository-wide; `scope.path_prefixes` names one or more literal
+   repository-relative subsystem regions. Aliases inherit scope, and
+   NFKC-casefolded vocabulary ownership must be unique wherever regions
+   overlap. Drift and lexical reconciliation enforce the same boundary.
+10. **Unicode remains lexical; no parser dependency.** Phase 16's NFKC,
+    casefold, acronym/digit, and language-form implementation passes all 15
+    new lexical labels without a parser. The measured Tree-sitter candidate
+    adds native wheels, runtime grammar downloads/cache state, and maintenance
+    without a remaining labelled accuracy gain, so the runtime stays stdlib-
+    only. `EVALUATION.md` records the exact cost snapshot and reconsideration
+    rule.
+11. **Release automation prepares but does not publish.** CI tests CPython
+    3.10–3.14 on Linux, macOS, and Windows and smoke-tests the built wheel.
+    The PyPI workflow is manual-only, tag/confirmation/environment gated, and
+    uses Trusted Publishing without a stored token. PyPI account setup,
+    package upload, Git tags/releases, and enabling GitHub private
+    vulnerability reporting remain explicit external actions for Kyle.

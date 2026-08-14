@@ -97,7 +97,7 @@ def validation_for(tmp_path, graph=GRAPH):
 def test_unnamed_structure_detected(tmp_path):
     items = validation_for(tmp_path)["unnamed_structure"]["items"]
     finding = next(f for f in items if "community 1" in f["group"])
-    assert finding["confidence"] == "high"  # size 5
+    assert finding["signal_strength"] == "strong"  # size 5
     assert "LeaseManager" in finding["evidence"]["members_sample"]
 
 
@@ -116,8 +116,28 @@ def test_overloaded_region_detected(tmp_path):
 def test_orphaned_concept_detected(tmp_path):
     items = validation_for(tmp_path)["orphaned_concepts"]["items"]
     finding = next(f for f in items if f["concept_id"] == "workspace")
-    assert finding["confidence"] == "high"
+    assert finding["signal_strength"] == "strong"
     assert finding["evidence"]["token_counts"] == {"workspace": 0}
+
+
+def test_compound_concept_is_not_satisfied_by_words_in_separate_units(tmp_path):
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "payment-request",
+            "term": "Payment Request",
+            "status": "canonical",
+            "definition": "A request to collect payment.",
+        }],
+    }
+    (tmp_path / "payment.py").write_text("payment_total = 1\n" * 4)
+    (tmp_path / "request.py").write_text("request_queue = 1\n" * 4)
+
+    validation = build_validation(build_evidence(tmp_path), glossary)
+
+    finding = validation["orphaned_concepts"]["items"][0]
+    assert finding["concept_id"] == "payment-request"
+    assert finding["evidence"]["lexical_occurrences"] == 0
 
 
 def test_unresolved_binding_is_drift_signal(tmp_path):
@@ -193,6 +213,174 @@ def test_validation_is_deterministic_and_bounded(tmp_path):
     assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
     for key in ("unnamed_structure", "orphaned_concepts", "fragmentation"):
         assert "dropped_items" in first[key]
+
+
+def test_validation_findings_do_not_claim_uncalibrated_confidence(tmp_path):
+    validation = validation_for(tmp_path)
+    for key in (
+        "unnamed_structure",
+        "boundary_mismatch",
+        "overloaded_structural_region",
+        "orphaned_concepts",
+        "unresolved_bindings",
+        "fragmentation",
+        "vocabulary_drift",
+        "concept_collision",
+    ):
+        for finding in validation[key]["items"]:
+            assert "confidence" not in finding
+            assert ("certainty" in finding) != ("signal_strength" in finding)
+
+
+def test_validation_total_includes_dropped_items(tmp_path, monkeypatch):
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": term,
+                "term": term.title(),
+                "status": "canonical",
+                "definition": f"The {term} concept.",
+            }
+            for term in ("alpha", "beta", "gamma")
+        ],
+    }
+    (tmp_path / "main.py").write_text("ordinary_name = 1\n")
+    monkeypatch.setattr("glossarize.reconcile.FINDINGS_CAP", 1)
+
+    validation = build_validation(build_evidence(tmp_path), glossary)
+
+    assert len(validation["orphaned_concepts"]["items"]) == 1
+    assert validation["orphaned_concepts"]["dropped_items"] == 2
+    assert validation["total_findings"] == 3
+
+
+def test_scoped_concepts_round_trip_through_lexical_validation(tmp_path):
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": "auth-session",
+                "term": "Session",
+                "definition": "An authenticated interaction.",
+                "status": "canonical",
+                "scope": {"path_prefixes": ["auth"]},
+            },
+            {
+                "id": "db-session",
+                "term": "Session",
+                "definition": "A database unit of work.",
+                "status": "canonical",
+                "scope": {"path_prefixes": ["db"]},
+            },
+        ],
+    }
+    for subsystem, contexts in (
+        ("auth", ("cookie", "login", "user")),
+        ("db", ("commit", "query", "transaction")),
+    ):
+        directory = tmp_path / subsystem
+        directory.mkdir()
+        directory.joinpath("session.py").write_text(
+            "\n".join(f"session_{context} = 1" for context in contexts) + "\n"
+        )
+
+    validation = build_validation(build_evidence(tmp_path), glossary)
+
+    assert validation["orphaned_concepts"]["items"] == []
+    assert validation["scope_summary"] == {
+        "repository": 0,
+        "path_scoped": 2,
+        "structural_scope_complete": False,
+    }
+
+
+def test_binding_that_resolves_only_outside_scope_is_reported(tmp_path):
+    auth = tmp_path / "auth"
+    db = tmp_path / "db"
+    auth.mkdir()
+    db.mkdir()
+    auth.joinpath("account.py").write_text(
+        "account_user = 1\naccount_login = 2\naccount_cookie = 3\n"
+    )
+    db.joinpath("session.py").write_text("db_session = 1\n")
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "auth-account",
+            "term": "Account",
+            "definition": "An authenticated identity.",
+            "status": "canonical",
+            "scope": {"path_prefixes": ["auth"]},
+            "bindings": [{"ref": "symbol:db_session"}],
+        }],
+    }
+
+    validation = build_validation(build_evidence(tmp_path), glossary)
+    finding = validation["unresolved_bindings"]["items"][0]
+
+    assert finding["kind"] == "binding-out-of-scope"
+    assert finding["binding_status"] == "out-of-scope"
+    assert "outside the concept scope" in finding["summary"]
+
+
+def test_non_ascii_concept_round_trips_through_validation(tmp_path):
+    payments = tmp_path / "payments"
+    payments.mkdir()
+    payments.joinpath("service.py").write_text(
+        "支付Service = 1\n支付Gateway = 2\ncreate支付 = 3\n"
+    )
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "payment",
+            "term": "支付",
+            "definition": "Collecting money for an order.",
+            "status": "canonical",
+            "scope": {"path_prefixes": ["payments"]},
+        }],
+    }
+
+    validation = build_validation(build_evidence(tmp_path), glossary)
+
+    assert validation["orphaned_concepts"]["items"] == []
+    assert validation["vocabulary_drift"]["items"] == []
+
+
+def test_structural_scope_limit_is_explicit_instead_of_guessing(tmp_path):
+    graph = {
+        "nodes": [
+            {"id": 1, "label": "SessionCookie", "community": 0},
+            {"id": 2, "label": "SessionLogin", "community": 0},
+        ],
+        "edges": [],
+    }
+    gout = tmp_path / "graphify-out"
+    gout.mkdir()
+    gout.joinpath("graph.json").write_text(json.dumps(graph))
+    auth = tmp_path / "auth"
+    auth.mkdir()
+    auth.joinpath("session.py").write_text(
+        "session_cookie = 1\nsession_login = 2\nsession_user = 3\n"
+    )
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "auth-session",
+            "term": "Session",
+            "definition": "An authenticated interaction.",
+            "status": "canonical",
+            "scope": {"path_prefixes": ["auth"]},
+        }],
+    }
+
+    validation = build_validation(build_evidence(tmp_path), glossary)
+
+    assert validation["unnamed_structure"]["skipped"] is True
+    assert "do not carry repository paths" in validation["unnamed_structure"][
+        "skip_reason"
+    ]
+    assert validation["boundary_mismatch"]["partial"] is True
 
 
 def test_validate_command_end_to_end(tmp_path, capsys):

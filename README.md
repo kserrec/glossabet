@@ -72,17 +72,68 @@ understand. Relevant studies include:
 
 This research supports the need for deliberate, repository-specific vocabulary
 work. It does **not** by itself prove that Glossarize saves time or produces
-better naming decisions. That product claim requires direct evaluation of
-Glossarize's precision, false-alarm rate, and usefulness on real repositories;
-that evaluation is tracked in `PLAN.md`.
+better naming decisions. Glossarize's own small Phase 15 evaluation is reported
+separately below and does not turn those studies into a product-efficacy claim.
 
-**Status: v0 engine complete through Phase 12; hardening roadmap active.**
-`PLAN.md` is the authoritative roadmap for Phases 13–17.
-`skill/SKILL.md` is the canonical agent skill (install it by copying to your
-agent's skills directory, e.g. `~/.claude/skills/glossarize/SKILL.md`).
-The CLI installs with `uv tool install .`:
+## Evaluation status
+
+Phase 15 pins three permissively licensed public repositories—
+[Requests](https://github.com/psf/requests/tree/8068356288978c4f54661ae6f95afe0e0831885e),
+[hey](https://github.com/rakyll/hey/tree/5626f79b8698df6daf9b25799c9805c6acc96740),
+and [p-limit](https://github.com/sindresorhus/p-limit/tree/df476048d023ff868cd45b35ee47f5fb0ca2b25a)—plus
+one original terminology fixture. Phase 16 adds an original scoped-vocabulary
+and multilingual lexical fixture. The five-run corpus now contains 90 included
+source files and 45 production code files. It emitted 11 labelled terminology
+and drift findings with 100% precision, 100% recall where the expected set was
+complete, zero false alarms, and 100% reviewer usefulness under the recorded
+single-reviewer labels. All 15 explicit Unicode, digit/acronym, and Clojure
+kebab-case lexical checks also passed, and the controlled scoped glossary
+emitted no false drift.
+
+Those percentages are a regression-gate result, **not evidence of broad
+efficacy**: the corpus and positive-finding count are small, the evaluation
+glossaries are curator-authored rather than endorsed by upstream maintainers,
+real-repository heuristic recall is not exhaustive, and usefulness was not
+independently or blindly reviewed. The pre-calibration engine produced 53 false
+alarms among 64 findings on the same labels; the corpus drove narrower
+file-separation, identifier-pattern, and similarity gates for synonym
+nominations.
+
+The complete methodology, licenses, baseline, thresholds, limitations, and
+reproduction command are in [`EVALUATION.md`](EVALUATION.md); raw results are
+in [`evaluation/results.json`](evaluation/results.json).
+
+**Status: 0.1.0 alpha prepared, not yet published to PyPI.** The source is
+public and the complete local release gate passes; account-backed publication
+and GitHub private vulnerability reporting remain deliberately manual. See
+[`RELEASING.md`](RELEASING.md) for the exact boundary.
+
+From a source checkout, install the CLI and its canonical skill for Codex:
+
+```bash
+uv tool install . --reinstall
+glossarize install
+```
+
+Codex currently loads personal skills from `~/.agents/skills`; Claude Code
+users can instead run `glossarize install --agent claude`, which targets
+`~/.claude/skills`. The wheel carries the exact canonical
+[`skill/SKILL.md`](skill/SKILL.md), and installation refuses to overwrite a
+different skill unless `--force` is explicit. The locations follow the
+[official OpenAI Codex documentation](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills)
+and [official Claude Code documentation](https://code.claude.com/docs/en/skills#where-skills-live).
+
+Run the isolated end-to-end sample:
+
+```bash
+uv run python scripts/run_walkthrough.py
+```
+
+The full explanation and expected result are in
+[`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md). The CLI surface is:
 
 ```
+glossarize install           install the canonical agent skill (Codex default)
 glossarize scan <repo>       deterministic, git-stamped evidence (cached, incremental)
 glossarize analyze <repo>    scan + terminology report (register, overlaps, overloads)
 glossarize show <repo>       display the current glossary
@@ -98,10 +149,129 @@ not repository input: it lives under the platform cache directory
 Windows). `GLOSSARIZE_CACHE_DIR` can override that base; caching is disabled
 if the selected directory resolves inside the scanned repository.
 
-## Development
+### Artifact ownership, freshness, and cleanup
+
+The top-level `<repo>/glossarize-out/` directory is reserved for
+Glossarize-owned files. Do not put unrelated project files there. Its contents
+have two different lifecycles:
+
+- `evidence.json`, `drift.json`, and `validation.json` are derived reports.
+  They can be removed and rebuilt with `scan`, `drift`, and `validate`
+  respectively (the latter two require an existing glossary).
+- `glossary.json` is the machine-readable record of human-governed vocabulary,
+  including settled and still-proposed terms. It is owned and written by the
+  Glossarize workflow, but it is not disposable: preserve it unless that state
+  is intentionally being discarded or is recoverable from version control.
+  For a shared team glossary, commit both `GLOSSARY.md` and
+  `glossarize-out/glossary.json`.
+
+The evidence freshness check compares the recorded commit and worktree state
+with live Git state while excluding only that top-level `glossarize-out/`
+directory. This makes a clean repository immediately fresh after its first
+scan, whether generated output is tracked or untracked. Changes elsewhere
+inside the scanned root — including `GLOSSARY.md`, `graphify-out/`, and legacy
+`.glossarize/` — remain visible. A subproject scan uses that subproject, not an
+enclosing Git worktree, as its scope. Git-ignored files follow Git's normal
+semantics and therefore cannot make the stamp dirty; a repository without a
+readable `HEAD` is reported as unverified.
+
+Glossarize never creates or edits the target repository's `.gitignore`.
+Repository owners decide which artifacts to track. Removing the derived
+reports is sufficient cleanup when the glossary should be retained; the
+user-cache directory can be removed independently because it is only a
+performance optimization.
+
+The installed agent skill is separate user-owned state. Uninstalling the
+Python package removes the CLI but deliberately does not delete that copied
+`SKILL.md`; if the skill is no longer wanted, inspect and remove only the
+reported `glossarize` skill directory for the selected agent.
+
+### Repository analysis scope
+
+Glossarize analyzes production vocabulary by default. Test and fixture files
+remain visible in the file and module inventory, with an explicit `role`, but
+their lexical content does not drive vocabulary, naming, synonym, overload,
+drift, or lexical reconciliation signals. Generated and vendored paths are not
+read lexically and are reported under `skipped`. Graphify remains a separate
+structural input with its own provenance and freshness limits.
+
+An optional `glossarize.json` at the scanned root can add ignored paths,
+classify project-specific layouts, or mark a conventionally non-production
+path as production:
+
+```json
+{
+  "schema_version": 1,
+  "ignore_paths": ["scratch", "docs/archive"],
+  "path_roles": {
+    "production": ["tests/product_contracts"],
+    "test": ["qa"],
+    "fixture": ["sample_data"],
+    "generated": ["src/api/generated"],
+    "vendored": ["third_party"]
+  }
+}
+```
+
+Every entry is a literal, `/`-separated path prefix relative to the scanned
+root; globs, absolute paths, and `..` are rejected. Ignore rules win, and the
+most-specific configured role wins over a broader configured or default role.
+Unknown fields and malformed configurations are user errors rather than
+silently ignored typos.
+
+Conservative defaults classify `test`/`tests`/`spec`/`specs` directories and
+common test filenames as `test`, and fixture/test-data directories as
+`fixture`. Common build/generated directories are `generated`; dependency and
+vendor directories are `vendored`. Everything else is `production`. The
+artifact records the loaded configuration, per-role file totals, every
+included file's role, and configured/generated/vendored exclusions, so the
+analysis scope is inspectable rather than implicit.
+
+Each scan is also bounded to 10,000 included source files, 32 MB of included
+source bytes, 100,000 walked entries, and 10,000 entries in one directory.
+`skipped.corpus_budget` records limits, usage, exact source-file/byte skips,
+bounded samples, and any inexact unvisited walk remainder. If `complete` is
+false, the CLI says the evidence is partial; no exhaustive conclusion should
+be drawn from it.
+
+### Precision contracts
+
+- A glossary concept may optionally declare literal repository-relative
+  `scope.path_prefixes`. Omission means repository-wide. Drift, lexical
+  validation, stable bindings, and fragmentation are restricted to those
+  paths; findings carry the applied scope. Aliases inherit their concept's
+  scope. A normalized term or alias may have multiple owners only in disjoint
+  scopes. Because normalized Graphify groups do not carry repository paths,
+  structural validation explicitly reports partial/skipped scope coverage
+  instead of guessing.
+- Identifier extraction is Unicode-aware and NFKC-casefolded. Camel, Pascal,
+  snake, and Clojure kebab forms normalize consistently; acronym runs remain
+  intact; digit runs attach to the preceding word (`HTTP2Server` becomes
+  `http2`, `server`), while standalone numeric hunks are discarded. Source
+  sigils and predicate/bang suffixes are lexical boundaries. This remains a
+  lexical approximation and reads comments/string contents like other source
+  text; it is not a parser.
+- A compound glossary term occurs in code only when its normalized words are
+  contiguous inside one identifier, such as `PaymentRequest` or
+  `create_payment_request`. Independent word hits elsewhere do not establish
+  the compound. A Graphify structural group is the separate, explicitly
+  defined local context used for structural matching.
+- One NFKC-casefolded canonical term or alias may belong to only one concept
+  in overlapping scopes. Ambiguous aliases are rejected before the glossary
+  is saved or consumed.
+- Heuristic thresholds are labelled `signal_strength` (`strong`, `moderate`,
+  or `weak`), not “confidence.” Directly proven lexical or binding facts use
+  `certainty: observed`. Probabilistic confidence labels remain reserved for
+  future measured calibration.
+- `total_findings` counts all findings, including those omitted from the
+  displayed `items` by a cap; each section separately records
+  `dropped_items`.
+
+## Development and release verification
 
 Prerequisites: Python ≥ 3.10 and [uv](https://docs.astral.sh/uv/). The runtime
-is standard-library only; `pytest` is the sole dev dependency.
+is standard-library only; `pytest` is the sole dev dependency. CI tests CPython
+3.10–3.14 on Linux, macOS, and Windows.
 
 Run the tests:
 
@@ -116,8 +286,21 @@ uv tool install . --reinstall
 glossarize --version
 ```
 
+Build and verify the distributions without publishing them:
+
+```bash
+uv build --no-sources
+uv run python scripts/check_distribution.py dist --tag v0.1.0
+uv run python scripts/wheel_smoke.py dist
+```
+
 - `ARCHITECTURE.md` — how the engine is built and how to work on it (start here
   to take ownership).
 - `SECURITY.md` — the threat model and the enforced trust boundaries.
+- `PRIVACY.md` — local versus agent-mediated data flow and network behavior.
+- `EVALUATION.md` — corpus, labels, measurements, thresholds, and limitations.
+- `docs/WALKTHROUGH.md` — reproducible first-use path and real-repository flow.
+- `RELEASING.md` — local gate plus all still-manual public account actions.
+- `CHANGELOG.md` — release-facing change history.
 - `PLAN.md` — the authoritative roadmap and the binding design principles.
 - `skill/SKILL.md` — the canonical `/glossarize` agent skill.

@@ -19,7 +19,10 @@ from pathlib import Path
 from glossarize import __version__
 from glossarize.artifacts import oversized, write_json_atomic
 
-CACHE_VERSION = 2
+# Version 3 invalidates ASCII-only identifier/doc extraction after Phase 16's
+# Unicode NFKC+casefold tokenizer. Reusing version-2 entries would make warm
+# scans disagree with cold scans even when the source digest still matched.
+CACHE_VERSION = 3
 CACHE_FILE = "cache.json"
 CACHE_ROOT_ENV = "GLOSSARIZE_CACHE_DIR"
 

@@ -17,8 +17,9 @@ from itertools import combinations
 from pathlib import Path
 
 from glossarize import __version__
-from glossarize.artifacts import repo_root, write_artifact
+from glossarize.artifacts import OUT_DIR, repo_root, write_artifact
 from glossarize.cache import entry_if_valid, load_cache, save_cache
+from glossarize.config import load_config
 from glossarize.graphify import (
     build_structural_groups,
     disabled_structural_groups,
@@ -28,9 +29,14 @@ from glossarize.imports import build_imports_section, extract_imports, module_of
 from glossarize.importance import build_naming_candidates
 from glossarize.scanner import detect_monorepo, walk_repository
 from glossarize.terminology import build_terminology
-from glossarize.tokenize import doc_words, iter_identifiers, tokenize_identifier
+from glossarize.tokenize import (
+    doc_words,
+    iter_identifiers,
+    tokenization_contract,
+    tokenize_identifier,
+)
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 5
 
 EVIDENCE_FILE = "evidence.json"
 
@@ -50,6 +56,25 @@ class Limits:
 # execution. Command-line -c beats repo-local config.
 _GIT_SAFE_CONFIG = ("-c", "core.fsmonitor=", "-c", "core.hooksPath=/dev/null")
 
+# Freshness describes repository inputs, not Glossarize's own output. Keep the
+# pathspec here literal and mirrored in skill/SKILL.md: the whole top-level
+# output directory is Glossarize-owned, whether its files are tracked or
+# untracked. The pathspec is relative to `git -C root`, not Git's top level,
+# because a supported per-subproject scan may start inside a larger worktree.
+# --no-renames ensures a move across that ownership boundary still exposes the
+# changed non-output path. Git-ignored paths retain Git's ordinary status
+# semantics and every other tracked or untracked path remains visible.
+_GIT_FRESHNESS_STATUS_ARGS = (
+    "status",
+    "--porcelain=v1",
+    "--untracked-files=all",
+    "--no-renames",
+    "--",
+    ".",
+    f":(exclude){OUT_DIR}",
+    f":(exclude){OUT_DIR}/**",
+)
+
 
 def _git_stamp(root: Path) -> dict:
     def git(*args: str) -> str | None:
@@ -66,7 +91,7 @@ def _git_stamp(root: Path) -> dict:
     head = git("rev-parse", "HEAD")
     if head is None:
         return {"head": None, "dirty": None}
-    status = git("status", "--porcelain")
+    status = git(*_GIT_FRESHNESS_STATUS_ARGS)
     return {
         "head": head.strip(),
         "dirty": bool(status.strip()) if status is not None else None,
@@ -98,7 +123,7 @@ def _read_source(path: Path) -> tuple[bytes, str] | None:
 
 def _extract_code_entry(text: str, language: str) -> dict:
     identifiers: Counter = Counter()
-    for name in iter_identifiers(text):
+    for name in iter_identifiers(text, language):
         identifiers[name] += 1
     return {
         "kind": "code",
@@ -128,22 +153,29 @@ class _Vocabulary:
         self.token_counts: Counter = Counter()
         self.token_files: dict[str, Counter] = defaultdict(Counter)
         self.token_modules: dict[str, Counter] = defaultdict(Counter)
+        self.token_patterns: dict[str, Counter] = defaultdict(Counter)
         self.neighbors: dict[str, Counter] = defaultdict(Counter)
         self.module_neighbor_sets: dict[str, dict[str, set]] = defaultdict(
             lambda: defaultdict(set)
         )
         self.identifier_counts: Counter = Counter()
+        self.identifier_files: dict[str, Counter] = defaultdict(Counter)
 
     def fold(self, identifiers: dict[str, int], rel: str, module: str) -> None:
         """Fold one code file's identifier counts into every view."""
         for name, count in sorted(identifiers.items()):
             self.identifier_counts[name] += count
+            self.identifier_files[name][rel] += count
             tokens = tokenize_identifier(name)
             uniq = sorted(set(tokens))
             for token in tokens:
                 self.token_counts[token] += count
                 self.token_files[token][rel] += count
                 self.token_modules[token][module] += count
+            if len(tokens) >= 2:
+                for index, token in enumerate(tokens):
+                    pattern = tuple(tokens[:index] + ["*"] + tokens[index + 1:])
+                    self.token_patterns[token][pattern] += count
             for a, b in combinations(uniq, 2):
                 self.neighbors[a][b] += count
                 self.neighbors[b][a] += count
@@ -159,16 +191,32 @@ def build_evidence(root: Path, limits: Limits = Limits(),
     """Cold and warm scans share this one aggregation path, so a cached run
     is byte-identical to a fresh one by construction."""
     root = root.resolve()
-    walk = walk_repository(root)
+    config = load_config(root)
+    walk = walk_repository(root, config)
     git_stamp = _git_stamp(root)
     cached = load_cache(root) if cache else None
     cache_files: dict[str, dict] = {}
     reused = extracted = 0
 
+    # Repository vocabulary is deliberately production-scoped. Test and
+    # fixture files remain visible in the inventory and cache, but do not
+    # steer naming, drift, or terminology signals unless configuration marks
+    # their path as production. Generated and vendored content is not read.
     vocabulary = _Vocabulary()
     languages: Counter = Counter()
-    modules: dict[str, dict] = defaultdict(lambda: {"code_files": 0, "languages": set()})
+    modules: dict[str, dict] = defaultdict(
+        lambda: {
+            "code_files": 0,
+            "languages": set(),
+            "code_files_by_role": Counter(),
+        }
+    )
     file_imports: list[tuple[str, list[str]]] = []
+    production_code_files: list[tuple[str, str]] = []
+    code_files_by_role = Counter(role for _, _, role in walk.code_files)
+    doc_files_by_role = Counter(role for _, role in walk.doc_files)
+    analyzed_production_code_files = 0
+    analyzed_production_doc_files = 0
     code_bytes = 0
 
     def fetch_entry(rel: str, kind: str, extractor) -> dict | None:
@@ -190,7 +238,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
         cache_files[rel] = entry
         return entry
 
-    for rel, language in walk.code_files:
+    for rel, language, role in walk.code_files:
         entry = fetch_entry(
             rel, "code", lambda text: _extract_code_entry(text, language)
         )
@@ -201,20 +249,33 @@ def build_evidence(root: Path, limits: Limits = Limits(),
         module = module_of(rel)
         modules[module]["code_files"] += 1
         modules[module]["languages"].add(language)
-        if entry["imports"]:
-            file_imports.append((rel, entry["imports"]))
-        vocabulary.fold(entry["identifiers"], rel, module)
+        modules[module]["code_files_by_role"][role] += 1
+        if role == "production":
+            analyzed_production_code_files += 1
+            production_code_files.append((rel, language))
+            if entry["imports"]:
+                file_imports.append((rel, entry["imports"]))
+            vocabulary.fold(entry["identifiers"], rel, module)
 
     doc_term_counts: Counter = Counter()
+    doc_term_files: dict[str, Counter] = defaultdict(Counter)
     doc_entries = []
     doc_word_total = 0
-    for rel in walk.doc_files:
+    for rel, role in walk.doc_files:
         entry = fetch_entry(rel, "doc", _extract_doc_entry)
         if entry is None:
             continue
         doc_word_total += entry["word_total"]
-        doc_term_counts.update(entry["words"])
-        doc_entries.append({"path": rel, "words": entry["word_total"]})
+        if role == "production":
+            analyzed_production_doc_files += 1
+            doc_term_counts.update(entry["words"])
+            for term, count in entry["words"].items():
+                doc_term_files[term][rel] += count
+        doc_entries.append({
+            "path": rel,
+            "role": role,
+            "words": entry["word_total"],
+        })
 
     if cache:
         save_cache(root, cache_files, git_stamp)
@@ -234,21 +295,58 @@ def build_evidence(root: Path, limits: Limits = Limits(),
             "locations_truncated": len(locations) > len(kept),
         }
 
+    def identifier_entry(name: str, count: int) -> dict:
+        per_file = vocabulary.identifier_files[name]
+        locations = sorted(per_file.items(), key=lambda kv: (-kv[1], kv[0]))
+        kept = locations[: limits.locations_per_term]
+        return {
+            "name": name,
+            "tokens": tokenize_identifier(name),
+            "count": count,
+            "files": len(per_file),
+            "locations": [{"path": path, "count": uses} for path, uses in kept],
+            "locations_truncated": len(locations) > len(kept),
+        }
+
+    def doc_term_entry(term: str, count: int) -> dict:
+        per_file = doc_term_files[term]
+        locations = sorted(per_file.items(), key=lambda kv: (-kv[1], kv[0]))
+        kept = locations[: limits.locations_per_term]
+        return {
+            "term": term,
+            "count": count,
+            "files": len(per_file),
+            "locations": [
+                {"path": path, "count": uses} for path, uses in kept
+            ],
+            "locations_truncated": len(locations) > len(kept),
+        }
+
     modules_list = [
         {
             "path": path,
             "code_files": info["code_files"],
+            "code_files_by_role": dict(sorted(info["code_files_by_role"].items())),
             "languages": sorted(info["languages"]),
         }
         for path, info in sorted(modules.items())
     ]
-    imports_section = build_imports_section(file_imports, walk.code_files)
+    production_modules_list = [
+        {
+            "path": path,
+            "code_files": info["code_files_by_role"].get("production", 0),
+            "languages": sorted(info["languages"]),
+        }
+        for path, info in sorted(modules.items())
+        if info["code_files_by_role"].get("production", 0)
+    ]
+    imports_section = build_imports_section(file_imports, production_code_files)
     structural = (
         build_structural_groups(root, git_stamp) if graphify
         else disabled_structural_groups()
     )
     naming = build_naming_candidates(
-        imports_section, modules_list, vocabulary.token_counts,
+        imports_section, production_modules_list, vocabulary.token_counts,
         vocabulary.token_files, vocabulary.token_modules, doc_term_counts,
     )
     naming.update(structure_candidates(structural))
@@ -257,9 +355,14 @@ def build_evidence(root: Path, limits: Limits = Limits(),
         "schema_version": SCHEMA_VERSION,
         "generator": {"name": "glossarize", "version": __version__},
         "repository": {"git": git_stamp},
+        "configuration": config.as_evidence(),
         "totals": {
+            "source_files": len(walk.code_files) + len(walk.doc_files),
+            "source_bytes": walk.corpus_budget.source_bytes,
             "code_files": len(walk.code_files),
             "doc_files": len(walk.doc_files),
+            "code_files_by_role": dict(sorted(code_files_by_role.items())),
+            "doc_files_by_role": dict(sorted(doc_files_by_role.items())),
             "other_files": walk.other_files,
             "code_bytes": code_bytes,
             "doc_words": doc_word_total,
@@ -271,32 +374,44 @@ def build_evidence(root: Path, limits: Limits = Limits(),
         "structural_groups": structural,
         "files": {
             "code": [
-                {"path": p, "language": lang}
-                for p, lang in sorted(walk.code_files)
+                {"path": path, "language": language, "role": role}
+                for path, language, role in sorted(walk.code_files)
             ],
             "docs": sorted(doc_entries, key=lambda d: d["path"]),
         },
         "vocabulary": {
+            "normalization": tokenization_contract(),
             "tokens": _capped(vocabulary.token_counts, limits.tokens, token_entry),
             "identifiers": _capped(
                 vocabulary.identifier_counts, limits.identifiers,
-                lambda term, count: {"name": term, "count": count},
+                identifier_entry,
             ),
             "doc_terms": _capped(
-                doc_term_counts, limits.doc_terms,
-                lambda term, count: {"term": term, "count": count},
+                doc_term_counts, limits.doc_terms, doc_term_entry,
             ),
         },
-        "terminology": build_terminology(
-            vocabulary.identifier_counts, vocabulary.token_counts,
-            vocabulary.token_modules, vocabulary.neighbors,
-            vocabulary.module_neighbor_sets, doc_term_counts,
-        ),
+        "terminology": {
+            **build_terminology(
+                vocabulary.identifier_counts, vocabulary.token_counts,
+                vocabulary.token_files, vocabulary.token_modules,
+                vocabulary.token_patterns, vocabulary.neighbors,
+                vocabulary.module_neighbor_sets, doc_term_counts,
+            ),
+            "scope": {
+                "roles": ["production"],
+                "code_files": analyzed_production_code_files,
+                "doc_files": analyzed_production_doc_files,
+            },
+        },
         "monorepo": detect_monorepo(root, walk),
         "skipped": {
             "sensitive": sorted(walk.skipped_sensitive),
             "oversized": sorted(walk.skipped_oversized),
             "symlinks_escaping_repo": sorted(walk.skipped_symlinks),
+            "configured": sorted(walk.skipped_configured),
+            "generated": sorted(walk.skipped_generated),
+            "vendored": sorted(walk.skipped_vendored),
+            "corpus_budget": walk.corpus_budget.as_evidence(),
         },
     }
 
@@ -311,7 +426,8 @@ def _print_terminology_report(evidence: dict) -> None:
     print(
         f"\n== house register ({reg['unique_identifiers']} unique identifiers, "
         f"top {term['considered_tokens']} of {term['vocabulary_size']} "
-        f"tokens analyzed) =="
+        f"tokens analyzed from {term['scope']['code_files']} production "
+        f"code file(s)) =="
     )
     styles = ", ".join(f"{k} {v}%" for k, v in reg["identifier_styles_pct"].items())
     print(f"styles: {styles or 'n/a'}")
@@ -400,7 +516,9 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
     print(
         f"scanned {totals['code_files']} code files, "
         f"{totals['doc_files']} doc files "
-        f"({len(evidence['languages'])} languages) -> {out_path}"
+        f"({len(evidence['languages'])} languages); terminology scope: "
+        f"{evidence['terminology']['scope']['code_files']} production code "
+        f"file(s) -> {out_path}"
     )
     skipped = evidence["skipped"]
     if skipped["sensitive"]:
@@ -417,6 +535,36 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
         print(
             f"skipped {len(skipped['symlinks_escaping_repo'])} symlink(s) "
             "resolving outside the repository",
+            file=sys.stderr,
+        )
+    if skipped["configured"]:
+        print(
+            f"ignored {len(skipped['configured'])} configured path(s)",
+            file=sys.stderr,
+        )
+    if skipped["generated"]:
+        print(
+            f"excluded {len(skipped['generated'])} generated path(s) "
+            "from lexical analysis",
+            file=sys.stderr,
+        )
+    if skipped["vendored"]:
+        print(
+            f"excluded {len(skipped['vendored'])} vendored path(s) "
+            "from lexical analysis",
+            file=sys.stderr,
+        )
+    budget = skipped["corpus_budget"]
+    if not budget["complete"]:
+        omitted = budget["skipped"]["source_files"]
+        details = []
+        if omitted:
+            details.append(f"excluded {omitted} source file(s)")
+        if budget["walk_remainder"]["truncated"]:
+            details.append("directory walk omitted an inexact remainder")
+        print(
+            "corpus budget reached: " + "; ".join(details)
+            + "; evidence is partial",
             file=sys.stderr,
         )
     mono = evidence["monorepo"]

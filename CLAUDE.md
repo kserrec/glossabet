@@ -23,6 +23,18 @@ verbatim, never diluted by machinery.
   Graphify clone; rich structure comes from optional adapters.
 - **No contamination.** Evidence gathering excludes `glossarize-out/`,
   `.glossarize/`, and `GLOSSARY.md`, always.
+- **Explicit production scope.** Root `glossarize.json` may add literal ignored
+  prefixes or path roles. Tests/fixtures stay inventoried but do not steer
+  lexical signals; generated/vendored content is not read. Every effective
+  role and exclusion is reported.
+- **Explicit concept scope.** Optional glossary `scope.path_prefixes` are
+  literal repository-relative subsystem boundaries. Omission is
+  repository-wide; aliases inherit scope; vocabulary ownership must be unique
+  wherever scopes overlap. Drift and lexical validation enforce the boundary.
+- **Unicode lexical contract.** Identifier and glossary terms use NFKC plus
+  casefold, with documented acronym/digit and language-form rules. The scanner
+  remains lexical, not parser-backed; comments and strings are not syntax-
+  excluded.
 - **No secrets ingested.** Sensitive files (`.env` and kin, keys, credentials)
   never enter any artifact; tests prove it.
 - **Staleness is a trust problem.** Evidence artifacts carry a git stamp; the
@@ -31,10 +43,12 @@ verbatim, never diluted by machinery.
 - **Graphify is optional, and its artifacts are never mutated.** Glossarize
   owns `glossarize-out/`; Graphify owns `graphify-out/`.
 - **Dependencies earn their place.** Real use site + one-line cost/reason, or
-  it doesn't enter. Stdlib-first.
+  it doesn't enter. Stdlib-first. Phase 16 measured 15/15 lexical labels and
+  rejected a parser adapter with no remaining labelled gain.
 - **Bounded work with logged truncation.** No unbounded quadratic analysis;
   every cap is stated and every drop reported — capped output never reads as
-  complete.
+  complete. Treat `skipped.corpus_budget.complete: false` as partial evidence,
+  never as repository-wide coverage.
 - **Tests protect concrete threats**, not coverage numbers.
 
 ## Workflow
@@ -52,9 +66,14 @@ verbatim, never diluted by machinery.
 uv run pytest                    # test suite
 uv tool install . --reinstall    # (re)install the CLI at ~/.local/bin/glossarize
 glossarize --version
+glossarize install               # install canonical skill for Codex (~/.agents/skills)
+glossarize install --agent claude # install for Claude Code (~/.claude/skills)
 glossarize scan <repo>           # writes <repo>/glossarize-out/evidence.json
 glossarize analyze <repo>        # scan + terminology report (register, overlaps)
 glossarize show <repo>           # display the current glossary
 glossarize drift <repo>          # live vocabulary vs canonical glossary
 glossarize validate <repo>       # reconcile glossary vs evidence + graph
+uv build --no-sources            # build wheel + source distribution, do not publish
+uv run python scripts/check_distribution.py dist --tag v0.1.0
+uv run python scripts/wheel_smoke.py dist
 ```

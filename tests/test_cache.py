@@ -62,6 +62,19 @@ def test_generator_version_change_invalidates_everything(tmp_path):
     assert stats["extracted"] == 3 and stats["reused"] == 0
 
 
+def test_ascii_tokenizer_cache_version_is_invalidated(tmp_path):
+    root = make_repo(tmp_path)
+    build_evidence(root, cache=True)
+    cached = json.loads(cache_path(root).read_text())
+    cached["cache_version"] = 2
+    cache_path(root).write_text(json.dumps(cached))
+
+    assert load_cache(root) is None
+    stats: dict = {}
+    build_evidence(root, cache=True, stats=stats)
+    assert stats == {"reused": 0, "extracted": 3}
+
+
 def test_corrupt_cache_is_a_miss_not_an_error(tmp_path):
     root = make_repo(tmp_path)
     build_evidence(root, cache=True)

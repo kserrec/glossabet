@@ -15,14 +15,20 @@ from itertools import combinations
 from glossarize.tokenize import tokenize_identifier
 
 PAIR_TOP_N = 150
-SYNONYM_MIN_SIMILARITY = 0.4
+# Phase 15's pinned corpus found only false sibling-field nominations below
+# 0.55 after the file/pattern gates. Keep the nomination floor aligned with
+# drift's lowest "moderate" signal instead of emitting weak 0.4 candidates.
+SYNONYM_MIN_SIMILARITY = 0.55
 SYNONYM_MAX_CO_RATE = 0.2
+SYNONYM_MAX_FILE_OVERLAP = 0.2
 SYNONYM_MIN_SHARED_CONTEXTS = 2
+SYNONYM_MIN_SHARED_PATTERNS = 2
 SYNONYM_REPORT_CAP = 20
 OVERLOAD_MIN_MODULES = 3
 OVERLOAD_MIN_DISPERSION = 0.8
 OVERLOAD_REPORT_CAP = 10
 SHARED_CONTEXT_SAMPLE = 5
+SHARED_PATTERN_SAMPLE = 5
 MODULE_CONTEXT_SAMPLE = 5
 REGISTER_AFFIX_CAP = 8
 LAYER_CAP = 10
@@ -103,7 +109,12 @@ def _cosine(ca: Counter, cb: Counter, exclude: set, weight) -> float:
     return dot / (na * nb)
 
 
+def _pattern_label(pattern: tuple[str, ...]) -> str:
+    return "_".join(pattern)
+
+
 def _synonym_candidates(top_tokens: list[str], token_counts: Counter,
+                        token_files: dict, token_patterns: dict,
                         neighbors: dict) -> dict:
     # Inverse-frequency weighting: a ubiquitous context token (a repo's
     # "term"/"prop") says little about which two terms are parallel, so it
@@ -123,6 +134,27 @@ def _synonym_candidates(top_tokens: list[str], token_counts: Counter,
         co_rate = na.get(b, 0) / max(1, min(token_counts[a], token_counts[b]))
         if co_rate > SYNONYM_MAX_CO_RATE:
             continue
+        files_a = set(token_files.get(a, ()))
+        files_b = set(token_files.get(b, ()))
+        file_overlap = len(files_a & files_b) / max(1, min(len(files_a), len(files_b)))
+        # Sibling fields and related concepts commonly share both a file and
+        # surrounding words. A rename usually spreads between old/new files;
+        # heavy colocation is therefore evidence against synonymy.
+        if file_overlap > SYNONYM_MAX_FILE_OVERLAP:
+            continue
+        shared_patterns = sorted(
+            token_patterns.get(a, Counter()).keys()
+            & token_patterns.get(b, Counter()).keys(),
+            key=lambda pattern: (
+                -min(token_patterns[a][pattern], token_patterns[b][pattern]),
+                pattern,
+            ),
+        )
+        # Context similarity alone confuses dimensions such as min/duration.
+        # Require two exact substitution shapes (`job_queue`/`task_queue`,
+        # `run_job`/`run_task`) before nominating a parallel vocabulary.
+        if len(shared_patterns) < SYNONYM_MIN_SHARED_PATTERNS:
+            continue
         shared = sorted(
             (k for k in na.keys() & nb.keys() if k not in (a, b)),
             key=lambda k: (-min(na[k], nb[k]), k),
@@ -137,7 +169,12 @@ def _synonym_candidates(top_tokens: list[str], token_counts: Counter,
             "a": a,
             "b": b,
             "similarity": round(similarity, 3),
+            "file_overlap_rate": round(file_overlap, 3),
             "shared_contexts": shared[:SHARED_CONTEXT_SAMPLE],
+            "shared_patterns": [
+                _pattern_label(pattern)
+                for pattern in shared_patterns[:SHARED_PATTERN_SAMPLE]
+            ],
         })
     items.sort(key=lambda i: (-i["similarity"], i["a"], i["b"]))
     return {
@@ -184,7 +221,8 @@ def _overload_candidates(top_tokens: list[str], token_modules: dict,
 
 
 def build_terminology(identifier_counts: Counter, token_counts: Counter,
-                      token_modules: dict, neighbors: dict,
+                      token_files: dict, token_modules: dict,
+                      token_patterns: dict, neighbors: dict,
                       module_neighbor_sets: dict,
                       doc_term_counts: Counter) -> dict:
     ranked = sorted(token_counts.items(), key=lambda kv: (-kv[1], kv[0]))
@@ -195,7 +233,7 @@ def build_terminology(identifier_counts: Counter, token_counts: Counter,
         "register": _register(identifier_counts),
         "layers": _layers(token_counts, doc_term_counts),
         "synonym_candidates": _synonym_candidates(
-            top_tokens, token_counts, neighbors
+            top_tokens, token_counts, token_files, token_patterns, neighbors
         ),
         "overload_candidates": _overload_candidates(
             top_tokens, token_modules, module_neighbor_sets

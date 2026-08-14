@@ -11,7 +11,9 @@ from glossarize.cli import main
 from glossarize.glossary import (
     GlossaryError,
     load_glossary,
+    path_in_scope,
     save_glossary,
+    scopes_overlap,
     validate_glossary,
 )
 
@@ -78,6 +80,155 @@ def test_save_refuses_invalid(tmp_path):
     bad["concepts"][0]["status"] = "nonsense"
     with pytest.raises(GlossaryError):
         save_glossary(tmp_path, bad)
+
+
+def test_alias_cannot_map_to_multiple_concepts():
+    glossary = json.loads(json.dumps(GLOSSARY))
+    glossary["concepts"][1]["aliases"] = [
+        {"term": "CHARGE", "status": "alias"},
+    ]
+
+    errors = validate_glossary(glossary)
+
+    assert any("maps to multiple concepts" in error for error in errors)
+
+
+def test_alias_cannot_claim_another_concepts_canonical_term():
+    glossary = json.loads(json.dumps(GLOSSARY))
+    glossary["concepts"][0]["aliases"].append(
+        {"term": "Billing", "status": "alias"}
+    )
+
+    errors = validate_glossary(glossary)
+
+    assert any("maps to multiple concepts" in error for error in errors)
+
+
+def test_same_vocabulary_can_have_different_owners_in_disjoint_scopes():
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": "auth-session",
+                "term": "Session",
+                "definition": "An authenticated interaction.",
+                "status": "canonical",
+                "scope": {"path_prefixes": ["src/auth"]},
+                "aliases": [{"term": "Context", "status": "alias"}],
+            },
+            {
+                "id": "db-session",
+                "term": "Session",
+                "definition": "A database unit of work.",
+                "status": "canonical",
+                "scope": {"path_prefixes": ["src/db"]},
+                "aliases": [{"term": "Context", "status": "alias"}],
+            },
+        ],
+    }
+
+    assert validate_glossary(glossary) == []
+
+
+def test_scope_prefixes_respect_path_component_boundaries():
+    assert path_in_scope("src/auth/session.py", ("src/auth",))
+    assert path_in_scope("src/auth", ("src/auth",))
+    assert not path_in_scope("src/authentication/session.py", ("src/auth",))
+    assert scopes_overlap(("src",), ("src/auth",))
+    assert not scopes_overlap(("src/auth",), ("src/db",))
+
+
+@pytest.mark.parametrize(
+    "left_scope,right_scope",
+    [
+        (None, {"path_prefixes": ["src/auth"]}),
+        ({"path_prefixes": ["src"]}, {"path_prefixes": ["src/auth"]}),
+        ({"path_prefixes": ["src/auth"]}, {"path_prefixes": ["src/auth"]}),
+    ],
+)
+def test_vocabulary_owners_must_be_unique_in_overlapping_scopes(
+    left_scope, right_scope
+):
+    concepts = []
+    for cid, scope in (("first", left_scope), ("second", right_scope)):
+        concept = {
+            "id": cid,
+            "term": "Session",
+            "definition": cid,
+            "status": "canonical",
+        }
+        if scope is not None:
+            concept["scope"] = scope
+        concepts.append(concept)
+
+    errors = validate_glossary({"schema_version": 1, "concepts": concepts})
+
+    assert any("overlapping scopes" in error for error in errors)
+
+
+def test_vocabulary_uniqueness_uses_unicode_normalization():
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": "composed",
+                "term": "Café",
+                "definition": "Composed spelling.",
+                "status": "canonical",
+            },
+            {
+                "id": "decomposed",
+                "term": "Cafe\u0301",
+                "definition": "Canonically equivalent spelling.",
+                "status": "canonical",
+            },
+        ],
+    }
+
+    assert any(
+        "duplicate term" in error for error in validate_glossary(glossary)
+    )
+
+
+@pytest.mark.parametrize(
+    "scope",
+    [
+        None,
+        "src/auth",
+        {},
+        {"path_prefixes": []},
+        {"path_prefixes": ["../auth"]},
+        {"path_prefixes": ["src/**"]},
+        {"path_prefixes": ["src/auth", "src/auth"]},
+        {"paths": ["src/auth"]},
+    ],
+)
+def test_scope_shape_rejects_ambiguous_or_nonliteral_paths(scope):
+    concept = {
+        "id": "session",
+        "term": "Session",
+        "definition": "An interaction.",
+        "status": "canonical",
+        "scope": scope,
+    }
+
+    assert validate_glossary({"schema_version": 1, "concepts": [concept]})
+
+
+def test_save_normalizes_scope_order_and_show_reports_it(tmp_path, capsys):
+    glossary = json.loads(json.dumps(GLOSSARY))
+    glossary["concepts"][0]["scope"] = {
+        "path_prefixes": ["src/payments", "packages/payments"]
+    }
+
+    path = save_glossary(tmp_path, glossary)
+    saved = json.loads(path.read_text())
+    payment = next(c for c in saved["concepts"] if c["id"] == "payment")
+    assert payment["scope"]["path_prefixes"] == [
+        "packages/payments", "src/payments"
+    ]
+    assert main(["show", str(tmp_path)]) == 0
+    assert "scope: packages/payments, src/payments" in capsys.readouterr().out
 
 
 def test_load_raises_on_corrupt_file(tmp_path):

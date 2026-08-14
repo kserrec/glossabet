@@ -82,6 +82,98 @@ def test_truncation_is_capped_marked_and_counted(tmp_path):
     assert len(beta["locations"]) == 1 and beta["locations_truncated"] is True
 
 
+def test_corpus_file_budget_is_deterministic_and_reported(tmp_path, monkeypatch):
+    monkeypatch.setattr("glossarize.scanner.MAX_SOURCE_FILES", 2)
+    for name in ("c.py", "a.py", "b.py"):
+        (tmp_path / name).write_text(f"{name[0]}_identifier = 1\n")
+
+    evidence = build_evidence(tmp_path)
+    budget = evidence["skipped"]["corpus_budget"]
+
+    assert [item["path"] for item in evidence["files"]["code"]] == [
+        "a.py", "b.py",
+    ]
+    assert evidence["totals"]["source_files"] == 2
+    assert budget["complete"] is False
+    assert budget["used"]["source_files"] == 2
+    assert budget["skipped"]["source_files"] == 1
+    assert budget["skipped"]["sample"] == [
+        {"path": "c.py", "reason": "source-file-limit"}
+    ]
+
+
+def test_corpus_byte_budget_reports_skips_and_can_use_later_space(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr("glossarize.scanner.MAX_SOURCE_BYTES", 35)
+    (tmp_path / "a.py").write_text("alpha_identifier = 1\n")
+    (tmp_path / "b.py").write_text("bravo_identifier = 2\n")
+    (tmp_path / "c.py").write_text("c = 3\n")
+
+    evidence = build_evidence(tmp_path)
+    budget = evidence["skipped"]["corpus_budget"]
+
+    assert [item["path"] for item in evidence["files"]["code"]] == [
+        "a.py", "c.py",
+    ]
+    assert budget["used"]["source_bytes"] <= 35
+    assert budget["skipped"]["sample"] == [
+        {"path": "b.py", "reason": "source-byte-limit"}
+    ]
+
+
+def test_walk_work_budget_marks_unknown_remainder(tmp_path, monkeypatch):
+    monkeypatch.setattr("glossarize.scanner.MAX_WALK_ENTRIES", 2)
+    for name in ("a.py", "b.py", "c.py"):
+        (tmp_path / name).write_text(f"{name[0]}_identifier = 1\n")
+
+    evidence = build_evidence(tmp_path)
+    budget = evidence["skipped"]["corpus_budget"]
+
+    assert budget["complete"] is False
+    assert budget["used"]["walk_entries"] == 2
+    assert budget["walk_remainder"] == {
+        "truncated": True,
+        "minimum_entries_omitted": 1,
+        "exact": False,
+        "sample": [{"path": ".", "reason": "walk-entry-limit"}],
+        "sample_truncated": False,
+    }
+    assert [item["path"] for item in evidence["files"]["code"]] == [
+        "a.py", "b.py",
+    ]
+
+
+def test_corpus_budget_skip_sample_is_itself_bounded(tmp_path, monkeypatch):
+    monkeypatch.setattr("glossarize.scanner.MAX_SOURCE_FILES", 1)
+    monkeypatch.setattr("glossarize.scanner.BUDGET_PATH_SAMPLE", 1)
+    for name in ("a.py", "b.py", "c.py"):
+        (tmp_path / name).write_text(f"{name[0]}_identifier = 1\n")
+
+    budget = build_evidence(tmp_path)["skipped"]["corpus_budget"]
+
+    assert budget["skipped"]["source_files"] == 2
+    assert len(budget["skipped"]["sample"]) == 1
+    assert budget["skipped"]["sample_truncated"] is True
+
+
+def test_overfull_directory_is_skipped_whole_to_preserve_determinism(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr("glossarize.scanner.MAX_DIRECTORY_ENTRIES", 2)
+    for name in ("a.py", "b.py", "c.py"):
+        (tmp_path / name).write_text(f"{name[0]}_identifier = 1\n")
+
+    evidence = build_evidence(tmp_path)
+    budget = evidence["skipped"]["corpus_budget"]
+
+    assert evidence["files"]["code"] == []
+    assert budget["walk_remainder"]["minimum_entries_omitted"] == 3
+    assert budget["walk_remainder"]["sample"] == [
+        {"path": ".", "reason": "directory-entry-limit"}
+    ]
+
+
 def test_monorepo_detected_by_sub_roots(tmp_path):
     for name in ("a", "b", "c"):
         d = tmp_path / "packages" / name
@@ -152,6 +244,40 @@ def test_code_bytes_counts_bytes_not_characters(tmp_path):
     path.write_text("# café résumé naïveté\nx = 1\n")
     evidence = build_evidence(tmp_path)
     assert evidence["totals"]["code_bytes"] == path.stat().st_size
+    assert evidence["totals"]["source_bytes"] == path.stat().st_size
+
+
+def test_unicode_and_language_forms_round_trip_through_evidence(tmp_path):
+    (tmp_path / "unicode.py").write_text(
+        "ÜberHTTP2Server = 1\n支付Service = 2\nданные_очереди = 3\n"
+    )
+    (tmp_path / "queue.clj").write_text("(def pending-work 1)\n")
+
+    evidence = build_evidence(tmp_path)
+    tokens = {
+        entry["term"] for entry in evidence["vocabulary"]["tokens"]["items"]
+    }
+    identifiers = {
+        entry["name"]: entry["tokens"]
+        for entry in evidence["vocabulary"]["identifiers"]["items"]
+    }
+
+    assert {"über", "http2", "支付", "данные", "очереди"} <= tokens
+    assert identifiers["ÜberHTTP2Server"] == ["über", "http2", "server"]
+    assert identifiers["pending-work"] == ["pending", "work"]
+    assert evidence["vocabulary"]["normalization"]["parser_backed"] is False
+
+
+def test_scan_reports_partial_corpus_budget(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("glossarize.scanner.MAX_SOURCE_FILES", 1)
+    (tmp_path / "a.py").write_text("alpha_identifier = 1\n")
+    (tmp_path / "b.py").write_text("bravo_identifier = 2\n")
+
+    assert main(["scan", str(tmp_path)]) == 0
+
+    captured = capsys.readouterr()
+    assert "corpus budget" in captured.err
+    assert "evidence is partial" in captured.err
 
 
 def test_symlink_escaping_repo_is_not_ingested(tmp_path):

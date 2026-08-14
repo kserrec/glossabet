@@ -1,0 +1,647 @@
+{
+  "aggregate": {
+    "cache": {
+      "all_warm_outputs_match_cold": true,
+      "minimum_reuse_rate": 1.0
+    },
+    "cases": 5,
+    "limits_per_repository": {
+      "directory_entries": 10000,
+      "source_bytes": 32000000,
+      "source_files": 10000,
+      "walk_entries": 100000
+    },
+    "production_code_files": 45,
+    "quality": {
+      "drift_precision": 1.0,
+      "drift_recall_where_complete": 1.0,
+      "false_alarms": 0,
+      "false_alarms_per_1000_production_code_files": 0.0,
+      "lexical_contract_rate": 1.0,
+      "overall_precision": 1.0,
+      "reviewer_usefulness": 1.0,
+      "terminology_precision": 1.0,
+      "terminology_recall_where_complete": 1.0
+    },
+    "runtime": {
+      "cold_median_seconds_total": 0.48015,
+      "cold_seconds_per_1000_source_files": 5.335,
+      "warm_median_seconds_total": 0.513671,
+      "warm_seconds_per_1000_source_files": 5.707
+    },
+    "source_bytes": 659883,
+    "source_files": 90,
+    "truncation": {
+      "cases_with_any_truncation": 1,
+      "corpus_budget_truncations": 0
+    },
+    "walk_entries": 190
+  },
+  "cases": [
+    {
+      "bytes": {
+        "code": 367,
+        "source_budgeted": 904
+      },
+      "cache": {
+        "reuse_rate": 1.0,
+        "warm_output_matches_cold": true
+      },
+      "corpus_budget": {
+        "complete": true,
+        "limits": {
+          "directory_entries": 10000,
+          "source_bytes": 32000000,
+          "source_files": 10000,
+          "walk_entries": 100000
+        },
+        "skipped": {
+          "sample": [],
+          "sample_truncated": false,
+          "source_bytes": 0,
+          "source_files": 0
+        },
+        "used": {
+          "source_bytes": 904,
+          "source_files": 7,
+          "walk_entries": 10
+        },
+        "walk_remainder": {
+          "exact": true,
+          "minimum_entries_omitted": 0,
+          "sample": [],
+          "sample_truncated": false,
+          "truncated": false
+        }
+      },
+      "drift": {
+        "actual": [
+          "canonical-fading:workspace",
+          "canonical-overloaded:session",
+          "parallel-term:run:execution",
+          "watched-term-in-use:gateway:charge"
+        ],
+        "false_negative": [],
+        "false_positive": [],
+        "true_positive": [
+          "canonical-fading:workspace",
+          "canonical-overloaded:session",
+          "parallel-term:run:execution",
+          "watched-term-in-use:gateway:charge"
+        ],
+        "useful": [
+          "canonical-fading:workspace",
+          "canonical-overloaded:session",
+          "parallel-term:run:execution",
+          "watched-term-in-use:gateway:charge"
+        ]
+      },
+      "files": {
+        "production_code": 6,
+        "production_docs": 1,
+        "source": 7
+      },
+      "id": "calibration-fixture",
+      "lexical": {
+        "checks": 0,
+        "configured": false,
+        "forbidden_tokens_present": [],
+        "identifier_mismatches": [],
+        "missing_tokens": [],
+        "passed": null,
+        "passed_checks": 0
+      },
+      "runtime_seconds": {
+        "cold_median": 0.01131,
+        "cold_samples": [
+          0.011116,
+          0.01067,
+          0.011785,
+          0.012072,
+          0.01131
+        ],
+        "warm_median": 0.034748,
+        "warm_samples": [
+          0.030841,
+          0.041956,
+          0.034748,
+          0.034704,
+          0.047464
+        ]
+      },
+      "source": {
+        "kind": "local",
+        "license_spdx": "Apache-2.0",
+        "license_url": "../LICENSE",
+        "primary_language": "Python",
+        "provenance": "Original Glossarize fixture; no third-party source."
+      },
+      "terminology": {
+        "actual": [
+          "overload:session",
+          "synonym:execution:run"
+        ],
+        "false_negative": [],
+        "false_positive": [],
+        "true_positive": [
+          "overload:session",
+          "synonym:execution:run"
+        ],
+        "useful": [
+          "overload:session",
+          "synonym:execution:run"
+        ]
+      },
+      "truncations": []
+    },
+    {
+      "bytes": {
+        "code": 443,
+        "source_budgeted": 742
+      },
+      "cache": {
+        "reuse_rate": 1.0,
+        "warm_output_matches_cold": true
+      },
+      "corpus_budget": {
+        "complete": true,
+        "limits": {
+          "directory_entries": 10000,
+          "source_bytes": 32000000,
+          "source_files": 10000,
+          "walk_entries": 100000
+        },
+        "skipped": {
+          "sample": [],
+          "sample_truncated": false,
+          "source_bytes": 0,
+          "source_files": 0
+        },
+        "used": {
+          "source_bytes": 742,
+          "source_files": 6,
+          "walk_entries": 11
+        },
+        "walk_remainder": {
+          "exact": true,
+          "minimum_entries_omitted": 0,
+          "sample": [],
+          "sample_truncated": false,
+          "truncated": false
+        }
+      },
+      "drift": {
+        "actual": [],
+        "false_negative": [],
+        "false_positive": [],
+        "true_positive": [],
+        "useful": []
+      },
+      "files": {
+        "production_code": 5,
+        "production_docs": 1,
+        "source": 6
+      },
+      "id": "language-semantics-fixture",
+      "lexical": {
+        "checks": 15,
+        "configured": true,
+        "forbidden_tokens_present": [],
+        "identifier_mismatches": [],
+        "missing_tokens": [],
+        "passed": true,
+        "passed_checks": 15
+      },
+      "runtime_seconds": {
+        "cold_median": 0.03078,
+        "cold_samples": [
+          0.03133,
+          0.031298,
+          0.030177,
+          0.029677,
+          0.03078
+        ],
+        "warm_median": 0.036457,
+        "warm_samples": [
+          0.035755,
+          0.048483,
+          0.041707,
+          0.035436,
+          0.036457
+        ]
+      },
+      "source": {
+        "kind": "local",
+        "license_spdx": "Apache-2.0",
+        "license_url": "../LICENSE",
+        "primary_language": "Python and Clojure multilingual fixture",
+        "provenance": "Original Glossarize fixture; no third-party source."
+      },
+      "terminology": {
+        "actual": [],
+        "false_negative": [],
+        "false_positive": [],
+        "true_positive": [],
+        "useful": []
+      },
+      "truncations": []
+    },
+    {
+      "bytes": {
+        "code": 407127,
+        "source_budgeted": 579147
+      },
+      "cache": {
+        "reuse_rate": 1.0,
+        "warm_output_matches_cold": true
+      },
+      "corpus_budget": {
+        "complete": true,
+        "limits": {
+          "directory_entries": 10000,
+          "source_bytes": 32000000,
+          "source_files": 10000,
+          "walk_entries": 100000
+        },
+        "skipped": {
+          "sample": [],
+          "sample_truncated": false,
+          "source_bytes": 0,
+          "source_files": 0
+        },
+        "used": {
+          "source_bytes": 579147,
+          "source_files": 60,
+          "walk_entries": 133
+        },
+        "walk_remainder": {
+          "exact": true,
+          "minimum_entries_omitted": 0,
+          "sample": [],
+          "sample_truncated": false,
+          "truncated": false
+        }
+      },
+      "drift": {
+        "actual": [
+          "canonical-fading:prefetch",
+          "watched-term-in-use:connection-api:get connection",
+          "watched-term-in-use:encoding-discovery:get encodings from content",
+          "watched-term-in-use:unicode-decoding:get unicode from response"
+        ],
+        "false_negative": [],
+        "false_positive": [],
+        "true_positive": [
+          "canonical-fading:prefetch",
+          "watched-term-in-use:connection-api:get connection",
+          "watched-term-in-use:encoding-discovery:get encodings from content",
+          "watched-term-in-use:unicode-decoding:get unicode from response"
+        ],
+        "useful": [
+          "canonical-fading:prefetch",
+          "watched-term-in-use:connection-api:get connection",
+          "watched-term-in-use:encoding-discovery:get encodings from content",
+          "watched-term-in-use:unicode-decoding:get unicode from response"
+        ]
+      },
+      "files": {
+        "production_code": 22,
+        "production_docs": 20,
+        "source": 60
+      },
+      "id": "requests",
+      "lexical": {
+        "checks": 0,
+        "configured": false,
+        "forbidden_tokens_present": [],
+        "identifier_mismatches": [],
+        "missing_tokens": [],
+        "passed": null,
+        "passed_checks": 0
+      },
+      "runtime_seconds": {
+        "cold_median": 0.303439,
+        "cold_samples": [
+          0.37001,
+          0.303439,
+          0.309592,
+          0.286055,
+          0.298916
+        ],
+        "warm_median": 0.275711,
+        "warm_samples": [
+          0.233574,
+          0.275711,
+          0.294365,
+          0.23966,
+          0.287525
+        ]
+      },
+      "source": {
+        "commit": "8068356288978c4f54661ae6f95afe0e0831885e",
+        "kind": "external-git",
+        "license_spdx": "Apache-2.0",
+        "license_url": "https://github.com/psf/requests/blob/8068356288978c4f54661ae6f95afe0e0831885e/LICENSE",
+        "primary_language": "Python",
+        "provenance": "Pinned public repository; source is fetched for evaluation and is not vendored here.",
+        "url": "https://github.com/psf/requests.git"
+      },
+      "terminology": {
+        "actual": [],
+        "false_negative": [],
+        "false_positive": [],
+        "true_positive": [],
+        "useful": []
+      },
+      "truncations": [
+        {
+          "dropped_occurrences": 1072,
+          "dropped_terms": 1072,
+          "surface": "vocabulary.identifiers"
+        },
+        {
+          "dropped_occurrences": 981,
+          "dropped_terms": 981,
+          "surface": "vocabulary.doc_terms"
+        },
+        {
+          "dropped_items": 15,
+          "surface": "imports.external_truncated"
+        }
+      ]
+    },
+    {
+      "bytes": {
+        "code": 34528,
+        "source_budgeted": 37744
+      },
+      "cache": {
+        "reuse_rate": 1.0,
+        "warm_output_matches_cold": true
+      },
+      "corpus_budget": {
+        "complete": true,
+        "limits": {
+          "directory_entries": 10000,
+          "source_bytes": 32000000,
+          "source_files": 10000,
+          "walk_entries": 100000
+        },
+        "skipped": {
+          "sample": [],
+          "sample_truncated": false,
+          "source_bytes": 0,
+          "source_files": 0
+        },
+        "used": {
+          "source_bytes": 37744,
+          "source_files": 9,
+          "walk_entries": 19
+        },
+        "walk_remainder": {
+          "exact": true,
+          "minimum_entries_omitted": 0,
+          "sample": [],
+          "sample_truncated": false,
+          "truncated": false
+        }
+      },
+      "drift": {
+        "actual": [],
+        "false_negative": [],
+        "false_positive": [],
+        "true_positive": [],
+        "useful": []
+      },
+      "files": {
+        "production_code": 6,
+        "production_docs": 1,
+        "source": 9
+      },
+      "id": "hey",
+      "lexical": {
+        "checks": 0,
+        "configured": false,
+        "forbidden_tokens_present": [],
+        "identifier_mismatches": [],
+        "missing_tokens": [],
+        "passed": null,
+        "passed_checks": 0
+      },
+      "runtime_seconds": {
+        "cold_median": 0.067887,
+        "cold_samples": [
+          0.073904,
+          0.079818,
+          0.067281,
+          0.067887,
+          0.064245
+        ],
+        "warm_median": 0.096896,
+        "warm_samples": [
+          0.065225,
+          0.106116,
+          0.113252,
+          0.066289,
+          0.096896
+        ]
+      },
+      "source": {
+        "commit": "5626f79b8698df6daf9b25799c9805c6acc96740",
+        "kind": "external-git",
+        "license_spdx": "Apache-2.0",
+        "license_url": "https://github.com/rakyll/hey/blob/5626f79b8698df6daf9b25799c9805c6acc96740/LICENSE",
+        "primary_language": "Go",
+        "provenance": "Pinned public repository; source is fetched for evaluation and is not vendored here.",
+        "url": "https://github.com/rakyll/hey.git"
+      },
+      "terminology": {
+        "actual": [],
+        "false_negative": [],
+        "false_positive": [],
+        "true_positive": [],
+        "useful": []
+      },
+      "truncations": []
+    },
+    {
+      "bytes": {
+        "code": 31682,
+        "source_budgeted": 41346
+      },
+      "cache": {
+        "reuse_rate": 1.0,
+        "warm_output_matches_cold": true
+      },
+      "corpus_budget": {
+        "complete": true,
+        "limits": {
+          "directory_entries": 10000,
+          "source_bytes": 32000000,
+          "source_files": 10000,
+          "walk_entries": 100000
+        },
+        "skipped": {
+          "sample": [],
+          "sample_truncated": false,
+          "source_bytes": 0,
+          "source_files": 0
+        },
+        "used": {
+          "source_bytes": 41346,
+          "source_files": 8,
+          "walk_entries": 17
+        },
+        "walk_remainder": {
+          "exact": true,
+          "minimum_entries_omitted": 0,
+          "sample": [],
+          "sample_truncated": false,
+          "truncated": false
+        }
+      },
+      "drift": {
+        "actual": [
+          "canonical-fading:pause-queue"
+        ],
+        "false_negative": [],
+        "false_positive": [],
+        "true_positive": [
+          "canonical-fading:pause-queue"
+        ],
+        "useful": [
+          "canonical-fading:pause-queue"
+        ]
+      },
+      "files": {
+        "production_code": 6,
+        "production_docs": 2,
+        "source": 8
+      },
+      "id": "p-limit",
+      "lexical": {
+        "checks": 0,
+        "configured": false,
+        "forbidden_tokens_present": [],
+        "identifier_mismatches": [],
+        "missing_tokens": [],
+        "passed": null,
+        "passed_checks": 0
+      },
+      "runtime_seconds": {
+        "cold_median": 0.066734,
+        "cold_samples": [
+          0.106155,
+          0.066734,
+          0.066064,
+          0.064358,
+          0.068774
+        ],
+        "warm_median": 0.069859,
+        "warm_samples": [
+          0.069859,
+          0.074974,
+          0.064746,
+          0.066777,
+          0.075347
+        ]
+      },
+      "source": {
+        "commit": "df476048d023ff868cd45b35ee47f5fb0ca2b25a",
+        "kind": "external-git",
+        "license_spdx": "MIT",
+        "license_url": "https://github.com/sindresorhus/p-limit/blob/df476048d023ff868cd45b35ee47f5fb0ca2b25a/license",
+        "primary_language": "JavaScript/TypeScript declarations",
+        "provenance": "Pinned public repository; source is fetched for evaluation and is not vendored here.",
+        "url": "https://github.com/sindresorhus/p-limit.git"
+      },
+      "terminology": {
+        "actual": [],
+        "false_negative": [],
+        "false_positive": [],
+        "true_positive": [],
+        "useful": []
+      },
+      "truncations": []
+    }
+  ],
+  "engine_version": "0.0.1",
+  "environment": {
+    "cpu_count": 8,
+    "platform": "Linux-6.17.0-35-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "manifest_sha256": "04a9c1285401be98c1ba1c37b4c58fb8ce16d63eb7e41267a0cc4c4e52e3c681",
+  "method": {
+    "external_source_vendored": false,
+    "graphify": false,
+    "runtime_runs_per_case": 5
+  },
+  "release_thresholds": {
+    "checks": [
+      {
+        "actual": 1.0,
+        "name": "terminology_precision_min",
+        "passed": true,
+        "target": 0.8
+      },
+      {
+        "actual": 1.0,
+        "name": "drift_precision_min",
+        "passed": true,
+        "target": 0.9
+      },
+      {
+        "actual": 1.0,
+        "name": "drift_recall_min",
+        "passed": true,
+        "target": 0.9
+      },
+      {
+        "actual": 1.0,
+        "name": "reviewer_usefulness_min",
+        "passed": true,
+        "target": 0.8
+      },
+      {
+        "actual": 0.0,
+        "name": "false_alarms_per_1000_max",
+        "passed": true,
+        "target": 50.0
+      },
+      {
+        "actual": 5.335,
+        "name": "cold_seconds_per_1000_source_files_max",
+        "passed": true,
+        "target": 10.0
+      },
+      {
+        "actual": 0,
+        "name": "corpus_budget_truncations_max",
+        "passed": true,
+        "target": 0
+      },
+      {
+        "actual": 1.0,
+        "name": "minimum_cache_reuse_min",
+        "passed": true,
+        "target": 1.0
+      },
+      {
+        "actual": 1.0,
+        "name": "lexical_contract_min",
+        "passed": true,
+        "target": 1.0
+      },
+      {
+        "actual": true,
+        "name": "warm_outputs_match_cold",
+        "passed": true,
+        "target": true
+      }
+    ],
+    "configured": true,
+    "passed": true
+  },
+  "schema_version": 2
+}

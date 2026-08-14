@@ -43,16 +43,34 @@ evidence for this skill. Before Step 1, check whether
 `glossarize-out/evidence.json` exists at the repo root.
 
 **Freshness check (never skip):** compare the file's `repository.git.head`
-and `repository.git.dirty` against the live repo (`git rev-parse HEAD`,
-`git status --porcelain`). Fresh means: heads match AND neither the stamp nor
-the live tree is dirty. Anything else — mismatch, dirty, missing stamp — is
-stale or uncertain.
+and `repository.git.dirty` against the live repository. From the repository
+root, use the same commands and output ownership boundary as the engine:
+
+```bash
+git -c core.fsmonitor= -c core.hooksPath=/dev/null rev-parse HEAD
+git -c core.fsmonitor= -c core.hooksPath=/dev/null status --porcelain=v1 --untracked-files=all --no-renames -- . ':(exclude)glossarize-out' ':(exclude)glossarize-out/**'
+```
+
+Fresh means: the first command succeeds and its commit matches
+`repository.git.head`, the second command prints nothing, and
+`repository.git.dirty` is `false`. Anything else — mismatch, dirty state,
+failed Git command, or missing stamp — is stale or uncertain.
+
+Only the top-level `glossarize-out/` directory is excluded because that path
+is reserved for Glossarize-owned output. The command must run from the same
+repository or subproject root that was scanned; do not add Git's `top` pathspec
+modifier, which would point at an enclosing worktree instead. Do not also
+exclude `GLOSSARY.md`, `graphify-out/`, legacy `.glossarize/`, or any other
+path inside the scanned root. Git-ignored paths retain Git's normal status
+semantics. Never edit the target repository's `.gitignore` to make this check
+pass.
 
 - **Fresh** → ground yourself in it and tell the user you're using engine
   evidence.
 - **Stale or absent, CLI installed** → say so and refresh it yourself
-  (`glossarize scan .` — cheap and deterministic), then proceed on the new
-  evidence.
+  (`glossarize scan .` — cheap and deterministic), then repeat the freshness
+  check. Proceed from the artifact only if it is now fresh; otherwise state
+  that freshness remains uncertain and use direct repository reading.
 - **Stale or absent, no CLI** → say evidence is unavailable and fall back to
   direct repository reading. Every later step works unchanged without
   evidence.
@@ -60,15 +78,38 @@ stale or uncertain.
 **Never silently ground yourself on stale evidence.** Always state which mode
 you are in: fresh evidence, refreshed, or direct reading.
 
-**How the evidence feeds the later steps:** `totals`, `languages`, `modules`,
-and `files` seed Step 1's map of the repo; `vocabulary.identifiers` (real
-identifier spellings with counts) is raw material for Step 2's house-register
-inference; `vocabulary.tokens` (normalized, with counts and representative
-locations) plus `modules` ranks material for Step 3's nominations;
-`vocabulary.doc_terms` shows what the documentation talks about. Evidence
-*guides* — it never replaces judgment. Still read the key files before
-proposing: never nominate a part from counts alone (real parts only), and
-treat any list carrying a truncation marker as partial, not complete.
+**Coverage check (never skip):** inspect
+`skipped.corpus_budget.complete`. If it is `false`, say that the engine evidence
+is partial before using it. Report the exact source-file/byte skips from
+`skipped.corpus_budget.skipped`; when `walk_remainder.exact` is `false`, say
+plainly that additional unseen paths cannot be counted. Use the included
+evidence for positive observations, but do not make repository-wide absence or
+exhaustiveness claims. Read a targeted omitted path directly only when needed;
+never bulk-read around the engine's safety ceiling. If the field is missing
+from an older artifact, treat coverage as unknown and refresh with the current
+CLI before proceeding.
+
+**How the evidence feeds the later steps:** `configuration`, per-role `totals`,
+`languages`, `modules`, role-labelled `files`, and `skipped.corpus_budget` seed
+Step 1's map of the repo and its coverage. `terminology.scope` states the
+production-only lexical boundary.
+`vocabulary.normalization` states the Unicode/acronym/digit lexical contract;
+`vocabulary.identifiers` (real production identifier spellings, normalized
+tokens, counts, and bounded locations) is raw material for Step 2's
+house-register inference; `vocabulary.tokens` plus `modules` ranks material
+for Step 3's nominations; `vocabulary.doc_terms` shows what production-scoped
+documentation talks about. Test and fixture files stay visible for orientation
+but do not drive these vocabulary signals; generated and vendored paths are
+listed under `skipped` and were not read lexically. A repository can override
+path roles or add literal ignored prefixes in root `glossarize.json`.
+
+Evidence *guides* — it never replaces judgment. Still read the key production
+files before proposing: never nominate a part from counts alone (real parts
+only), and treat any list carrying a truncation marker as partial, not
+complete. Do not infer a compound glossary term from independent word hits:
+the engine's lexical rule requires its tokens contiguously in one identifier;
+a structural group is the separately defined local context for Graphify
+matching.
 
 **Graphify structural state:** `structural_groups.present` says whether the
 adapter found a graph file; `structural_groups.available` says whether it
@@ -101,7 +142,9 @@ glossary, not opening a fresh brainstorm:
 - **`proposed` concepts are the open items.** Pick the brainstorm up there.
 - **`deprecated`/`discouraged`/`alias` entries are constraints** on new
   proposals: never propose a term the glossary already discourages, and note
-  when a candidate collides with an existing alias.
+  when a candidate collides with an existing alias in the same or an
+  overlapping path scope. Reuse in disjoint scopes may be deliberate; name
+  both meanings and their boundaries rather than treating either as global.
 - Nominate **new** candidates only for parts no existing concept covers.
 - If the file fails to load, say so and treat the glossary as absent —
   never guess at half-read vocabulary. (`glossarize show` displays it.)
@@ -114,6 +157,11 @@ Build a mental map of what this codebase is and what its parts are:
   design notes. These name the problem domain and the intended structure.
 - Map the directory tree and the module boundaries. Note the entry points, the
   services/daemons, the shared contracts, the data layer, the public surfaces.
+- Read `configuration`, `files[*].role`, `terminology.scope`, and `skipped`
+  before interpreting counts. Treat configured `production` paths as product
+  evidence; use test/fixture paths to understand support structure, not to
+  infer the house vocabulary. Do not inspect generated or vendored paths that
+  the engine deliberately excluded merely to increase evidence volume.
 - Skim the principal types/interfaces, the protocol/message/event shapes, the
   core domain entities, and the boundaries between trust or ownership zones.
 - Adapt to the repo's nature. A visual app has surfaces, panes, and components
@@ -126,7 +174,9 @@ that isn't there, and never rename something without having looked at it.
 ## Step 2 — Infer the house register
 
 Before proposing anything, learn how this project already names things. Look
-at existing good names and match their style:
+at existing good production names and match their style. Tests and fixtures
+may intentionally use repetitive scaffolding names and do not define the
+house register unless the user explicitly wants to name that subsystem:
 
 - word count (one-word? two-word compounds?), tone (plain vs. playful),
   lineage (terminal/unix, nautical, domain jargon, product-y), casing.
@@ -155,9 +205,16 @@ things that come up constantly in conversation. Skip trivial internals nobody
 discusses — don't name every function. Also flag things that are already
 well-named and should simply be kept (canonical, leave alone).
 
+Do not nominate generated code, vendored dependencies, fixture data, or
+ordinary test scaffolding. A genuinely nameable testing subsystem is in scope
+only when the user asks for it or the production architecture treats it as a
+first-class project component.
+
 Watch for *meaningful distinctions that deserve to be split into two names* —
 where one word is currently doing two jobs, or two related things share a name
 and blur an important line. Surfacing those is often the most valuable output.
+When the same word is genuinely correct in separate subsystems, propose an
+explicit path scope instead of forcing an artificial repository-wide rename.
 
 ## Step 4 — Propose three ranked names per thing
 
@@ -232,6 +289,7 @@ Alongside GLOSSARY.md, write the machine-readable
       "term": "Payment",
       "definition": "An attempt to collect money for an order.",
       "status": "canonical",
+      "scope": {"path_prefixes": ["src/billing", "packages/payments"]},
       "aliases": [
         {"term": "charge", "status": "discouraged",
          "note": "the gateway operation only"}
@@ -246,11 +304,22 @@ Alongside GLOSSARY.md, write the machine-readable
 }
 ```
 
+`scope` is optional. Omit it for a repository-wide concept. When present,
+`scope.path_prefixes` is a non-empty list of literal `/`-separated paths
+relative to the repository root; globs, absolute paths, `..`, and backslashes
+are invalid.
+A prefix includes that exact file/module and descendants. Aliases inherit the
+concept's scope. The same normalized term or alias may have different owners
+only when every owner has a disjoint path scope; repository-wide and ancestor
+scopes overlap their descendants. Use a scope only after the user confirms
+that the subsystem boundary is real.
+
 `bindings` are optional and connect a concept to its implementation for
 `glossarize validate`. Write them only when the user confirms the mapping,
 and only against stable identities — `symbol:`, `file:`, `module:` — never
 graph community or node ids, which change across rebuilds. A binding that
-later stops resolving is reported as drift, not an error.
+later stops resolving is reported as drift, not an error; a scoped concept's
+binding must also resolve inside that scope.
 
 Statuses: `canonical` (human-settled — **only** terms the user explicitly
 locked), `proposed` (still open at session end), `alias`, `discouraged`,

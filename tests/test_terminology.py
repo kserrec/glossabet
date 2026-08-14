@@ -37,6 +37,8 @@ def test_synonym_nomination_finds_parallel_vocabulary(tmp_path):
     pairs = {(i["a"], i["b"]): i for i in syn["items"]}
     assert ("job", "task") in pairs
     assert "queue" in pairs[("job", "task")]["shared_contexts"]
+    assert "*_queue" in pairs[("job", "task")]["shared_patterns"]
+    assert pairs[("job", "task")]["file_overlap_rate"] == 0.0
     assert syn["considered_pairs"] > 0
 
 
@@ -60,6 +62,19 @@ def test_single_shared_context_is_not_enough(tmp_path):
     assert ("plus", "minus") not in {(i["a"], i["b"]) for i in syn["items"]}
 
 
+def test_colocated_sibling_dimensions_are_not_synonym_candidates(tmp_path):
+    (tmp_path / "report.py").write_text(
+        "request_duration = 1\nresponse_duration = 2\n"
+        "request_total = 3\nresponse_total = 4\n"
+    )
+
+    syn = build_evidence(tmp_path)["terminology"]["synonym_candidates"]
+
+    assert ("request", "response") not in {
+        (item["a"], item["b"]) for item in syn["items"]
+    }
+
+
 def test_overload_nomination_finds_disjoint_contexts(tmp_path):
     for module, contexts in (
         ("auth", ["login", "cookie"]),
@@ -75,6 +90,42 @@ def test_overload_nomination_finds_disjoint_contexts(tmp_path):
     assert "session" in terms
     assert len(terms["session"]["modules"]) == 3
     assert terms["session"]["dispersion"] >= 0.8
+
+
+def test_test_vocabulary_does_not_drive_synonym_or_overload_signals(tmp_path):
+    (tmp_path / "app.py").write_text("production_boundary = 1\n")
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "jobs.py").write_text(
+        "job_queue = 1\njob_runner = 2\nrun_job = 3\n"
+    )
+    (tests / "tasks.py").write_text(
+        "task_queue = 1\ntask_runner = 2\nrun_task = 3\n"
+    )
+    for module, contexts in (
+        ("auth", ["login", "cookie"]),
+        ("db", ["transaction", "commit"]),
+        ("ml", ["inference", "model"]),
+    ):
+        directory = tests / module
+        directory.mkdir()
+        (directory / "session.py").write_text(
+            "\n".join(f"session_{context} = 1" for context in contexts) + "\n"
+        )
+
+    evidence = build_evidence(tmp_path)
+    terminology = evidence["terminology"]
+
+    pairs = {(item["a"], item["b"])
+             for item in terminology["synonym_candidates"]["items"]}
+    overloaded = {item["term"]
+                  for item in terminology["overload_candidates"]["items"]}
+    assert ("job", "task") not in pairs
+    assert "session" not in overloaded
+    assert terminology["scope"]["code_files"] == 1
+    assert not {"job", "task", "session"} & {
+        item["term"] for item in evidence["naming_candidates"]["terms"]
+    }
 
 
 def test_layer_comparison(tmp_path):

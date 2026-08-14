@@ -1,8 +1,9 @@
-"""Repository walk: classification, exclusions, and monorepo detection.
+"""Repository walk: path roles, exclusions, and monorepo detection.
 
-Three exclusion rules are load-bearing (PLAN.md principles 3 and 4):
-sensitive files never enter evidence, Glossarize's own outputs never enter
-evidence (contamination), and noise directories are pruned during the walk.
+Sensitive and self-output exclusions are non-overridable trust boundaries.
+Repository configuration can add ignores or override conservative path roles;
+tests and fixtures stay inventoried, while generated and vendored content is
+pruned before a lexical read and reported.
 """
 
 from __future__ import annotations
@@ -12,6 +13,8 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from glossarize.config import EXCLUDED_CONTENT_ROLES, RepositoryConfig
 
 CODE_LANGUAGES = {
     ".py": "python", ".pyi": "python",
@@ -29,11 +32,6 @@ CODE_LANGUAGES = {
 }
 
 DOC_EXTENSIONS = {".md", ".rst", ".txt", ".adoc"}
-
-NOISE_DIRS = frozenset({
-    "node_modules", "__pycache__", "_build", "build", "dist", "target",
-    "vendor", "venv", "env", "coverage", "_opam", "deps", "out",
-})
 
 # Filename patterns that must never enter evidence.
 _SENSITIVE_RES = [
@@ -56,6 +54,14 @@ SELF_DIRS = frozenset({"glossarize-out", ".glossarize", "graphify-out"})
 SELF_FILES = frozenset({"GLOSSARY.md"})
 
 MAX_FILE_BYTES = 2_000_000
+# Phase 15 calibration: 84 source files / 659,141 bytes took a 0.32-second
+# median cold scan on the reference host. These immutable safety ceilings
+# retain roughly 119x file and 49x byte headroom while bounding lexical work.
+MAX_SOURCE_FILES = 10_000
+MAX_SOURCE_BYTES = 32_000_000
+MAX_WALK_ENTRIES = 100_000
+MAX_DIRECTORY_ENTRIES = 10_000
+BUDGET_PATH_SAMPLE = 20
 
 PACKAGE_MANIFESTS = frozenset({
     "package.json", "pyproject.toml", "setup.py", "Cargo.toml", "go.mod",
@@ -84,55 +90,219 @@ def _escapes(full: str, root: Path) -> bool:
 
 
 @dataclass
+class CorpusBudget:
+    walk_entries: int = 0
+    source_files: int = 0
+    source_bytes: int = 0
+    skipped_source_files: int = 0
+    skipped_source_bytes: int = 0
+    skipped_sample: list[dict] = field(default_factory=list)
+    walk_truncated: bool = False
+    walk_truncations: int = 0
+    minimum_entries_omitted: int = 0
+    walk_sample: list[dict] = field(default_factory=list)
+
+    def include_source(self, size: int) -> None:
+        self.source_files += 1
+        self.source_bytes += size
+
+    def skip_source(self, relative: str, size: int, reason: str) -> None:
+        self.skipped_source_files += 1
+        self.skipped_source_bytes += size
+        if len(self.skipped_sample) < BUDGET_PATH_SAMPLE:
+            self.skipped_sample.append({"path": relative, "reason": reason})
+
+    def truncate_walk(
+        self, relative: str, minimum_omitted: int, reason: str
+    ) -> None:
+        self.walk_truncated = True
+        self.walk_truncations += 1
+        self.minimum_entries_omitted += minimum_omitted
+        if len(self.walk_sample) < BUDGET_PATH_SAMPLE:
+            self.walk_sample.append({"path": relative, "reason": reason})
+
+    def as_evidence(self) -> dict:
+        complete = not self.walk_truncated and not self.skipped_source_files
+        return {
+            "complete": complete,
+            "limits": {
+                "walk_entries": MAX_WALK_ENTRIES,
+                "directory_entries": MAX_DIRECTORY_ENTRIES,
+                "source_files": MAX_SOURCE_FILES,
+                "source_bytes": MAX_SOURCE_BYTES,
+            },
+            "used": {
+                "walk_entries": self.walk_entries,
+                "source_files": self.source_files,
+                "source_bytes": self.source_bytes,
+            },
+            "skipped": {
+                "source_files": self.skipped_source_files,
+                "source_bytes": self.skipped_source_bytes,
+                "sample": list(self.skipped_sample),
+                "sample_truncated": (
+                    self.skipped_source_files > len(self.skipped_sample)
+                ),
+            },
+            "walk_remainder": {
+                "truncated": self.walk_truncated,
+                "minimum_entries_omitted": self.minimum_entries_omitted,
+                "exact": not self.walk_truncated,
+                "sample": list(self.walk_sample),
+                "sample_truncated": self.walk_truncations > len(self.walk_sample),
+            },
+        }
+
+
+@dataclass
 class WalkResult:
-    code_files: list[tuple[str, str]] = field(default_factory=list)  # (relpath, language)
-    doc_files: list[str] = field(default_factory=list)
+    # (repository-relative path, language, configured/default role)
+    code_files: list[tuple[str, str, str]] = field(default_factory=list)
+    # (repository-relative path, configured/default role)
+    doc_files: list[tuple[str, str]] = field(default_factory=list)
     other_files: int = 0
     skipped_sensitive: list[str] = field(default_factory=list)
     skipped_oversized: list[str] = field(default_factory=list)
     skipped_symlinks: list[str] = field(default_factory=list)
+    skipped_configured: list[str] = field(default_factory=list)
+    skipped_generated: list[str] = field(default_factory=list)
+    skipped_vendored: list[str] = field(default_factory=list)
     sub_roots: list[str] = field(default_factory=list)
     workspace_manifests: list[str] = field(default_factory=list)
+    corpus_budget: CorpusBudget = field(default_factory=CorpusBudget)
 
 
-def walk_repository(root: Path) -> WalkResult:
+def _record_role_skip(result: WalkResult, relative: str, role: str) -> None:
+    target = (
+        result.skipped_generated if role == "generated"
+        else result.skipped_vendored
+    )
+    target.append(relative)
+
+
+def _bounded_directory_entries(
+    path: Path, relative: str, budget: CorpusBudget
+) -> list[os.DirEntry] | None:
+    """Return a deterministic directory snapshot within the per-dir ceiling.
+
+    If a directory crosses the ceiling, skip it as a whole. Selecting the first
+    entries returned by the filesystem would be bounded but nondeterministic;
+    all-or-nothing preserves the evidence determinism contract.
+    """
+    entries: list[os.DirEntry] = []
+    try:
+        with os.scandir(path) as iterator:
+            for entry in iterator:
+                if len(entries) >= MAX_DIRECTORY_ENTRIES:
+                    budget.truncate_walk(
+                        relative,
+                        MAX_DIRECTORY_ENTRIES + 1,
+                        "directory-entry-limit",
+                    )
+                    return None
+                entries.append(entry)
+    except OSError:
+        return []
+    return sorted(entries, key=lambda entry: entry.name)
+
+
+def walk_repository(root: Path, config: RepositoryConfig) -> WalkResult:
     result = WalkResult()
     root = root.resolve()
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-        rel_dir = os.path.relpath(dirpath, root)
+    pending: list[tuple[Path, str]] = [(root, ".")]
+    stop_walk = False
+    while pending and not stop_walk:
+        dirpath, rel_dir = pending.pop()
+        entries = _bounded_directory_entries(dirpath, rel_dir, result.corpus_budget)
+        if entries is None:
+            continue
         is_root = rel_dir == "."
-        kept_dirs = []
-        for d in sorted(dirnames):
+        directories = []
+        files = []
+        for entry in entries:
+            try:
+                is_directory = entry.is_dir(follow_symlinks=False)
+                is_directory_symlink = (
+                    entry.is_symlink() and entry.is_dir(follow_symlinks=True)
+                )
+            except OSError:
+                is_directory = is_directory_symlink = False
+            if is_directory or is_directory_symlink:
+                directories.append((entry, is_directory_symlink))
+            else:
+                files.append(entry)
+
+        kept_dirs: list[tuple[Path, str]] = []
+        for index, (entry, is_directory_symlink) in enumerate(directories):
+            if result.corpus_budget.walk_entries >= MAX_WALK_ENTRIES:
+                result.corpus_budget.truncate_walk(
+                    rel_dir,
+                    len(directories) - index + len(files),
+                    "walk-entry-limit",
+                )
+                stop_walk = True
+                break
+            result.corpus_budget.walk_entries += 1
+            d = entry.name
+            relative = d if is_root else f"{rel_dir}/{d}"
             # Sensitive classification precedes every other prune so the
             # exclusion is reported, never silent (mirrors the file rule).
             if is_sensitive(d):
-                result.skipped_sensitive.append(
-                    d if is_root else f"{rel_dir}/{d}"
-                )
+                result.skipped_sensitive.append(relative)
                 continue
-            if d.startswith(".") or d in NOISE_DIRS or d in SELF_DIRS:
+            if config.is_ignored(relative):
+                result.skipped_configured.append(relative)
                 continue
-            kept_dirs.append(d)
-        dirnames[:] = kept_dirs
+            if d.startswith(".") or d in SELF_DIRS:
+                continue
+            role = config.role_for(relative, is_dir=True)
+            if (
+                role in EXCLUDED_CONTENT_ROLES
+                and not config.has_explicit_descendant(relative)
+            ):
+                _record_role_skip(result, relative, role)
+                continue
+            if not is_directory_symlink:
+                kept_dirs.append((Path(entry.path), relative))
+        if stop_walk:
+            break
+        filenames = [entry.name for entry in files]
         if not is_root and any(
             m in filenames for m in PACKAGE_MANIFESTS
         ):
             result.sub_roots.append(rel_dir)
-        for fname in sorted(filenames):
+        for index, entry in enumerate(files):
+            if result.corpus_budget.walk_entries >= MAX_WALK_ENTRIES:
+                result.corpus_budget.truncate_walk(
+                    rel_dir,
+                    len(files) - index,
+                    "walk-entry-limit",
+                )
+                stop_walk = True
+                break
+            result.corpus_budget.walk_entries += 1
+            fname = entry.name
             rel = fname if is_root else f"{rel_dir}/{fname}"
             # Sensitive classification precedes the hidden-file skip so that
             # exclusions like .env are reported, never silently dropped.
             if is_sensitive(fname):
                 result.skipped_sensitive.append(rel)
                 continue
+            if config.is_ignored(rel):
+                result.skipped_configured.append(rel)
+                continue
             if fname.startswith(".") and fname not in WORKSPACE_MANIFESTS:
                 continue
             if fname in SELF_FILES:
                 continue
+            role = config.role_for(rel)
+            if role in EXCLUDED_CONTENT_ROLES:
+                _record_role_skip(result, rel, role)
+                continue
             if is_root and fname in WORKSPACE_MANIFESTS:
                 result.workspace_manifests.append(fname)
             ext = os.path.splitext(fname)[1].lower()
-            full = os.path.join(dirpath, fname)
+            full = entry.path
             if ext in CODE_LANGUAGES or ext in DOC_EXTENSIONS:
                 # A symlink resolving outside the repo is not repo content:
                 # reading it would ingest arbitrary host files into evidence
@@ -147,12 +317,20 @@ def walk_repository(root: Path) -> WalkResult:
                 if size > MAX_FILE_BYTES:
                     result.skipped_oversized.append(rel)
                     continue
+                if result.corpus_budget.source_files >= MAX_SOURCE_FILES:
+                    result.corpus_budget.skip_source(rel, size, "source-file-limit")
+                    continue
+                if result.corpus_budget.source_bytes + size > MAX_SOURCE_BYTES:
+                    result.corpus_budget.skip_source(rel, size, "source-byte-limit")
+                    continue
+                result.corpus_budget.include_source(size)
                 if ext in CODE_LANGUAGES:
-                    result.code_files.append((rel, CODE_LANGUAGES[ext]))
+                    result.code_files.append((rel, CODE_LANGUAGES[ext], role))
                 else:
-                    result.doc_files.append(rel)
+                    result.doc_files.append((rel, role))
             else:
                 result.other_files += 1
+        pending.extend(reversed(kept_dirs))
     return result
 
 
@@ -161,6 +339,8 @@ def _read_root_manifest(
 ) -> str | None:
     """Read a root manifest under the same bounds as walked source files."""
     rel = path.name
+    if rel in walk.skipped_configured:
+        return None
     if path.is_symlink() and _escapes(str(path), root):
         if rel not in walk.skipped_symlinks:
             walk.skipped_symlinks.append(rel)
