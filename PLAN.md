@@ -219,7 +219,7 @@ Steps:
 Acceptance: `glossarize scan .` on this repo and one large external repo
 produces correct, deterministic, secret-free, size-bounded evidence.
 
-### Phase 3 — Evidence-aware skill
+### Phase 3 — Evidence-aware skill ✅ (2026-08-14)
 Steps:
 1. Move the skill into `skill/SKILL.md` as the canonical copy (pending open
    decision); keep behavior and philosophy verbatim.

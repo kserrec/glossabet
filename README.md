@@ -15,5 +15,9 @@ against the structural graph — surfacing unnamed architecture, orphaned
 concepts, vocabulary drift, and boundary mismatches. Graphify is never
 required.
 
-**Status: pre-implementation.** `PLAN.md` is the authoritative roadmap;
-`skill/` will carry the agent skill. Nothing is installable yet.
+**Status: early phases.** `PLAN.md` is the authoritative roadmap.
+`skill/SKILL.md` is the canonical agent skill (install it by copying to your
+agent's skills directory, e.g. `~/.claude/skills/glossarize/SKILL.md`); the
+CLI installs with `uv tool install .` and currently provides
+`glossarize scan <repo>`, which writes deterministic, git-stamped repository
+evidence to `<repo>/glossarize-out/evidence.json`.
