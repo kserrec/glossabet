@@ -39,9 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command")
 
-    scan = sub.add_parser(
-        "scan", help="build or refresh repository evidence (not yet implemented)"
-    )
+    scan = sub.add_parser("scan", help="build or refresh repository evidence")
     scan.add_argument("path", nargs="?", default=".", help="repository root")
 
     return parser
@@ -56,11 +54,9 @@ def _run(argv: list[str] | None) -> int:
         return EXIT_USER_ERROR
 
     if args.command == "scan":
-        print(
-            "glossarize scan is not implemented yet (PLAN.md Phase 2).",
-            file=sys.stderr,
-        )
-        return EXIT_USER_ERROR
+        from glossarize.evidence import scan_command
+
+        return scan_command(args.path)
 
     parser.error(f"unknown command {args.command!r}")
     return EXIT_DEFECT  # unreachable; error() exits

@@ -25,6 +25,6 @@ def test_unknown_command_is_user_error_not_argparse_2(capsys):
     assert exc.value.code == EXIT_USER_ERROR
 
 
-def test_scan_stub_reports_unimplemented(capsys):
-    assert main(["scan"]) == EXIT_USER_ERROR
-    assert "not implemented" in capsys.readouterr().err
+def test_scan_rejects_missing_path(capsys):
+    assert main(["scan", "/nonexistent/path"]) == EXIT_USER_ERROR
+    assert "not a directory" in capsys.readouterr().err

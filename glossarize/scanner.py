@@ -1,0 +1,165 @@
+"""Repository walk: classification, exclusions, and monorepo detection.
+
+Three exclusion rules are load-bearing (PLAN.md principles 3 and 4):
+sensitive files never enter evidence, Glossarize's own outputs never enter
+evidence (contamination), and noise directories are pruned during the walk.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+
+CODE_LANGUAGES = {
+    ".py": "python", ".pyi": "python",
+    ".js": "javascript", ".mjs": "javascript", ".cjs": "javascript",
+    ".jsx": "javascript", ".ts": "typescript", ".tsx": "typescript",
+    ".go": "go", ".rs": "rust",
+    ".java": "java", ".kt": "kotlin", ".kts": "kotlin", ".scala": "scala",
+    ".c": "c", ".h": "c", ".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp",
+    ".hpp": "cpp", ".rb": "ruby", ".cs": "csharp", ".swift": "swift",
+    ".php": "php", ".ml": "ocaml", ".mli": "ocaml", ".hs": "haskell",
+    ".ex": "elixir", ".exs": "elixir", ".erl": "erlang", ".clj": "clojure",
+    ".lua": "lua", ".sh": "shell", ".bash": "shell", ".zsh": "shell",
+    ".pl": "perl", ".r": "r", ".jl": "julia", ".zig": "zig", ".nim": "nim",
+    ".dart": "dart", ".sql": "sql", ".vue": "vue", ".svelte": "svelte",
+}
+
+DOC_EXTENSIONS = {".md", ".rst", ".txt", ".adoc"}
+
+NOISE_DIRS = frozenset({
+    "node_modules", "__pycache__", "_build", "build", "dist", "target",
+    "vendor", "venv", "env", "coverage", "_opam", "deps", "out",
+})
+
+# Filename patterns that must never enter evidence.
+_SENSITIVE_RES = [
+    re.compile(p) for p in (
+        r"^\.env$", r"\.env$", r"^\.env\.", r"\.env\.",
+        r"\.(pem|key|p12|pfx|jks|keystore|der)$",
+        r"^id_(rsa|dsa|ecdsa|ed25519)$",
+        r"^\.(netrc|npmrc|pypirc|htpasswd)$",
+        r"secret", r"credential",
+    )
+]
+
+# Glossarize's own artifacts: excluded so the glossary can't echo through the
+# evidence and blind drift detection.
+SELF_DIRS = frozenset({"glossarize-out", ".glossarize"})
+SELF_ROOT_FILES = frozenset({"GLOSSARY.md"})
+
+MAX_FILE_BYTES = 2_000_000
+
+PACKAGE_MANIFESTS = frozenset({
+    "package.json", "pyproject.toml", "setup.py", "Cargo.toml", "go.mod",
+    "pom.xml", "build.gradle", "dune-project", "mix.exs", "Gemfile",
+})
+WORKSPACE_MANIFESTS = frozenset({
+    "pnpm-workspace.yaml", "lerna.json", "go.work",
+    "WORKSPACE", "WORKSPACE.bazel", "MODULE.bazel",
+})
+MONOREPO_SUBROOT_THRESHOLD = 3
+MONOREPO_CODE_FILE_THRESHOLD = 5000
+
+
+def is_sensitive(name: str) -> bool:
+    lower = name.lower()
+    return any(p.search(lower) for p in _SENSITIVE_RES)
+
+
+@dataclass
+class WalkResult:
+    code_files: list[tuple[str, str]] = field(default_factory=list)  # (relpath, language)
+    doc_files: list[str] = field(default_factory=list)
+    other_files: int = 0
+    skipped_sensitive: list[str] = field(default_factory=list)
+    skipped_oversized: list[str] = field(default_factory=list)
+    sub_roots: list[str] = field(default_factory=list)
+    workspace_manifests: list[str] = field(default_factory=list)
+
+
+def walk_repository(root: Path) -> WalkResult:
+    result = WalkResult()
+    root = root.resolve()
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        rel_dir = os.path.relpath(dirpath, root)
+        dirnames[:] = sorted(
+            d for d in dirnames
+            if not d.startswith(".") and d not in NOISE_DIRS and d not in SELF_DIRS
+        )
+        is_root = rel_dir == "."
+        if not is_root and any(
+            m in filenames for m in PACKAGE_MANIFESTS
+        ):
+            result.sub_roots.append(rel_dir)
+        for fname in sorted(filenames):
+            rel = fname if is_root else f"{rel_dir}/{fname}"
+            # Sensitive classification precedes the hidden-file skip so that
+            # exclusions like .env are reported, never silently dropped.
+            if is_sensitive(fname):
+                result.skipped_sensitive.append(rel)
+                continue
+            if fname.startswith(".") and fname not in WORKSPACE_MANIFESTS:
+                continue
+            if is_root and fname in SELF_ROOT_FILES:
+                continue
+            if is_root and fname in WORKSPACE_MANIFESTS:
+                result.workspace_manifests.append(fname)
+            ext = os.path.splitext(fname)[1].lower()
+            full = os.path.join(dirpath, fname)
+            if ext in CODE_LANGUAGES or ext in DOC_EXTENSIONS:
+                try:
+                    size = os.path.getsize(full)
+                except OSError:
+                    continue
+                if size > MAX_FILE_BYTES:
+                    result.skipped_oversized.append(rel)
+                    continue
+                if ext in CODE_LANGUAGES:
+                    result.code_files.append((rel, CODE_LANGUAGES[ext]))
+                else:
+                    result.doc_files.append(rel)
+            else:
+                result.other_files += 1
+    return result
+
+
+def _root_workspace_config(root: Path) -> list[str]:
+    """Workspace declarations that need content inspection at the root."""
+    reasons = []
+    cargo = root / "Cargo.toml"
+    if cargo.is_file():
+        try:
+            if "[workspace]" in cargo.read_text(errors="ignore"):
+                reasons.append("Cargo.toml declares [workspace]")
+        except OSError:
+            pass
+    pkg = root / "package.json"
+    if pkg.is_file():
+        try:
+            data = json.loads(pkg.read_text(errors="ignore"))
+            if isinstance(data, dict) and "workspaces" in data:
+                reasons.append("package.json declares workspaces")
+        except (OSError, ValueError):
+            pass
+    return reasons
+
+
+def detect_monorepo(root: Path, walk: WalkResult) -> dict:
+    reasons = [f"workspace manifest {m}" for m in sorted(walk.workspace_manifests)]
+    reasons += _root_workspace_config(root)
+    sub_roots = sorted(set(walk.sub_roots))
+    if len(sub_roots) >= MONOREPO_SUBROOT_THRESHOLD:
+        reasons.append(
+            f"{len(sub_roots)} sub-projects with their own package manifests"
+        )
+    if len(walk.code_files) >= MONOREPO_CODE_FILE_THRESHOLD:
+        reasons.append(f"very large repository ({len(walk.code_files)} code files)")
+    return {
+        "detected": bool(reasons),
+        "reasons": reasons,
+        "sub_roots": sub_roots,
+    }

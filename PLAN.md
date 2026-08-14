@@ -186,7 +186,7 @@ Steps:
 4. Verify `uv tool install .` works end to end.
 Acceptance: fresh clone → install → `glossarize --version` succeeds.
 
-### Phase 2 — Lexical scanner and RepositoryEvidence v1
+### Phase 2 — Lexical scanner and RepositoryEvidence v1 ✅ (2026-08-14)
 Steps:
 1. Repo walk: prune noise dirs (`.git`, `node_modules`, `_build`, `target`,
    `dist`, hidden dirs, etc.); exclude sensitive files by pattern with a test
