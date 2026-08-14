@@ -318,6 +318,29 @@ def test_truncated_locations_cannot_prove_a_scoped_term_is_absent(tmp_path):
     assert drift["canonical_fading"]["items"] == []
 
 
+def test_partial_production_corpus_cannot_prove_a_term_is_absent(
+    tmp_path, monkeypatch
+):
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "workspace",
+            "term": "Workspace",
+            "definition": "A user's working area.",
+            "status": "canonical",
+        }],
+    }
+    monkeypatch.setattr("glossarize.scanner.MAX_SOURCE_FILES", 1)
+    (tmp_path / "a.py").write_text("ordinary_name = 1\n")
+    (tmp_path / "z.py").write_text("workspace_record = 1\n")
+
+    drift = build_drift(build_evidence(tmp_path), glossary)
+
+    assert drift["canonical_fading"]["items"] == []
+    assert drift["coverage"]["production_corpus_complete"] is False
+    assert drift["total_findings_complete"] is False
+
+
 def test_drift_command_end_to_end(tmp_path, capsys):
     root = make_repo(tmp_path)
     assert main(["drift", str(root)]) == 0

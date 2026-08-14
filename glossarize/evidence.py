@@ -36,7 +36,7 @@ from glossarize.tokenize import (
     tokenize_identifier,
 )
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 EVIDENCE_FILE = "evidence.json"
 
@@ -109,6 +109,15 @@ def _capped(counter: Counter, cap: int, entry) -> dict:
             "dropped_occurrences": sum(c for _, c in dropped),
         },
     }
+
+
+def _location_sample(per_file: Counter, cap: int) -> tuple[list[dict], bool]:
+    ranked = sorted(per_file.items(), key=lambda item: (-item[1], item[0]))
+    kept = ranked[:cap]
+    return (
+        [{"path": path, "count": count} for path, count in kept],
+        len(ranked) > len(kept),
+    )
 
 
 def _read_source(path: Path) -> tuple[bytes, str] | None:
@@ -211,7 +220,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
             "code_files_by_role": Counter(),
         }
     )
-    file_imports: list[tuple[str, list[str]]] = []
+    file_imports: list[tuple[str, str, list[str]]] = []
     production_code_files: list[tuple[str, str]] = []
     code_files_by_role = Counter(role for _, _, role in walk.code_files)
     doc_files_by_role = Counter(role for _, role in walk.doc_files)
@@ -254,7 +263,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
             analyzed_production_code_files += 1
             production_code_files.append((rel, language))
             if entry["imports"]:
-                file_imports.append((rel, entry["imports"]))
+                file_imports.append((rel, language, entry["imports"]))
             vocabulary.fold(entry["identifiers"], rel, module)
 
     doc_term_counts: Counter = Counter()
@@ -284,42 +293,43 @@ def build_evidence(root: Path, limits: Limits = Limits(),
 
     def token_entry(term: str, count: int) -> dict:
         per_file = vocabulary.token_files[term]
-        locations = sorted(per_file.items(), key=lambda kv: (-kv[1], kv[0]))
-        kept = locations[: limits.locations_per_term]
+        locations, locations_truncated = _location_sample(
+            per_file, limits.locations_per_term
+        )
         return {
             "term": term,
             "count": count,
             "files": len(per_file),
             "modules": len(vocabulary.token_modules.get(term, ())),
-            "locations": [{"path": p, "count": c} for p, c in kept],
-            "locations_truncated": len(locations) > len(kept),
+            "locations": locations,
+            "locations_truncated": locations_truncated,
         }
 
     def identifier_entry(name: str, count: int) -> dict:
         per_file = vocabulary.identifier_files[name]
-        locations = sorted(per_file.items(), key=lambda kv: (-kv[1], kv[0]))
-        kept = locations[: limits.locations_per_term]
+        locations, locations_truncated = _location_sample(
+            per_file, limits.locations_per_term
+        )
         return {
             "name": name,
             "tokens": tokenize_identifier(name),
             "count": count,
             "files": len(per_file),
-            "locations": [{"path": path, "count": uses} for path, uses in kept],
-            "locations_truncated": len(locations) > len(kept),
+            "locations": locations,
+            "locations_truncated": locations_truncated,
         }
 
     def doc_term_entry(term: str, count: int) -> dict:
         per_file = doc_term_files[term]
-        locations = sorted(per_file.items(), key=lambda kv: (-kv[1], kv[0]))
-        kept = locations[: limits.locations_per_term]
+        locations, locations_truncated = _location_sample(
+            per_file, limits.locations_per_term
+        )
         return {
             "term": term,
             "count": count,
             "files": len(per_file),
-            "locations": [
-                {"path": path, "count": uses} for path, uses in kept
-            ],
-            "locations_truncated": len(locations) > len(kept),
+            "locations": locations,
+            "locations_truncated": locations_truncated,
         }
 
     modules_list = [
@@ -481,6 +491,15 @@ def _print_terminology_report(evidence: dict) -> None:
                + naming["structures_dropped"])
     if dropped:
         print(f"... and {dropped} more not shown")
+    source_groups_dropped = naming.get(
+        "structures_source_groups_dropped", 0
+    )
+    if source_groups_dropped:
+        print(
+            f"Graphify's group cap omitted {source_groups_dropped} "
+            "additional naming-eligible structure(s); structure nominations "
+            "are partial"
+        )
     print(
         "\nThese are nominations with evidence, not verdicts — "
         "judge each against the code."
@@ -499,10 +518,15 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
         print(f"graphify adapter: {warning}", file=sys.stderr)
     if structural.get("available"):
         freshness = structural["freshness"]
+        groups_summary = f"{len(structural['groups'])} structural group(s)"
+        if structural.get("groups_dropped"):
+            groups_summary += (
+                f" retained, {structural['groups_dropped']} omitted by cap"
+            )
         print(
             f"graphify graph: {structural['nodes']} nodes, "
             f"{structural['edges']} edges, "
-            f"{len(structural['groups'])} structural group(s); "
+            f"{groups_summary}; "
             f"freshness {freshness['status']} — {freshness['detail']}"
         )
     elif structural.get("present"):

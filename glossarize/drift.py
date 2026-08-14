@@ -21,11 +21,15 @@ from glossarize.glossary import (
     scope_evidence,
     scopes_overlap,
 )
-from glossarize.matching import code_term_occurrence, doc_term_occurrence
+from glossarize.matching import (
+    code_term_occurrence,
+    doc_term_occurrence,
+    production_corpus_complete,
+)
 from glossarize.terminology import OVERLOAD_MIN_DISPERSION, OVERLOAD_MIN_MODULES
 from glossarize.tokenize import tokenize_term
 
-DRIFT_SCHEMA_VERSION = 3
+DRIFT_SCHEMA_VERSION = 4
 DRIFT_FILE = "drift.json"
 
 FINDINGS_PER_KIND_CAP = 10
@@ -276,9 +280,24 @@ def build_drift(evidence: dict, glossary: dict) -> dict:
         sections[name] = {"items": kept, "dropped_items": dropped}
         total += len(kept) + dropped
 
+    corpus_complete = production_corpus_complete(evidence)
+    vocabulary_complete = all(
+        evidence["vocabulary"][name].get("truncated") is None
+        for name in ("tokens", "identifiers", "doc_terms")
+    )
+    terminology_complete = all(
+        evidence["terminology"][name].get("dropped_items", 0) == 0
+        for name in ("synonym_candidates", "overload_candidates")
+    )
     return {
         "schema_version": DRIFT_SCHEMA_VERSION,
         "checked_concepts": len(glossary["concepts"]),
+        "coverage": {
+            "production_corpus_complete": corpus_complete,
+        },
+        "total_findings_complete": (
+            corpus_complete and vocabulary_complete and terminology_complete
+        ),
         "scope_summary": {
             "repository": sum(
                 concept_scope(concept) is None for concept in glossary["concepts"]
@@ -293,10 +312,17 @@ def build_drift(evidence: dict, glossary: dict) -> dict:
 
 
 def _print_report(drift: dict) -> None:
+    complete = drift.get("total_findings_complete", True)
+    count_label = "finding(s)" if complete else "evaluated finding(s)"
     print(
         f"drift check against {drift['checked_concepts']} glossary "
-        f"concept(s): {drift['total_findings']} finding(s)"
+        f"concept(s): {drift['total_findings']} {count_label}"
     )
+    if not drift.get("coverage", {}).get("production_corpus_complete", True):
+        print(
+            "corpus coverage is partial; absence and low-use findings were "
+            "suppressed where the evidence cannot prove them"
+        )
     titles = {
         "parallel_terms": "new terms paralleling canonical vocabulary",
         "watched_terms_in_use": "discouraged/deprecated terms still in use",
@@ -308,27 +334,34 @@ def _print_report(drift: dict) -> None:
         if not section["items"] and not section["dropped_items"]:
             continue
         print(f"\n== {title} ==")
-        for f in section["items"]:
-            if "certainty" in f:
-                annotation = f"certainty {f['certainty']}"
+        for finding in section["items"]:
+            if "certainty" in finding:
+                annotation = f"certainty {finding['certainty']}"
             else:
-                annotation = f"signal {f['signal_strength']}"
-            print(f"{f['summary']} [{annotation}]")
-            if f.get("scope", {}).get("kind") == "path-prefixes":
+                annotation = f"signal {finding['signal_strength']}"
+            print(f"{finding['summary']} [{annotation}]")
+            if finding.get("scope", {}).get("kind") == "path-prefixes":
                 print(
                     "    scope: "
-                    + ", ".join(f["scope"]["path_prefixes"])
+                    + ", ".join(finding["scope"]["path_prefixes"])
                 )
-            ev = f["evidence"]
-            if "shared_contexts" in ev:
-                print(f"    shared contexts: {', '.join(ev['shared_contexts'])}")
-            if "locations" in ev and ev["locations"]:
-                sample = ", ".join(loc["path"] for loc in ev["locations"][:3])
+            evidence = finding["evidence"]
+            if "shared_contexts" in evidence:
+                print(
+                    "    shared contexts: "
+                    + ", ".join(evidence["shared_contexts"])
+                )
+            if "locations" in evidence and evidence["locations"]:
+                sample = ", ".join(
+                    location["path"] for location in evidence["locations"][:3]
+                )
                 print(f"    e.g. {sample}")
-            if isinstance(ev.get("modules"), list):
+            if isinstance(evidence.get("modules"), list):
                 print(
                     "    modules: "
-                    + ", ".join(m["path"] for m in ev["modules"])
+                    + ", ".join(
+                        module["path"] for module in evidence["modules"]
+                    )
                 )
         if section["dropped_items"]:
             print(f"... and {section['dropped_items']} more not shown")

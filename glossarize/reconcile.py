@@ -23,10 +23,15 @@ from glossarize.glossary import (
     require_glossary,
     scope_evidence,
 )
-from glossarize.matching import code_identifier_occurrence, code_term_occurrence
+from glossarize.matching import (
+    code_identifier_occurrence,
+    code_term_occurrence,
+    production_corpus_complete,
+    repository_corpus_complete,
+)
 from glossarize.tokenize import tokenize_term
 
-VALIDATION_SCHEMA_VERSION = 4
+VALIDATION_SCHEMA_VERSION = 5
 VALIDATION_FILE = "validation.json"
 
 FINDINGS_CAP = 10
@@ -69,8 +74,7 @@ def _match_strength(group: dict, term_tokens: set[str],
 
 
 def _resolve_bindings(concept: dict, evidence: dict) -> list[dict]:
-    identifier_section = evidence["vocabulary"]["identifiers"]
-    identifiers_complete = identifier_section.get("truncated") is None
+    inventory_complete = repository_corpus_complete(evidence)
     file_paths = {f["path"] for f in evidence["files"]["code"]}
     file_paths |= {f["path"] for f in evidence["files"]["docs"]}
     module_paths = {m["path"] for m in evidence["modules"]}
@@ -84,7 +88,7 @@ def _resolve_bindings(concept: dict, evidence: dict) -> list[dict]:
             global_occurrence = code_identifier_occurrence(evidence, value)
             if scoped["count"]:
                 status = "resolved"
-            elif not scoped["count_complete"] or not identifiers_complete:
+            elif not scoped["count_complete"]:
                 status = "uncertain"
             elif global_occurrence["count"]:
                 status = "out-of-scope"
@@ -95,6 +99,8 @@ def _resolve_bindings(concept: dict, evidence: dict) -> list[dict]:
                 status = "resolved"
             elif value in file_paths:
                 status = "out-of-scope"
+            elif not inventory_complete:
+                status = "uncertain"
             else:
                 status = "unresolved"
         else:  # module
@@ -102,6 +108,8 @@ def _resolve_bindings(concept: dict, evidence: dict) -> list[dict]:
                 status = "resolved"
             elif value in module_paths:
                 status = "out-of-scope"
+            elif not inventory_complete:
+                status = "uncertain"
             else:
                 status = "unresolved"
         results.append({
@@ -127,7 +135,7 @@ def _structure_findings(structural: dict, canonical: list[dict],
         strong = sorted(
             cid for cid, s in strengths.items() if s >= 2
         )
-        if canonical and max(strengths.values(), default=0) == 0:
+        if max(strengths.values(), default=0) == 0:
             unnamed.append({
                 "kind": "unnamed-structure",
                 "signal_strength": "strong" if group["size"] >= 5 else "moderate",
@@ -184,6 +192,7 @@ def _concept_findings(canonical: list[dict], vocab: dict,
         occurrence = code_term_occurrence(evidence, concept["term"], scope)
         bindings = _resolve_bindings(concept, evidence)
         resolved = [b for b in bindings if b["status"] == "resolved"]
+        uncertain = [b for b in bindings if b["status"] == "uncertain"]
         for binding in bindings:
             if binding["status"] in {"unresolved", "out-of-scope"}:
                 out_of_scope = binding["status"] == "out-of-scope"
@@ -206,7 +215,12 @@ def _concept_findings(canonical: list[dict], vocab: dict,
                         )
                     ),
                 })
-        if term_tokens and occurrence["count_complete"] and not resolved:
+        if (
+            term_tokens
+            and occurrence["count_complete"]
+            and not resolved
+            and not uncertain
+        ):
             count = occurrence["count"]
             if count == 0:
                 signal_strength = "strong"
@@ -274,6 +288,11 @@ def build_validation(evidence: dict, glossary: dict) -> dict:
     structural = evidence["structural_groups"]
     graph_ok = bool(structural.get("available"))
     graph_present = structural.get("present") is True
+    groups_dropped = int(structural.get("groups_dropped", 0))
+    groups_complete = (
+        structural.get("groups_complete", groups_dropped == 0)
+        if graph_ok else None
+    )
     if graph_ok:
         skip_reason = None
     elif graph_present:
@@ -294,6 +313,22 @@ def build_validation(evidence: dict, glossary: dict) -> dict:
         "path-scoped concepts omitted because normalized Graphify groups do "
         "not carry repository paths"
     )
+    group_cap_reason = (
+        f"{groups_dropped} normalized Graphify group(s) omitted by the "
+        "group cap"
+        if groups_dropped else None
+    )
+    structural_partial_reasons = [
+        reason for reason in (
+            scoped_structure_reason if scoped_canonical and graph_ok else None,
+            group_cap_reason if graph_ok else None,
+        )
+        if reason is not None
+    ]
+    structural_partial_reason = (
+        "; ".join(structural_partial_reasons)
+        if structural_partial_reasons else None
+    )
     unnamed_scope_limited = bool(scoped_canonical) and graph_ok
     if unnamed_scope_limited:
         unnamed = []
@@ -304,24 +339,22 @@ def build_validation(evidence: dict, glossary: dict) -> dict:
             "skip_reason": (
                 scoped_structure_reason if unnamed_scope_limited else skip_reason
             ),
+            "partial": bool(group_cap_reason) and graph_ok,
+            "partial_reason": group_cap_reason if graph_ok else None,
         },
         "boundary_mismatch": {
             **_capped(boundary),
             "skipped": not graph_ok,
             "skip_reason": skip_reason,
-            "partial": bool(scoped_canonical) and graph_ok,
-            "partial_reason": (
-                scoped_structure_reason if scoped_canonical and graph_ok else None
-            ),
+            "partial": bool(structural_partial_reasons) and graph_ok,
+            "partial_reason": structural_partial_reason,
         },
         "overloaded_structural_region": {
             **_capped(overloaded),
             "skipped": not graph_ok,
             "skip_reason": skip_reason,
-            "partial": bool(scoped_canonical) and graph_ok,
-            "partial_reason": (
-                scoped_structure_reason if scoped_canonical and graph_ok else None
-            ),
+            "partial": bool(structural_partial_reasons) and graph_ok,
+            "partial_reason": structural_partial_reason,
         },
         "orphaned_concepts": _capped(orphaned),
         "unresolved_bindings": _capped(unresolved),
@@ -333,6 +366,15 @@ def build_validation(evidence: dict, glossary: dict) -> dict:
         len(section["items"]) + section["dropped_items"]
         for section in sections.values()
     )
+    production_complete = production_corpus_complete(evidence)
+    inventory_complete = repository_corpus_complete(evidence)
+    vocabulary_complete = all(
+        evidence["vocabulary"][name].get("truncated") is None
+        for name in ("tokens", "identifiers", "doc_terms")
+    )
+    structural_complete = not (
+        graph_ok and (groups_dropped or scoped_canonical)
+    )
     return {
         "schema_version": VALIDATION_SCHEMA_VERSION,
         "canonical_concepts": len(canonical),
@@ -341,16 +383,29 @@ def build_validation(evidence: dict, glossary: dict) -> dict:
             "path_scoped": len(scoped_canonical),
             "structural_scope_complete": not scoped_canonical,
         },
+        "coverage": {
+            "production_corpus_complete": production_complete,
+            "repository_corpus_complete": inventory_complete,
+        },
         "graph": {
             "present": structural.get("present"),
             "usable": graph_ok,
             "freshness": structural.get("freshness"),
             "warnings": list(structural.get("warnings", [])),
+            "groups_dropped": groups_dropped,
+            "groups_complete": groups_complete,
         },
         # Backward-compatible convenience flag; `graph` carries the complete
         # state and distinguishes absent, unusable, stale, and unverified.
         "graph_available": graph_ok,
         "total_findings": total,
+        "total_findings_complete": (
+            production_complete
+            and inventory_complete
+            and vocabulary_complete
+            and drift.get("total_findings_complete", True)
+            and structural_complete
+        ),
         **sections,
     }
 
@@ -368,9 +423,11 @@ _TITLES = {
 
 
 def _print_report(validation: dict) -> None:
+    complete = validation.get("total_findings_complete", True)
+    count_label = "finding(s)" if complete else "evaluated finding(s)"
     print(
         f"validate: {validation['canonical_concepts']} canonical concept(s), "
-        f"{validation['total_findings']} finding(s)"
+        f"{validation['total_findings']} {count_label}"
     )
     graph = validation["graph"]
     if graph["usable"]:
@@ -382,6 +439,11 @@ def _print_report(validation: dict) -> None:
             f"graphify: usable structural groups; freshness "
             f"{freshness['status']} — {freshness['detail']}"
         )
+        if graph.get("groups_dropped"):
+            print(
+                f"graphify coverage: partial — {graph['groups_dropped']} "
+                "normalized group(s) omitted by the group cap"
+            )
     elif graph["present"]:
         print(
             "graphify: graph present but no usable structural groups; "
@@ -389,6 +451,12 @@ def _print_report(validation: dict) -> None:
         )
     else:
         print("graphify: no graph; structural checks skipped")
+    coverage = validation.get("coverage", {})
+    if not coverage.get("production_corpus_complete", True):
+        print(
+            "corpus coverage: partial — absence and low-use findings were "
+            "suppressed where the evidence cannot prove them"
+        )
     scopes = validation["scope_summary"]
     if scopes["path_scoped"]:
         structural_state = "partial" if graph["usable"] else "unavailable"

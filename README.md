@@ -263,9 +263,13 @@ be drawn from it.
   or `weak`), not “confidence.” Directly proven lexical or binding facts use
   `certainty: observed`. Probabilistic confidence labels remain reserved for
   future measured calibration.
-- `total_findings` counts all findings, including those omitted from the
-  displayed `items` by a cap; each section separately records
-  `dropped_items`.
+- `total_findings` counts every finding produced by the evaluated evidence,
+  including findings omitted from displayed `items` by a section cap; each
+  section separately records `dropped_items`. `total_findings_complete` is
+  false when an upstream corpus, vocabulary, scope, or Graphify group cap
+  means unevaluated input could contain additional findings. Reports then say
+  “evaluated findings” and identify the partial coverage instead of presenting
+  the count as exhaustive.
 
 ## Development and release verification
 

@@ -100,6 +100,31 @@ def test_configured_prefixes_ignore_or_override_default_roles(tmp_path):
     }
 
 
+def test_excluded_root_manifests_are_not_reopened_for_monorepo_detection(
+    tmp_path,
+):
+    (tmp_path / "glossarize.json").write_text(json.dumps({
+        "schema_version": 1,
+        "path_roles": {
+            "generated": ["package.json"],
+            "vendored": ["Cargo.toml"],
+        },
+    }))
+    (tmp_path / "package.json").write_text(json.dumps({
+        "workspaces": ["packages/*"],
+    }))
+    (tmp_path / "Cargo.toml").write_text(
+        "[workspace]\nmembers = ['packages/*']\n"
+    )
+    _write(tmp_path / "main.py")
+
+    evidence = build_evidence(tmp_path)
+
+    assert evidence["skipped"]["generated"] == ["package.json"]
+    assert evidence["skipped"]["vendored"] == ["Cargo.toml"]
+    assert evidence["monorepo"]["detected"] is False
+
+
 def test_invalid_config_is_a_user_error(tmp_path, capsys):
     (tmp_path / "glossarize.json").write_text(json.dumps({
         "schema_version": 1,

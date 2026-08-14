@@ -96,6 +96,7 @@ class CorpusBudget:
     source_bytes: int = 0
     skipped_source_files: int = 0
     skipped_source_bytes: int = 0
+    skipped_production_source_files: int = 0
     skipped_sample: list[dict] = field(default_factory=list)
     walk_truncated: bool = False
     walk_truncations: int = 0
@@ -106,9 +107,18 @@ class CorpusBudget:
         self.source_files += 1
         self.source_bytes += size
 
-    def skip_source(self, relative: str, size: int, reason: str) -> None:
+    def skip_source(
+        self,
+        relative: str,
+        size: int,
+        reason: str,
+        *,
+        production: bool,
+    ) -> None:
         self.skipped_source_files += 1
         self.skipped_source_bytes += size
+        if production:
+            self.skipped_production_source_files += 1
         if len(self.skipped_sample) < BUDGET_PATH_SAMPLE:
             self.skipped_sample.append({"path": relative, "reason": reason})
 
@@ -123,9 +133,15 @@ class CorpusBudget:
 
     def as_evidence(self) -> dict:
         complete = not self.walk_truncated and not self.skipped_source_files
+        production_complete = (
+            not self.walk_truncated
+            and not self.skipped_production_source_files
+        )
         return {
             "complete": complete,
+            "production_complete": production_complete,
             "limits": {
+                "file_bytes": MAX_FILE_BYTES,
                 "walk_entries": MAX_WALK_ENTRIES,
                 "directory_entries": MAX_DIRECTORY_ENTRIES,
                 "source_files": MAX_SOURCE_FILES,
@@ -138,6 +154,9 @@ class CorpusBudget:
             },
             "skipped": {
                 "source_files": self.skipped_source_files,
+                "production_source_files": (
+                    self.skipped_production_source_files
+                ),
                 "source_bytes": self.skipped_source_bytes,
                 "sample": list(self.skipped_sample),
                 "sample_truncated": (
@@ -316,12 +335,28 @@ def walk_repository(root: Path, config: RepositoryConfig) -> WalkResult:
                     continue
                 if size > MAX_FILE_BYTES:
                     result.skipped_oversized.append(rel)
+                    result.corpus_budget.skip_source(
+                        rel,
+                        size,
+                        "file-size-limit",
+                        production=role == "production",
+                    )
                     continue
                 if result.corpus_budget.source_files >= MAX_SOURCE_FILES:
-                    result.corpus_budget.skip_source(rel, size, "source-file-limit")
+                    result.corpus_budget.skip_source(
+                        rel,
+                        size,
+                        "source-file-limit",
+                        production=role == "production",
+                    )
                     continue
                 if result.corpus_budget.source_bytes + size > MAX_SOURCE_BYTES:
-                    result.corpus_budget.skip_source(rel, size, "source-byte-limit")
+                    result.corpus_budget.skip_source(
+                        rel,
+                        size,
+                        "source-byte-limit",
+                        production=role == "production",
+                    )
                     continue
                 result.corpus_budget.include_source(size)
                 if ext in CODE_LANGUAGES:
@@ -339,7 +374,11 @@ def _read_root_manifest(
 ) -> str | None:
     """Read a root manifest under the same bounds as walked source files."""
     rel = path.name
-    if rel in walk.skipped_configured:
+    if rel in (
+        set(walk.skipped_configured)
+        | set(walk.skipped_generated)
+        | set(walk.skipped_vendored)
+    ):
         return None
     if path.is_symlink() and _escapes(str(path), root):
         if rel not in walk.skipped_symlinks:

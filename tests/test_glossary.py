@@ -287,6 +287,58 @@ def test_non_list_aliases_and_bindings_are_errors_not_crashes(tmp_path):
     assert main(["show", str(tmp_path)]) == 1  # user error, not defect
 
 
+@pytest.mark.parametrize("field", ["id", "term", "definition", "status"])
+def test_required_concept_strings_cannot_be_whitespace(field):
+    concept = {
+        "id": "x", "term": "X", "definition": "A concept.",
+        "status": "canonical",
+    }
+    concept[field] = "   "
+
+    errors = validate_glossary({"schema_version": 1, "concepts": [concept]})
+
+    assert any("non-empty string" in error and repr(field) in error
+               for error in errors)
+
+
+@pytest.mark.parametrize("ref", ["symbol:", "symbol:   "])
+def test_binding_target_cannot_be_empty(ref):
+    concept = {
+        "id": "x", "term": "X", "definition": "A concept.",
+        "status": "canonical", "bindings": [{"ref": ref}],
+    }
+
+    errors = validate_glossary({"schema_version": 1, "concepts": [concept]})
+
+    assert any("needs a 'ref'" in error for error in errors)
+
+
+@pytest.mark.parametrize("target", ["concept", "alias"])
+def test_non_string_status_is_a_user_error_not_a_crash(
+    tmp_path, capsys, target
+):
+    concept = {
+        "id": "x", "term": "X", "definition": "A concept.",
+        "status": "canonical",
+    }
+    if target == "concept":
+        concept["status"] = []
+    else:
+        concept["aliases"] = [{"term": "Former X", "status": []}]
+    glossary = {"schema_version": 1, "concepts": [concept]}
+
+    errors = validate_glossary(glossary)
+
+    assert any("status" in error for error in errors)
+    out = tmp_path / "glossarize-out"
+    out.mkdir()
+    (out / "glossary.json").write_text(json.dumps(glossary))
+    assert main(["show", str(tmp_path)]) == 1
+    captured = capsys.readouterr()
+    assert "status" in captured.err
+    assert "internal error" not in captured.err.lower()
+
+
 def test_oversized_glossary_refused_as_user_error(tmp_path, monkeypatch):
     monkeypatch.setattr("glossarize.glossary.MAX_JSON_BYTES", 50)
     monkeypatch.setattr("glossarize.artifacts.MAX_JSON_BYTES", 50)

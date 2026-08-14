@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import sys
 import traceback
+from typing import NoReturn as _NoReturn
 
 from glossarize import __version__
 
@@ -20,9 +21,20 @@ EXIT_DEFECT = 2
 class _Parser(argparse.ArgumentParser):
     # argparse exits with status 2 on usage errors; 2 is reserved for
     # internal defects here, so usage problems exit 1 instead.
-    def error(self, message: str) -> "argparse.NoReturn":  # type: ignore[name-defined]
+    def error(self, message: str) -> _NoReturn:
         self.print_usage(sys.stderr)
         self.exit(EXIT_USER_ERROR, f"{self.prog}: error: {message}\n")
+
+
+def _add_repository_path(command: argparse.ArgumentParser) -> None:
+    command.add_argument("path", nargs="?", default=".", help="repository root")
+
+
+def _add_graphify_toggle(command: argparse.ArgumentParser) -> None:
+    command.add_argument(
+        "--no-graphify", action="store_true",
+        help="ignore graphify-out/graph.json even if present",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,35 +52,29 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     scan = sub.add_parser("scan", help="build or refresh repository evidence")
-    scan.add_argument("path", nargs="?", default=".", help="repository root")
-    scan.add_argument(
-        "--no-graphify", action="store_true",
-        help="ignore graphify-out/graph.json even if present",
-    )
+    _add_repository_path(scan)
+    _add_graphify_toggle(scan)
 
     analyze = sub.add_parser(
         "analyze",
         help="scan plus a terminology report (register, overlaps, overloads)",
     )
-    analyze.add_argument("path", nargs="?", default=".", help="repository root")
-    analyze.add_argument(
-        "--no-graphify", action="store_true",
-        help="ignore graphify-out/graph.json even if present",
-    )
+    _add_repository_path(analyze)
+    _add_graphify_toggle(analyze)
 
     show = sub.add_parser("show", help="display the current glossary")
-    show.add_argument("path", nargs="?", default=".", help="repository root")
+    _add_repository_path(show)
 
     drift = sub.add_parser(
         "drift", help="check live vocabulary against the canonical glossary"
     )
-    drift.add_argument("path", nargs="?", default=".", help="repository root")
+    _add_repository_path(drift)
 
     validate = sub.add_parser(
         "validate",
         help="reconcile the glossary against evidence and the graphify graph",
     )
-    validate.add_argument("path", nargs="?", default=".", help="repository root")
+    _add_repository_path(validate)
 
     install = sub.add_parser(
         "install",

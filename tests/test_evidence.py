@@ -95,11 +95,49 @@ def test_corpus_file_budget_is_deterministic_and_reported(tmp_path, monkeypatch)
     ]
     assert evidence["totals"]["source_files"] == 2
     assert budget["complete"] is False
+    assert budget["production_complete"] is False
     assert budget["used"]["source_files"] == 2
     assert budget["skipped"]["source_files"] == 1
     assert budget["skipped"]["sample"] == [
         {"path": "c.py", "reason": "source-file-limit"}
     ]
+
+
+def test_oversized_production_source_marks_corpus_incomplete(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr("glossarize.scanner.MAX_FILE_BYTES", 40)
+    (tmp_path / "small.py").write_text("ordinary = 1\n")
+    (tmp_path / "large.py").write_text(
+        "hidden_canonical_term = 1\n" + "# padding\n" * 10
+    )
+
+    evidence = build_evidence(tmp_path)
+    budget = evidence["skipped"]["corpus_budget"]
+
+    assert evidence["skipped"]["oversized"] == ["large.py"]
+    assert budget["complete"] is False
+    assert budget["production_complete"] is False
+    assert budget["skipped"]["source_files"] == 1
+    assert budget["skipped"]["sample"] == [
+        {"path": "large.py", "reason": "file-size-limit"}
+    ]
+
+
+def test_skipped_nonproduction_source_keeps_production_corpus_complete(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr("glossarize.scanner.MAX_SOURCE_FILES", 1)
+    (tmp_path / "a.py").write_text("production_name = 1\n")
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "z.py").write_text("test_only_name = 1\n")
+
+    budget = build_evidence(tmp_path)["skipped"]["corpus_budget"]
+
+    assert budget["complete"] is False
+    assert budget["production_complete"] is True
+    assert budget["skipped"]["production_source_files"] == 0
 
 
 def test_corpus_byte_budget_reports_skips_and_can_use_later_space(

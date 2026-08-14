@@ -103,6 +103,22 @@ def test_bare_relative_import_creates_no_phantom_root_edge(tmp_path):
     assert all(e["to"] != "." for e in imports["internal_edges"])
 
 
+def test_python_parent_relative_import_resolves_to_parent_package(tmp_path):
+    pkg = tmp_path / "pkg"
+    sub = pkg / "sub"
+    sub.mkdir(parents=True)
+    (pkg / "shared.py").write_text("shared_value = 1\n")
+    (sub / "consumer.py").write_text(
+        "from ..shared import shared_value\nconsumer_value = shared_value\n"
+    )
+
+    imports = build_evidence(tmp_path)["imports"]
+
+    assert ("pkg/sub", "pkg") in {
+        (edge["from"], edge["to"]) for edge in imports["internal_edges"]
+    }
+
+
 def test_same_repo_include_resolves_internal(tmp_path):
     # #include "helpers.h" used to be misfiled as an external dep "helpers"
     # even with include/helpers.h present in the repo.

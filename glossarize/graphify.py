@@ -163,6 +163,172 @@ def _freshness(graph: dict, git_stamp: dict | None) -> dict:
     }
 
 
+def _normalize_nodes(graph: dict) -> dict[str, dict]:
+    nodes: dict[str, dict] = {}
+    for raw in graph["nodes"]:
+        if not isinstance(raw, dict):
+            continue
+        node_id = _first(raw, ("id", "name"))
+        if node_id is None:
+            continue
+        node_id = str(node_id)
+        nodes[node_id] = {
+            "label": str(_first(raw, ("label", "name", "id"))),
+            "prov": _provenance(raw),
+            "community": raw.get("community"),
+            "community_name": _first(raw, ("community_name",), str),
+        }
+    return nodes
+
+
+def _edge_summary(
+    graph: dict,
+    nodes: dict[str, dict],
+    excluded_nodes: set[str],
+) -> tuple[Counter, int]:
+    degree: Counter = Counter()
+    edge_count = 0
+    links = _first(graph, ("links", "edges"), list) or []
+    for edge in links:
+        if not isinstance(edge, dict):
+            continue
+        source = _first(edge, ("source", "from", "a"))
+        target = _first(edge, ("target", "to", "b"))
+        if source is None or target is None:
+            continue
+        source, target = str(source), str(target)
+        if (
+            source in nodes
+            and target in nodes
+            and source not in excluded_nodes
+            and target not in excluded_nodes
+        ):
+            degree[source] += 1
+            degree[target] += 1
+            edge_count += 1
+    return degree, edge_count
+
+
+def _extract_groups(
+    graph: dict,
+    nodes: dict[str, dict],
+    warnings: list[str],
+) -> dict[str, dict]:
+    groups: dict[str, dict] = {}
+    communities = graph.get("communities")
+    if isinstance(communities, list) and communities:
+        for index, community in enumerate(communities):
+            if not isinstance(community, dict):
+                continue
+            group_id_value = _first(community, ("id", "label", "name"))
+            # Zero is a valid Graphify community id, so only None falls back.
+            group_id = str(
+                index if group_id_value is None else group_id_value
+            )
+            raw_members = community.get("nodes")
+            if not isinstance(raw_members, list):
+                # Tolerate unknown community shapes; the caller reports when
+                # no usable structure remains after normalization.
+                continue
+            members = [
+                str(member)
+                for member in raw_members
+                if str(member) in nodes
+            ]
+            cohesion = community.get("cohesion")
+            groups[group_id] = {
+                "label": str(
+                    _first(community, ("label", "name"))
+                    or f"community {group_id}"
+                ),
+                "cohesion": (
+                    cohesion if isinstance(cohesion, (int, float)) else None
+                ),
+                "members": members,
+            }
+        return groups
+
+    for node_id, node in sorted(nodes.items()):
+        community = node["community"]
+        if community is None:
+            continue
+        group_id = str(community)
+        group = groups.setdefault(
+            group_id,
+            {
+                "label": f"community {group_id}",
+                "cohesion": None,
+                "members": [],
+                "label_counts": Counter(),
+            },
+        )
+        group["members"].append(node_id)
+        if node["community_name"]:
+            group["label_counts"][node["community_name"]] += 1
+    for group_id, group in groups.items():
+        labels = group.pop("label_counts")
+        if not labels:
+            continue
+        group["label"] = sorted(
+            labels.items(), key=lambda item: (-item[1], item[0])
+        )[0][0]
+        if len(labels) > 1:
+            warnings.append(
+                f"{GRAPH_PATH}: community {group_id} has conflicting names; "
+                f"using {group['label']!r}"
+            )
+    return groups
+
+
+def _group_items(
+    groups: dict[str, dict],
+    nodes: dict[str, dict],
+    degree: Counter,
+    glossary_nodes: set[str],
+) -> list[dict]:
+    items = []
+    for group_id, group in groups.items():
+        members = group["members"]
+        if not members:
+            continue
+        visible = [member for member in members if member not in glossary_nodes]
+        if not visible:
+            continue
+        provenance = Counter(nodes[member]["prov"] for member in members)
+        sample = sorted(
+            visible,
+            key=lambda member: (-degree[member], nodes[member]["label"]),
+        )
+        items.append({
+            "id": group_id,
+            "label": group["label"],
+            "cohesion": group["cohesion"],
+            "size": len(visible),
+            "members_sample": [
+                nodes[member]["label"] for member in sample[:MEMBER_SAMPLE]
+            ],
+            "provenance": {
+                "code": provenance.get("code", 0),
+                "doc": provenance.get("doc", 0),
+                "glossary": provenance.get("glossary", 0),
+            },
+        })
+    items.sort(key=lambda group: (-group["size"], group["id"]))
+    return items
+
+
+def _god_nodes(
+    nodes: dict[str, dict], degree: Counter, glossary_nodes: set[str]
+) -> list[dict]:
+    return [
+        {"label": nodes[node_id]["label"], "degree": count}
+        for node_id, count in sorted(
+            degree.items(), key=lambda item: (-item[1], item[0])
+        )
+        if node_id not in glossary_nodes
+    ][:GOD_NODE_CAP]
+
+
 def build_structural_groups(
     root: Path, git_stamp: dict | None = None
 ) -> dict:
@@ -170,20 +336,7 @@ def build_structural_groups(
     if graph is None:
         return _unavailable(present=present, warnings=warnings)
 
-    nodes: dict[str, dict] = {}
-    for raw in graph["nodes"]:
-        if not isinstance(raw, dict):
-            continue
-        nid = _first(raw, ("id", "name"))
-        if nid is None:
-            continue
-        nid = str(nid)
-        nodes[nid] = {
-            "label": str(_first(raw, ("label", "name", "id"))),
-            "prov": _provenance(raw),
-            "community": raw.get("community"),
-            "community_name": _first(raw, ("community_name",), str),
-        }
+    nodes = _normalize_nodes(graph)
     if not nodes:
         return _unavailable(
             present=True,
@@ -192,120 +345,42 @@ def build_structural_groups(
             ],
         )
 
-    degree: Counter = Counter()
-    edge_count = 0
-    links = _first(graph, ("links", "edges"), list) or []
-    for edge in links:
-        if not isinstance(edge, dict):
-            continue
-        a = _first(edge, ("source", "from", "a"))
-        b = _first(edge, ("target", "to", "b"))
-        if a is None or b is None:
-            continue
-        a, b = str(a), str(b)
-        if a in nodes and b in nodes:
-            degree[a] += 1
-            degree[b] += 1
-            edge_count += 1
-
-    glossary_nodes = {n for n, d in nodes.items() if d["prov"] == "glossary"}
-
-    groups: dict[str, dict] = {}
-    communities = graph.get("communities")
-    if isinstance(communities, list) and communities:
-        for i, comm in enumerate(communities):
-            if not isinstance(comm, dict):
-                continue
-            gid_val = _first(comm, ("id", "label", "name"))
-            gid = str(i if gid_val is None else gid_val)  # id 0 is a real id
-            raw_members = comm.get("nodes")
-            if not isinstance(raw_members, list):
-                continue  # unrecognized shape: tolerate, don't crash
-            members = [str(m) for m in raw_members if str(m) in nodes]
-            cohesion = comm.get("cohesion")
-            groups[gid] = {
-                "label": str(_first(comm, ("label", "name")) or f"community {gid}"),
-                "cohesion": cohesion if isinstance(cohesion, (int, float)) else None,
-                "members": members,
-            }
-    else:
-        for nid, node in sorted(nodes.items()):
-            community = node["community"]
-            if community is None:
-                continue
-            gid = str(community)
-            group = groups.setdefault(
-                gid,
-                {
-                    "label": f"community {gid}",
-                    "cohesion": None,
-                    "members": [],
-                    "label_counts": Counter(),
-                },
-            )
-            group["members"].append(nid)
-            if node["community_name"]:
-                group["label_counts"][node["community_name"]] += 1
-        for gid, group in groups.items():
-            labels = group.pop("label_counts")
-            if labels:
-                group["label"] = sorted(
-                    labels.items(), key=lambda item: (-item[1], item[0])
-                )[0][0]
-                if len(labels) > 1:
-                    warnings.append(
-                        f"{GRAPH_PATH}: community {gid} has conflicting names; "
-                        f"using {group['label']!r}"
-                    )
+    glossary_nodes = {
+        node_id for node_id, node in nodes.items()
+        if node["prov"] == "glossary"
+    }
+    degree, edge_count = _edge_summary(graph, nodes, glossary_nodes)
+    groups = _extract_groups(graph, nodes, warnings)
     if not groups:
         warnings.append(
             f"{GRAPH_PATH}: no community structure found — groups unavailable"
         )
 
-    group_items = []
-    for gid, group in groups.items():
-        members = group["members"]
-        if not members:
-            continue
-        visible = [m for m in members if m not in glossary_nodes]
-        provenance = Counter(nodes[m]["prov"] for m in members)
-        sample = sorted(visible, key=lambda m: (-degree[m], nodes[m]["label"]))
-        group_items.append({
-            "id": gid,
-            "label": group["label"],
-            "cohesion": group["cohesion"],
-            "size": len(members),
-            "members_sample": [nodes[m]["label"] for m in sample[:MEMBER_SAMPLE]],
-            "provenance": {
-                "code": provenance.get("code", 0),
-                "doc": provenance.get("doc", 0),
-                "glossary": provenance.get("glossary", 0),
-            },
-        })
-    group_items.sort(key=lambda g: (-g["size"], g["id"]))
+    group_items = _group_items(groups, nodes, degree, glossary_nodes)
 
     if not group_items and not any("no community structure" in w for w in warnings):
         warnings.append(
             f"{GRAPH_PATH}: no usable community members — groups unavailable"
         )
 
-    god_nodes = [
-        {"label": nodes[nid]["label"], "degree": count}
-        for nid, count in sorted(degree.items(), key=lambda kv: (-kv[1], kv[0]))
-        if nid not in glossary_nodes
-    ][:GOD_NODE_CAP]
-
+    retained_groups = group_items[:GROUP_CAP]
+    dropped_groups = group_items[GROUP_CAP:]
     return {
         "adapter_enabled": True,
         "present": True,
         "available": bool(group_items),
         "source": GRAPH_PATH,
         "freshness": _freshness(graph, git_stamp),
-        "nodes": len(nodes),
+        "source_nodes": len(nodes),
+        "nodes": len(nodes) - len(glossary_nodes),
         "edges": edge_count,
-        "groups": group_items[:GROUP_CAP],
-        "groups_dropped": max(0, len(group_items) - GROUP_CAP),
-        "god_nodes": god_nodes,
+        "groups": retained_groups,
+        "groups_dropped": len(dropped_groups),
+        "groups_complete": not dropped_groups,
+        "naming_groups_dropped": sum(
+            group["size"] >= 2 for group in dropped_groups
+        ),
+        "god_nodes": _god_nodes(nodes, degree, glossary_nodes),
         "discounted_glossary_nodes": len(glossary_nodes),
         "warnings": warnings,
     }
@@ -313,8 +388,14 @@ def build_structural_groups(
 
 def structure_candidates(structural: dict) -> dict:
     """Group-based naming nominations for the importance section."""
+    source_groups_dropped = structural.get("naming_groups_dropped", 0)
     if not structural.get("available"):
-        return {"structures": [], "structures_dropped": 0}
+        return {
+            "structures": [],
+            "structures_dropped": 0,
+            "structures_source_groups_dropped": source_groups_dropped,
+            "structures_complete": source_groups_dropped == 0,
+        }
     candidates = []
     for group in structural["groups"]:
         if group["size"] < 2:
@@ -340,5 +421,9 @@ def structure_candidates(structural: dict) -> dict:
     cap = 10
     return {
         "structures": candidates[:cap],
-        "structures_dropped": max(0, len(candidates) - cap),
+        "structures_dropped": (
+            max(0, len(candidates) - cap) + source_groups_dropped
+        ),
+        "structures_source_groups_dropped": source_groups_dropped,
+        "structures_complete": source_groups_dropped == 0,
     }

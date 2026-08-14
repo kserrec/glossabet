@@ -92,12 +92,14 @@ def make_repo(tmp_path, graph=GRAPH):
 def test_groups_map_with_provenance_and_discounting(tmp_path):
     structural = build_evidence(make_repo(tmp_path))["structural_groups"]
     assert structural["available"] is True
-    assert structural["nodes"] == 6
+    assert structural["nodes"] == 5
+    assert structural["source_nodes"] == 6
+    assert structural["edges"] == 3
     assert structural["discounted_glossary_nodes"] == 1
     groups = {g["id"]: g for g in structural["groups"]}
     g0 = groups["0"]
-    assert g0["size"] == 4  # glossary node counted in size...
-    assert "Payment" not in g0["members_sample"]  # ...but never shown
+    assert g0["size"] == 3
+    assert "Payment" not in g0["members_sample"]
     assert g0["provenance"] == {"code": 2, "doc": 1, "glossary": 1}
     assert g0["members_sample"][0] == "PaymentService"  # highest degree first
     # God nodes exclude glossary provenance too.
@@ -128,6 +130,56 @@ def test_graphify_0_9_42_export_contract_is_consumed(tmp_path):
         "label": "Payment Service", "degree": 2
     }
     assert structural["freshness"]["status"] == "current"
+
+
+def test_glossary_only_groups_are_not_usable_structure(tmp_path):
+    graph = {
+        "nodes": [
+            {
+                "id": "g1", "label": "Payment", "community": 0,
+                "source": "glossarize-out/glossary.json",
+            },
+            {
+                "id": "g2", "label": "Billing", "community": 0,
+                "source": "GLOSSARY.md",
+            },
+        ],
+        "edges": [{"source": "g1", "target": "g2"}],
+    }
+
+    evidence = build_evidence(make_repo(tmp_path, graph))
+    structural = evidence["structural_groups"]
+
+    assert structural["source_nodes"] == 2
+    assert structural["nodes"] == 0
+    assert structural["edges"] == 0
+    assert structural["groups"] == []
+    assert structural["available"] is False
+    assert evidence["naming_candidates"]["structures"] == []
+
+
+def test_group_cap_marks_structure_nominations_partial(tmp_path, monkeypatch):
+    monkeypatch.setattr("glossarize.graphify.GROUP_CAP", 2)
+    graph = {
+        "nodes": [
+            {"id": f"{group}-{member}", "label": f"Node{group}{member}",
+             "community": group}
+            for group in range(3)
+            for member in range(2)
+        ],
+        "edges": [],
+    }
+
+    evidence = build_evidence(make_repo(tmp_path, graph))
+    structural = evidence["structural_groups"]
+    naming = evidence["naming_candidates"]
+
+    assert len(structural["groups"]) == 2
+    assert structural["groups_dropped"] == 1
+    assert structural["groups_complete"] is False
+    assert naming["structures_source_groups_dropped"] == 1
+    assert naming["structures_dropped"] == 1
+    assert naming["structures_complete"] is False
 
 
 def test_top_level_communities_variant_with_cohesion(tmp_path):

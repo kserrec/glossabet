@@ -6,7 +6,7 @@ concept."""
 import json
 
 from glossarize.cli import main
-from glossarize.evidence import build_evidence
+from glossarize.evidence import Limits, build_evidence
 from glossarize.glossary import save_glossary, validate_glossary
 from glossarize.reconcile import build_validation
 
@@ -154,6 +154,66 @@ def test_payment_with_resolved_bindings_is_not_orphaned(tmp_path):
     assert all(f["concept_id"] != "payment" for f in items)
 
 
+def test_uncertain_symbol_binding_does_not_create_a_false_orphan(tmp_path):
+    (tmp_path / "code.py").write_text(
+        "popular_name = 1\npopular_name = 2\nrare_symbol = 3\n"
+    )
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "unseen",
+            "term": "Unseen",
+            "definition": "A concept whose binding fell below the index cap.",
+            "status": "canonical",
+            "bindings": [{"ref": "symbol:rare_symbol"}],
+        }],
+    }
+    evidence = build_evidence(tmp_path, limits=Limits(identifiers=1))
+
+    validation = build_validation(evidence, glossary)
+
+    assert validation["unresolved_bindings"]["items"] == []
+    assert validation["orphaned_concepts"]["items"] == []
+    assert validation["total_findings_complete"] is False
+
+
+def test_partial_inventory_does_not_claim_missing_bindings_or_orphans(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr("glossarize.scanner.MAX_SOURCE_FILES", 1)
+    (tmp_path / "a.py").write_text("ordinary_name = 1\n")
+    hidden = tmp_path / "z"
+    hidden.mkdir()
+    (hidden / "hidden.py").write_text("hidden_symbol = 1\n")
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": kind,
+                "term": f"Missing {kind.title()}",
+                "definition": f"A concept bound by {kind}.",
+                "status": "canonical",
+                "bindings": [{"ref": ref}],
+            }
+            for kind, ref in (
+                ("symbol", "symbol:hidden_symbol"),
+                ("file", "file:z/hidden.py"),
+                ("module", "module:z"),
+            )
+        ],
+    }
+
+    validation = build_validation(build_evidence(tmp_path), glossary)
+
+    assert validation["unresolved_bindings"]["items"] == []
+    assert validation["orphaned_concepts"]["items"] == []
+    assert validation["coverage"] == {
+        "production_corpus_complete": False,
+        "repository_corpus_complete": False,
+    }
+    assert validation["total_findings_complete"] is False
+
+
 def test_fragmentation_detected(tmp_path):
     items = validation_for(tmp_path)["fragmentation"]["items"]
     finding = next(f for f in items if f["concept_id"] == "tenant")
@@ -176,6 +236,8 @@ def test_without_graph_structural_checks_skip_cleanly(tmp_path):
         "usable": False,
         "freshness": None,
         "warnings": [],
+        "groups_dropped": 0,
+        "groups_complete": None,
     }
     for key in ("unnamed_structure", "boundary_mismatch",
                 "overloaded_structural_region"):
@@ -197,6 +259,60 @@ def test_present_but_unusable_graph_skips_structural_checks(tmp_path):
                 "overloaded_structural_region"):
         assert validation[key]["skipped"] is True
         assert "no usable structural groups" in validation[key]["skip_reason"]
+
+
+def test_usable_graph_with_no_canonical_concepts_finds_unnamed_structure(
+    tmp_path,
+):
+    graph = {
+        "nodes": [
+            {"id": "a", "label": "LeaseManager", "community": 0},
+            {"id": "b", "label": "SlotClaim", "community": 0},
+        ],
+        "edges": [{"source": "a", "target": "b"}],
+    }
+    root = tmp_path
+    (root / "main.py").write_text("ordinary_name = 1\n")
+    gout = root / "graphify-out"
+    gout.mkdir()
+    (gout / "graph.json").write_text(json.dumps(graph))
+
+    validation = build_validation(
+        build_evidence(root), {"schema_version": 1, "concepts": []}
+    )
+
+    assert len(validation["unnamed_structure"]["items"]) == 1
+    assert validation["unnamed_structure"]["items"][0]["group"] == "community 0"
+
+
+def test_graph_group_cap_makes_structural_validation_explicitly_partial(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr("glossarize.graphify.GROUP_CAP", 2)
+    graph = {
+        "nodes": [
+            {"id": f"{group}-{member}", "label": f"Node{group}{member}",
+             "community": group}
+            for group in range(3)
+            for member in range(2)
+        ],
+        "edges": [],
+    }
+    (tmp_path / "main.py").write_text("ordinary_name = 1\n")
+    gout = tmp_path / "graphify-out"
+    gout.mkdir()
+    (gout / "graph.json").write_text(json.dumps(graph))
+
+    validation = build_validation(
+        build_evidence(tmp_path), {"schema_version": 1, "concepts": []}
+    )
+
+    assert validation["total_findings"] == 2
+    assert validation["total_findings_complete"] is False
+    assert validation["graph"]["groups_dropped"] == 1
+    assert validation["graph"]["groups_complete"] is False
+    assert validation["unnamed_structure"]["partial"] is True
+    assert "group cap" in validation["unnamed_structure"]["partial_reason"]
 
 
 def test_binding_validation_rejects_unstable_identities():

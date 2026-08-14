@@ -97,19 +97,32 @@ class Resolver:
             p.split("/", 1)[0].rsplit(".", 1)[0].lower() for p in self.paths
         }
 
-    def resolve(self, spec: str, importer_rel: str) -> tuple[str, str | None]:
+    def resolve(
+        self,
+        spec: str,
+        importer_rel: str,
+        language: str,
+    ) -> tuple[str, str | None]:
         """Return ("internal", module) or ("external", top-level name)."""
         if spec.startswith("."):  # relative (js/ts/python style)
             base = module_of(importer_rel)
-            parts = spec.replace("\\", "/").split("/")
             segments = base.split("/") if base != "." else []
-            for part in parts:
-                if part in ("", "."):
-                    continue
-                if part == "..":
+            if language == "python":
+                level = len(spec) - len(spec.lstrip("."))
+                for _ in range(max(0, level - 1)):
                     segments = segments[:-1]
-                else:
-                    segments.append(part)
+                remainder = spec[level:]
+                if remainder:
+                    segments.extend(remainder.split("."))
+            else:
+                parts = spec.replace("\\", "/").split("/")
+                for part in parts:
+                    if part in ("", "."):
+                        continue
+                    if part == "..":
+                        segments = segments[:-1]
+                    else:
+                        segments.append(part)
             joined = "/".join(segments)
             for suffix in _JS_SUFFIXES:
                 candidate = joined + suffix
@@ -141,16 +154,16 @@ class Resolver:
         return "external", first or None
 
 
-def build_imports_section(file_imports: list[tuple[str, list[str]]],
+def build_imports_section(file_imports: list[tuple[str, str, list[str]]],
                           code_files: list[tuple[str, str]]) -> dict:
-    """file_imports: (importer rel path, import specs) per scanned file."""
+    """file_imports: (path, language, import specs) per scanned file."""
     resolver = Resolver(code_files)
     edges: Counter = Counter()
     external: Counter = Counter()
-    for rel, specs in file_imports:
+    for rel, language, specs in file_imports:
         importer_module = module_of(rel)
         for spec in specs:
-            kind, target = resolver.resolve(spec, rel)
+            kind, target = resolver.resolve(spec, rel, language)
             if target is None:
                 continue
             if kind == "internal":

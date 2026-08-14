@@ -146,10 +146,11 @@ def validate_glossary(glossary: object) -> list[str]:
             errors.append(f"{where} must be an object")
             continue
         for key in _REQUIRED_CONCEPT_KEYS:
-            if not isinstance(concept.get(key), str) or not concept.get(key):
+            value = concept.get(key)
+            if not isinstance(value, str) or not value.strip():
                 errors.append(f"{where} needs a non-empty string {key!r}")
         status = concept.get("status")
-        if status is not None and status not in STATUSES:
+        if isinstance(status, str) and status not in STATUSES:
             errors.append(
                 f"{where} status {status!r} not one of {sorted(STATUSES)}"
             )
@@ -158,12 +159,12 @@ def validate_glossary(glossary: object) -> list[str]:
             if "scope" in concept else None
         )
         cid = concept.get("id")
-        if isinstance(cid, str):
+        if isinstance(cid, str) and cid.strip():
             if cid in seen_ids:
                 errors.append(f"{where} duplicate id {cid!r}")
             seen_ids.add(cid)
         term = concept.get("term")
-        if isinstance(term, str):
+        if isinstance(term, str) and term.strip():
             folded = _fold_vocabulary(term)
             for previous in vocabulary_owners[folded]:
                 if previous[0] != i and scopes_overlap(previous[3], scope):
@@ -191,9 +192,10 @@ def validate_glossary(glossary: object) -> list[str]:
             ):
                 errors.append(f"{aw} needs a 'term'")
                 continue
-            if alias.get("status") not in STATUSES:
+            alias_status = alias.get("status")
+            if not isinstance(alias_status, str) or alias_status not in STATUSES:
                 errors.append(
-                    f"{aw} status {alias.get('status')!r} not one of "
+                    f"{aw} status {alias_status!r} not one of "
                     f"{sorted(STATUSES)}"
                 )
             folded_alias = _fold_vocabulary(alias_term)
@@ -227,7 +229,10 @@ def validate_glossary(glossary: object) -> list[str]:
             if not isinstance(ref, str) or ":" not in ref:
                 errors.append(f"{bw} needs a 'ref' like 'symbol:Name'")
                 continue
-            kind = ref.split(":", 1)[0]
+            kind, _, target = ref.partition(":")
+            if not target.strip():
+                errors.append(f"{bw} needs a 'ref' like 'symbol:Name'")
+                continue
             if kind not in BINDING_KINDS:
                 errors.append(
                     f"{bw} unsupported ref kind {kind!r} — bindings target "

@@ -17,6 +17,20 @@ from glossarize.tokenize import tokenize_identifier, tokenize_term
 LOCATION_SAMPLE = 5
 
 
+def repository_corpus_complete(evidence: dict) -> bool:
+    """Whether the repository inventory has no scanner-created omissions."""
+    budget = evidence.get("skipped", {}).get("corpus_budget", {})
+    return isinstance(budget, dict) and budget.get("complete") is True
+
+
+def production_corpus_complete(evidence: dict) -> bool:
+    """Whether production vocabulary has no scanner-created omissions."""
+    budget = evidence.get("skipped", {}).get("corpus_budget", {})
+    if not isinstance(budget, dict):
+        return False
+    return budget.get("production_complete", budget.get("complete")) is True
+
+
 def _contains_sequence(unit: list[str], wanted: list[str]) -> bool:
     width = len(wanted)
     return any(unit[index:index + width] == wanted
@@ -30,14 +44,19 @@ def _matching_locations(entry: dict, scope: tuple[str, ...]) -> list[dict]:
     ]
 
 
-def _scoped_entry_occurrence(entry: dict, scope: tuple[str, ...]) -> dict:
+def _scoped_entry_occurrence(
+    entry: dict,
+    scope: tuple[str, ...],
+    corpus_complete: bool,
+) -> dict:
     locations = _matching_locations(entry, scope)
     modules = {module_of(location["path"]) for location in locations}
+    locations_complete = not entry.get("locations_truncated", False)
     return {
         "count": sum(location["count"] for location in locations),
-        "count_complete": not entry.get("locations_truncated", False),
+        "count_complete": locations_complete and corpus_complete,
         "files": len(locations),
-        "files_complete": not entry.get("locations_truncated", False),
+        "files_complete": locations_complete and corpus_complete,
         "modules": len(modules),
         "locations": locations[:LOCATION_SAMPLE],
         "locations_truncated": bool(entry.get("locations_truncated", False)),
@@ -49,13 +68,14 @@ def code_term_occurrence(
 ) -> dict:
     """Return rule-proven lexical occurrences and completeness metadata."""
     wanted = tokenize_term(term)
+    corpus_complete = production_corpus_complete(evidence)
     empty = {
         "term_tokens": wanted,
         "match_kind": "token" if len(wanted) <= 1 else "lexical-unit",
         "count": 0,
-        "count_complete": True,
+        "count_complete": corpus_complete,
         "files": 0,
-        "files_complete": True,
+        "files_complete": corpus_complete,
         "modules": 0,
         "locations": [],
         "locations_truncated": False,
@@ -74,23 +94,27 @@ def code_term_occurrence(
         if entry is None:
             return {
                 **empty,
-                "count_complete": section.get("truncated") is None,
-                "files_complete": section.get("truncated") is None,
+                "count_complete": (
+                    section.get("truncated") is None and corpus_complete
+                ),
+                "files_complete": (
+                    section.get("truncated") is None and corpus_complete
+                ),
             }
         if scope is not None:
             return {
                 "term_tokens": wanted,
                 "match_kind": "token",
-                **_scoped_entry_occurrence(entry, scope),
+                **_scoped_entry_occurrence(entry, scope, corpus_complete),
                 "scope": scope_evidence(scope),
             }
         return {
             "term_tokens": wanted,
             "match_kind": "token",
             "count": entry["count"],
-            "count_complete": True,
+            "count_complete": corpus_complete,
             "files": entry["files"],
-            "files_complete": True,
+            "files_complete": corpus_complete,
             "modules": entry["modules"],
             "locations": list(entry["locations"]),
             "locations_truncated": entry["locations_truncated"],
@@ -102,7 +126,9 @@ def code_term_occurrence(
     locations: Counter = Counter()
     locations_truncated = False
     scoped_count_complete = True
-    files_complete = section.get("truncated") is None
+    files_complete = (
+        section.get("truncated") is None and corpus_complete
+    )
     for entry in section["items"]:
         unit = entry.get("tokens")
         if not isinstance(unit, list):
@@ -136,7 +162,9 @@ def code_term_occurrence(
         "match_kind": "lexical-unit",
         "count": count,
         "count_complete": (
-            section.get("truncated") is None and scoped_count_complete
+            section.get("truncated") is None
+            and scoped_count_complete
+            and corpus_complete
         ),
         "files": len(locations),
         "files_complete": files_complete,
@@ -154,9 +182,10 @@ def code_identifier_occurrence(
 ) -> dict:
     """Exact identifier occurrence used to resolve stable symbol bindings."""
     section = evidence["vocabulary"]["identifiers"]
+    corpus_complete = production_corpus_complete(evidence)
     entry = next((item for item in section["items"] if item["name"] == name), None)
     if entry is None:
-        complete = section.get("truncated") is None
+        complete = section.get("truncated") is None and corpus_complete
         return {
             "count": 0,
             "count_complete": complete,
@@ -168,12 +197,15 @@ def code_identifier_occurrence(
             "scope": scope_evidence(scope),
         }
     if scope is not None:
-        return {**_scoped_entry_occurrence(entry, scope), "scope": scope_evidence(scope)}
+        return {
+            **_scoped_entry_occurrence(entry, scope, corpus_complete),
+            "scope": scope_evidence(scope),
+        }
     return {
         "count": entry["count"],
-        "count_complete": True,
+        "count_complete": corpus_complete,
         "files": entry["files"],
-        "files_complete": True,
+        "files_complete": corpus_complete,
         "modules": len({
             module_of(location["path"]) for location in entry.get("locations", [])
         }),
@@ -189,6 +221,7 @@ def doc_term_occurrence(
     """Exact one-token documentation occurrence with the same scope contract."""
     wanted = tokenize_term(term)
     section = evidence["vocabulary"]["doc_terms"]
+    corpus_complete = production_corpus_complete(evidence)
     if len(wanted) != 1:
         return {
             "count": 0,
@@ -201,16 +234,18 @@ def doc_term_occurrence(
     if entry is None:
         return {
             "count": 0,
-            "count_complete": section.get("truncated") is None,
+            "count_complete": (
+                section.get("truncated") is None and corpus_complete
+            ),
             "scope": scope_evidence(scope),
         }
     if scope is None:
         return {
             "count": entry["count"],
-            "count_complete": True,
+            "count_complete": corpus_complete,
             "scope": scope_evidence(scope),
         }
-    scoped = _scoped_entry_occurrence(entry, scope)
+    scoped = _scoped_entry_occurrence(entry, scope, corpus_complete)
     return {
         "count": scoped["count"],
         "count_complete": scoped["count_complete"],
