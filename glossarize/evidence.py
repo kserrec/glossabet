@@ -7,19 +7,18 @@ recorded in the artifact so truncated never reads as complete.
 
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from itertools import combinations
 from pathlib import Path
 
-from itertools import combinations
-
 from glossarize import __version__
+from glossarize.artifacts import repo_root, write_artifact
 from glossarize.cache import entry_if_valid, load_cache, save_cache
 from glossarize.graphify import build_structural_groups, structure_candidates
-from glossarize.imports import build_imports_section, extract_imports
+from glossarize.imports import build_imports_section, extract_imports, module_of
 from glossarize.importance import build_naming_candidates
 from glossarize.scanner import detect_monorepo, walk_repository
 from glossarize.terminology import build_terminology
@@ -27,7 +26,6 @@ from glossarize.tokenize import doc_words, iter_identifiers, tokenize_identifier
 
 SCHEMA_VERSION = 1
 
-OUT_DIR = "glossarize-out"
 EVIDENCE_FILE = "evidence.json"
 
 
@@ -106,6 +104,41 @@ def _extract_doc_entry(text: str) -> dict:
     }
 
 
+class _Vocabulary:
+    """Identifier vocabulary accumulated across the walk: shared token
+    counts plus the per-file, per-module, and co-occurrence views the
+    downstream analyses need — one aggregate instead of six parallel dicts.
+    """
+
+    def __init__(self) -> None:
+        self.token_counts: Counter = Counter()
+        self.token_files: dict[str, Counter] = defaultdict(Counter)
+        self.token_modules: dict[str, Counter] = defaultdict(Counter)
+        self.neighbors: dict[str, Counter] = defaultdict(Counter)
+        self.module_neighbor_sets: dict[str, dict[str, set]] = defaultdict(
+            lambda: defaultdict(set)
+        )
+        self.identifier_counts: Counter = Counter()
+
+    def fold(self, identifiers: dict[str, int], rel: str, module: str) -> None:
+        """Fold one code file's identifier counts into every view."""
+        for name, count in sorted(identifiers.items()):
+            self.identifier_counts[name] += count
+            tokens = tokenize_identifier(name)
+            uniq = sorted(set(tokens))
+            for token in tokens:
+                self.token_counts[token] += count
+                self.token_files[token][rel] += count
+                self.token_modules[token][module] += count
+            for a, b in combinations(uniq, 2):
+                self.neighbors[a][b] += count
+                self.neighbors[b][a] += count
+            for token in uniq:
+                seen = self.module_neighbor_sets[token][module]
+                if len(seen) < 30:  # bounded context sample per (term, module)
+                    seen.update(t for t in uniq if t != token)
+
+
 def build_evidence(root: Path, limits: Limits = Limits(),
                    cache: bool = False, stats: dict | None = None,
                    graphify: bool = True) -> dict:
@@ -118,14 +151,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
     cache_files: dict[str, dict] = {}
     reused = extracted = 0
 
-    token_counts: Counter = Counter()
-    token_files: dict[str, Counter] = defaultdict(Counter)
-    token_modules: dict[str, Counter] = defaultdict(Counter)
-    neighbors: dict[str, Counter] = defaultdict(Counter)
-    module_neighbor_sets: dict[str, dict[str, set]] = defaultdict(
-        lambda: defaultdict(set)
-    )
-    identifier_counts: Counter = Counter()
+    vocabulary = _Vocabulary()
     languages: Counter = Counter()
     modules: dict[str, dict] = defaultdict(lambda: {"code_files": 0, "languages": set()})
     file_imports: list[tuple[str, list[str]]] = []
@@ -159,26 +185,12 @@ def build_evidence(root: Path, limits: Limits = Limits(),
             continue
         code_bytes += entry["bytes"]
         languages[language] += 1
-        module = rel.rsplit("/", 1)[0] if "/" in rel else "."
+        module = module_of(rel)
         modules[module]["code_files"] += 1
         modules[module]["languages"].add(language)
         if entry["imports"]:
             file_imports.append((rel, entry["imports"]))
-        for name, count in sorted(entry["identifiers"].items()):
-            identifier_counts[name] += count
-            tokens = tokenize_identifier(name)
-            uniq = sorted(set(tokens))
-            for token in tokens:
-                token_counts[token] += count
-                token_files[token][rel] += count
-                token_modules[token][module] += count
-            for a, b in combinations(uniq, 2):
-                neighbors[a][b] += count
-                neighbors[b][a] += count
-            for token in uniq:
-                seen = module_neighbor_sets[token][module]
-                if len(seen) < 30:  # bounded context sample per (term, module)
-                    seen.update(t for t in uniq if t != token)
+        vocabulary.fold(entry["identifiers"], rel, module)
 
     doc_term_counts: Counter = Counter()
     doc_entries = []
@@ -197,14 +209,14 @@ def build_evidence(root: Path, limits: Limits = Limits(),
         stats.update({"reused": reused, "extracted": extracted})
 
     def token_entry(term: str, count: int) -> dict:
-        per_file = token_files[term]
+        per_file = vocabulary.token_files[term]
         locations = sorted(per_file.items(), key=lambda kv: (-kv[1], kv[0]))
         kept = locations[: limits.locations_per_term]
         return {
             "term": term,
             "count": count,
             "files": len(per_file),
-            "modules": len(token_modules.get(term, ())),
+            "modules": len(vocabulary.token_modules.get(term, ())),
             "locations": [{"path": p, "count": c} for p, c in kept],
             "locations_truncated": len(locations) > len(kept),
         }
@@ -223,8 +235,8 @@ def build_evidence(root: Path, limits: Limits = Limits(),
         else {"available": False, "warnings": []}
     )
     naming = build_naming_candidates(
-        imports_section, modules_list, token_counts, token_files,
-        token_modules, doc_term_counts,
+        imports_section, modules_list, vocabulary.token_counts,
+        vocabulary.token_files, vocabulary.token_modules, doc_term_counts,
     )
     naming.update(structure_candidates(structural))
 
@@ -252,9 +264,9 @@ def build_evidence(root: Path, limits: Limits = Limits(),
             "docs": sorted(doc_entries, key=lambda d: d["path"]),
         },
         "vocabulary": {
-            "tokens": _capped(token_counts, limits.tokens, token_entry),
+            "tokens": _capped(vocabulary.token_counts, limits.tokens, token_entry),
             "identifiers": _capped(
-                identifier_counts, limits.identifiers,
+                vocabulary.identifier_counts, limits.identifiers,
                 lambda term, count: {"name": term, "count": count},
             ),
             "doc_terms": _capped(
@@ -263,8 +275,9 @@ def build_evidence(root: Path, limits: Limits = Limits(),
             ),
         },
         "terminology": build_terminology(
-            identifier_counts, token_counts, token_modules,
-            neighbors, module_neighbor_sets, doc_term_counts,
+            vocabulary.identifier_counts, vocabulary.token_counts,
+            vocabulary.token_modules, vocabulary.neighbors,
+            vocabulary.module_neighbor_sets, doc_term_counts,
         ),
         "monorepo": detect_monorepo(root, walk),
         "skipped": {
@@ -275,11 +288,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
 
 
 def write_evidence(root: Path, evidence: dict) -> Path:
-    out = root / OUT_DIR
-    out.mkdir(exist_ok=True)
-    path = out / EVIDENCE_FILE
-    path.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n")
-    return path
+    return write_artifact(root, EVIDENCE_FILE, evidence)
 
 
 def _print_terminology_report(evidence: dict) -> None:
@@ -346,13 +355,12 @@ def _print_terminology_report(evidence: dict) -> None:
 
 
 def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
-    root = Path(path_arg)
-    if not root.is_dir():
-        print(f"glossarize: not a directory: {path_arg}", file=sys.stderr)
+    root = repo_root(path_arg)
+    if root is None:
         return 1
     stats: dict = {}
     evidence = build_evidence(root, cache=True, stats=stats, graphify=graphify)
-    out_path = write_evidence(root.resolve(), evidence)
+    out_path = write_evidence(root, evidence)
     structural = evidence["structural_groups"]
     for warning in structural.get("warnings", []):
         print(f"graphify adapter: {warning}", file=sys.stderr)

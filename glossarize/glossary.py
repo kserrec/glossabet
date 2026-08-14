@@ -12,9 +12,10 @@ import json
 import sys
 from pathlib import Path
 
+from glossarize.artifacts import OUT_DIR, repo_root, write_artifact
+
 GLOSSARY_SCHEMA_VERSION = 1
 GLOSSARY_FILE = "glossary.json"
-OUT_DIR = "glossarize-out"
 
 STATUSES = frozenset(
     {"canonical", "proposed", "alias", "discouraged", "deprecated", "unknown"}
@@ -116,22 +117,38 @@ def save_glossary(root: Path, glossary: dict) -> Path:
     if errors:
         raise GlossaryError("refusing to save invalid glossary: "
                             + "; ".join(errors))
-    out = root / OUT_DIR
-    out.mkdir(exist_ok=True)
-    path = out / GLOSSARY_FILE
     glossary = dict(glossary)
     glossary["concepts"] = sorted(glossary["concepts"], key=lambda c: c["id"])
-    path.write_text(json.dumps(glossary, indent=2, sort_keys=True) + "\n")
-    return path
+    return write_artifact(root, GLOSSARY_FILE, glossary)
+
+
+def require_glossary(root: Path, missing: str) -> dict | None:
+    """Loaded glossary, or None after reporting why there is nothing usable.
+
+    `missing` is the leading clause for the no-glossary-yet message, e.g.
+    "no glossary to validate".
+    """
+    try:
+        glossary = load_glossary(root)
+    except GlossaryError as exc:
+        print(f"glossarize: {exc}", file=sys.stderr)
+        return None
+    if glossary is None:
+        print(
+            f"glossarize: {missing} — run /glossarize and settle terms "
+            f"first ({OUT_DIR}/{GLOSSARY_FILE})",
+            file=sys.stderr,
+        )
+        return None
+    return glossary
 
 
 def show_command(path_arg: str) -> int:
-    root = Path(path_arg)
-    if not root.is_dir():
-        print(f"glossarize: not a directory: {path_arg}", file=sys.stderr)
+    root = repo_root(path_arg)
+    if root is None:
         return 1
     try:
-        glossary = load_glossary(root.resolve())
+        glossary = load_glossary(root)
     except GlossaryError as exc:
         print(f"glossarize: {exc}", file=sys.stderr)
         return 1

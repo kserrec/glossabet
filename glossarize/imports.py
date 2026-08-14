@@ -50,6 +50,11 @@ EDGE_CAP = 200
 EXTERNAL_CAP = 30
 
 
+def module_of(rel: str) -> str:
+    """Directory-granularity module of a repo-relative path ('.' at root)."""
+    return rel.rsplit("/", 1)[0] if "/" in rel else "."
+
+
 def extract_imports(text: str, language: str) -> list[str]:
     found: list[str] = []
     for pattern in _PATTERNS.get(language, []):
@@ -81,13 +86,10 @@ class Resolver:
             p.split("/", 1)[0].rsplit(".", 1)[0].lower() for p in self.paths
         }
 
-    def _module_of(self, rel: str) -> str:
-        return rel.rsplit("/", 1)[0] if "/" in rel else "."
-
     def resolve(self, spec: str, importer_rel: str) -> tuple[str, str | None]:
         """Return ("internal", module) or ("external", top-level name)."""
         if spec.startswith("."):  # relative (js/ts/python style)
-            base = self._module_of(importer_rel)
+            base = module_of(importer_rel)
             parts = spec.replace("\\", "/").split("/")
             segments = base.split("/") if base != "." else []
             for part in parts:
@@ -104,16 +106,16 @@ class Resolver:
                     hit = candidate if candidate in self.paths else self.by_slug[
                         candidate.rsplit(".", 1)[0]
                     ]
-                    return "internal", self._module_of(hit)
-            return "internal", self._module_of(joined) if joined else None
+                    return "internal", module_of(hit)
+            return "internal", module_of(joined) if joined else None
 
         slug = spec.replace(".", "/").replace("::", "/").rstrip("/")
         for known, rel in self.by_slug.items():
             if known == slug or known.endswith("/" + slug):
-                return "internal", self._module_of(rel)
+                return "internal", module_of(rel)
         stem = slug.rsplit("/", 1)[-1].lower()
         if stem in self.by_stem:
-            return "internal", self._module_of(self.by_stem[stem])
+            return "internal", module_of(self.by_stem[stem])
         first = spec.replace("::", ".").split(".")[0].split("/")[0]
         if first.lower() in self.top_level:
             return "internal", first.lower()
@@ -127,7 +129,7 @@ def build_imports_section(file_imports: list[tuple[str, list[str]]],
     edges: Counter = Counter()
     external: Counter = Counter()
     for rel, specs in file_imports:
-        importer_module = resolver._module_of(rel)
+        importer_module = module_of(rel)
         for spec in specs:
             kind, target = resolver.resolve(spec, rel)
             if target is None:

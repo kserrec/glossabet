@@ -71,6 +71,12 @@ def tokenize_identifier(name: str) -> list[str]:
     return tokens
 
 
+def tokenize_term(term: str) -> list[str]:
+    """Tokens of a human-written glossary term, where spaces and hyphens
+    separate words the way underscores do in identifiers."""
+    return tokenize_identifier(term.replace(" ", "_").replace("-", "_"))
+
+
 def iter_identifiers(text: str):
     """Yield identifier spellings worth counting from source text."""
     for match in IDENTIFIER_RE.finditer(text):

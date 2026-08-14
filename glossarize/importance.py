@@ -11,6 +11,7 @@ from collections import Counter, defaultdict
 
 MODULE_CANDIDATE_CAP = 10
 TERM_CANDIDATE_CAP = 15
+TERM_CANDIDATE_POOL = 300  # top-frequency tokens screened for term candidates
 
 
 def _module_candidates(imports_section: dict, modules: list[dict],
@@ -59,7 +60,7 @@ def _term_candidates(token_counts: Counter, token_files: dict,
                      token_modules: dict, doc_term_counts: Counter) -> list[dict]:
     candidates = []
     ranked = sorted(token_counts.items(), key=lambda kv: (-kv[1], kv[0]))
-    for term, count in ranked[:300]:
+    for term, count in ranked[:TERM_CANDIDATE_POOL]:
         files = len(token_files.get(term, ()))
         spread = len(token_modules.get(term, ()))
         doc_mentions = doc_term_counts.get(term, 0)

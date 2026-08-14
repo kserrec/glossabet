@@ -10,19 +10,16 @@ evidence for the team, never an automatic diagnosis.
 
 from __future__ import annotations
 
-import json
-import sys
 from itertools import combinations
-from pathlib import Path
 
+from glossarize.artifacts import repo_root, write_artifact
 from glossarize.drift import build_drift
 from glossarize.evidence import build_evidence, write_evidence
-from glossarize.glossary import GlossaryError, load_glossary
-from glossarize.tokenize import tokenize_identifier
+from glossarize.glossary import require_glossary
+from glossarize.tokenize import tokenize_term
 
 VALIDATION_SCHEMA_VERSION = 1
 VALIDATION_FILE = "validation.json"
-OUT_DIR = "glossarize-out"
 
 FINDINGS_CAP = 10
 FRAGMENTATION_MIN_MODULES = 5
@@ -34,7 +31,7 @@ OVERLOADED_MIN_CONCEPTS = 3
 
 
 def _tokens(text: str) -> set[str]:
-    return set(tokenize_identifier(text.replace(" ", "_").replace("-", "_")))
+    return set(tokenize_term(text))
 
 
 def _concept_vocab(concept: dict) -> tuple[set[str], set[str]]:
@@ -93,78 +90,71 @@ def _resolve_bindings(concept: dict, evidence: dict) -> list[dict]:
     return results
 
 
-def _capped(items: list) -> dict:
-    return {
-        "items": items[:FINDINGS_CAP],
-        "dropped_items": max(0, len(items) - FINDINGS_CAP),
-    }
+def _structure_findings(structural: dict, canonical: list[dict],
+                        vocab: dict) -> tuple[list, list, list]:
+    """Direction A: structure -> glossary.
 
-
-def build_validation(evidence: dict, glossary: dict) -> dict:
-    canonical = [
-        c for c in glossary["concepts"] if c["status"] == "canonical"
-    ]
-    vocab = {c["id"]: _concept_vocab(c) for c in canonical}
-    token_entries = {
-        t["term"]: t for t in evidence["vocabulary"]["tokens"]["items"]
-    }
-    structural = evidence["structural_groups"]
-    graph_ok = bool(structural.get("available"))
-
-    # Direction A: structure -> glossary.
+    Returns (unnamed structure, boundary mismatches, overloaded regions).
+    """
     unnamed, boundary, overloaded = [], [], []
-    if graph_ok:
-        for group in structural["groups"]:
-            strengths = {
-                c["id"]: _match_strength(group, *vocab[c["id"]])
-                for c in canonical
-            }
-            strong = sorted(
-                cid for cid, s in strengths.items() if s >= 2
-            )
-            if canonical and max(strengths.values(), default=0) == 0:
-                unnamed.append({
-                    "kind": "unnamed-structure",
-                    "confidence": "high" if group["size"] >= 5 else "medium",
-                    "group": group["label"],
-                    "evidence": {
-                        "size": group["size"],
-                        "members_sample": group["members_sample"],
-                    },
-                    "summary": (
-                        f"structural group '{group['label']}' "
-                        f"({group['size']} nodes) matches no canonical concept"
-                    ),
-                })
-            for a, b in combinations(strong, 2):
-                boundary.append({
-                    "kind": "boundary-mismatch",
-                    "confidence": "medium",
-                    "concepts": [a, b],
-                    "group": group["label"],
-                    "evidence": {"members_sample": group["members_sample"]},
-                    "summary": (
-                        f"'{a}' and '{b}' are distinct in the glossary but "
-                        f"both strongly match group '{group['label']}'"
-                    ),
-                })
-            if len(strong) >= OVERLOADED_MIN_CONCEPTS:
-                overloaded.append({
-                    "kind": "overloaded-structural-region",
-                    "confidence": "medium",
-                    "group": group["label"],
-                    "concepts": strong,
-                    "evidence": {"members_sample": group["members_sample"]},
-                    "summary": (
-                        f"group '{group['label']}' matches "
-                        f"{len(strong)} distinct canonical concepts"
-                    ),
-                })
-        unnamed.sort(key=lambda f: (-f["evidence"]["size"], f["group"]))
-        boundary.sort(key=lambda f: (f["group"], f["concepts"]))
-        overloaded.sort(key=lambda f: f["group"])
+    for group in structural["groups"]:
+        strengths = {
+            c["id"]: _match_strength(group, *vocab[c["id"]])
+            for c in canonical
+        }
+        strong = sorted(
+            cid for cid, s in strengths.items() if s >= 2
+        )
+        if canonical and max(strengths.values(), default=0) == 0:
+            unnamed.append({
+                "kind": "unnamed-structure",
+                "confidence": "high" if group["size"] >= 5 else "medium",
+                "group": group["label"],
+                "evidence": {
+                    "size": group["size"],
+                    "members_sample": group["members_sample"],
+                },
+                "summary": (
+                    f"structural group '{group['label']}' "
+                    f"({group['size']} nodes) matches no canonical concept"
+                ),
+            })
+        for a, b in combinations(strong, 2):
+            boundary.append({
+                "kind": "boundary-mismatch",
+                "confidence": "medium",
+                "concepts": [a, b],
+                "group": group["label"],
+                "evidence": {"members_sample": group["members_sample"]},
+                "summary": (
+                    f"'{a}' and '{b}' are distinct in the glossary but "
+                    f"both strongly match group '{group['label']}'"
+                ),
+            })
+        if len(strong) >= OVERLOADED_MIN_CONCEPTS:
+            overloaded.append({
+                "kind": "overloaded-structural-region",
+                "confidence": "medium",
+                "group": group["label"],
+                "concepts": strong,
+                "evidence": {"members_sample": group["members_sample"]},
+                "summary": (
+                    f"group '{group['label']}' matches "
+                    f"{len(strong)} distinct canonical concepts"
+                ),
+            })
+    unnamed.sort(key=lambda f: (-f["evidence"]["size"], f["group"]))
+    boundary.sort(key=lambda f: (f["group"], f["concepts"]))
+    overloaded.sort(key=lambda f: f["group"])
+    return unnamed, boundary, overloaded
 
-    # Direction B: glossary -> evidence.
+
+def _concept_findings(canonical: list[dict], vocab: dict, token_entries: dict,
+                      evidence: dict) -> tuple[list, list, list]:
+    """Direction B: glossary -> evidence.
+
+    Returns (orphaned concepts, unresolved bindings, fragmentation).
+    """
     orphaned, unresolved, fragmented = [], [], []
     for concept in canonical:
         term_tokens, _ = vocab[concept["id"]]
@@ -229,7 +219,34 @@ def build_validation(evidence: dict, glossary: dict) -> dict:
     fragmented.sort(
         key=lambda f: (-f["evidence"]["module_spread"], f["concept_id"])
     )
+    return orphaned, unresolved, fragmented
 
+
+def _capped(items: list) -> dict:
+    return {
+        "items": items[:FINDINGS_CAP],
+        "dropped_items": max(0, len(items) - FINDINGS_CAP),
+    }
+
+
+def build_validation(evidence: dict, glossary: dict) -> dict:
+    canonical = [
+        c for c in glossary["concepts"] if c["status"] == "canonical"
+    ]
+    vocab = {c["id"]: _concept_vocab(c) for c in canonical}
+    token_entries = {
+        t["term"]: t for t in evidence["vocabulary"]["tokens"]["items"]
+    }
+    structural = evidence["structural_groups"]
+    graph_ok = bool(structural.get("available"))
+
+    unnamed, boundary, overloaded = (
+        _structure_findings(structural, canonical, vocab)
+        if graph_ok else ([], [], [])
+    )
+    orphaned, unresolved, fragmented = _concept_findings(
+        canonical, vocab, token_entries, evidence
+    )
     drift = build_drift(evidence, glossary)
 
     sections = {
@@ -293,28 +310,15 @@ def _print_report(validation: dict) -> None:
 
 
 def validate_command(path_arg: str) -> int:
-    root = Path(path_arg)
-    if not root.is_dir():
-        print(f"glossarize: not a directory: {path_arg}", file=sys.stderr)
+    root = repo_root(path_arg)
+    if root is None:
         return 1
-    root = root.resolve()
-    try:
-        glossary = load_glossary(root)
-    except GlossaryError as exc:
-        print(f"glossarize: {exc}", file=sys.stderr)
-        return 1
+    glossary = require_glossary(root, "no glossary to validate")
     if glossary is None:
-        print(
-            "glossarize: no glossary to validate — run /glossarize and "
-            f"settle terms first ({OUT_DIR}/glossary.json)",
-            file=sys.stderr,
-        )
         return 1
     evidence = build_evidence(root, cache=True)
     write_evidence(root, evidence)
     validation = build_validation(evidence, glossary)
-    (root / OUT_DIR / VALIDATION_FILE).write_text(
-        json.dumps(validation, indent=2, sort_keys=True) + "\n"
-    )
+    write_artifact(root, VALIDATION_FILE, validation)
     _print_report(validation)
     return 0
