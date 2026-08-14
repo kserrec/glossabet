@@ -240,7 +240,10 @@ Steps:
 Acceptance: a `/glossarize` run on a scanned repo demonstrably uses the
 evidence (and says so); on a stale artifact it warns.
 
-### Phase 4 — Terminology intelligence
+### Phase 4 — Terminology intelligence ✅ (2026-08-14)
+In-phase decision: terminology embeds into evidence.json (no sibling
+artifact), so the skill's existing evidence protocol covers it with no
+third skill change; `analyze` = scan + human-readable report.
 Steps:
 1. Term frequency across identifiers and docs, merged across naming
    conventions; per-module and per-layer (code vs docs) breakdowns.

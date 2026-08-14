@@ -42,6 +42,12 @@ def build_parser() -> argparse.ArgumentParser:
     scan = sub.add_parser("scan", help="build or refresh repository evidence")
     scan.add_argument("path", nargs="?", default=".", help="repository root")
 
+    analyze = sub.add_parser(
+        "analyze",
+        help="scan plus a terminology report (register, overlaps, overloads)",
+    )
+    analyze.add_argument("path", nargs="?", default=".", help="repository root")
+
     return parser
 
 
@@ -57,6 +63,11 @@ def _run(argv: list[str] | None) -> int:
         from glossarize.evidence import scan_command
 
         return scan_command(args.path)
+
+    if args.command == "analyze":
+        from glossarize.evidence import analyze_command
+
+        return analyze_command(args.path)
 
     parser.error(f"unknown command {args.command!r}")
     return EXIT_DEFECT  # unreachable; error() exits

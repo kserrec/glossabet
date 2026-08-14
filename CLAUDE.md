@@ -53,4 +53,5 @@ uv run pytest                    # test suite
 uv tool install . --reinstall    # (re)install the CLI at ~/.local/bin/glossarize
 glossarize --version
 glossarize scan <repo>           # writes <repo>/glossarize-out/evidence.json
+glossarize analyze <repo>        # scan + terminology report (register, overlaps)
 ```

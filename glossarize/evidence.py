@@ -14,8 +14,11 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
+from itertools import combinations
+
 from glossarize import __version__
 from glossarize.scanner import detect_monorepo, walk_repository
+from glossarize.terminology import build_terminology
 from glossarize.tokenize import doc_words, iter_identifiers, tokenize_identifier
 
 SCHEMA_VERSION = 1
@@ -82,6 +85,11 @@ def build_evidence(root: Path, limits: Limits = Limits()) -> dict:
 
     token_counts: Counter = Counter()
     token_files: dict[str, Counter] = defaultdict(Counter)
+    token_modules: dict[str, Counter] = defaultdict(Counter)
+    neighbors: dict[str, Counter] = defaultdict(Counter)
+    module_neighbor_sets: dict[str, dict[str, set]] = defaultdict(
+        lambda: defaultdict(set)
+    )
     identifier_counts: Counter = Counter()
     languages: Counter = Counter()
     modules: dict[str, dict] = defaultdict(lambda: {"code_files": 0, "languages": set()})
@@ -98,9 +106,19 @@ def build_evidence(root: Path, limits: Limits = Limits()) -> dict:
         modules[module]["languages"].add(language)
         for name in iter_identifiers(text):
             identifier_counts[name] += 1
-            for token in tokenize_identifier(name):
+            tokens = tokenize_identifier(name)
+            uniq = sorted(set(tokens))
+            for token in tokens:
                 token_counts[token] += 1
                 token_files[token][rel] += 1
+                token_modules[token][module] += 1
+            for a, b in combinations(uniq, 2):
+                neighbors[a][b] += 1
+                neighbors[b][a] += 1
+            for token in uniq:
+                seen = module_neighbor_sets[token][module]
+                if len(seen) < 30:  # bounded context sample per (term, module)
+                    seen.update(t for t in uniq if t != token)
 
     doc_term_counts: Counter = Counter()
     doc_entries = []
@@ -164,6 +182,10 @@ def build_evidence(root: Path, limits: Limits = Limits()) -> dict:
                 lambda term, count: {"term": term, "count": count},
             ),
         },
+        "terminology": build_terminology(
+            identifier_counts, token_counts, token_modules,
+            neighbors, module_neighbor_sets, doc_term_counts,
+        ),
         "monorepo": detect_monorepo(root, walk),
         "skipped": {
             "sensitive": sorted(walk.skipped_sensitive),
@@ -180,7 +202,60 @@ def write_evidence(root: Path, evidence: dict) -> Path:
     return path
 
 
-def scan_command(path_arg: str) -> int:
+def _print_terminology_report(evidence: dict) -> None:
+    term = evidence["terminology"]
+    reg = term["register"]
+    print(
+        f"\n== house register ({reg['unique_identifiers']} unique identifiers, "
+        f"top {term['considered_tokens']} of {term['vocabulary_size']} "
+        f"tokens analyzed) =="
+    )
+    styles = ", ".join(f"{k} {v}%" for k, v in reg["identifier_styles_pct"].items())
+    print(f"styles: {styles or 'n/a'}")
+    dist = ", ".join(
+        f"{k} words {v}%" for k, v in reg["token_count_distribution_pct"].items()
+    )
+    print(f"identifier length: {dist or 'n/a'}")
+    for label, key in (("suffixes", "common_suffix_tokens"),
+                       ("prefixes", "common_prefix_tokens")):
+        affixes = ", ".join(f"{a['token']} ({a['identifiers']})" for a in reg[key])
+        print(f"common {label}: {affixes or 'none'}")
+
+    layers = term["layers"]
+    print("\n== code vs docs vocabulary ==")
+    for label, key in (("shared", "shared_top"), ("code-only", "code_only_top"),
+                       ("doc-only", "doc_only_top")):
+        print(f"{label}: {', '.join(layers[key]) or 'none'}")
+
+    syn = term["synonym_candidates"]
+    print(f"\n== possible vocabulary overlaps "
+          f"({syn['considered_pairs']} pairs considered) ==")
+    if not syn["items"]:
+        print("none nominated")
+    for item in syn["items"]:
+        print(
+            f"{item['a']} ~ {item['b']} (similarity {item['similarity']}; "
+            f"shared contexts: {', '.join(item['shared_contexts'])})"
+        )
+    if syn["dropped_items"]:
+        print(f"... and {syn['dropped_items']} more not shown")
+
+    over = term["overload_candidates"]
+    print("\n== possibly overloaded terms ==")
+    if not over["items"]:
+        print("none nominated")
+    for item in over["items"]:
+        mods = ", ".join(m["path"] for m in item["modules"])
+        print(f"{item['term']} across {mods} (dispersion {item['dispersion']})")
+    if over["dropped_items"]:
+        print(f"... and {over['dropped_items']} more not shown")
+    print(
+        "\nThese are nominations with evidence, not verdicts — "
+        "judge each against the code."
+    )
+
+
+def _scan(path_arg: str, report: bool) -> int:
     root = Path(path_arg)
     if not root.is_dir():
         print(f"glossarize: not a directory: {path_arg}", file=sys.stderr)
@@ -212,4 +287,14 @@ def scan_command(path_arg: str) -> int:
             "running glossarize at a lower level for each sub-project.",
             file=sys.stderr,
         )
+    if report:
+        _print_terminology_report(evidence)
     return 0
+
+
+def scan_command(path_arg: str) -> int:
+    return _scan(path_arg, report=False)
+
+
+def analyze_command(path_arg: str) -> int:
+    return _scan(path_arg, report=True)
