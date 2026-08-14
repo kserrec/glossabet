@@ -31,3 +31,27 @@ glossarize validate <repo>   reconcile glossary vs evidence and the Graphify gra
 
 Artifacts live in `<repo>/glossarize-out/` (evidence, glossary, drift and
 validation reports) plus an incremental cache in `<repo>/.glossarize/`.
+
+## Development
+
+Prerequisites: Python ≥ 3.10 and [uv](https://docs.astral.sh/uv/). The runtime
+is standard-library only; `pytest` is the sole dev dependency.
+
+Run the tests:
+
+```
+uv run pytest
+```
+
+Install the CLI onto your PATH and check it:
+
+```
+uv tool install . --reinstall
+glossarize --version
+```
+
+- `ARCHITECTURE.md` — how the engine is built and how to work on it (start here
+  to take ownership).
+- `SECURITY.md` — the threat model and the enforced trust boundaries.
+- `PLAN.md` — the authoritative roadmap and the binding design principles.
+- `skill/SKILL.md` — the canonical `/glossarize` agent skill.
