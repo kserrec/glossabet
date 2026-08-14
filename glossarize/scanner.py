@@ -74,6 +74,15 @@ def is_sensitive(name: str) -> bool:
     return any(p.search(lower) for p in _SENSITIVE_RES)
 
 
+def _escapes(full: str, root: Path) -> bool:
+    """True if the path's real target lies outside the repo root."""
+    try:
+        Path(os.path.realpath(full)).relative_to(root)
+    except ValueError:
+        return True
+    return False
+
+
 @dataclass
 class WalkResult:
     code_files: list[tuple[str, str]] = field(default_factory=list)  # (relpath, language)
@@ -81,6 +90,7 @@ class WalkResult:
     other_files: int = 0
     skipped_sensitive: list[str] = field(default_factory=list)
     skipped_oversized: list[str] = field(default_factory=list)
+    skipped_symlinks: list[str] = field(default_factory=list)
     sub_roots: list[str] = field(default_factory=list)
     workspace_manifests: list[str] = field(default_factory=list)
 
@@ -124,6 +134,12 @@ def walk_repository(root: Path) -> WalkResult:
             ext = os.path.splitext(fname)[1].lower()
             full = os.path.join(dirpath, fname)
             if ext in CODE_LANGUAGES or ext in DOC_EXTENSIONS:
+                # A symlink resolving outside the repo is not repo content:
+                # reading it would ingest arbitrary host files into evidence
+                # (os.walk's followlinks=False guards dirs, not files).
+                if os.path.islink(full) and _escapes(full, root):
+                    result.skipped_symlinks.append(rel)
+                    continue
                 try:
                     size = os.path.getsize(full)
                 except OSError:

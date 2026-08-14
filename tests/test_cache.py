@@ -88,3 +88,24 @@ def test_cache_dir_never_enters_evidence(tmp_path):
     assert ".glossarize" not in blob
     assert cache_path(root).is_file()
     assert load_cache(root)["generator_version"] == __version__
+
+
+def test_deeply_nested_cache_json_is_a_miss(tmp_path):
+    cdir = tmp_path / ".glossarize"
+    cdir.mkdir()
+    (cdir / "cache.json").write_text("[" * 60000 + "]" * 60000)
+    assert load_cache(tmp_path) is None  # miss, not a crash
+
+
+def test_oversized_cache_is_a_miss(tmp_path, monkeypatch):
+    # Security boundary (SECURITY.md): an untrusted repo shipping a giant
+    # cache.json must be a miss, never read into memory and OOM the process.
+    monkeypatch.setattr("glossarize.artifacts.MAX_JSON_BYTES", 50)
+    root = make_repo(tmp_path)
+    cdir = root / ".glossarize"
+    cdir.mkdir(exist_ok=True)
+    (cdir / "cache.json").write_text(json.dumps(
+        {"cache_version": 1, "generator_version": __version__,
+         "git": {}, "files": {"x": "y" * 200}}
+    ))
+    assert load_cache(root) is None

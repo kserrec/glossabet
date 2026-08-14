@@ -14,6 +14,21 @@ from pathlib import Path
 
 OUT_DIR = "glossarize-out"
 
+# Directly-read JSON (graph.json, glossary.json, cache.json) is bounded like
+# every walked file (scanner.MAX_FILE_BYTES): an untrusted repo must not be
+# able to OOM the process with a giant artifact before json.loads runs.
+MAX_JSON_BYTES = 64_000_000
+
+
+def oversized(path: Path, cap: int | None = None) -> bool:
+    """True if the file exists and exceeds the byte cap (caller decides how
+    to degrade). A stat failure is not oversized — the reader handles it."""
+    cap = MAX_JSON_BYTES if cap is None else cap
+    try:
+        return path.stat().st_size > cap
+    except OSError:
+        return False
+
 
 def repo_root(path_arg: str) -> Path | None:
     """Resolved repository root, or None after reporting the user error."""

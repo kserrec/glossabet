@@ -2,6 +2,7 @@
 evidence, nondeterminism, silent truncation, missed monorepo shape."""
 
 import json
+import os
 
 from glossarize.cli import main
 from glossarize.evidence import Limits, build_evidence, scan_command, write_evidence
@@ -151,3 +152,62 @@ def test_code_bytes_counts_bytes_not_characters(tmp_path):
     path.write_text("# café résumé naïveté\nx = 1\n")
     evidence = build_evidence(tmp_path)
     assert evidence["totals"]["code_bytes"] == path.stat().st_size
+
+
+def test_symlink_escaping_repo_is_not_ingested(tmp_path):
+    # A hostile repo cannot read host files from outside itself via a
+    # symlink: os.walk's followlinks=False guards directories, not files.
+    outside = tmp_path / "outside_host_file.py"
+    outside.write_text("stolenhostsecret = 1\n")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "main.py").write_text("x = 1\n")
+    os.symlink(outside, repo / "leaked.py")
+    evidence = build_evidence(repo)
+    assert "stolenhostsecret" not in json.dumps(evidence)
+    assert "leaked.py" in evidence["skipped"]["symlinks_escaping_repo"]
+    assert "leaked.py" not in [f["path"] for f in evidence["files"]["code"]]
+
+
+def test_symlink_inside_repo_still_scanned(tmp_path):
+    # An in-repo symlink target is legitimate content and is not skipped as
+    # an escape (its identifiers still reach evidence).
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "real.py").write_text("insideridentifier = 1\n")
+    os.symlink(repo / "real.py", repo / "link.py")
+    assert "insideridentifier" in json.dumps(build_evidence(repo))
+
+
+def test_hostile_git_config_does_not_execute_code(tmp_path, monkeypatch):
+    # A repo whose .git/config sets core.fsmonitor must not run that command
+    # when glossarize reads the git stamp (core.fsmonitor fires on git status).
+    import subprocess as sp
+    from glossarize.evidence import _git_stamp
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null",
+           "GIT_CONFIG_SYSTEM": "/dev/null"}
+    sp.run(["git", "init", "-q"], cwd=repo, env=env, check=True)
+    sp.run(["git", "config", "user.email", "t@t.t"], cwd=repo, check=True)
+    sp.run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+    (repo / "main.py").write_text("x = 1\n")
+    sp.run(["git", "add", "main.py"], cwd=repo, check=True)
+    sp.run(["git", "-c", "commit.gpgsign=false", "commit", "-qm", "i"],
+           cwd=repo, check=True)
+    marker = tmp_path / "PWNED"
+    sp.run(["git", "config", "core.fsmonitor", f"touch {marker}; false"],
+           cwd=repo, check=True)
+    stamp = _git_stamp(repo)
+    assert stamp["head"] is not None  # git still works
+    assert not marker.exists(), "core.fsmonitor command was executed"
+
+
+def test_deeply_nested_graph_json_does_not_crash(tmp_path):
+    (tmp_path / "main.py").write_text("x = 1\n")
+    gout = tmp_path / "graphify-out"
+    gout.mkdir()
+    depth = 60000
+    (gout / "graph.json").write_text("[" * depth + "]" * depth)
+    evidence = build_evidence(tmp_path)  # must not raise RecursionError
+    assert evidence["structural_groups"]["available"] is False

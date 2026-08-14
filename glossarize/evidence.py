@@ -7,6 +7,7 @@ recorded in the artifact so truncated never reads as complete.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from collections import Counter, defaultdict
@@ -37,12 +38,21 @@ class Limits:
     locations_per_term: int = 5
 
 
+# Config keys that let a repository's own .git/config name a program git will
+# execute (core.fsmonitor runs on `git status`, hooks on many operations). We
+# only read HEAD and dirty state from an untrusted repo, so we override these
+# to empty on every call: a hostile .git/config must not achieve code
+# execution. Command-line -c beats repo-local config.
+_GIT_SAFE_CONFIG = ("-c", "core.fsmonitor=", "-c", "core.hooksPath=/dev/null")
+
+
 def _git_stamp(root: Path) -> dict:
     def git(*args: str) -> str | None:
         try:
             proc = subprocess.run(
-                ["git", "-C", str(root), *args],
+                ["git", *_GIT_SAFE_CONFIG, "-C", str(root), *args],
                 capture_output=True, text=True, timeout=30,
+                env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
             )
         except (OSError, subprocess.TimeoutExpired):
             return None
@@ -282,6 +292,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
         "skipped": {
             "sensitive": sorted(walk.skipped_sensitive),
             "oversized": sorted(walk.skipped_oversized),
+            "symlinks_escaping_repo": sorted(walk.skipped_symlinks),
         },
     }
 
@@ -392,6 +403,12 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
     if skipped["oversized"]:
         print(
             f"skipped {len(skipped['oversized'])} oversized file(s) (>2MB)",
+            file=sys.stderr,
+        )
+    if skipped["symlinks_escaping_repo"]:
+        print(
+            f"skipped {len(skipped['symlinks_escaping_repo'])} symlink(s) "
+            "resolving outside the repository",
             file=sys.stderr,
         )
     mono = evidence["monorepo"]

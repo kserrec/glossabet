@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 
 from glossarize import __version__
+from glossarize.artifacts import oversized
 
 CACHE_VERSION = 1
 CACHE_DIR = ".glossarize"
@@ -27,10 +28,12 @@ def load_cache(root: Path) -> dict | None:
     path = cache_path(root)
     if not path.is_file():
         return None
+    if oversized(path):
+        return None  # an oversized cache is a miss, never an OOM
     try:
         data = json.loads(path.read_text())
-    except (OSError, ValueError):
-        return None  # corrupt cache is a miss, never an error
+    except (OSError, ValueError, RecursionError):
+        return None  # corrupt or deeply-nested cache is a miss, never a crash
     if data.get("cache_version") != CACHE_VERSION:
         return None
     if data.get("generator_version") != __version__:

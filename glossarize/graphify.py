@@ -14,6 +14,8 @@ import json
 from collections import Counter
 from pathlib import Path
 
+from glossarize.artifacts import MAX_JSON_BYTES, oversized
+
 GRAPH_PATH = "graphify-out/graph.json"
 GROUP_CAP = 50
 GOD_NODE_CAP = 8
@@ -34,9 +36,17 @@ def _load_graph(root: Path) -> tuple[dict | None, list[str]]:
     path = root / GRAPH_PATH
     if not path.is_file():
         return None, []
+    if oversized(path):
+        return None, [
+            f"{GRAPH_PATH}: larger than {MAX_JSON_BYTES} bytes — "
+            "proceeding lexical-only"
+        ]
     try:
         data = json.loads(path.read_text())
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):
+        # RecursionError: deeply nested JSON. json raises it outside the
+        # ValueError hierarchy, so it must be caught explicitly or a hostile
+        # graph would crash the whole scan.
         return None, [f"{GRAPH_PATH}: unreadable JSON — proceeding lexical-only"]
     if (
         not isinstance(data, dict)

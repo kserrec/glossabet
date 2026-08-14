@@ -133,3 +133,27 @@ def test_non_list_aliases_and_bindings_are_errors_not_crashes(tmp_path):
     out.mkdir()
     (out / "glossary.json").write_text(json.dumps(bad_aliases))
     assert main(["show", str(tmp_path)]) == 1  # user error, not defect
+
+
+def test_oversized_glossary_refused_as_user_error(tmp_path, monkeypatch):
+    monkeypatch.setattr("glossarize.glossary.MAX_JSON_BYTES", 50)
+    monkeypatch.setattr("glossarize.artifacts.MAX_JSON_BYTES", 50)
+    out = tmp_path / "glossarize-out"
+    out.mkdir()
+    (out / "glossary.json").write_text(json.dumps({
+        "schema_version": 1,
+        "concepts": [{"id": "x" * 200, "term": "X", "definition": "d",
+                      "status": "canonical"}],
+    }))
+    with pytest.raises(GlossaryError, match="larger than"):
+        load_glossary(tmp_path)
+    assert main(["show", str(tmp_path)]) == 1
+
+
+def test_deeply_nested_glossary_json_is_clean_error(tmp_path):
+    out = tmp_path / "glossarize-out"
+    out.mkdir()
+    (out / "glossary.json").write_text("[" * 60000 + "]" * 60000)
+    with pytest.raises(GlossaryError):  # not an uncaught RecursionError
+        load_glossary(tmp_path)
+    assert main(["show", str(tmp_path)]) == 1

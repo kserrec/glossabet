@@ -168,3 +168,13 @@ def test_community_id_zero_keeps_its_id(tmp_path):
     }
     structural = build_evidence(make_repo(tmp_path, graph))["structural_groups"]
     assert {g["id"] for g in structural["groups"]} == {"billing", "0"}
+
+
+def test_oversized_graph_degrades_lexical_only(tmp_path, monkeypatch):
+    import glossarize.graphify as gmod
+    monkeypatch.setattr(gmod, "MAX_JSON_BYTES", 100)
+    monkeypatch.setattr("glossarize.artifacts.MAX_JSON_BYTES", 100)
+    graph = {"nodes": [{"id": "a", "label": "A"} for _ in range(50)]}
+    structural = build_evidence(make_repo(tmp_path, graph))["structural_groups"]
+    assert structural["available"] is False
+    assert any("larger than" in w for w in structural["warnings"])

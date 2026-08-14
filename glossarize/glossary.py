@@ -12,7 +12,13 @@ import json
 import sys
 from pathlib import Path
 
-from glossarize.artifacts import OUT_DIR, repo_root, write_artifact
+from glossarize.artifacts import (
+    MAX_JSON_BYTES,
+    OUT_DIR,
+    oversized,
+    repo_root,
+    write_artifact,
+)
 
 GLOSSARY_SCHEMA_VERSION = 1
 GLOSSARY_FILE = "glossary.json"
@@ -110,9 +116,15 @@ def load_glossary(root: Path) -> dict | None:
     path = glossary_path(root)
     if not path.is_file():
         return None
+    if oversized(path):
+        raise GlossaryError(
+            f"{path}: larger than {MAX_JSON_BYTES} bytes — refusing to load"
+        )
     try:
         glossary = json.loads(path.read_text())
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RecursionError) as exc:
+        # RecursionError: deeply nested JSON, raised outside the ValueError
+        # hierarchy — a hostile glossary must fail cleanly, not crash.
         raise GlossaryError(f"{path}: unreadable JSON ({exc})") from exc
     errors = validate_glossary(glossary)
     if errors:
