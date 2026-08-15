@@ -25,12 +25,12 @@
       "terminology_recall_where_complete": 1.0
     },
     "runtime": {
-      "cold_median_seconds_total": 0.398761,
-      "cold_seconds_per_1000_source_files": 4.431,
-      "warm_median_seconds_total": 0.357514,
-      "warm_seconds_per_1000_source_files": 3.972
+      "cold_median_seconds_total": 0.529711,
+      "cold_seconds_per_1000_source_files": 5.886,
+      "warm_median_seconds_total": 0.513608,
+      "warm_seconds_per_1000_source_files": 5.707
     },
-    "source_bytes": 659883,
+    "source_bytes": 659881,
     "source_files": 90,
     "truncation": {
       "cases_with_any_truncation": 1,
@@ -42,7 +42,7 @@
     {
       "bytes": {
         "code": 367,
-        "source_budgeted": 904
+        "source_budgeted": 903
       },
       "cache": {
         "reuse_rate": 1.0,
@@ -50,7 +50,7 @@
       },
       "corpus": {
         "files_hashed": 7,
-        "sha256": "9e3212a62c4b0f0c063b9939a67d3427cf7f0be22c34a8344e35dd23a5ecdae6"
+        "sha256": "aed95ee98e40c9a833823d31a19a1c7f1c8af3190ab834cc12bc1c4d6930ca14"
       },
       "corpus_budget": {
         "complete": true,
@@ -70,7 +70,7 @@
           "source_files": 0
         },
         "used": {
-          "source_bytes": 904,
+          "source_bytes": 903,
           "source_files": 7,
           "walk_entries": 10
         },
@@ -120,21 +120,21 @@
         "passed_checks": 0
       },
       "runtime_seconds": {
-        "cold_median": 0.008356,
+        "cold_median": 0.012198,
         "cold_samples": [
-          0.008822,
-          0.008521,
-          0.008081,
-          0.007995,
-          0.008356
+          0.012198,
+          0.012713,
+          0.011623,
+          0.012397,
+          0.011738
         ],
-        "warm_median": 0.016224,
+        "warm_median": 0.037907,
         "warm_samples": [
-          0.016224,
-          0.021934,
-          0.010672,
-          0.011165,
-          0.01643
+          0.034342,
+          0.043925,
+          0.036523,
+          0.037907,
+          0.047216
         ]
       },
       "source": {
@@ -143,7 +143,7 @@
         "license_url": "../LICENSE",
         "path": "evaluation/fixtures/calibration",
         "primary_language": "Python",
-        "provenance": "Original Glossarize fixture; no third-party source."
+        "provenance": "Original Glossabet fixture; no third-party source."
       },
       "terminology": {
         "actual": [
@@ -166,7 +166,7 @@
     {
       "bytes": {
         "code": 443,
-        "source_budgeted": 742
+        "source_budgeted": 741
       },
       "cache": {
         "reuse_rate": 1.0,
@@ -174,7 +174,7 @@
       },
       "corpus": {
         "files_hashed": 6,
-        "sha256": "a0c5966fb4de794bc0a0a9f63b1131b32be6124c3b7ca0848ada8da421280df1"
+        "sha256": "0435119608952c8ca7967cdd94eae60be19532fadbf807f67557cd3defc1c044"
       },
       "corpus_budget": {
         "complete": true,
@@ -194,7 +194,7 @@
           "source_files": 0
         },
         "used": {
-          "source_bytes": 742,
+          "source_bytes": 741,
           "source_files": 6,
           "walk_entries": 11
         },
@@ -229,21 +229,21 @@
         "passed_checks": 15
       },
       "runtime_seconds": {
-        "cold_median": 0.008647,
+        "cold_median": 0.033451,
         "cold_samples": [
-          0.010991,
-          0.008582,
-          0.008473,
-          0.008977,
-          0.008647
+          0.03345,
+          0.03294,
+          0.033451,
+          0.033573,
+          0.033597
         ],
-        "warm_median": 0.011568,
+        "warm_median": 0.038125,
         "warm_samples": [
-          0.010948,
-          0.011208,
-          0.021914,
-          0.017846,
-          0.011568
+          0.041742,
+          0.046284,
+          0.038125,
+          0.019343,
+          0.019249
         ]
       },
       "source": {
@@ -252,7 +252,7 @@
         "license_url": "../LICENSE",
         "path": "evaluation/fixtures/language-semantics",
         "primary_language": "Python and Clojure multilingual fixture",
-        "provenance": "Original Glossarize fixture; no third-party source."
+        "provenance": "Original Glossabet fixture; no third-party source."
       },
       "terminology": {
         "actual": [],
@@ -344,21 +344,21 @@
         "passed_checks": 0
       },
       "runtime_seconds": {
-        "cold_median": 0.271209,
+        "cold_median": 0.328304,
         "cold_samples": [
-          0.271209,
-          0.285241,
-          0.288849,
-          0.269365,
-          0.254373
+          0.380421,
+          0.356586,
+          0.315581,
+          0.313542,
+          0.328304
         ],
-        "warm_median": 0.205962,
+        "warm_median": 0.271727,
         "warm_samples": [
-          0.205962,
-          0.210701,
-          0.205934,
-          0.185262,
-          0.214909
+          0.247437,
+          0.271727,
+          0.27608,
+          0.235171,
+          0.287634
         ]
       },
       "source": {
@@ -461,21 +461,21 @@
         "passed_checks": 0
       },
       "runtime_seconds": {
-        "cold_median": 0.054494,
+        "cold_median": 0.067603,
         "cold_samples": [
-          0.064136,
-          0.052793,
-          0.05374,
-          0.059228,
-          0.054494
+          0.158861,
+          0.071576,
+          0.066742,
+          0.067603,
+          0.066813
         ],
-        "warm_median": 0.059137,
+        "warm_median": 0.083462,
         "warm_samples": [
-          0.059137,
-          0.064738,
-          0.056281,
-          0.05301,
-          0.066207
+          0.069782,
+          0.083462,
+          0.120743,
+          0.122973,
+          0.077557
         ]
       },
       "source": {
@@ -569,21 +569,21 @@
         "passed_checks": 0
       },
       "runtime_seconds": {
-        "cold_median": 0.056055,
+        "cold_median": 0.088155,
         "cold_samples": [
-          0.062192,
-          0.055984,
-          0.056298,
-          0.056055,
-          0.052084
+          0.216843,
+          0.10076,
+          0.088155,
+          0.069481,
+          0.069875
         ],
-        "warm_median": 0.064623,
+        "warm_median": 0.082387,
         "warm_samples": [
-          0.066811,
-          0.064623,
-          0.065904,
-          0.057031,
-          0.060859
+          0.092411,
+          0.111311,
+          0.082387,
+          0.076412,
+          0.081174
         ]
       },
       "source": {
@@ -610,8 +610,8 @@
     "drift_schema_version": 5,
     "evaluation_schema_version": 3,
     "evidence_schema_version": 7,
-    "name": "glossarize",
-    "source_sha256": "21bb8b9e866330020ac4c6ff19ed446e7cb0231b6aa0542700e782511d8488ed",
+    "name": "glossabet",
+    "source_sha256": "3033be877b17a631395b3a1cef83d73f4c769607953d52f9de213debfff7bda2",
     "version": "0.1.0"
   },
   "environment": {
@@ -620,7 +620,7 @@
     "python": "3.12.3",
     "python_implementation": "CPython"
   },
-  "manifest_sha256": "5233bb2bd1456f5669ba32f12bb59e6426fa23b32cd742e45b4718048d5bdc06",
+  "manifest_sha256": "4d9a89c3ed3da0e7e90322faa54a5ee8b8203bc30b255bafe9f4af66fd716277",
   "method": {
     "external_source_vendored": false,
     "graphify": false,
@@ -659,7 +659,7 @@
         "target": 50.0
       },
       {
-        "actual": 4.431,
+        "actual": 5.886,
         "name": "cold_seconds_per_1000_source_files_max",
         "passed": true,
         "target": 10.0

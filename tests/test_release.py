@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from glossarize import __version__
+from glossabet import __version__
 from scripts.check_workflows import check_workflows, validate_workflow_texts
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_release_metadata_matches_package_version_and_supported_pythons():
     pyproject = (ROOT / "pyproject.toml").read_text()
-    init = (ROOT / "glossarize" / "__init__.py").read_text()
+    init = (ROOT / "glossabet" / "__init__.py").read_text()
     assert f'__version__ = "{__version__}"' in init
     for minor in range(10, 15):
         assert f'"Programming Language :: Python :: 3.{minor}"' in pyproject
@@ -61,12 +61,27 @@ def test_workflow_policy_rejects_meaningful_gate_weakening():
         ("release.yml", "needs: quality", "needs: []"),
         (
             "release.yml",
-            "inputs.confirmation == 'publish-glossarize-to-pypi'",
+            "inputs.confirmation == 'publish-glossabet-to-pypi'",
             "inputs.confirmation != ''",
         ),
         (
             "release.yml",
             "python evaluation/run.py --verify-results evaluation/results.json",
+            "python -c pass",
+        ),
+        (
+            "quality.yml",
+            "python scripts/build_plugin.py dist",
+            "python -c pass",
+        ),
+        (
+            "quality.yml",
+            "git diff --exit-code -- plugins/glossabet",
+            "git status --short",
+        ),
+        (
+            "release.yml",
+            "python scripts/build_plugin.py dist",
             "python -c pass",
         ),
         (

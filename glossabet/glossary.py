@@ -1,4 +1,4 @@
-"""The persistent glossary: glossarize-out/glossary.json.
+"""The persistent glossary: glossabet-out/glossary.json.
 
 Deliberately minimal schema (PLAN.md: the ontology grows only when a consumer
 needs a field). The status lifecycle exists from day one because drift
@@ -15,7 +15,7 @@ import sys
 import unicodedata
 from pathlib import Path
 
-from glossarize.artifacts import (
+from glossabet.artifacts import (
     ArtifactError,
     MAX_JSON_BYTES,
     OUT_DIR,
@@ -24,7 +24,7 @@ from glossarize.artifacts import (
     repo_root,
     write_artifact,
 )
-from glossarize.display import contains_terminal_control, escape_terminal_text
+from glossabet.display import contains_terminal_control, escape_terminal_text
 
 GLOSSARY_SCHEMA_VERSION = 1
 GLOSSARY_FILE = "glossary.json"
@@ -577,14 +577,14 @@ def require_glossary(root: Path, missing: str) -> dict | None:
         glossary = load_glossary(root)
     except GlossaryError as exc:
         print(
-            "glossarize: " + escape_terminal_text(str(exc)),
+            "glossabet: " + escape_terminal_text(str(exc)),
             file=sys.stderr,
         )
         return None
     if glossary is None:
         safe_missing = escape_terminal_text(missing)
         print(
-            f"glossarize: {safe_missing} — run /glossarize and settle terms "
+            f"glossabet: {safe_missing} — run /glossabet and settle terms "
             f"first ({OUT_DIR}/{GLOSSARY_FILE})",
             file=sys.stderr,
         )
@@ -600,13 +600,13 @@ def show_command(path_arg: str) -> int:
         glossary = load_glossary(root)
     except GlossaryError as exc:
         print(
-            "glossarize: " + escape_terminal_text(str(exc)),
+            "glossabet: " + escape_terminal_text(str(exc)),
             file=sys.stderr,
         )
         return 1
     if glossary is None:
         print(
-            "no glossary yet — run /glossarize and settle terms to create "
+            "no glossary yet — run /glossabet and settle terms to create "
             f"{OUT_DIR}/{GLOSSARY_FILE}"
         )
         return 0
@@ -655,7 +655,7 @@ def save_command(path_arg: str) -> int:
         return 1
     if sys.stdin.isatty():
         print(
-            "glossarize: save requires one glossary JSON document on "
+            "glossabet: save requires one glossary JSON document on "
             "standard input",
             file=sys.stderr,
         )
@@ -666,7 +666,7 @@ def save_command(path_arg: str) -> int:
         raw = stream.read(MAX_JSON_BYTES + 1)
     except (OSError, UnicodeError) as exc:
         print(
-            "glossarize: cannot read glossary JSON from standard input: "
+            "glossabet: cannot read glossary JSON from standard input: "
             + escape_terminal_text(str(exc)),
             file=sys.stderr,
         )
@@ -676,7 +676,7 @@ def save_command(path_arg: str) -> int:
     )
     if encoded_size > MAX_JSON_BYTES:
         print(
-            "glossarize: glossary JSON on standard input is larger than "
+            "glossabet: glossary JSON on standard input is larger than "
             f"{MAX_JSON_BYTES} bytes",
             file=sys.stderr,
         )
@@ -685,7 +685,7 @@ def save_command(path_arg: str) -> int:
         glossary = json.loads(raw)
     except (ValueError, UnicodeError, RecursionError) as exc:
         print(
-            "glossarize: glossary JSON on standard input is unreadable ("
+            "glossabet: glossary JSON on standard input is unreadable ("
             + escape_terminal_text(str(exc)) + ")",
             file=sys.stderr,
         )
@@ -694,7 +694,7 @@ def save_command(path_arg: str) -> int:
         path = save_glossary(root, glossary)
     except (GlossaryError, ArtifactError) as exc:
         print(
-            "glossarize: " + escape_terminal_text(str(exc)),
+            "glossabet: " + escape_terminal_text(str(exc)),
             file=sys.stderr,
         )
         return 1

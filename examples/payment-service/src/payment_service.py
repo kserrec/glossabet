@@ -1,4 +1,4 @@
-"""Minimal payment flow used by Glossarize's release walkthrough."""
+"""Minimal payment flow used by Glossabet's release walkthrough."""
 
 from dataclasses import dataclass
 

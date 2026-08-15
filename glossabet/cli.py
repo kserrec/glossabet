@@ -11,8 +11,8 @@ import sys
 import traceback
 from typing import NoReturn as _NoReturn
 
-from glossarize import __version__
-from glossarize.display import escape_terminal_text, safe_terminal_streams
+from glossabet import __version__
+from glossabet.display import escape_terminal_text, safe_terminal_streams
 
 EXIT_OK = 0
 EXIT_USER_ERROR = 1
@@ -41,15 +41,15 @@ def _add_graphify_toggle(command: argparse.ArgumentParser) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = _Parser(
-        prog="glossarize",
+        prog="glossabet",
         description=(
             "Build and maintain a shared vocabulary for a codebase. "
-            "Deterministic machinery gathers evidence; the /glossarize "
+            "Deterministic machinery gathers evidence; the /glossabet "
             "agent skill brainstorms names; the human decides."
         ),
     )
     parser.add_argument(
-        "--version", action="version", version=f"glossarize {__version__}"
+        "--version", action="version", version=f"glossabet {__version__}"
     )
     sub = parser.add_subparsers(dest="command")
 
@@ -125,42 +125,42 @@ def _run(argv: list[str] | None) -> int:
         return EXIT_USER_ERROR
 
     if args.command == "scan":
-        from glossarize.evidence import scan_command
+        from glossabet.evidence import scan_command
 
         return scan_command(args.path, graphify=not args.no_graphify)
 
     if args.command == "analyze":
-        from glossarize.evidence import analyze_command
+        from glossabet.evidence import analyze_command
 
         return analyze_command(args.path, graphify=not args.no_graphify)
 
     if args.command == "inspect":
-        from glossarize.agent_context import inspect_command
+        from glossabet.agent_context import inspect_command
 
         return inspect_command(args.path, graphify=not args.no_graphify)
 
     if args.command == "show":
-        from glossarize.glossary import show_command
+        from glossabet.glossary import show_command
 
         return show_command(args.path)
 
     if args.command == "save":
-        from glossarize.glossary import save_command
+        from glossabet.glossary import save_command
 
         return save_command(args.path)
 
     if args.command == "drift":
-        from glossarize.drift import drift_command
+        from glossabet.drift import drift_command
 
         return drift_command(args.path)
 
     if args.command == "validate":
-        from glossarize.reconcile import validate_command
+        from glossabet.reconcile import validate_command
 
         return validate_command(args.path)
 
     if args.command == "install":
-        from glossarize.installer import install_command
+        from glossabet.installer import install_command
 
         return install_command(
             args.agent, args.destination, force=args.force
@@ -178,17 +178,17 @@ def _main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         # Imported lazily to keep CLI startup small and avoid pulling command
         # modules into argparse-only paths.
-        from glossarize.artifacts import ArtifactError
+        from glossabet.artifacts import ArtifactError
 
         if isinstance(exc, ArtifactError):
             print(
-                "glossarize: " + escape_terminal_text(str(exc)),
+                "glossabet: " + escape_terminal_text(str(exc)),
                 file=sys.stderr,
             )
             return EXIT_USER_ERROR
         print(escape_terminal_text(traceback.format_exc()), file=sys.stderr)
         print(
-            "glossarize: internal error — this is a defect in glossarize, "
+            "glossabet: internal error — this is a defect in glossabet, "
             "not a usage mistake.",
             file=sys.stderr,
         )

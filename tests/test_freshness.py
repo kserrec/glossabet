@@ -1,4 +1,4 @@
-"""Git freshness must ignore only Glossarize-owned repository output."""
+"""Git freshness must ignore only Glossabet-owned repository output."""
 
 import json
 import os
@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from glossarize.cli import main
-from glossarize.evidence import _git_stamp
+from glossabet.cli import main
+from glossabet.evidence import _git_stamp
 
 
 def _git(root: Path, *args: str) -> None:
@@ -35,7 +35,7 @@ def _init_repo(
 ) -> None:
     _git(root, "init", "-q")
     _git(root, "config", "user.email", "test@example.invalid")
-    _git(root, "config", "user.name", "Glossarize Test")
+    _git(root, "config", "user.name", "Glossabet Test")
 
     tracked = ["main.py"]
     (root / "main.py").write_text("original_name = 1\n")
@@ -79,7 +79,7 @@ def test_first_scan_of_clean_repo_is_immediately_fresh_without_gitignore_edit(
     assert main(["scan", str(tmp_path)]) == 0
 
     evidence = json.loads(
-        (tmp_path / "glossarize-out" / "evidence.json").read_text()
+        (tmp_path / "glossabet-out" / "evidence.json").read_text()
     )
     assert _is_fresh(evidence["repository"]["git"], _git_stamp(tmp_path))
     assert not (tmp_path / ".gitignore").exists()
@@ -93,7 +93,7 @@ def test_first_scan_of_nested_repository_scope_is_immediately_fresh(tmp_path):
     assert main(["scan", str(service)]) == 0
 
     evidence = json.loads(
-        (service / "glossarize-out" / "evidence.json").read_text()
+        (service / "glossabet-out" / "evidence.json").read_text()
     )
     assert _is_fresh(evidence["repository"]["git"], _git_stamp(service))
 
@@ -102,7 +102,7 @@ def test_user_change_after_scan_makes_evidence_stale(tmp_path):
     _init_repo(tmp_path)
     assert main(["scan", str(tmp_path)]) == 0
     stamped = json.loads(
-        (tmp_path / "glossarize-out" / "evidence.json").read_text()
+        (tmp_path / "glossabet-out" / "evidence.json").read_text()
     )["repository"]["git"]
 
     (tmp_path / "main.py").write_text("changed_after_scan = 1\n")
@@ -113,9 +113,9 @@ def test_user_change_after_scan_makes_evidence_stale(tmp_path):
 def test_tracked_and_untracked_generated_output_do_not_dirty_freshness(tmp_path):
     _init_repo(
         tmp_path,
-        extra_tracked={"glossarize-out/evidence.json": "{}\n"},
+        extra_tracked={"glossabet-out/evidence.json": "{}\n"},
     )
-    output = tmp_path / "glossarize-out"
+    output = tmp_path / "glossabet-out"
     (output / "evidence.json").write_text('{"refreshed": true}\n')
     (output / "drift.json").write_text("{}\n")
     (output / "validation.json").write_text("{}\n")
@@ -125,7 +125,7 @@ def test_tracked_and_untracked_generated_output_do_not_dirty_freshness(tmp_path)
 
 def test_move_into_generated_output_keeps_source_deletion_visible(tmp_path):
     _init_repo(tmp_path)
-    output = tmp_path / "glossarize-out"
+    output = tmp_path / "glossabet-out"
     output.mkdir()
     (tmp_path / "main.py").rename(output / "main.py")
 
@@ -135,9 +135,9 @@ def test_move_into_generated_output_keeps_source_deletion_visible(tmp_path):
 def test_move_out_of_generated_output_keeps_destination_visible(tmp_path):
     _init_repo(
         tmp_path,
-        extra_tracked={"glossarize-out/evidence.json": "{}\n"},
+        extra_tracked={"glossabet-out/evidence.json": "{}\n"},
     )
-    (tmp_path / "glossarize-out" / "evidence.json").rename(
+    (tmp_path / "glossabet-out" / "evidence.json").rename(
         tmp_path / "recovered.json"
     )
 
@@ -151,8 +151,8 @@ def test_move_out_of_generated_output_keeps_destination_visible(tmp_path):
         ("notes.md", "untracked user note\n"),
         ("GLOSSARY.md", "human-readable glossary\n"),
         ("graphify-out/graph.json", "{}\n"),
-        (".glossarize/cache.json", "{}\n"),
-        ("src/glossarize-out/user.txt", "not top-level tool output\n"),
+        (".glossabet/cache.json", "{}\n"),
+        ("src/glossabet-out/user.txt", "not top-level tool output\n"),
     ],
 )
 def test_user_and_non_owned_paths_remain_dirty(tmp_path, relative, content):

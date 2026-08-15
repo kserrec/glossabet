@@ -41,5 +41,7 @@ jobs:
       - run: python scripts/check_workflows.py
       - run: python evaluation/run.py --verify-results evaluation/results.json
       - run: uv build --no-sources --clear
+      - run: python scripts/build_plugin.py dist
+      - run: git diff --exit-code -- plugins/glossabet
       - run: python scripts/check_distribution.py dist
       - run: python scripts/wheel_smoke.py dist

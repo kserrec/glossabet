@@ -1,0 +1,23 @@
+{
+  "name": "glossabet",
+  "version": "0.1.0",
+  "description": "Build and maintain a shared codebase vocabulary with a bundled local CLI.",
+  "author": {
+    "name": "Kyle Serrecchia",
+    "url": "https://github.com/kserrec"
+  },
+  "homepage": "https://github.com/kserrec/glossarize",
+  "repository": "https://github.com/kserrec/glossarize",
+  "license": "Apache-2.0",
+  "keywords": ["code-quality", "glossary", "terminology"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Glossabet",
+    "shortDescription": "Build a shared vocabulary for a codebase.",
+    "longDescription": "Glossabet combines a naming workflow with a matching, local-only repository analysis engine.",
+    "developerName": "Kyle Serrecchia",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Help me name the important parts of this codebase."
+  }
+}

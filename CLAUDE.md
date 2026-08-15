@@ -4,8 +4,8 @@ Guidance for coding agents working in this repository.
 
 ## What this is
 
-Glossarize is a vocabulary system for codebases: a deterministic engine/CLI
-plus the `/glossarize` agent skill as its primary interface. The machinery
+Glossabet is a vocabulary system for codebases: a deterministic engine/CLI
+plus the `/glossabet` agent skill as its primary interface. The machinery
 gathers evidence, the LLM brainstorms and reasons, and the human decides what
 becomes canonical — that division of labor is the product's central rule.
 
@@ -21,9 +21,9 @@ verbatim, never diluted by machinery.
 - **Lexical-first scanner.** The built-in scanner provides lexical evidence
   and cheap import edges only. It must not grow into a static analyzer or a
   Graphify clone; rich structure comes from optional adapters.
-- **No contamination.** Evidence gathering excludes `glossarize-out/`,
-  `.glossarize/`, and `GLOSSARY.md`, always.
-- **Explicit production scope.** Root `glossarize.json` may add literal ignored
+- **No contamination.** Evidence gathering excludes `glossabet-out/`,
+  `.glossabet/`, and `GLOSSARY.md`, always.
+- **Explicit production scope.** Root `glossabet.json` may add literal ignored
   prefixes or path roles. Tests/fixtures stay inventoried but do not steer
   lexical signals; generated/vendored content is not read. Every effective
   role and exclusion is reported.
@@ -40,8 +40,8 @@ verbatim, never diluted by machinery.
 - **Staleness is a trust problem.** Evidence artifacts carry a git stamp; the
   skill never silently grounds itself on stale evidence.
 - **Determinism.** Same repo state → same evidence output.
-- **Graphify is optional, and its artifacts are never mutated.** Glossarize
-  owns `glossarize-out/`; Graphify owns `graphify-out/`.
+- **Graphify is optional, and its artifacts are never mutated.** Glossabet
+  owns `glossabet-out/`; Graphify owns `graphify-out/`.
 - **Dependencies earn their place.** Real use site + one-line cost/reason, or
   it doesn't enter. Stdlib-first. Phase 16 measured 15/15 lexical labels and
   rejected a parser adapter with no remaining labelled gain.
@@ -64,18 +64,20 @@ verbatim, never diluted by machinery.
 
 ```bash
 uv run pytest                    # test suite
-uv tool install . --reinstall    # (re)install the CLI at ~/.local/bin/glossarize
-glossarize --version
-glossarize install               # install canonical skill for Codex (~/.agents/skills)
-glossarize install --agent claude # install for Claude Code (~/.claude/skills)
-glossarize scan <repo>           # writes <repo>/glossarize-out/evidence.json
-glossarize analyze <repo>        # scan + terminology report (register, overlaps)
-glossarize show <repo>           # display the current glossary
-glossarize drift <repo>          # live vocabulary vs canonical glossary
-glossarize validate <repo>       # reconcile glossary vs evidence + graph
+uv tool install . --reinstall    # (re)install the CLI at ~/.local/bin/glossabet
+glossabet --version
+glossabet install               # install canonical skill for Codex (~/.agents/skills)
+glossabet install --agent claude # install for Claude Code (~/.claude/skills)
+glossabet scan <repo>           # writes <repo>/glossabet-out/evidence.json
+glossabet analyze <repo>        # scan + terminology report (register, overlaps)
+glossabet show <repo>           # display the current glossary
+glossabet drift <repo>          # live vocabulary vs canonical glossary
+glossabet validate <repo>       # reconcile glossary vs evidence + graph
 uv build --no-sources            # build wheel + source distribution, do not publish
+uv run python scripts/build_plugin.py dist
 uv run python scripts/check_workflows.py
 uv run python evaluation/run.py --verify-results evaluation/results.json
 uv run python scripts/check_distribution.py dist --tag v0.1.0
 uv run python scripts/wheel_smoke.py dist
+uv run python scripts/plugin_smoke.py dist # temporary local Codex lifecycle probe
 ```

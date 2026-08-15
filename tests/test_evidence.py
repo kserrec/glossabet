@@ -4,8 +4,8 @@ evidence, nondeterminism, silent truncation, missed monorepo shape."""
 import json
 import os
 
-from glossarize.cli import main
-from glossarize.evidence import Limits, build_evidence, scan_command, write_evidence
+from glossabet.cli import main
+from glossabet.evidence import Limits, build_evidence, scan_command, write_evidence
 
 
 def make_repo(tmp_path):
@@ -24,7 +24,7 @@ def make_repo(tmp_path):
     (tmp_path / "secrets.yaml").write_text("password: HUSHEDVALUE\n")
     (tmp_path / "cert.pem").write_text("PEMSECRETBODY\n")
     (tmp_path / "GLOSSARY.md").write_text("zanzibar is our canonical term\n")
-    gout = tmp_path / "glossarize-out"
+    gout = tmp_path / "glossabet-out"
     gout.mkdir()
     (gout / "old.json").write_text('{"term": "contaminantword"}\n')
     nm = tmp_path / "node_modules"
@@ -47,8 +47,25 @@ def test_sensitive_files_never_enter_evidence(tmp_path):
 def test_own_outputs_and_noise_dirs_excluded(tmp_path):
     blob = json.dumps(build_evidence(make_repo(tmp_path)))
     assert "zanzibar" not in blob  # GLOSSARY.md (contamination rule)
-    assert "contaminantword" not in blob  # glossarize-out/
+    assert "contaminantword" not in blob  # glossabet-out/
     assert "noisetokenword" not in blob  # node_modules/
+
+
+def test_pre_rename_output_and_cache_directories_stay_excluded(tmp_path):
+    root = make_repo(tmp_path)
+    old_output = root / "glossarize-out"
+    old_output.mkdir()
+    (old_output / "old.json").write_text('{"term": "legacycontaminant"}\n')
+    old_cache = root / ".glossarize"
+    old_cache.mkdir()
+    (old_cache / "cache.json").write_text(
+        '{"term": "legacycachecontaminant"}\n'
+    )
+
+    blob = json.dumps(build_evidence(root))
+
+    assert "legacycontaminant" not in blob
+    assert "legacycachecontaminant" not in blob
 
 
 def test_vocabulary_normalizes_across_conventions(tmp_path):
@@ -62,7 +79,7 @@ def test_vocabulary_normalizes_across_conventions(tmp_path):
 def test_scan_is_deterministic_including_own_output(tmp_path):
     root = make_repo(tmp_path)
     first = build_evidence(root)
-    write_evidence(root, first)  # second walk sees glossarize-out/ and must ignore it
+    write_evidence(root, first)  # second walk sees glossabet-out/ and must ignore it
     second = build_evidence(root)
     assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
 
@@ -94,7 +111,7 @@ def test_truncation_is_capped_marked_and_counted(tmp_path):
 
 
 def test_corpus_file_budget_is_deterministic_and_reported(tmp_path, monkeypatch):
-    monkeypatch.setattr("glossarize.scanner.MAX_SOURCE_FILES", 2)
+    monkeypatch.setattr("glossabet.scanner.MAX_SOURCE_FILES", 2)
     for name in ("c.py", "a.py", "b.py"):
         (tmp_path / name).write_text(f"{name[0]}_identifier = 1\n")
 
@@ -117,7 +134,7 @@ def test_corpus_file_budget_is_deterministic_and_reported(tmp_path, monkeypatch)
 def test_oversized_production_source_marks_corpus_incomplete(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr("glossarize.scanner.MAX_FILE_BYTES", 40)
+    monkeypatch.setattr("glossabet.scanner.MAX_FILE_BYTES", 40)
     (tmp_path / "small.py").write_text("ordinary = 1\n")
     (tmp_path / "large.py").write_text(
         "hidden_canonical_term = 1\n" + "# padding\n" * 10
@@ -138,7 +155,7 @@ def test_oversized_production_source_marks_corpus_incomplete(
 def test_skipped_nonproduction_source_keeps_production_corpus_complete(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr("glossarize.scanner.MAX_SOURCE_FILES", 1)
+    monkeypatch.setattr("glossabet.scanner.MAX_SOURCE_FILES", 1)
     (tmp_path / "a.py").write_text("production_name = 1\n")
     tests = tmp_path / "tests"
     tests.mkdir()
@@ -154,7 +171,7 @@ def test_skipped_nonproduction_source_keeps_production_corpus_complete(
 def test_corpus_byte_budget_reports_skips_and_can_use_later_space(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr("glossarize.scanner.MAX_SOURCE_BYTES", 35)
+    monkeypatch.setattr("glossabet.scanner.MAX_SOURCE_BYTES", 35)
     (tmp_path / "a.py").write_text("alpha_identifier = 1\n")
     (tmp_path / "b.py").write_text("bravo_identifier = 2\n")
     (tmp_path / "c.py").write_text("c = 3\n")
@@ -172,7 +189,7 @@ def test_corpus_byte_budget_reports_skips_and_can_use_later_space(
 
 
 def test_walk_work_budget_marks_unknown_remainder(tmp_path, monkeypatch):
-    monkeypatch.setattr("glossarize.scanner.MAX_WALK_ENTRIES", 2)
+    monkeypatch.setattr("glossabet.scanner.MAX_WALK_ENTRIES", 2)
     for name in ("a.py", "b.py", "c.py"):
         (tmp_path / name).write_text(f"{name[0]}_identifier = 1\n")
 
@@ -194,8 +211,8 @@ def test_walk_work_budget_marks_unknown_remainder(tmp_path, monkeypatch):
 
 
 def test_corpus_budget_skip_sample_is_itself_bounded(tmp_path, monkeypatch):
-    monkeypatch.setattr("glossarize.scanner.MAX_SOURCE_FILES", 1)
-    monkeypatch.setattr("glossarize.scanner.BUDGET_PATH_SAMPLE", 1)
+    monkeypatch.setattr("glossabet.scanner.MAX_SOURCE_FILES", 1)
+    monkeypatch.setattr("glossabet.scanner.BUDGET_PATH_SAMPLE", 1)
     for name in ("a.py", "b.py", "c.py"):
         (tmp_path / name).write_text(f"{name[0]}_identifier = 1\n")
 
@@ -209,7 +226,7 @@ def test_corpus_budget_skip_sample_is_itself_bounded(tmp_path, monkeypatch):
 def test_overfull_directory_is_skipped_whole_to_preserve_determinism(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr("glossarize.scanner.MAX_DIRECTORY_ENTRIES", 2)
+    monkeypatch.setattr("glossabet.scanner.MAX_DIRECTORY_ENTRIES", 2)
     for name in ("a.py", "b.py", "c.py"):
         (tmp_path / name).write_text(f"{name[0]}_identifier = 1\n")
 
@@ -252,7 +269,7 @@ def test_small_single_project_is_not_flagged(tmp_path):
 def test_scan_command_end_to_end(tmp_path, capsys):
     root = make_repo(tmp_path)
     assert main(["scan", str(root)]) == 0
-    assert (root / "glossarize-out" / "evidence.json").is_file()
+    assert (root / "glossabet-out" / "evidence.json").is_file()
     out = capsys.readouterr()
     assert "code files" in out.out
     assert "sensitive" in out.err  # exclusion is reported, not silent
@@ -319,7 +336,7 @@ def test_unicode_and_language_forms_round_trip_through_evidence(tmp_path):
 
 
 def test_scan_reports_partial_corpus_budget(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr("glossarize.scanner.MAX_SOURCE_FILES", 1)
+    monkeypatch.setattr("glossabet.scanner.MAX_SOURCE_FILES", 1)
     (tmp_path / "a.py").write_text("alpha_identifier = 1\n")
     (tmp_path / "b.py").write_text("bravo_identifier = 2\n")
 
@@ -357,9 +374,9 @@ def test_symlink_inside_repo_still_scanned(tmp_path):
 
 def test_hostile_git_config_does_not_execute_code(tmp_path, monkeypatch):
     # A repo whose .git/config sets core.fsmonitor must not run that command
-    # when glossarize reads the git stamp (core.fsmonitor fires on git status).
+    # when glossabet reads the git stamp (core.fsmonitor fires on git status).
     import subprocess as sp
-    from glossarize.evidence import _git_stamp
+    from glossabet.evidence import _git_stamp
     repo = tmp_path / "repo"
     repo.mkdir()
     env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -395,7 +412,7 @@ def test_evidence_symlink_cannot_overwrite_outside_file(tmp_path, capsys):
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "main.py").write_text("ordinary_identifier = 1\n")
-    out = repo / "glossarize-out"
+    out = repo / "glossabet-out"
     out.mkdir()
     os.symlink(outside, out / "evidence.json")
 
@@ -410,7 +427,7 @@ def test_output_directory_symlink_cannot_redirect_writes(tmp_path, capsys):
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "main.py").write_text("ordinary_identifier = 1\n")
-    os.symlink(outside, repo / "glossarize-out")
+    os.symlink(outside, repo / "glossabet-out")
 
     assert main(["scan", str(repo)]) == 1
     assert not (outside / "evidence.json").exists()
@@ -418,7 +435,7 @@ def test_output_directory_symlink_cannot_redirect_writes(tmp_path, capsys):
 
 
 def test_oversized_root_workspace_manifest_is_skipped(tmp_path, monkeypatch):
-    monkeypatch.setattr("glossarize.scanner.MAX_FILE_BYTES", 50)
+    monkeypatch.setattr("glossabet.scanner.MAX_FILE_BYTES", 50)
     (tmp_path / "main.py").write_text("ordinary_identifier = 1\n")
     (tmp_path / "package.json").write_text(
         json.dumps({"workspaces": ["packages/*"], "padding": "x" * 100})

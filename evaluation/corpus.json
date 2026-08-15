@@ -22,8 +22,8 @@
       "license_url": "../LICENSE",
       "license_path": "LICENSE",
       "license_base": "project",
-      "provenance": "Original Glossarize fixture; no third-party source.",
-      "corpus_sha256": "9e3212a62c4b0f0c063b9939a67d3427cf7f0be22c34a8344e35dd23a5ecdae6",
+      "provenance": "Original Glossabet fixture; no third-party source.",
+      "corpus_sha256": "aed95ee98e40c9a833823d31a19a1c7f1c8af3190ab834cc12bc1c4d6930ca14",
       "corpus_files": 7,
       "glossary": {
         "schema_version": 1,
@@ -118,8 +118,8 @@
       "license_url": "../LICENSE",
       "license_path": "LICENSE",
       "license_base": "project",
-      "provenance": "Original Glossarize fixture; no third-party source.",
-      "corpus_sha256": "a0c5966fb4de794bc0a0a9f63b1131b32be6124c3b7ca0848ada8da421280df1",
+      "provenance": "Original Glossabet fixture; no third-party source.",
+      "corpus_sha256": "0435119608952c8ca7967cdd94eae60be19532fadbf807f67557cd3defc1c044",
       "corpus_files": 6,
       "glossary": {
         "schema_version": 1,

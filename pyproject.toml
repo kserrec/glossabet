@@ -3,7 +3,7 @@ requires = ["hatchling>=1.32,<1.33"]
 build-backend = "hatchling.build"
 
 [project]
-name = "glossarize"
+name = "glossabet"
 description = "Make a codebase's vocabulary explicit, canonical, inspectable, and maintainable."
 readme = "README.md"
 license = "Apache-2.0"
@@ -32,24 +32,25 @@ Issues = "https://github.com/kserrec/glossarize/issues"
 Changelog = "https://github.com/kserrec/glossarize/blob/main/CHANGELOG.md"
 
 [project.scripts]
-glossarize = "glossarize.cli:main"
+glossabet = "glossabet.cli:main"
 
 [dependency-groups]
 dev = ["pytest"]
 
 [tool.hatch.version]
-path = "glossarize/__init__.py"
+path = "glossabet/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["glossarize"]
+packages = ["glossabet"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"skill/SKILL.md" = "glossarize/_skill/SKILL.md"
+"skill/SKILL.md" = "glossabet/_skill/SKILL.md"
 
 [tool.hatch.build.targets.sdist]
 include = [
-  "/glossarize",
+  "/glossabet",
   "/skill",
+  "/plugins",
   "/tests",
   "/evaluation",
   "/examples",
@@ -59,8 +60,10 @@ include = [
   "/ARCHITECTURE.md",
   "/CHANGELOG.md",
   "/CLAUDE.md",
+  "/DISTRIBUTION.md",
   "/EVALUATION.md",
   "/LICENSE",
+  "/NAME-CLEARANCE.md",
   "/PLAN.md",
   "/PLAN-ARCHIVE.md",
   "/PRIVACY.md",

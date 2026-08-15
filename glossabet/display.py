@@ -86,7 +86,7 @@ def escape_terminal_text(text: str, *, preserve_line_feeds: bool = False) -> str
 class _SafeTerminalStream:
     """Text stream proxy that neutralizes controls in every write."""
 
-    _glossarize_terminal_safe = True
+    _glossabet_terminal_safe = True
 
     def __init__(self, stream: TextIO) -> None:
         self._stream = stream
@@ -106,12 +106,12 @@ def safe_terminal_streams() -> Iterator[None]:
     original_stderr = sys.stderr
     stdout = (
         original_stdout
-        if getattr(original_stdout, "_glossarize_terminal_safe", False)
+        if getattr(original_stdout, "_glossabet_terminal_safe", False)
         else _SafeTerminalStream(original_stdout)
     )
     stderr = (
         original_stderr
-        if getattr(original_stderr, "_glossarize_terminal_safe", False)
+        if getattr(original_stderr, "_glossabet_terminal_safe", False)
         else _SafeTerminalStream(original_stderr)
     )
     try:

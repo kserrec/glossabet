@@ -8,8 +8,8 @@ import os
 
 import pytest
 
-from glossarize.cli import main
-from glossarize.glossary import (
+from glossabet.cli import main
+from glossabet.glossary import (
     GlossaryError,
     MAX_VALIDATION_ERRORS,
     load_glossary,
@@ -234,7 +234,7 @@ def test_save_normalizes_scope_order_and_show_reports_it(tmp_path, capsys):
 
 
 def test_load_raises_on_corrupt_file(tmp_path):
-    out = tmp_path / "glossarize-out"
+    out = tmp_path / "glossabet-out"
     out.mkdir()
     (out / "glossary.json").write_text("{not json")
     with pytest.raises(GlossaryError):
@@ -256,7 +256,7 @@ def test_show_without_glossary(tmp_path, capsys):
 
 
 def test_show_reports_corrupt_glossary_as_user_error(tmp_path, capsys):
-    out = tmp_path / "glossarize-out"
+    out = tmp_path / "glossabet-out"
     out.mkdir()
     (out / "glossary.json").write_text('{"schema_version": 7, "concepts": []}')
     assert main(["show", str(tmp_path)]) == 1
@@ -264,7 +264,7 @@ def test_show_reports_corrupt_glossary_as_user_error(tmp_path, capsys):
 
 
 def test_glossary_never_contaminates_evidence(tmp_path):
-    from glossarize.evidence import build_evidence
+    from glossabet.evidence import build_evidence
 
     (tmp_path / "a.py").write_text("ordinary_code = 1\n")
     save_glossary(tmp_path, GLOSSARY)
@@ -283,7 +283,7 @@ def test_non_list_aliases_and_bindings_are_errors_not_crashes(tmp_path):
                     "concepts": [{**base, "bindings": "nope"}]}
     assert any("bindings must be a list" in e
                for e in validate_glossary(bad_bindings))
-    out = tmp_path / "glossarize-out"
+    out = tmp_path / "glossabet-out"
     out.mkdir()
     (out / "glossary.json").write_text(json.dumps(bad_aliases))
     assert main(["show", str(tmp_path)]) == 1  # user error, not defect
@@ -332,7 +332,7 @@ def test_non_string_status_is_a_user_error_not_a_crash(
     errors = validate_glossary(glossary)
 
     assert any("status" in error for error in errors)
-    out = tmp_path / "glossarize-out"
+    out = tmp_path / "glossabet-out"
     out.mkdir()
     (out / "glossary.json").write_text(json.dumps(glossary))
     assert main(["show", str(tmp_path)]) == 1
@@ -342,9 +342,9 @@ def test_non_string_status_is_a_user_error_not_a_crash(
 
 
 def test_oversized_glossary_refused_as_user_error(tmp_path, monkeypatch):
-    monkeypatch.setattr("glossarize.glossary.MAX_JSON_BYTES", 50)
-    monkeypatch.setattr("glossarize.artifacts.MAX_JSON_BYTES", 50)
-    out = tmp_path / "glossarize-out"
+    monkeypatch.setattr("glossabet.glossary.MAX_JSON_BYTES", 50)
+    monkeypatch.setattr("glossabet.artifacts.MAX_JSON_BYTES", 50)
+    out = tmp_path / "glossabet-out"
     out.mkdir()
     (out / "glossary.json").write_text(json.dumps({
         "schema_version": 1,
@@ -357,7 +357,7 @@ def test_oversized_glossary_refused_as_user_error(tmp_path, monkeypatch):
 
 
 def test_deeply_nested_glossary_json_is_clean_error(tmp_path):
-    out = tmp_path / "glossarize-out"
+    out = tmp_path / "glossabet-out"
     out.mkdir()
     (out / "glossary.json").write_text("[" * 60000 + "]" * 60000)
     with pytest.raises(GlossaryError):  # not an uncaught RecursionError
@@ -366,7 +366,7 @@ def test_deeply_nested_glossary_json_is_clean_error(tmp_path):
 
 
 def test_wrong_top_level_glossary_json_is_clean_error(tmp_path, capsys):
-    out = tmp_path / "glossarize-out"
+    out = tmp_path / "glossabet-out"
     out.mkdir()
     (out / "glossary.json").write_text("[]")
     with pytest.raises(GlossaryError, match="top level must be an object"):
@@ -379,7 +379,7 @@ def test_glossary_symlink_is_rejected_without_reading_target(tmp_path):
     outside = tmp_path / "outside-glossary.json"
     outside.write_text(json.dumps(GLOSSARY))
     repo = tmp_path / "repo"
-    out = repo / "glossarize-out"
+    out = repo / "glossabet-out"
     out.mkdir(parents=True)
     os.symlink(outside, out / "glossary.json")
 
@@ -460,7 +460,7 @@ def test_validation_diagnostics_are_bounded():
 
 
 def test_concept_budget_is_checked_before_per_concept_validation(monkeypatch):
-    monkeypatch.setattr("glossarize.glossary.MAX_GLOSSARY_CONCEPTS", 2)
+    monkeypatch.setattr("glossabet.glossary.MAX_GLOSSARY_CONCEPTS", 2)
     glossary = {"schema_version": 1, "concepts": [None, None, None]}
 
     errors = validate_glossary(glossary)
@@ -495,7 +495,7 @@ def test_concept_budget_is_checked_before_per_concept_validation(monkeypatch):
 def test_aggregate_child_budgets_are_checked_before_entry_validation(
     monkeypatch, constant, field, values, fragment
 ):
-    monkeypatch.setattr(f"glossarize.glossary.{constant}", 2)
+    monkeypatch.setattr(f"glossabet.glossary.{constant}", 2)
     concept = {
         "id": "x", "term": "X", "definition": "A concept.",
         "status": "canonical", field: values,
@@ -511,8 +511,8 @@ def test_identity_and_prose_string_limits_are_independent(monkeypatch):
         "id": "x", "term": "T" * 21, "definition": "D" * 7,
         "status": "canonical",
     }
-    monkeypatch.setattr("glossarize.glossary.MAX_GLOSSARY_IDENTITY_CHARS", 20)
-    monkeypatch.setattr("glossarize.glossary.MAX_GLOSSARY_PROSE_CHARS", 6)
+    monkeypatch.setattr("glossabet.glossary.MAX_GLOSSARY_IDENTITY_CHARS", 20)
+    monkeypatch.setattr("glossabet.glossary.MAX_GLOSSARY_PROSE_CHARS", 6)
 
     errors = validate_glossary({"schema_version": 1, "concepts": [concept]})
 
@@ -532,9 +532,9 @@ def test_scope_character_and_inherited_ownership_work_are_bounded(monkeypatch):
             {"term": "Old X", "status": "deprecated"},
         ],
     }
-    monkeypatch.setattr("glossarize.glossary.MAX_GLOSSARY_SCOPE_CHARACTERS", 5)
+    monkeypatch.setattr("glossabet.glossary.MAX_GLOSSARY_SCOPE_CHARACTERS", 5)
     monkeypatch.setattr(
-        "glossarize.glossary.MAX_GLOSSARY_OWNERSHIP_SCOPE_CHARACTERS", 10
+        "glossabet.glossary.MAX_GLOSSARY_OWNERSHIP_SCOPE_CHARACTERS", 10
     )
 
     errors = validate_glossary({"schema_version": 1, "concepts": [concept]})
@@ -565,7 +565,7 @@ def test_vocabulary_owner_validation_uses_indexed_scope_lookup(monkeypatch):
         raise AssertionError("pairwise scope comparison used")
 
     monkeypatch.setattr(
-        "glossarize.glossary.scopes_overlap", pairwise_lookup_is_a_regression
+        "glossabet.glossary.scopes_overlap", pairwise_lookup_is_a_regression
     )
     concepts = [
         {
@@ -626,13 +626,13 @@ def test_save_command_rejects_invalid_stdin_without_writing(
 
 
 def test_save_command_bounds_standard_input(tmp_path, capsys, monkeypatch):
-    monkeypatch.setattr("glossarize.glossary.MAX_JSON_BYTES", 20)
+    monkeypatch.setattr("glossabet.glossary.MAX_JSON_BYTES", 20)
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(GLOSSARY)))
 
     assert main(["save", str(tmp_path)]) == 1
 
     assert "larger than 20 bytes" in capsys.readouterr().err
-    assert not (tmp_path / "glossarize-out" / "glossary.json").exists()
+    assert not (tmp_path / "glossabet-out" / "glossary.json").exists()
 
 
 def test_save_command_cannot_follow_a_glossary_symlink(
@@ -641,7 +641,7 @@ def test_save_command_cannot_follow_a_glossary_symlink(
     outside = tmp_path / "outside.json"
     outside.write_text("do not replace")
     repo = tmp_path / "repo"
-    out = repo / "glossarize-out"
+    out = repo / "glossabet-out"
     out.mkdir(parents=True)
     os.symlink(outside, out / "glossary.json")
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(GLOSSARY)))

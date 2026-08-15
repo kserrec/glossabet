@@ -61,7 +61,7 @@ def test_local_calibration_case_runs_without_network(tmp_path):
     assert result["cases"][0]["corpus"]["files_hashed"] == 7
     assert len(result["cases"][0]["corpus"]["sha256"]) == 64
     assert result["aggregate"]["quality"]["false_alarms"] == 0
-    assert result["aggregate"]["source_bytes"] == 904
+    assert result["aggregate"]["source_bytes"] == 903
     assert result["cases"][0]["corpus_budget"]["complete"] is True
     assert result["aggregate"]["quality"]["terminology_recall_where_complete"] == 1.0
     assert result["aggregate"]["quality"]["drift_recall_where_complete"] == 1.0

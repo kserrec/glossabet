@@ -16,9 +16,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-from glossarize.display import escape_terminal_text
+from glossabet.display import escape_terminal_text
 
-OUT_DIR = "glossarize-out"
+OUT_DIR = "glossabet-out"
 
 # Directly-read repository JSON (graph.json and glossary.json) is bounded like
 # every walked file (scanner.MAX_FILE_BYTES): an untrusted repo must not be
@@ -46,7 +46,7 @@ def repo_root(path_arg: str) -> Path | None:
     root = Path(path_arg)
     if not root.is_dir():
         print(
-            "glossarize: not a directory: " + escape_terminal_text(path_arg),
+            "glossabet: not a directory: " + escape_terminal_text(path_arg),
             file=sys.stderr,
         )
         return None

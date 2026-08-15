@@ -4,11 +4,11 @@ bounds, determinism, and the no-glossary path."""
 
 import json
 
-from glossarize.cli import main
-from glossarize.drift import build_drift
-from glossarize.evidence import Limits, build_evidence
-from glossarize.glossary import save_glossary
-from glossarize.matching import EvidenceIndex
+from glossabet.cli import main
+from glossabet.drift import build_drift
+from glossabet.evidence import Limits, build_evidence
+from glossabet.glossary import save_glossary
+from glossabet.matching import EvidenceIndex
 
 GLOSSARY = {
     "schema_version": 1,
@@ -195,7 +195,7 @@ def test_total_findings_includes_dropped_items(tmp_path, monkeypatch):
         }],
     }
     (tmp_path / "terms.py").write_text("alpha = 1\nbeta = 2\ngamma = 3\n")
-    monkeypatch.setattr("glossarize.drift.FINDINGS_PER_KIND_CAP", 1)
+    monkeypatch.setattr("glossabet.drift.FINDINGS_PER_KIND_CAP", 1)
 
     drift = build_drift(build_evidence(tmp_path), glossary)
 
@@ -369,7 +369,7 @@ def test_partial_production_corpus_cannot_prove_a_term_is_absent(
             "status": "canonical",
         }],
     }
-    monkeypatch.setattr("glossarize.scanner.MAX_SOURCE_FILES", 1)
+    monkeypatch.setattr("glossabet.scanner.MAX_SOURCE_FILES", 1)
     (tmp_path / "a.py").write_text("ordinary_name = 1\n")
     (tmp_path / "z.py").write_text("workspace_record = 1\n")
 
@@ -383,7 +383,7 @@ def test_partial_production_corpus_cannot_prove_a_term_is_absent(
 def test_terminology_cap_propagates_to_drift_collection_coverage(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr("glossarize.terminology.PAIR_TOP_N", 1)
+    monkeypatch.setattr("glossabet.terminology.PAIR_TOP_N", 1)
     (tmp_path / "terms.py").write_text(
         "alpha_value = 1\nalpha_record = 2\n"
         "beta_value = 3\nbeta_record = 4\n"
@@ -471,8 +471,8 @@ def test_drift_command_end_to_end(tmp_path, capsys):
     assert "still in use" in out
     assert "fading" in out
     assert "not verdicts" in out
-    assert (root / "glossarize-out" / "drift.json").is_file()
-    assert (root / "glossarize-out" / "evidence.json").is_file()
+    assert (root / "glossabet-out" / "drift.json").is_file()
+    assert (root / "glossabet-out" / "evidence.json").is_file()
 
 
 def test_drift_without_glossary_is_user_error(tmp_path, capsys):

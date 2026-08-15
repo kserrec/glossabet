@@ -1,6 +1,6 @@
 # Evaluation
 
-This document records Glossarize's Phase 15 calibration, Phase 16 lexical/scope
+This document records Glossabet's Phase 15 calibration, Phase 16 lexical/scope
 extension, and Phase 20 replay on the current engine. The machine-readable
 corpus, labels, raw per-run timings, findings, truncation markers, provenance
 digests, and threshold checks live in
@@ -14,7 +14,7 @@ revisions:
 
 | Case | Language | Revision | License | Production code files |
 |---|---|---|---|---:|
-| Glossarize calibration fixture | Python | repository-local original source | Apache-2.0 | 6 |
+| Glossabet calibration fixture | Python | repository-local original source | Apache-2.0 | 6 |
 | Language-semantics fixture | Python and Clojure, with multilingual identifiers | repository-local original source | Apache-2.0 | 5 |
 | [Requests](https://github.com/psf/requests/tree/8068356288978c4f54661ae6f95afe0e0831885e) | Python | `8068356288978c4f54661ae6f95afe0e0831885e` | [Apache-2.0](https://github.com/psf/requests/blob/8068356288978c4f54661ae6f95afe0e0831885e/LICENSE) | 22 |
 | [hey](https://github.com/rakyll/hey/tree/5626f79b8698df6daf9b25799c9805c6acc96740) | Go | `5626f79b8698df6daf9b25799c9805c6acc96740` | [Apache-2.0](https://github.com/rakyll/hey/blob/5626f79b8698df6daf9b25799c9805c6acc96740/LICENSE) | 6 |
@@ -142,7 +142,7 @@ file ceiling corresponds to roughly 44 seconds; repository composition and
 hardware can change that substantially, so it is a safety bound rather than a
 runtime guarantee.
 
-When a source-file or byte ceiling is reached, Glossarize continues its bounded
+When a source-file or byte ceiling is reached, Glossabet continues its bounded
 walk, includes later files that still fit, and reports exact skipped-file/byte
 counts plus a bounded path sample. When a walk or per-directory ceiling is
 reached, the unvisited remainder cannot be counted without defeating the work
@@ -198,7 +198,7 @@ locally](https://github.com/xberg-io/tree-sitter-language-pack#what-and-why),
 which would add runtime network/data-flow behavior, native parser input
 surface, user-cache state, and a large grammar/query compatibility matrix.
 Using individual grammar wheels instead would require the core binding plus up
-to 30 grammar packages to cover Glossarize's 30 current language labels.
+to 30 grammar packages to cover Glossabet's 30 current language labels.
 
 GitHub's [global advisory query](https://api.github.com/advisories?ecosystem=pip&affects=tree-sitter-language-pack)
 returned no published advisories affecting

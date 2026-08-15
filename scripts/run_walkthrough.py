@@ -25,20 +25,20 @@ def main() -> int:
         print(f"walkthrough: sample repository is missing: {SAMPLE}", file=sys.stderr)
         return 1
 
-    with tempfile.TemporaryDirectory(prefix="glossarize-walkthrough-") as raw:
+    with tempfile.TemporaryDirectory(prefix="glossabet-walkthrough-") as raw:
         work = Path(raw)
         repository = work / "payment-service"
         shutil.copytree(SAMPLE, repository)
 
         env = os.environ.copy()
-        env["GLOSSARIZE_CACHE_DIR"] = str(work / "cache")
-        command = [sys.executable, "-m", "glossarize"]
+        env["GLOSSABET_CACHE_DIR"] = str(work / "cache")
+        command = [sys.executable, "-m", "glossabet"]
         _run([*command, "analyze", str(repository)], env=env)
         _run([*command, "show", str(repository)], env=env)
         _run([*command, "drift", str(repository)], env=env)
         _run([*command, "validate", str(repository)], env=env)
 
-        out = repository / "glossarize-out"
+        out = repository / "glossabet-out"
         drift = json.loads((out / "drift.json").read_text(encoding="utf-8"))
         validation = json.loads(
             (out / "validation.json").read_text(encoding="utf-8")

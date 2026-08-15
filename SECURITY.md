@@ -2,7 +2,7 @@
 
 ## Threat model
 
-The Glossarize CLI is a local tool. Its repository-analysis commands are
+The Glossabet CLI is a local tool. Its repository-analysis commands are
 read-mostly: they do not run a server, open a network socket, import
 target-project modules, evaluate source, or invoke a shell. Their one external
 process is `git`, called with argument lists and a timeout. The separate
@@ -10,20 +10,20 @@ process is `git`, called with argument lists and a timeout. The separate
 canonical skill to a reported personal or explicitly selected directory.
 
 The realistic attacker is a **hostile repository**: a user clones or receives
-an untrusted project and runs Glossarize against it. Repository-controlled
+an untrusted project and runs Glossabet against it. Repository-controlled
 inputs include source and documentation files, Git metadata, the two JSON
 artifacts plus repository configuration read directly, and any paths
-pre-created where Glossarize writes:
+pre-created where Glossabet writes:
 
-- `glossarize.json`
+- `glossabet.json`
 - `graphify-out/graph.json`
-- `glossarize-out/glossary.json`
-- `glossarize-out/` output paths
+- `glossabet-out/glossary.json`
+- `glossabet-out/` output paths
 
 The incremental extraction cache is deliberately not on that list. It is
 user-owned local state outside the scanned repository.
 
-The enforced goal is that repository-controlled paths cannot make Glossarize
+The enforced goal is that repository-controlled paths cannot make Glossabet
 read content outside the repository, redirect an artifact write, or execute
 repository code; individual inputs are size-bounded and malformed inputs
 degrade according to a documented contract. Aggregate lexical work is bounded
@@ -47,8 +47,8 @@ sequences or reorder the displayed result.
   Regressions: `test_symlink_escaping_repo_is_not_ingested`,
   `test_escaping_root_workspace_manifest_symlink_is_not_read`.
 - **Direct JSON paths are stricter than source paths.** Every component of
-  `glossarize.json`, `graphify-out/graph.json`, and
-  `glossarize-out/glossary.json` must be a real path, not a symlink. A graph
+  `glossabet.json`, `graphify-out/graph.json`, and
+  `glossabet-out/glossary.json` must be a real path, not a symlink. A graph
   violation becomes a visible lexical-only warning; a configuration or
   glossary violation is a clean user error. This prevents a hostile checkout
   from using a direct-input symlink to read another file, including an
@@ -60,7 +60,7 @@ sequences or reorder the displayed result.
 - **Reads are individually size-bounded.** Walked code, documentation, and
   inspected root manifests are capped at `MAX_FILE_BYTES` (2 MB). Direct JSON
   artifacts and the user cache are capped at `MAX_JSON_BYTES` (64 MB) before
-  `json.loads`; `glossarize.json` has a tighter 1 MB cap. An oversized graph
+  `json.loads`; `glossabet.json` has a tighter 1 MB cap. An oversized graph
   degrades to lexical-only, an oversized configuration or glossary is a user
   error, an oversized cache is a miss, and an oversized root manifest is
   skipped and reported. Regressions include
@@ -85,11 +85,11 @@ sequences or reorder the displayed result.
 ### Repository writes
 
 - **Generated writes cannot be redirected through symlinks.** The
-  `glossarize-out` directory and final artifact path may contain no symlink
+  `glossabet-out` directory and final artifact path may contain no symlink
   component. An unsafe path is a clean user error, and no target is written.
   Regressions: `test_evidence_symlink_cannot_overwrite_outside_file`,
   `test_output_directory_symlink_cannot_redirect_writes`.
-- **JSON artifacts are replaced atomically.** Glossarize writes a complete
+- **JSON artifacts are replaced atomically.** Glossabet writes a complete
   same-directory temporary file, flushes it, then commits with `os.replace`.
   A failed commit leaves the previous artifact intact and removes the
   temporary file. This prevents interrupted writes from leaving half a JSON
@@ -98,7 +98,7 @@ sequences or reorder the displayed result.
 
 ### Agent skill installation
 
-- **Existing user content is preserved by default.** `glossarize install` is
+- **Existing user content is preserved by default.** `glossabet install` is
   idempotent when the destination already has the canonical bytes. A different
   existing `SKILL.md` is a user error and remains untouched unless `--force`
   is explicit. Neighboring files are never replaced. Regression:
@@ -110,22 +110,34 @@ sequences or reorder the displayed result.
   `test_install_refuses_symlinked_destination_components` and
   `test_force_replaces_only_the_skill_file_and_leaves_no_temporary_file`.
 - **Package data is pinned to the repository source of truth.** Hatch maps
-  `skill/SKILL.md` directly to `glossarize/_skill/SKILL.md`; focused tests and
+  `skill/SKILL.md` directly to `glossabet/_skill/SKILL.md`; focused tests and
   the built-wheel smoke test compare the bytes rather than maintaining an
   independent hand-copied skill.
+- **The Codex plugin carries one matched engine/skill pair.** The manifest,
+  canonical skill instructions, skill-local runner constant, nested wheel
+  metadata, imported package version, and wheel-embedded skill all identify
+  the same release. The runner accepts only one exact wheel filename and
+  requires Python 3.10 or newer before importing it directly from the plugin
+  cache. Build, unit, archive, and actual Codex lifecycle probes fail on a
+  mismatch; the plugin never installs a second package or command on `PATH`.
+- **Plugin lifecycle cleanup is narrowly owned.** The host-level smoke uses a
+  random marketplace name, records Codex's returned install path, removes the
+  plugin and marketplace in a `finally` block, and removes only the exact
+  marketplace cache parent after proving it is empty. It never recursively
+  deletes a user directory or touches another marketplace.
 
 ### Agent context and terminal output
 
 - **The skill consumes CLI output, not repository artifacts.** The installed
-  skill starts with `glossarize inspect .`. The command loads the optional
+  skill starts with `glossabet inspect .`. The command loads the optional
   glossary through the same confined, strict validator as `show`, builds fresh
   evidence through the bounded scanner, refreshes the normal evidence
   artifact atomically, and emits one versioned JSON document. The skill is
-  explicitly forbidden from opening Glossarize JSON artifacts or falling back
+  explicitly forbidden from opening Glossabet JSON artifacts or falling back
   to an unrestricted recursive read when this command fails. Regressions are
   in `tests/test_skill.py` and `tests/test_agent_context.py`.
 - **The skill persists machine state through the CLI.** After the human settles
-  terms, the skill sends the complete JSON document to `glossarize save .` on
+  terms, the skill sends the complete JSON document to `glossabet save .` on
   standard input; it never writes or patches `glossary.json` directly. The
   command accepts at most 64 MB (reading one detection byte beyond the limit),
   parses one document, applies strict validation, and delegates to the confined
@@ -157,9 +169,9 @@ sequences or reorder the displayed result.
 
 - **A repository cannot supply trusted extraction results.** Cache state lives
   under the current user's platform cache directory, keyed by a SHA-256 hash
-  of the repository's resolved path. Repository-local `.glossarize/cache.json`
+  of the repository's resolved path. Repository-local `.glossabet/cache.json`
   is legacy, excluded from evidence, and never loaded. If
-  `GLOSSARIZE_CACHE_DIR` would place the cache inside the scanned repository,
+  `GLOSSABET_CACHE_DIR` would place the cache inside the scanned repository,
   caching is disabled.
 - **Reuse is content-based.** Every included file is read and SHA-256 hashed on
   every scan. Cached identifier/import/doc extraction is reused only when its
@@ -175,20 +187,20 @@ sequences or reorder the displayed result.
 The cache protects against the hostile-repository attacker defined above. It
 does not try to defend against another process already able to modify files as
 the same operating-system user; that process could also modify the installed
-Glossarize program or its output artifacts.
+Glossabet program or its output artifacts.
 
 ### Content, execution, and malformed input
 
 - **Sensitive-path exclusion is path-based, not secret scanning.** Files and
   directories matching `_SENSITIVE_PATTERNS`—dotenv names, key/certificate
   extensions, credential stores, or names containing `secret`/`credential`—are
-  excluded and reported. Glossarize does not inspect source text for API keys,
+  excluded and reported. Glossabet does not inspect source text for API keys,
   passwords, or other secret-like values. A secret embedded in an ordinarily
   named `.py`, `.js`, or documentation file can therefore appear as lexical
   evidence. Do not treat the output as sanitized. Regressions for the path
   boundary: `test_sensitive_files_never_enter_evidence`,
   `test_sensitive_directories_pruned_and_reported`.
-- **Repository configuration is data, not code.** `glossarize.json` accepts
+- **Repository configuration is data, not code.** `glossabet.json` accepts
   only a version, literal repository-relative ignore prefixes, and literal
   path-role prefixes. Absolute paths, parent traversal, glob syntax, unknown
   fields/roles, duplicate equal-path roles, excessive path lengths/counts,
@@ -217,7 +229,7 @@ Glossarize program or its output artifacts.
   `core.hooksPath`, uses no shell, disables credential prompts, and has a
   timeout. The status call uses stable porcelain output, requests all
   untracked files, disables rename detection, and excludes only the
-  top-level, Glossarize-owned `glossarize-out/` path relative to the directory
+  top-level, Glossabet-owned `glossabet-out/` path relative to the directory
   being scanned. This exclusion is an argument to Git, not a mutation of
   `.gitignore`; it also works for subproject scans inside a larger worktree,
   and moving a file across the boundary still exposes the non-output side.
@@ -228,8 +240,8 @@ Glossarize program or its output artifacts.
   problems warn and fall back to lexical evidence; configuration and glossary
   problems are user errors; cache problems are misses. This includes wrong
   top-level types and deeply nested JSON raising `RecursionError`.
-- **Generated evidence does not feed itself.** `glossarize-out/`, legacy
-  `.glossarize/`, `graphify-out/`, and `GLOSSARY.md` are excluded from the
+- **Generated evidence does not feed itself.** `glossabet-out/`, legacy
+  `.glossabet/`, `graphify-out/`, and `GLOSSARY.md` are excluded from the
   lexical walk. Graphify is consumed only through its bounded adapter.
 - **Non-production code has an explicit boundary.** Tests and fixtures are
   inventoried and cached with a visible role but do not feed lexical
@@ -261,10 +273,10 @@ prompts and global/system Git configuration, uses no shell, and neither imports
 nor executes target-project code. The checked-out source is still untrusted
 input to the same scanner boundaries.
 
-The `/glossarize` skill is a separate agent-mediated interface. It receives the
-bounded JSON emitted by `glossarize inspect .` and may then read context-named
+The `/glossabet` skill is a separate agent-mediated interface. It receives the
+bounded JSON emitted by `glossabet inspect .` and may then read context-named
 production code. That content is handled according to
-the agent host and model provider's data policy. Glossarize cannot enforce that
+the agent host and model provider's data policy. Glossabet cannot enforce that
 external policy, and the path-based exclusions above do not make artifacts
 safe to send to an unapproved service.
 
@@ -276,7 +288,7 @@ the opt-in developer/release operations that do use the network.
 - The production/test/fixture/generated/vendored classification is
   path-convention based, not parser- or provenance-proven. Conservative
   defaults are recorded in the public docs, every included file records its
-  effective role, and `glossarize.json` can override project-specific layouts.
+  effective role, and `glossabet.json` can override project-specific layouts.
   A misclassified path changes analysis scope; inspect per-role totals when
   adopting the tool in an unconventional repository.
 - Identifier extraction is NFKC-normalized and Unicode-aware but remains a
@@ -284,16 +296,18 @@ the opt-in developer/release operations that do use the network.
   enter evidence, and language forms beyond the pinned representative cases
   may split imperfectly. This is not a parser-level symbol claim.
 - Evidence freshness uses Git's tracked/untracked worktree model. Generated
-  files under the reserved top-level `glossarize-out/` namespace are the only
+  files under the reserved top-level `glossabet-out/` namespace are the only
   excluded paths, whether tracked or untracked. `GLOSSARY.md`, Graphify output,
-  legacy `.glossarize/`, and all other paths inside the scanned root remain
-  visible. An explicitly scoped subproject scan does not include changes
+  the current `.glossabet/` cache name, pre-rename `.glossarize/` and
+  `glossarize-out/` paths, and all other paths inside the scanned root remain
+  visible to Git freshness unless Git itself ignores them. An explicitly
+  scoped subproject scan does not include changes
   elsewhere in the enclosing worktree. Files ignored by Git are not reported
   by `git status` and therefore cannot dirty the stamp; this is a stated limit,
   not a claim that ignored bytes were checked.
   Repositories without a readable `HEAD`, or whose status cannot be checked,
   receive `{head: null, dirty: null}` and are freshness-unverified.
-- Graphify 0.9.42 exports `built_at_commit`. Glossarize reports its structural
+- Graphify 0.9.42 exports `built_at_commit`. Glossabet reports its structural
   evidence as `current` only when that commit matches the current repository
   HEAD and the worktree is clean; a mismatch is `stale`. Legacy graphs without
   the stamp, repositories without a readable HEAD, and matching commits over a

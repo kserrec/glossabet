@@ -11,9 +11,9 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 
-from glossarize.artifacts import ArtifactError, repo_root
-from glossarize.evidence import build_evidence, write_evidence
-from glossarize.glossary import GlossaryError, load_glossary
+from glossabet.artifacts import ArtifactError, repo_root
+from glossabet.evidence import build_evidence, write_evidence
+from glossabet.glossary import GlossaryError, load_glossary
 
 
 AGENT_CONTEXT_SCHEMA_VERSION = 1

@@ -3,8 +3,8 @@
 import json
 import os
 
-from glossarize.cli import main
-from glossarize.evidence import build_evidence
+from glossabet.cli import main
+from glossabet.evidence import build_evidence
 
 
 def _write(path, content="role_specific_name = 1\n"):
@@ -64,7 +64,7 @@ def test_configured_prefixes_ignore_or_override_default_roles(tmp_path):
             "vendored": ["third_party"],
         },
     }
-    (tmp_path / "glossarize.json").write_text(json.dumps(config))
+    (tmp_path / "glossabet.json").write_text(json.dumps(config))
     _write(tmp_path / "scratch" / "ignored.py")
     _write(tmp_path / "qa" / "check.py")
     _write(tmp_path / "sample_data" / "case.py")
@@ -86,7 +86,7 @@ def test_configured_prefixes_ignore_or_override_default_roles(tmp_path):
     assert evidence["skipped"]["generated"] == ["api_output"]
     assert evidence["skipped"]["vendored"] == ["third_party"]
     assert evidence["configuration"] == {
-        "file": "glossarize.json",
+        "file": "glossabet.json",
         "ignore_paths": ["scratch"],
         "path_roles": {
             "fixture": ["sample_data"],
@@ -103,7 +103,7 @@ def test_configured_prefixes_ignore_or_override_default_roles(tmp_path):
 def test_excluded_root_manifests_are_not_reopened_for_monorepo_detection(
     tmp_path,
 ):
-    (tmp_path / "glossarize.json").write_text(json.dumps({
+    (tmp_path / "glossabet.json").write_text(json.dumps({
         "schema_version": 1,
         "path_roles": {
             "generated": ["package.json"],
@@ -126,14 +126,14 @@ def test_excluded_root_manifests_are_not_reopened_for_monorepo_detection(
 
 
 def test_invalid_config_is_a_user_error(tmp_path, capsys):
-    (tmp_path / "glossarize.json").write_text(json.dumps({
+    (tmp_path / "glossabet.json").write_text(json.dumps({
         "schema_version": 1,
         "ignore_paths": ["../outside"],
     }))
     _write(tmp_path / "main.py")
 
     assert main(["scan", str(tmp_path)]) == 1
-    assert "glossarize.json" in capsys.readouterr().err
+    assert "glossabet.json" in capsys.readouterr().err
 
 
 def test_symlinked_config_is_rejected_without_reading_target(tmp_path, capsys):
@@ -142,15 +142,15 @@ def test_symlinked_config_is_rejected_without_reading_target(tmp_path, capsys):
     repository = tmp_path / "repository"
     repository.mkdir()
     _write(repository / "main.py")
-    os.symlink(outside, repository / "glossarize.json")
+    os.symlink(outside, repository / "glossabet.json")
 
     assert main(["scan", str(repository)]) == 1
     assert "symlinked artifact" in capsys.readouterr().err
 
 
 def test_oversized_config_is_a_user_error(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr("glossarize.config.MAX_CONFIG_BYTES", 20)
-    (tmp_path / "glossarize.json").write_text(json.dumps({
+    monkeypatch.setattr("glossabet.config.MAX_CONFIG_BYTES", 20)
+    (tmp_path / "glossabet.json").write_text(json.dumps({
         "schema_version": 1,
         "ignore_paths": ["too-large"],
     }))
@@ -174,7 +174,7 @@ def test_cli_reports_production_scope_and_role_exclusions(tmp_path, capsys):
 
 
 def test_configuration_is_deterministic(tmp_path):
-    (tmp_path / "glossarize.json").write_text(json.dumps({
+    (tmp_path / "glossabet.json").write_text(json.dumps({
         "schema_version": 1,
         "ignore_paths": ["scratch", "tmp"],
         "path_roles": {"test": ["qa"]},

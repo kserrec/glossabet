@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reproduce Glossarize's pinned Phase 15/16 evaluation.
+"""Reproduce Glossabet's pinned Phase 15/16 evaluation.
 
 External source is checked out only into a caller-provided directory or a
 temporary directory. Nothing is imported or executed from a target project.
@@ -24,17 +24,17 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from glossarize import __version__  # noqa: E402
-from glossarize.cache import CACHE_ROOT_ENV  # noqa: E402
-from glossarize.drift import (  # noqa: E402
+from glossabet import __version__  # noqa: E402
+from glossabet.cache import CACHE_ROOT_ENV  # noqa: E402
+from glossabet.drift import (  # noqa: E402
     DRIFT_SCHEMA_VERSION,
     build_drift,
 )
-from glossarize.evidence import (  # noqa: E402
+from glossabet.evidence import (  # noqa: E402
     SCHEMA_VERSION as EVIDENCE_SCHEMA_VERSION,
     build_evidence,
 )
-from glossarize.glossary import validate_glossary  # noqa: E402
+from glossabet.glossary import validate_glossary  # noqa: E402
 
 EVALUATION_SCHEMA_VERSION = 3
 DEFAULT_MANIFEST = PROJECT_ROOT / "evaluation" / "corpus.json"
@@ -109,12 +109,12 @@ def _digest_paths(root: Path, relative_paths: list[str]) -> str:
 def _engine_metadata() -> dict:
     source_paths = [
         path.relative_to(PROJECT_ROOT).as_posix()
-        for path in (PROJECT_ROOT / "glossarize").glob("**/*.py")
+        for path in (PROJECT_ROOT / "glossabet").glob("**/*.py")
         if not any(_dotenv_part(part) for part in path.parts)
     ]
     source_paths.append("evaluation/run.py")
     return {
-        "name": "glossarize",
+        "name": "glossabet",
         "version": __version__,
         "source_sha256": _digest_paths(PROJECT_ROOT, source_paths),
         "evidence_schema_version": EVIDENCE_SCHEMA_VERSION,
@@ -130,7 +130,7 @@ def _corpus_identity(root: Path, evidence: dict) -> dict:
         for item in evidence["files"][kind]
     ]
     if evidence.get("configuration", {}).get("present"):
-        paths.append("glossarize.json")
+        paths.append("glossabet.json")
     return {
         "sha256": _digest_paths(root, paths),
         "files_hashed": len(set(paths)),
@@ -739,7 +739,7 @@ def run(manifest_path: Path, output_path: Path, repositories_root: Path | None,
     if not sources:
         raise EvaluationError("no evaluation cases selected")
 
-    cache_root = Path(tempfile.mkdtemp(prefix="glossarize-eval-cache-"))
+    cache_root = Path(tempfile.mkdtemp(prefix="glossabet-eval-cache-"))
     try:
         cases = [
             _evaluate_source(
@@ -819,7 +819,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.fetch:
-            with tempfile.TemporaryDirectory(prefix="glossarize-eval-repos-") as raw:
+            with tempfile.TemporaryDirectory(prefix="glossabet-eval-repos-") as raw:
                 result = run(
                     args.manifest,
                     args.output,

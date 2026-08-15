@@ -1,7 +1,7 @@
 """User-owned, content-validated per-file extraction cache.
 
 The scanned repository is hostile input, so it cannot supply extraction
-results that Glossarize later trusts. Cache files therefore live in the
+results that Glossabet later trusts. Cache files therefore live in the
 current user's platform cache directory, in a repository-keyed subdirectory.
 Each reusable entry is matched to the SHA-256 digest of the current file
 bytes. A cache is an optimization only: any location, size, JSON, schema, or
@@ -16,15 +16,15 @@ import os
 import sys
 from pathlib import Path
 
-from glossarize import __version__
-from glossarize.artifacts import oversized, write_json_atomic
+from glossabet import __version__
+from glossabet.artifacts import oversized, write_json_atomic
 
 # Version 3 invalidates ASCII-only identifier/doc extraction after Phase 16's
 # Unicode NFKC+casefold tokenizer. Reusing version-2 entries would make warm
 # scans disagree with cold scans even when the source digest still matched.
 CACHE_VERSION = 3
 CACHE_FILE = "cache.json"
-CACHE_ROOT_ENV = "GLOSSARIZE_CACHE_DIR"
+CACHE_ROOT_ENV = "GLOSSABET_CACHE_DIR"
 
 
 class CacheLocationError(ValueError):
@@ -45,7 +45,7 @@ def _platform_cache_root() -> Path:
         xdg = os.environ.get("XDG_CACHE_HOME")
         candidate = Path(xdg).expanduser() if xdg else None
         base = candidate if candidate and candidate.is_absolute() else Path.home() / ".cache"
-    return base / "glossarize"
+    return base / "glossabet"
 
 
 def _repository_identity(root: Path) -> str:
@@ -62,7 +62,7 @@ def cache_path(root: Path) -> Path:
     except ValueError:
         return path
     raise CacheLocationError(
-        "the selected Glossarize cache directory is inside the scanned "
+        "the selected Glossabet cache directory is inside the scanned "
         "repository"
     )
 

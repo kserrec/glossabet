@@ -11,10 +11,10 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Iterable
 
-from glossarize.coverage import coverage_ledger
-from glossarize.glossary import path_in_scope, scope_evidence
-from glossarize.imports import module_of
-from glossarize.tokenize import tokenize_identifier, tokenize_term
+from glossabet.coverage import coverage_ledger
+from glossabet.glossary import path_in_scope, scope_evidence
+from glossabet.imports import module_of
+from glossabet.tokenize import tokenize_identifier, tokenize_term
 
 LOCATION_SAMPLE = 5
 COMPOUND_MATCH_START_BUDGET = 250_000

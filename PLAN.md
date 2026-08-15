@@ -1,13 +1,13 @@
-# Glossarize — Plan
+# Glossabet — Plan
 
-Status: **phases 0–20 complete; Phase 21 next** as of 2026-08-14.
+Status: **phases 0–21 complete; Phase 22 next** as of 2026-08-15.
 Phases 18–23 are the complete post-audit route from the current local package
 to a defensible trusted alpha. Public release remains a separate, explicit
 authorization gate after those phases.
 This document is the authoritative roadmap. Provenance: merged from the working
 sessions of 2026-08-14 — Claude's loop/reconciliation analysis, ChatGPT's
 "Robust Repository Vocabulary System" spec and repo-transition notes, and the
-existing `/glossarize` skill, which is the behavioral spec this project serves.
+existing `/glossabet` skill, which is the behavioral spec this project serves.
 
 ## Purpose
 
@@ -22,15 +22,15 @@ comprehension problem—and the limits of what that research establishes for
 this product—is summarized in the README under "Why repository vocabulary
 matters."
 
-Glossarize makes a repository's vocabulary **explicit, canonical, inspectable,
+Glossabet makes a repository's vocabulary **explicit, canonical, inspectable,
 and maintainable**. It is a software system whose primary interface is the
-`/glossarize` agent skill: deterministic machinery gathers evidence, the LLM
+`/glossabet` agent skill: deterministic machinery gathers evidence, the LLM
 brainstorms and reasons about terminology, and **the human decides**. That
 division of labor is the product's central rule and never changes.
 
-Optionally, Glossarize consumes [Graphify](https://github.com/Graphify-Labs/graphify)
+Optionally, Glossabet consumes [Graphify](https://github.com/Graphify-Labs/graphify)
 output as richer structural evidence. Graphify answers "what is connected to
-what?"; Glossarize answers "what are these things conceptually, and what should
+what?"; Glossabet answers "what are these things conceptually, and what should
 we call them?" Together they can ask: does the vocabulary we use to understand
 this system correspond to the system we built? **Graphify is never required.**
 
@@ -38,14 +38,14 @@ this system correspond to the system we built? **Graphify is never required.**
 
 ```
 ┌─────────────────────────────────────────────┐
-│  /glossarize agent skill  (the UX)          │
+│  /glossabet agent skill  (the UX)          │
 │  nominates, proposes, brainstorms, defers   │
 │  to the human; finalizes only when told     │
 └───────────────────┬─────────────────────────┘
                     │ requests a fresh, bounded agent context
                     │ through the CLI; reads named source files
 ┌───────────────────▼─────────────────────────┐
-│  glossarize engine / CLI  (deterministic)   │
+│  glossabet engine / CLI  (deterministic)   │
 │  scanning · terminology mining · register   │
 │  stats · glossary persistence · drift ·     │
 │  reconciliation                             │
@@ -57,14 +57,14 @@ this system correspond to the system we built? **Graphify is never required.**
      (lexical-first)     (optional, richer structure)
 ```
 
-Both evidence sources normalize into one Glossarize-owned intermediate
+Both evidence sources normalize into one Glossabet-owned intermediate
 representation, **RepositoryEvidence**. Everything above that boundary is
 source-agnostic; future adapters (LSP, other analyzers) plug in the same way.
 
 ## Principles (all binding)
 
 1. **The human names the world.** Machinery nominates and grounds; the LLM
-   proposes and reasons; only human approval makes a term canonical. Glossarize
+   proposes and reasons; only human approval makes a term canonical. Glossabet
    never mass-renames code and never finalizes unilaterally.
 2. **Lexical-first scanner identity.** The built-in scanner is *the lexical
    evidence provider*: files, directories, docs inventory, identifier
@@ -72,12 +72,13 @@ source-agnostic; future adapters (LSP, other analyzers) plug in the same way.
    static analyzer or a Graphify clone. When rich structure matters, an
    adapter supplies it. Full symbol extraction (tree-sitter et al.) is
    deferred until real use proves it necessary — it may never be.
-3. **No evidence contamination.** The scanner excludes `glossarize-out/`,
-   `.glossarize/`, and the repo's `GLOSSARY.md` from evidence gathering, from
-   v0.1 on. Otherwise the glossary echoes through the evidence and blinds
-   drift detection (canonical terms look "used" because the glossary uses
-   them). Adapter-provided evidence tags glossary-derived nodes by provenance
-   and discounts them in reconciliation.
+3. **No evidence contamination.** The scanner excludes `glossabet-out/`,
+   `.glossabet/`, pre-rename `glossarize-out/` and `.glossarize/`, and the
+   repo's `GLOSSARY.md` from evidence gathering, from v0.1 on. Otherwise the
+   glossary echoes through the evidence and blinds drift detection (canonical
+   terms look "used" because the glossary uses them). Adapter-provided
+   evidence tags current and pre-rename glossary nodes by provenance and
+   discounts them in reconciliation.
 4. **Sensitive-file hygiene.** The scanner walks real repos containing `.env`
    files, keys, and credentials. Sensitive paths are excluded by pattern,
    never ingested into any artifact, and a test proves it. (Graphify's
@@ -95,8 +96,8 @@ source-agnostic; future adapters (LSP, other analyzers) plug in the same way.
    first-class drift signal, not an error to silence.
 8. **Graphify is an adapter, never a dependency.** Detect
    `graphify-out/graph.json`; use it if present, proceed identically without
-   it. Never mutate Graphify's artifacts — Glossarize owns
-   `glossarize-out/`, Graphify owns `graphify-out/`. Native Graphify support
+   it. Never mutate Graphify's artifacts — Glossabet owns
+   `glossabet-out/`, Graphify owns `graphify-out/`. Native Graphify support
    for consuming `glossary.json` would be a nice upstream contribution, never
    an architectural dependency.
 9. **Dependencies earn their place.** Start stdlib-only where practical; every
@@ -113,11 +114,11 @@ source-agnostic; future adapters (LSP, other analyzers) plug in the same way.
     a bound. Any analysis that caps coverage (locations per term, candidate
     pairs, examples) states the cap and reports what was dropped — a
     truncated artifact must never read as complete. This is what keeps
-    Glossarize honest on repos of any size.
+    Glossabet honest on repos of any size.
 
 ## Non-goals
 
-Glossarize is not: an automatic renamer, a static analyzer or language server,
+Glossabet is not: an automatic renamer, a static analyzer or language server,
 a dependency visualizer, a generic architecture-doc generator, a Graphify
 clone, or an ontology generator that removes human judgment. Structural
 sophistication belongs to adapters, not the core.
@@ -126,8 +127,8 @@ sophistication belongs to adapters, not the core.
 
 ```
 <scanned repo>/
-├── glossarize.json       optional literal-prefix ignore/path-role configuration
-├── glossarize-out/
+├── glossabet.json       optional literal-prefix ignore/path-role configuration
+├── glossabet-out/
 │   ├── evidence.json     machine evidence (RepositoryEvidence, schema_version, git stamp)
 │   ├── glossary.json     machine-readable canonical vocabulary (from Phase 6)
 │   └── (analysis outputs as later phases add them)
@@ -136,7 +137,7 @@ sophistication belongs to adapters, not the core.
 
 The incremental extraction cache is user-owned state outside the scanned
 repository, under the platform cache directory and keyed by the repository's
-resolved path. Repository-local `.glossarize/` remains excluded as a legacy
+resolved path. Repository-local `.glossabet/` remains excluded as a legacy
 artifact path but is never trusted or loaded.
 
 `GLOSSARY.md` stays the human-readable, reasoning-carrying document the skill
@@ -152,14 +153,14 @@ the reconciliation phase, which is their first real consumer.
 ## CLI surface (target)
 
 ```
-glossarize scan .        build/refresh RepositoryEvidence          (Phase 2)
-glossarize analyze .     terminology + register analysis           (Phase 4)
-glossarize inspect .     emit fresh bounded agent context          (Phase 18)
-glossarize save .        validate/save glossary JSON from stdin    (Phase 18)
-glossarize show          display current glossary                  (Phase 6)
-glossarize drift .       compare live vocabulary vs canonical      (Phase 7)
-glossarize validate .    glossary ↔ evidence/graph reconciliation  (Phase 10)
-glossarize install       install canonical agent skill             (Phase 17)
+glossabet scan .        build/refresh RepositoryEvidence          (Phase 2)
+glossabet analyze .     terminology + register analysis           (Phase 4)
+glossabet inspect .     emit fresh bounded agent context          (Phase 18)
+glossabet save .        validate/save glossary JSON from stdin    (Phase 18)
+glossabet show          display current glossary                  (Phase 6)
+glossabet drift .       compare live vocabulary vs canonical      (Phase 7)
+glossabet validate .    glossary ↔ evidence/graph reconciliation  (Phase 10)
+glossabet install       install canonical agent skill             (Phase 17)
 ```
 
 Users normally never type these — the skill orchestrates them.
@@ -167,8 +168,8 @@ Users normally never type these — the skill orchestrates them.
 ## The Graphify loop (doctrine, not a phase)
 
 - **Pass 1** (`/graphify .`) produces structure with throwaway labels.
-- Glossarize consumes it via the adapter; the human settles vocabulary.
-- **Reconciliation needs no second Graphify pass** — Glossarize overlays the
+- Glossabet consumes it via the adapter; the human settles vocabulary.
+- **Reconciliation needs no second Graphify pass** — Glossabet overlays the
   glossary on the existing graph itself (Phase 10).
 - A second Graphify pass has exactly one remaining job: making Graphify's own
   outputs (wiki, HTML, `explain`/`path` queries) speak canonical vocabulary.
@@ -208,7 +209,7 @@ project.
 
 1. Add primary studies to the README covering identifier comprehension,
    lexical inconsistency, naming divergence, and domain-specific dictionaries;
-   state plainly that this validates the problem, not Glossarize's efficacy.
+   state plainly that this validates the problem, not Glossabet's efficacy.
 2. Centralize repository-confined direct-artifact reads and atomic JSON writes.
    Reject symlinked direct artifact paths instead of reading through them, and
    prevent output-directory symlinks from redirecting writes.
@@ -258,14 +259,14 @@ editing a target repository's ignore rules.
 **Steps:**
 
 1. Define and implement a git-state comparison that excludes only
-   Glossarize-owned generated paths while preserving all user changes.
+   Glossabet-owned generated paths while preserving all user changes.
 2. Use the same comparison in artifact stamps and the skill's freshness gate;
    cover tracked, untracked, ignored, and no-git repositories.
 3. Document generated-file ownership and cleanup without modifying
    `.gitignore` automatically.
 
 **Acceptance:** a first scan of a clean repository is immediately fresh;
-subsequent user changes make it stale; generated Glossarize artifacts alone do
+subsequent user changes make it stale; generated Glossabet artifacts alone do
 not; no target configuration is changed.
 
 ### Phase 14 — Terminology precision foundations ✅ 2026-08-14
@@ -292,7 +293,7 @@ legitimate drift cases still report.
 
 ### Phase 15 — Evaluation corpus and calibration ✅ 2026-08-14
 
-**Goal:** learn whether Glossarize is useful before expanding or marketing its
+**Goal:** learn whether Glossabet is useful before expanding or marketing its
 capabilities.
 
 **Steps:**
@@ -308,7 +309,7 @@ capabilities.
 4. Establish release thresholds and use failures to tune existing heuristics,
    not to add ungrounded features.
 
-**Acceptance:** the README can cite a reproducible Glossarize evaluation—or
+**Acceptance:** the README can cite a reproducible Glossabet evaluation—or
 continues to make no efficacy claim—with failures and corpus limitations
 reported alongside successes.
 
@@ -338,7 +339,7 @@ without repository-owner knowledge.
 
 **Steps:**
 
-1. Add `glossarize install` for the canonical skill, an end-to-end sample
+1. Add `glossabet install` for the canonical skill, an end-to-end sample
    walkthrough, and explicit privacy/data-flow documentation for local and
    agent-mediated use.
 2. Add CI across supported Python versions and platforms, packaging checks,
@@ -357,14 +358,14 @@ make hostile glossary data safe to validate and display at bounded cost.
 
 **Steps:**
 
-1. Add `glossarize inspect .`, which performs a fresh scan through the existing
+1. Add `glossabet inspect .`, which performs a fresh scan through the existing
    confined scanner, safely loads the optional glossary, persists the normal
    evidence artifact, and emits a versioned, size-bounded JSON context for the
    agent. Every truncated collection carries counts and completeness metadata.
 2. Rewrite the skill's opening protocol to invoke `inspect`; remove direct
-   reads of Glossarize JSON artifacts and the unrestricted repository-reading
+   reads of Glossabet JSON artifacts and the unrestricted repository-reading
    fallback. Route finalized machine state through bounded stdin to
-   `glossarize save .` rather than letting the skill write the artifact. If the
+   `glossabet save .` rather than letting the skill write the artifact. If the
    matching CLI is unavailable or the context is invalid, stop with a precise
    installation/version error. Targeted reads of source files named by the safe
    context remain part of the brainstorm workflow.
@@ -444,18 +445,15 @@ matrix passes; workflow mutation tests prove that dependency; build tooling is
 constrained and justified; evaluation results identify their exact inputs and
 current engine; documentation makes no stale readiness claim.
 
-### Phase 21 — Name clearance and preferred Codex distribution
+### Phase 21 — Name clearance and preferred Codex distribution ✅ 2026-08-15
 
-**Decision checkpoint (2026-08-14):** Kyle selected **Glossabet** as the new
-product identity. The intended coinage is `glossa` plus the ending of
-`alphabet`, pronounced “GLOSS-uh-bet.” Point-in-time preliminary checks found
-no exact current product/company/app use, GitHub repository or account, major
-package-registry entry, registration for the checked `.com`, `.net`, `.org`,
-`.dev`, `.io`, or `.ai` domains, exact or close U.S. federal trademark record,
-or historical `glossabet.com` capture. These checks neither reserve the name
-nor replace legal clearance. Phase 21 remains unfinished: the repository and
-all executable surfaces still use **Glossarize**, and the recorded clearance,
-atomic rename, and distribution work below have not started.
+**Decision checkpoint (2026-08-14):** Kyle selected **Glossabet** to replace
+the pre-release working identity **Glossarize**. The intended coinage is
+`glossa` plus the ending of `alphabet`, pronounced “GLOSS-uh-bet.”
+`NAME-CLEARANCE.md` records the 2026-08-15 exact package, GitHub, command,
+configured Codex directory, domain, indexed-use, historical-use, and official
+USPTO probes. No exact current result was found in those bounded checks. They
+neither reserve the name nor replace legal clearance.
 
 **Goal:** settle the product identity before publishing it and prove the
 preferred Codex plugin experience without weakening the standalone package.
@@ -477,6 +475,22 @@ preferred Codex plugin experience without weakening the standalone package.
 clean Codex plugin install supplies matching skill/CLI versions and removes
 cleanly; the wheel fallback remains reproducible; no channel or host is called
 supported without a direct probe.
+
+**Completion evidence:** the source package/import, CLI, skill, plugin,
+configuration, artifacts, cache namespace, fixtures, tests, and current docs
+now use Glossabet. Pre-rename output/cache paths remain excluded and were not
+migrated, modified, or deleted. One intermediate rename-audit search included
+an existing ignored output artifact before its legacy exclusion was restored.
+A local marketplace installed plugin 0.1.0 through Codex CLI 0.147.0 on Linux,
+ran the bundled `inspect` boundary, updated to a
+synthetic matched 0.1.1 bundle, removed the prior cached version, and then
+removed every test-owned plugin/marketplace/cache entry. The plugin manifest,
+canonical skill, runner, nested wheel, package metadata, and embedded skill
+are version-coupled in unit and archive checks. The independent wheel smoke
+still installs, exercises, and uninstalls the normal `glossabet` command. The
+hosted GitHub slug and Kyle's separate legacy `glossarize 0.0.1` installation
+were observed but left unchanged; no package, plugin, domain, tag, release, or
+other public state was created.
 
 ### Phase 22 — Installed-agent and structural evaluation
 
@@ -532,13 +546,14 @@ claim.
 
 ### External publication gate — explicit authorization required
 
-GitHub private vulnerability reporting, Dependabot security updates, package
-registration/upload, Git tags/releases, and plugin-directory publication are
-account or public-state changes. They are covered work, but are performed only
-after Phase 23 and only with Kyle's explicit authorization. Any steps Kyle must
-perform are presented one at a time with the account affected, public or
-irreversible consequence, exact click/type action, and observable completion
-state. Publication is not done merely because local gates pass.
+The hosted GitHub repository rename, GitHub private vulnerability reporting,
+Dependabot security updates, package registration/upload, Git tags/releases,
+and plugin-directory publication are account or public-state changes. They are
+covered work, but are performed only after Phase 23 and only with Kyle's
+explicit authorization. Any steps Kyle must perform are presented one at a
+time with the account affected, public or irreversible consequence, exact
+click/type action, and observable completion state. Publication is not done
+merely because local gates pass.
 
 ## Post-audit issue closure map
 
@@ -572,21 +587,21 @@ state. Publication is not done merely because local gates pass.
   CODE_EXTENSIONS; unknown extensions dropped). Its owner told Kyle OCaml
   "should work now," but no OCaml support exists in any public release,
   branch, PR, or issue as of this date — verify before any combined
-  glossarize+graphify run on an OCaml repo.
+  glossabet+graphify run on an OCaml repo.
 - Cross-repo / organization-wide vocabulary (design `glossary.json` so a
   shared mode isn't precluded; graphify `merge-graphs` is prior art).
 - Additional evidence adapters (LSP, other analyzers).
 - Public package/plugin publication only after Phase 23, the trusted-alpha
   gate, and explicit authorization.
 
-## Settled decisions (2026-08-14)
+## Settled decisions (through 2026-08-15)
 
 1. **Implementation language: Python.** Same distribution story as Graphify
    (`uv tool install`), mature ecosystem if tree-sitter is ever wanted.
 2. **Skill source of truth: the repo.** `skill/SKILL.md` is canonical and is
-   mapped byte-for-byte into the wheel. `glossarize install` defaults to the
-   current Codex personal location `~/.agents/skills/glossarize/`; the
-   explicit Claude Code target is `~/.claude/skills/glossarize/`. Both are
+   mapped byte-for-byte into the wheel. `glossabet install` defaults to the
+   current Codex personal location `~/.agents/skills/glossabet/`; the
+   explicit Claude Code target is `~/.claude/skills/glossabet/`. Both are
    installed copies. The original prediction that the skill would change only
    twice was invalidated by the post-Phase-17 boundary audit: Phase 18 changes
    the evidence transport from direct artifact reads to a required CLI-owned
@@ -625,3 +640,10 @@ state. Publication is not done merely because local gates pass.
     uses Trusted Publishing without a stored token. PyPI account setup,
     package upload, Git tags/releases, and enabling GitHub private
     vulnerability reporting remain explicit external actions for Kyle.
+12. **Product identity: Glossabet.** Source and executable surfaces use the
+    selected coinage; `NAME-CLEARANCE.md` records the bounded checks and their
+    legal/availability limits. The Codex plugin is the preferred future Codex
+    route and owns its skill plus bundled wheel as one cache entry. The
+    standalone wheel owns the normal CLI environment and keeps its separately
+    copied skill lifecycle explicit. Only Codex CLI 0.147.0 on Linux has a
+    direct plugin lifecycle probe; other hosts remain unverified.

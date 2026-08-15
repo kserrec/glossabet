@@ -1,7 +1,7 @@
 # Calibration fixture
 
 This small, original repository fixture exercises known terminology cases
-without copying third-party source. It is covered by Glossarize's root
+without copying third-party source. It is covered by Glossabet's root
 Apache-2.0 license.
 
 The established term is **Run**. Newer code introduces **Execution** for the

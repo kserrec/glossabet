@@ -57,18 +57,18 @@ def main() -> int:
     args = parser.parse_args()
     wheel = _one_wheel(args.dist_dir)
 
-    with tempfile.TemporaryDirectory(prefix="glossarize-wheel-smoke-") as raw:
+    with tempfile.TemporaryDirectory(prefix="glossabet-wheel-smoke-") as raw:
         work = Path(raw)
         environment = work / "venv"
         venv.EnvBuilder(with_pip=True).create(environment)
         scripts = environment / ("Scripts" if os.name == "nt" else "bin")
         python = scripts / ("python.exe" if os.name == "nt" else "python")
-        cli = scripts / ("glossarize.exe" if os.name == "nt" else "glossarize")
+        cli = scripts / ("glossabet.exe" if os.name == "nt" else "glossabet")
 
         env = os.environ.copy()
         env.pop("PYTHONHOME", None)
         env.pop("PYTHONPATH", None)
-        env["GLOSSARIZE_CACHE_DIR"] = str(work / "cache")
+        env["GLOSSABET_CACHE_DIR"] = str(work / "cache")
         env["PIP_CACHE_DIR"] = str(work / "pip-cache")
         env["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
         env["PIP_NO_INDEX"] = "1"
@@ -84,7 +84,7 @@ def main() -> int:
         )
         _run([str(cli), "--version"], cwd=work, env=env)
 
-        destination = work / "skills" / "glossarize"
+        destination = work / "skills" / "glossabet"
         _run(
             [
                 str(cli), "install", "--agent", "codex",
@@ -137,17 +137,17 @@ def main() -> int:
         )
 
         _run(
-            [str(python), "-m", "pip", "uninstall", "-y", "glossarize"],
+            [str(python), "-m", "pip", "uninstall", "-y", "glossabet"],
             cwd=work,
             env=env,
         )
         probe = (
             "import importlib.util; "
-            "raise SystemExit(importlib.util.find_spec('glossarize') is not None)"
+            "raise SystemExit(importlib.util.find_spec('glossabet') is not None)"
         )
         _run([str(python), "-c", probe], cwd=work, env=env)
         if cli.exists():
-            raise RuntimeError("pip uninstall left the glossarize entry point behind")
+            raise RuntimeError("pip uninstall left the glossabet entry point behind")
         if not installed_skill.is_file():
             raise RuntimeError("pip uninstall unexpectedly removed the user-installed skill")
 

@@ -2,8 +2,8 @@
 must resolve across languages, external deps must separate, the lossy tag
 must be present, and every nomination must carry its reasons."""
 
-from glossarize.evidence import build_evidence
-from glossarize.imports import extract_imports
+from glossabet.evidence import build_evidence
+from glossabet.imports import extract_imports
 
 
 def test_extract_imports_per_language():

@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
+import json
 import re
 import tarfile
 import zipfile
@@ -44,10 +46,10 @@ def _check_names(names: list[str], label: str) -> None:
 
 
 def _source_version() -> str:
-    text = (ROOT / "glossarize" / "__init__.py").read_text(encoding="utf-8")
+    text = (ROOT / "glossabet" / "__init__.py").read_text(encoding="utf-8")
     match = re.search(r'^__version__ = "([^"]+)"$', text, re.MULTILINE)
     if match is None:
-        _fail("could not read __version__ from glossarize/__init__.py")
+        _fail("could not read __version__ from glossabet/__init__.py")
     return match.group(1)
 
 
@@ -56,27 +58,27 @@ def _check_wheel(wheel: Path, version: str, canonical_skill: bytes) -> None:
         names = archive.namelist()
         _check_names(names, "wheel")
         required = {
-            "glossarize/__main__.py",
-            "glossarize/cli.py",
-            "glossarize/installer.py",
-            "glossarize/_skill/SKILL.md",
-            f"glossarize-{version}.dist-info/METADATA",
-            f"glossarize-{version}.dist-info/WHEEL",
-            f"glossarize-{version}.dist-info/entry_points.txt",
-            f"glossarize-{version}.dist-info/licenses/LICENSE",
+            "glossabet/__main__.py",
+            "glossabet/cli.py",
+            "glossabet/installer.py",
+            "glossabet/_skill/SKILL.md",
+            f"glossabet-{version}.dist-info/METADATA",
+            f"glossabet-{version}.dist-info/WHEEL",
+            f"glossabet-{version}.dist-info/entry_points.txt",
+            f"glossabet-{version}.dist-info/licenses/LICENSE",
         }
         missing = sorted(required - set(names))
         if missing:
             _fail(f"wheel is missing: {', '.join(missing)}")
-        if archive.read("glossarize/_skill/SKILL.md") != canonical_skill:
+        if archive.read("glossabet/_skill/SKILL.md") != canonical_skill:
             _fail("wheel skill differs from canonical skill/SKILL.md")
 
-        metadata_name = f"glossarize-{version}.dist-info/METADATA"
+        metadata_name = f"glossabet-{version}.dist-info/METADATA"
         metadata = BytesParser(policy=policy.default).parsebytes(
             archive.read(metadata_name)
         )
         expected = {
-            "Name": "glossarize",
+            "Name": "glossabet",
             "Version": version,
             "License-Expression": "Apache-2.0",
             "Requires-Python": ">=3.10",
@@ -95,14 +97,76 @@ def _check_wheel(wheel: Path, version: str, canonical_skill: bytes) -> None:
         ):
             _fail("wheel metadata is missing the repository URL")
         entry_points = archive.read(
-            f"glossarize-{version}.dist-info/entry_points.txt"
+            f"glossabet-{version}.dist-info/entry_points.txt"
         ).decode("utf-8")
-        if "glossarize = glossarize.cli:main" not in entry_points:
-            _fail("wheel is missing the glossarize console entry point")
+        if "glossabet = glossabet.cli:main" not in entry_points:
+            _fail("wheel is missing the glossabet console entry point")
 
 
-def _check_sdist(sdist: Path, version: str, canonical_skill: bytes) -> None:
-    prefix = f"glossarize-{version}/"
+def _check_plugin_bundle(
+    *,
+    manifest_bytes: bytes,
+    skill_bytes: bytes,
+    runner_bytes: bytes,
+    wheel_bytes: bytes,
+    version: str,
+    canonical_skill: bytes,
+    label: str,
+) -> None:
+    try:
+        manifest = json.loads(manifest_bytes)
+    except (UnicodeError, ValueError, RecursionError) as exc:
+        _fail(f"{label} plugin manifest is invalid JSON: {exc}")
+    if manifest.get("name") != "glossabet" or manifest.get("version") != version:
+        _fail(f"{label} plugin manifest does not match package name/version")
+    if manifest.get("skills") != "./skills/":
+        _fail(f"{label} plugin manifest does not expose its skills directory")
+    if skill_bytes != canonical_skill:
+        _fail(f"{label} plugin skill differs from canonical skill/SKILL.md")
+    expected_runner = f'EXPECTED_VERSION = "{version}"'.encode()
+    if expected_runner not in runner_bytes:
+        _fail(f"{label} plugin runner does not match the package version")
+
+    with zipfile.ZipFile(io.BytesIO(wheel_bytes)) as archive:
+        metadata_name = f"glossabet-{version}.dist-info/METADATA"
+        try:
+            metadata = BytesParser(policy=policy.default).parsebytes(
+                archive.read(metadata_name)
+            )
+            bundled_skill = archive.read("glossabet/_skill/SKILL.md")
+        except KeyError as exc:
+            _fail(f"{label} plugin wheel is missing {exc}")
+        if metadata["Name"] != "glossabet" or metadata["Version"] != version:
+            _fail(f"{label} plugin wheel has the wrong package name/version")
+        if metadata.get_all("Requires-Dist", []) != []:
+            _fail(f"{label} plugin wheel declares a runtime dependency")
+        if bundled_skill != canonical_skill:
+            _fail(f"{label} plugin wheel embeds a mismatched skill")
+
+
+def _check_source_plugin(
+    wheel: Path, version: str, canonical_skill: bytes
+) -> None:
+    root = ROOT / "plugins" / "glossabet"
+    skill = root / "skills" / "glossabet"
+    asset = skill / "assets" / f"glossabet-{version}-py3-none-any.whl"
+    _check_plugin_bundle(
+        manifest_bytes=(root / ".codex-plugin" / "plugin.json").read_bytes(),
+        skill_bytes=(skill / "SKILL.md").read_bytes(),
+        runner_bytes=(skill / "scripts" / "run_glossabet.py").read_bytes(),
+        wheel_bytes=asset.read_bytes(),
+        version=version,
+        canonical_skill=canonical_skill,
+        label="source",
+    )
+    if asset.read_bytes() != wheel.read_bytes():
+        _fail("source plugin wheel differs from the release wheel")
+
+
+def _check_sdist(
+    sdist: Path, wheel: Path, version: str, canonical_skill: bytes
+) -> None:
+    prefix = f"glossabet-{version}/"
     with tarfile.open(sdist, mode="r:gz") as archive:
         members = archive.getmembers()
         names = [member.name for member in members]
@@ -114,24 +178,33 @@ def _check_sdist(sdist: Path, version: str, canonical_skill: bytes) -> None:
         required_relative = {
             ".github/workflows/quality.yml",
             "CHANGELOG.md",
+            "DISTRIBUTION.md",
             "LICENSE",
+            "NAME-CLEARANCE.md",
             "PRIVACY.md",
             "README.md",
             "RELEASING.md",
             "SECURITY.md",
             "docs/WALKTHROUGH.md",
-            "examples/payment-service/glossarize-out/glossary.json",
+            "examples/payment-service/glossabet-out/glossary.json",
             "examples/payment-service/src/payment_service.py",
             "evaluation/results.json",
             "evaluation/run.py",
-            "glossarize/installer.py",
+            "glossabet/installer.py",
+            "plugins/glossabet/.codex-plugin/plugin.json",
+            f"plugins/glossabet/skills/glossabet/assets/glossabet-{version}-py3-none-any.whl",
+            "plugins/glossabet/skills/glossabet/scripts/run_glossabet.py",
+            "plugins/glossabet/skills/glossabet/SKILL.md",
             "pyproject.toml",
             "scripts/check_distribution.py",
             "scripts/check_workflows.py",
+            "scripts/build_plugin.py",
+            "scripts/plugin_smoke.py",
             "scripts/run_walkthrough.py",
             "scripts/wheel_smoke.py",
             "skill/SKILL.md",
             "tests/test_install.py",
+            "tests/test_plugin.py",
             "tests/test_release.py",
             "tests/test_walkthrough.py",
         }
@@ -144,6 +217,35 @@ def _check_sdist(sdist: Path, version: str, canonical_skill: bytes) -> None:
         handle = archive.extractfile(skill_member)
         if handle is None or handle.read() != canonical_skill:
             _fail("source distribution skill differs from canonical skill/SKILL.md")
+
+        def member_bytes(relative: str) -> bytes:
+            member = archive.getmember(prefix + relative)
+            extracted = archive.extractfile(member)
+            if extracted is None:
+                _fail(f"source distribution member is unreadable: {relative}")
+            return extracted.read()
+
+        plugin_wheel = member_bytes(
+            f"plugins/glossabet/skills/glossabet/assets/"
+            f"glossabet-{version}-py3-none-any.whl"
+        )
+        _check_plugin_bundle(
+            manifest_bytes=member_bytes(
+                "plugins/glossabet/.codex-plugin/plugin.json"
+            ),
+            skill_bytes=member_bytes(
+                "plugins/glossabet/skills/glossabet/SKILL.md"
+            ),
+            runner_bytes=member_bytes(
+                "plugins/glossabet/skills/glossabet/scripts/run_glossabet.py"
+            ),
+            wheel_bytes=plugin_wheel,
+            version=version,
+            canonical_skill=canonical_skill,
+            label="source distribution",
+        )
+        if plugin_wheel != wheel.read_bytes():
+            _fail("source-distribution plugin wheel differs from the release wheel")
 
 
 def main() -> int:
@@ -164,7 +266,8 @@ def main() -> int:
     canonical_skill = (ROOT / "skill" / "SKILL.md").read_bytes()
 
     _check_wheel(wheel, version, canonical_skill)
-    _check_sdist(sdist, version, canonical_skill)
+    _check_source_plugin(wheel, version, canonical_skill)
+    _check_sdist(sdist, wheel, version, canonical_skill)
 
     for artifact in (wheel, sdist):
         digest = hashlib.sha256(artifact.read_bytes()).hexdigest()

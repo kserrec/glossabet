@@ -3,15 +3,15 @@
 
 import pytest
 
-from glossarize import __version__
-from glossarize.cli import EXIT_USER_ERROR, main
+from glossabet import __version__
+from glossabet.cli import EXIT_USER_ERROR, main
 
 
 def test_version_matches_package(capsys):
     with pytest.raises(SystemExit) as exc:
         main(["--version"])
     assert exc.value.code == 0
-    assert capsys.readouterr().out.strip() == f"glossarize {__version__}"
+    assert capsys.readouterr().out.strip() == f"glossabet {__version__}"
 
 
 def test_no_command_is_user_error(capsys):
@@ -59,7 +59,7 @@ def test_unexpected_exception_text_is_terminal_safe(capsys, monkeypatch):
     def fail(_argv):
         raise RuntimeError("forged\nline\x1b]0;title\x07")
 
-    monkeypatch.setattr("glossarize.cli._run", fail)
+    monkeypatch.setattr("glossabet.cli._run", fail)
 
     assert main([]) == 2
 

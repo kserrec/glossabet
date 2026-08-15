@@ -6,11 +6,14 @@ dist/
 *.egg-info/
 .pytest_cache/
 
-# Glossarize's own outputs when run on this repo (dogfooding)
+# Glossabet's own outputs when run on this repo (dogfooding)
+glossabet-out/
+# Pre-rename local artifacts remain user-owned and ignored.
 glossarize-out/
-!examples/payment-service/glossarize-out/
-examples/payment-service/glossarize-out/*
-!examples/payment-service/glossarize-out/glossary.json
+!examples/payment-service/glossabet-out/
+examples/payment-service/glossabet-out/*
+!examples/payment-service/glossabet-out/glossary.json
+.glossabet/
 .glossarize/
 
 # Never committed

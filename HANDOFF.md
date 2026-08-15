@@ -1,45 +1,58 @@
-# Session handoff — 2026-08-14
+# Session handoff — 2026-08-15
 
-This handoff becomes stale as soon as Phase 21 starts. Update or remove it in
+This handoff becomes stale as soon as Phase 22 starts. Update or remove it in
 that pass; `PLAN.md` remains the authoritative durable roadmap.
 
-**Project:** A Python CLI and agent skill that makes a codebase's vocabulary
-explicit, canonical, inspectable, and maintainable.
+**Project:** Glossabet is a Python CLI, canonical agent skill, and local Codex
+plugin prototype for making a codebase's vocabulary explicit, canonical,
+inspectable, and maintainable.
 
 **Completed this session**
 
-- Completed and committed Phases 18–20: agent/input boundary hardening,
-  completeness and complexity accounting, and release-evidence integrity.
-- Screened replacement product names across current web use, relevant name and
-  trademark records, domains, GitHub, package registries, and app/plugin
-  surfaces.
-- Rejected Nomenbase, Termstead, Termalize, Glossonova, and Glossomatic because
-  of active relevant exact or close uses. Glossarize itself also has active
-  exact namespace conflicts.
-- Selected **Glossabet**. Its intended construction is `glossa` plus the end of
-  `alphabet`; it has no “sonar” meaning. Glossonary was technically available
-  but was not selected.
+- Completed Phase 21 and renamed every repository-owned product/executable
+  surface from the pre-release working identity Glossarize to Glossabet:
+  distribution/import package, CLI, skill, plugin, configuration, output,
+  cache namespace, examples, tests, workflows, evaluation, and current docs.
+- Added `NAME-CLEARANCE.md` with the exact point-in-time namespace and USPTO
+  probes, their zero-result observations, and explicit reservation/legal
+  limits.
+- Added `plugins/glossabet/`: one validated manifest, the byte-identical
+  canonical skill, a version-checking skill-local runner, and the matching
+  dependency-free wheel. `scripts/build_plugin.py`, unit/archive checks, and
+  the skill's exact version preflight enforce coupling.
+- Added and ran `scripts/plugin_smoke.py` through Codex CLI 0.147.0 on Linux.
+  Codex installed 0.1.0, ran `inspect` through the bundle, updated it to a
+  synthetic matching 0.1.1, removed the old cache version, then removed the
+  plugin, temporary marketplace, and empty test-owned cache parent.
+- Kept the standalone wheel route and documented exact engine/skill ownership,
+  upgrade, and removal differences in `DISTRIBUTION.md`.
+- Preserved pre-rename `glossarize-out/` and `.glossarize/` as excluded/ignored
+  inputs. The product did not read or change them, and no old artifact or user
+  installation was migrated, overwritten, or deleted. One intermediate
+  rename-audit search included an existing ignored output artifact before the
+  legacy exclusion was restored.
 
-**Current state**
+**Verified state**
 
-- `PLAN.md` records Phases 0–20 complete and Phase 21 next.
-- The repository, Python distribution/import package, CLI command, skill, and
-  documentation still use **Glossarize**. No rename has been attempted.
-- Public release remains gated behind Phases 21–23, trusted-alpha evidence,
-  and Kyle's separate explicit publication authorization.
+- `uv run pytest -q`: 297 passed.
+- Evaluation: five cases / 90 source files, precision 1.0, zero false alarms,
+  release thresholds passed; committed results match the current engine and
+  corpus.
+- Workflow policy, plugin manifest validation, distribution/archive coupling,
+  isolated wheel install/uninstall, and real Codex plugin install/update/remove
+  all pass.
+- No temporary Glossabet marketplace or plugin remains installed, and the
+  Codex plugin cache contains no smoke-test directory.
+- The configured Git remote is still
+  `git@github.com:kserrec/glossarize.git`, and Kyle's separate
+  `~/.local/bin/glossarize` version 0.0.1 remains untouched. No external
+  repository rename, package/plugin publication, domain registration, tag,
+  release, or security-setting change occurred.
 
 **Next step**
 
-- Invoke `$next` to execute Phase 21 in one pass: revalidate and record the
-  Glossabet clearance, atomically rename the intended user-facing surfaces,
-  build and smoke-test the local Codex plugin with matching skill/CLI versions,
-  and preserve the standalone wheel installation fallback.
-
-**Watch-outs**
-
-- Preliminary availability checks do not reserve Glossabet and are not a legal
-  opinion; recheck time-sensitive namespaces during Phase 21.
-- Do not revive the incorrect interpretation that Glossonary contains “sonar.”
-- Do not publish packages, rename external accounts/repositories, create tags
-  or releases, or change security settings without the separately required
-  authorization.
+- Invoke `$next` to execute Phase 22: add labelled Graphify structural cases,
+  run installed-skill hostile/lifecycle scenarios through the real agent
+  interface, and add the required second independent reviewer evidence. Do
+  not broaden any support or efficacy claim beyond the hosts and corpus
+  directly tested.

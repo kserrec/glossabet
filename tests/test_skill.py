@@ -3,43 +3,47 @@ exist, and the skill must never bypass that boundary for artifact reads."""
 
 from pathlib import Path
 
-from glossarize.agent_context import (
+from glossabet.agent_context import (
     AGENT_CONTEXT_SCHEMA_VERSION,
     build_agent_context,
 )
-from glossarize.evidence import build_evidence
+from glossabet.evidence import build_evidence
 
 SKILL = Path(__file__).resolve().parents[1] / "skill" / "SKILL.md"
 
 
 def test_skill_exists_with_cli_context_protocol():
     text = SKILL.read_text()
-    assert "glossarize inspect ." in text
-    assert f"`context_schema_version` other than `{AGENT_CONTEXT_SCHEMA_VERSION}`" in text
+    normalized = " ".join(text.split())
+    assert "glossabet inspect ." in text
+    assert (
+        f"`context_schema_version` other than `{AGENT_CONTEXT_SCHEMA_VERSION}`"
+        in normalized
+    )
     assert "monorepo" in text
     assert "freshly generated" in text.lower()
 
 
 def test_distribution_skill_copy_is_declared_from_the_canonical_source():
     pyproject = (SKILL.parents[1] / "pyproject.toml").read_text()
-    assert '"skill/SKILL.md" = "glossarize/_skill/SKILL.md"' in pyproject
+    assert '"skill/SKILL.md" = "glossabet/_skill/SKILL.md"' in pyproject
 
 
 def test_skill_requires_the_engine_boundary_without_artifact_fallback():
     text = SKILL.read_text()
     normalized = " ".join(text.split())
-    assert "Never open, read, search, or parse Glossarize's repository JSON artifacts yourself" in normalized
+    assert "Never open, read, search, or parse Glossabet's repository JSON artifacts yourself" in normalized
     assert "Do not replace a failed command with recursive repository reading" in normalized
     assert "fall back to direct repository reading" not in normalized
-    assert "glossarize save ." in text
-    assert "Never write, patch, or open `glossarize-out/glossary.json` yourself" in normalized
+    assert "glossabet save ." in text
+    assert "Never write, patch, or open `glossabet-out/glossary.json` yourself" in normalized
 
 
 def test_skill_glossary_protocol_matches_engine():
-    from glossarize.glossary import SCOPE_PATHS_KEY, STATUSES
+    from glossabet.glossary import SCOPE_PATHS_KEY, STATUSES
 
     text = SKILL.read_text()
-    assert "glossarize-out/glossary.json" in text
+    assert "glossabet-out/glossary.json" in text
     assert "resume" in text.lower() and "restart" in text.lower()
     for status in STATUSES:  # every engine status is defined for the skill
         assert f"`{status}`" in text, status

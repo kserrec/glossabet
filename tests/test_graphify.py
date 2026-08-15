@@ -6,9 +6,9 @@ lexical walk."""
 import json
 import os
 
-from glossarize.cli import main
-from glossarize.evidence import build_evidence
-from glossarize.graphify import build_structural_groups
+from glossabet.cli import main
+from glossabet.evidence import build_evidence
+from glossabet.graphify import build_structural_groups
 
 GRAPH = {
     "directed": True,
@@ -20,7 +20,7 @@ GRAPH = {
         {"id": "n3", "label": "billing guide", "community": 0,
          "source": "docs/billing.md"},
         {"id": "n4", "label": "Payment", "community": 0,
-         "source": "glossarize-out/glossary.json"},
+         "source": "glossabet-out/glossary.json"},
         {"id": "n5", "label": "Parser", "community": 1,
          "source": "src/parser.py"},
         {"id": "n6", "label": "Lexer", "community": 1,
@@ -139,7 +139,7 @@ def test_glossary_only_groups_are_not_usable_structure(tmp_path):
         "nodes": [
             {
                 "id": "g1", "label": "Payment", "community": 0,
-                "source": "glossarize-out/glossary.json",
+                "source": "glossabet-out/glossary.json",
             },
             {
                 "id": "g2", "label": "Billing", "community": 0,
@@ -161,7 +161,7 @@ def test_glossary_only_groups_are_not_usable_structure(tmp_path):
 
 
 def test_group_cap_marks_structure_nominations_partial(tmp_path, monkeypatch):
-    monkeypatch.setattr("glossarize.graphify.GROUP_CAP", 2)
+    monkeypatch.setattr("glossabet.graphify.GROUP_CAP", 2)
     graph = {
         "nodes": [
             {"id": f"{group}-{member}", "label": f"Node{group}{member}",
@@ -236,7 +236,7 @@ def test_provenance_requires_exact_normalized_source_or_type(tmp_path):
         "nodes": [
             {
                 "id": "near-dir", "label": "Near Output", "community": 0,
-                "source_file": "src/glossarize-output.py",
+                "source_file": "src/glossabet-output.py",
             },
             {
                 "id": "near-name", "label": "Near Glossary", "community": 0,
@@ -245,7 +245,7 @@ def test_provenance_requires_exact_normalized_source_or_type(tmp_path):
             {
                 "id": "normalized-away", "label": "Escaped Output",
                 "community": 0,
-                "source_file": "glossarize-out/../src/value.py",
+                "source_file": "glossabet-out/../src/value.py",
             },
             {
                 "id": "real-file", "label": "Real Glossary", "community": 0,
@@ -253,6 +253,11 @@ def test_provenance_requires_exact_normalized_source_or_type(tmp_path):
             },
             {
                 "id": "real-dir", "label": "Glossary JSON", "community": 0,
+                "source_file": "glossabet-out/glossary.json",
+            },
+            {
+                "id": "pre-rename-dir", "label": "Old Glossary JSON",
+                "community": 0,
                 "source_file": "glossarize-out/glossary.json",
             },
             {
@@ -267,7 +272,7 @@ def test_provenance_requires_exact_normalized_source_or_type(tmp_path):
         "groups"
     ][0]
 
-    assert group["provenance"] == {"code": 2, "doc": 1, "glossary": 3}
+    assert group["provenance"] == {"code": 2, "doc": 1, "glossary": 4}
     assert group["size"] == 3
     assert set(group["members_sample"]) == {
         "Escaped Output", "Near Output", "Near Glossary"
@@ -389,9 +394,9 @@ def test_community_id_zero_keeps_its_id(tmp_path):
 
 
 def test_oversized_graph_degrades_lexical_only(tmp_path, monkeypatch):
-    import glossarize.graphify as gmod
+    import glossabet.graphify as gmod
     monkeypatch.setattr(gmod, "MAX_JSON_BYTES", 100)
-    monkeypatch.setattr("glossarize.artifacts.MAX_JSON_BYTES", 100)
+    monkeypatch.setattr("glossabet.artifacts.MAX_JSON_BYTES", 100)
     graph = {"nodes": [{"id": "a", "label": "A"} for _ in range(50)]}
     structural = build_evidence(make_repo(tmp_path, graph))["structural_groups"]
     assert structural["available"] is False

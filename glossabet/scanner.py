@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from glossarize.config import EXCLUDED_CONTENT_ROLES, RepositoryConfig
+from glossabet.config import EXCLUDED_CONTENT_ROLES, RepositoryConfig
 
 CODE_LANGUAGES = {
     ".py": "python", ".pyi": "python",
@@ -44,11 +44,19 @@ _SENSITIVE_RES = [
     )
 ]
 
-# Tool artifacts, not repo content: glossarize's own outputs (so the glossary
+# Tool artifacts, not repo content: glossabet's own outputs (so the glossary
 # can't echo through the evidence and blind drift detection) and graphify's
 # outputs (so its generated reports can't leak into doc vocabulary — the
 # graph is consumed through the adapter, never the lexical walk).
-SELF_DIRS = frozenset({"glossarize-out", ".glossarize", "graphify-out"})
+SELF_DIRS = frozenset({
+    "glossabet-out",
+    ".glossabet",
+    # Pre-rename artifacts remain excluded so an old local run cannot echo
+    # back into evidence after upgrading to Glossabet.
+    "glossarize-out",
+    ".glossarize",
+    "graphify-out",
+})
 # Excluded at any depth: a monorepo sub-project's settled glossary echoes
 # through evidence exactly like the root one would.
 SELF_FILES = frozenset({"GLOSSARY.md"})
@@ -257,7 +265,7 @@ def walk_repository(root: Path, config: RepositoryConfig) -> WalkResult:
             relative = d if is_root else f"{rel_dir}/{d}"
             # Generated tool namespaces are not repository evidence. Prune
             # them before charging the cross-repository walk counter so the
-            # first scan and later scans remain identical after Glossarize
+            # first scan and later scans remain identical after Glossabet
             # creates its own output directory. The enclosing directory's
             # bounded scandir snapshot still limits the work needed to find
             # these fixed names.

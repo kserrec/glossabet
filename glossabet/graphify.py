@@ -1,6 +1,6 @@
 """Graphify evidence adapter: graphify-out/graph.json -> structural groups.
 
-Graphify's graph.json is not a schema glossarize controls, so field mapping
+Graphify's graph.json is not a schema glossabet controls, so field mapping
 is deliberately tolerant: the adapter extracts only shapes it recognizes and
 degrades to lexical-only with a warning otherwise (never an error). Nodes
 whose provenance traces to the glossary are discounted everywhere, so the
@@ -15,14 +15,14 @@ import unicodedata
 from collections import Counter
 from pathlib import Path, PurePosixPath
 
-from glossarize.artifacts import (
+from glossabet.artifacts import (
     ArtifactError,
     MAX_JSON_BYTES,
     confined_artifact_path,
     oversized,
 )
-from glossarize.coverage import capped_collection, coverage_ledger
-from glossarize.tokenize import tokenize_term
+from glossabet.coverage import capped_collection, coverage_ledger
+from glossabet.tokenize import tokenize_term
 
 GRAPH_PATH = "graphify-out/graph.json"
 GROUP_CAP = 50
@@ -33,6 +33,7 @@ STRUCTURE_CANDIDATE_CAP = 10
 _GLOSSARY_TYPES = frozenset({"glossary"})
 _DOCUMENT_TYPES = frozenset({"doc", "document", "paper", "markdown"})
 _DOCUMENT_SUFFIXES = frozenset({".md", ".rst", ".txt", ".pdf"})
+_GLOSSARY_OUTPUT_DIRS = frozenset({"glossabet-out", "glossarize-out"})
 
 
 def _first(d: dict, keys, types=None):
@@ -126,7 +127,7 @@ def _provenance(node: dict) -> str:
     ).strip().casefold()
     if (
         ntype in _GLOSSARY_TYPES
-        or "glossarize-out" in source_parts
+        or not _GLOSSARY_OUTPUT_DIRS.isdisjoint(source_parts)
         or (source_parts and source_parts[-1] == "glossary.md")
     ):
         return "glossary"

@@ -1,14 +1,14 @@
 # Architecture
 
-This document is for a developer taking ownership of Glossarize. It explains
+This document is for a developer taking ownership of Glossabet. It explains
 what the pieces are, how they fit together, and the invariants that constrain
 every change. For the product pitch and command list, see `README.md`; for the
 roadmap and the binding principles behind design decisions, see `PLAN.md`; for
 the threat model and security boundaries, see `SECURITY.md`.
 
-## What Glossarize is, in one paragraph
+## What Glossabet is, in one paragraph
 
-Glossarize makes a codebase's vocabulary — the names for its subsystems,
+Glossabet makes a codebase's vocabulary — the names for its subsystems,
 entities, boundaries, and concepts — explicit and maintainable. It is a
 deterministic command-line engine plus an agent skill (`skill/SKILL.md`). The
 engine reads a repository and produces evidence: what files and modules exist,
@@ -31,12 +31,12 @@ finalizes vocabulary and never renames code.
   human decides ────────────────────────────────────┐
         ▲                                             │
         │ brainstorms names from evidence             │ approves vocabulary;
-  /glossarize skill (skill/SKILL.md)                  │ skill writes GLOSSARY.md,
+  /glossabet skill (skill/SKILL.md)                  │ skill writes GLOSSARY.md,
         │                                             │ CLI saves glossary.json
         ▲                                             ▼
-        │ runs `glossarize inspect .`; parses bounded JSON stdout
+        │ runs `glossabet inspect .`; parses bounded JSON stdout
   ┌─────┴──────────────────────────────────────────────────────┐
-  │ glossarize engine / CLI  (this Python package)              │
+  │ glossabet engine / CLI  (this Python package)              │
   │ install · inspect · save · scan · analyze · show · drift · validate│
   └─────┬───────────────────────────────────────────────────────┘
         │ normalizes every source into one intermediate representation
@@ -49,7 +49,7 @@ finalizes vocabulary and never renames code.
 
 The skill is a Markdown behavioral spec, not code in this package. This
 document covers the engine; the skill's contract with it is the
-`AgentContext` emitted by `glossarize inspect .`. The skill never opens
+`AgentContext` emitted by `glossabet inspect .`. The skill never opens
 repository JSON artifacts itself and has no raw-repository fallback when the
 CLI boundary fails. `tests/test_skill.py` and `tests/test_agent_context.py` pin
 the versioned fields and failure behavior so schema drift cannot silently
@@ -68,7 +68,10 @@ Run the test suite:
 uv run pytest
 ```
 
-Install the CLI onto your PATH (`~/.local/bin/glossarize`):
+The preferred Codex distribution is the version-coupled plugin described in
+`DISTRIBUTION.md`; its local source is `plugins/glossabet/` and it is not yet
+published in a marketplace. Install the standalone fallback CLI onto your
+PATH (`~/.local/bin/glossabet`):
 
 ```
 uv tool install . --reinstall
@@ -78,38 +81,38 @@ Install the wheel-bundled canonical skill for Codex (or pass
 `--agent claude` for Claude Code):
 
 ```
-glossarize install
+glossabet install
 ```
 
 Scan this repository with the installed CLI:
 
 ```
-glossarize analyze .
+glossabet analyze .
 ```
 
 Emit the bounded context consumed by the installed skill:
 
 ```
-glossarize inspect .
+glossabet inspect .
 ```
 
 Persist a validated glossary JSON document supplied on standard input:
 
 ```
-glossarize save .
+glossabet save .
 ```
 
 Or run the CLI without installing:
 
 ```
-uv run glossarize analyze .
+uv run glossabet analyze .
 ```
 
 ## The intermediate representation: RepositoryEvidence
 
 Deterministic engine analysis flows through one dictionary, built by
-`build_evidence()` in `glossarize/evidence.py` and written to
-`<repo>/glossarize-out/evidence.json`. Both evidence sources (the lexical
+`build_evidence()` in `glossabet/evidence.py` and written to
+`<repo>/glossabet-out/evidence.json`. Both evidence sources (the lexical
 scanner and the Graphify adapter) normalize into it, so the terminology report,
 drift, reconciliation, and the agent-context projector are source-agnostic.
 The skill does not read this artifact directly. Its top-level shape:
@@ -118,7 +121,7 @@ The skill does not read this artifact directly. Its top-level shape:
 |-----|---------------|
 | `schema_version`, `generator` | version stamps |
 | `repository.git` | `{head, dirty}` — the filtered Git state the evidence was built from (staleness signal) |
-| `configuration` | normalized `glossarize.json` state, or an explicit absent state |
+| `configuration` | normalized `glossabet.json` state, or an explicit absent state |
 | `totals` | source/code/doc file, byte, and word counts, including per-role totals |
 | `languages`, `modules` | language tally; per-directory module and role inventory |
 | `imports` | best-effort internal edges + external dependency tally (lossy, tagged so) |
@@ -161,9 +164,9 @@ Two invariants govern this structure and are the reason it can be trusted:
 
 ## The agent-facing representation: AgentContext
 
-`glossarize/agent_context.py` projects current `RepositoryEvidence` plus the
+`glossabet/agent_context.py` projects current `RepositoryEvidence` plus the
 strictly validated optional glossary into the JSON printed by
-`glossarize inspect .`. The command loads the glossary through
+`glossabet inspect .`. The command loads the glossary through
 `confined_artifact_path()`, performs a fresh scan, atomically refreshes the
 ordinary evidence artifact, and emits no progress text on standard output.
 
@@ -181,7 +184,7 @@ artifact used by other engine commands.
 
 ## Module map
 
-The package is `glossarize/`. Grouped by role:
+The package is `glossabet/`. Grouped by role:
 
 **Entry point and shared plumbing**
 - `cli.py` — argparse dispatcher. Owns the exit-status contract: `0` success,
@@ -192,14 +195,14 @@ The package is `glossarize/`. Grouped by role:
   separators, and bidirectional-format characters from repository/user data
   are rendered as visible escape spellings rather than emitted as terminal
   instructions. Glossary identity fields reject them during validation.
-- `artifacts.py` — the reserved `glossarize-out/` plumbing shared by every command:
+- `artifacts.py` — the reserved `glossabet-out/` plumbing shared by every command:
   `OUT_DIR`, `repo_root()` (the "is this a directory" check + resolve),
   `confined_artifact_path()` (direct artifacts may contain no symlink
   component), `write_artifact()` / `write_json_atomic()` (deterministic,
   same-directory atomic JSON replacement), and `oversized()` /
   `MAX_JSON_BYTES` (the size cap that bounds directly-read JSON so a hostile
   artifact cannot be loaded without limit).
-- `config.py` — loads the optional root `glossarize.json` under a 1 MB cap and
+- `config.py` — loads the optional root `glossabet.json` under a 1 MB cap and
   no-symlink rule. It validates literal repository-relative prefix rules,
   rejects unknown fields/roles and ambiguous equal-path roles, applies
   ignore-first/most-specific-role precedence, and owns the conservative
@@ -210,7 +213,7 @@ The package is `glossarize/`. Grouped by role:
   code/doc path a `production`, `test`, or `fixture` role. This is where the
   load-bearing exclusions live: sensitive files and directories
   (`is_sensitive`, by pattern — `.env`, keys, anything named secret/credential)
-  are never read; Glossarize's own outputs and `GLOSSARY.md` (at any depth) are
+  are never read; Glossabet's own outputs and `GLOSSARY.md` (at any depth) are
   excluded so the glossary can't echo back into evidence (contamination);
   symlinks whose real target escapes the repo root (`_escapes`) are skipped so a
   hostile repo can't read outside files. Root `Cargo.toml` and `package.json`
@@ -239,7 +242,7 @@ The package is `glossarize/`. Grouped by role:
   entries retain normalized tokens and bounded locations so compound matching
   can prove one lexical unit rather than infer from aggregate words. Also holds
   `_git_stamp()` (runs `git` with the repo's dangerous config keys neutralized
-  and the shared Glossarize-output pathspec — see Security) and the
+  and the shared Glossabet-output pathspec — see Security) and the
   `scan`/`analyze` command handlers.
 - `agent_context.py` — the `inspect` command and versioned skill boundary.
   It loads the optional glossary through the confined validator, builds fresh
@@ -302,8 +305,8 @@ The package is `glossarize/`. Grouped by role:
 **Persistence and the health checks**
 - `installer.py` — safe installation of the canonical agent skill. Hatch maps
   the repository source of truth, `skill/SKILL.md`, into the wheel at
-  `glossarize/_skill/SKILL.md`; source runs fall back to the repository file.
-  The command defaults to Codex's current `~/.agents/skills/glossarize`
+  `glossabet/_skill/SKILL.md`; source runs fall back to the repository file.
+  The command defaults to Codex's current `~/.agents/skills/glossabet`
   directory, supports Claude Code and an explicit destination, writes
   atomically, is idempotent, refuses symlink components, and requires
   `--force` before replacing different content.
@@ -314,7 +317,7 @@ The package is `glossarize/`. Grouped by role:
   cache-schema or generator-version change. Cache schema 3 specifically
   invalidates pre-Unicode extraction entries. Any doubt reads as a miss. An
   override that resolves inside the target repository disables caching.
-- `glossary.py` — the persistent glossary (`glossarize-out/glossary.json`):
+- `glossary.py` — the persistent glossary (`glossabet-out/glossary.json`):
   schema validation (`validate_glossary`), load/save, the `show` command, and
   `require_glossary()` (the shared load-or-report-error helper). Bindings may
   only target stable identities (`symbol:` / `file:` / `module:`), never graph
@@ -365,14 +368,25 @@ The package is `glossarize/`. Grouped by role:
   reproduction.
 
 **Distribution and first use**
+- `plugins/glossabet/` — the local Codex plugin prototype. Its manifest,
+  canonical skill copy, skill-local runner, and nested pure-Python wheel all
+  carry version 0.1.0. The runner imports that exact wheel from the plugin
+  cache and never installs a second command or environment.
+- `scripts/build_plugin.py` — assembles the plugin from one already-built
+  wheel and fails if source, manifest, runner, skill, wheel metadata, or
+  embedded skill versions differ.
+- `scripts/plugin_smoke.py` — uses an actual local Codex marketplace to
+  install the current bundle, run its CLI boundary, update to a synthetic next
+  patch, and remove every test-owned plugin/configuration/cache entry. The
+  direct Phase 21 probe covers Codex CLI 0.147.0 on Linux only.
 - `examples/payment-service/` and `scripts/run_walkthrough.py` — an original,
   already-settled sample copied into temporary storage and exercised through
   analyze/show/drift/validate. It proves the machine lifecycle without
   pretending software made the vocabulary decisions.
 - `scripts/check_distribution.py` — standard-library checks for archive path
-  safety, required source/wheel contents, canonical-skill byte identity,
-  metadata, console entry point, license, and the absence of runtime
-  dependencies.
+  safety, required source/wheel/plugin contents, canonical-skill byte identity,
+  plugin version coupling, metadata, console entry point, license, and the
+  absence of runtime dependencies.
 - `scripts/wheel_smoke.py` — creates a fresh virtual environment, installs only
   the built wheel, installs its skill into a temporary target, runs the
   walkthrough, uninstalls the package, and proves the import and CLI entry
@@ -397,13 +411,13 @@ atomically writes only `SKILL.md`. It does not inspect a repository or contact
 an agent host.
 
 **`scan` / `analyze`** (`cli.py` → `evidence._scan` → `build_evidence`).
-`build_evidence` loads `glossarize.json`, walks and role-classifies the repo
+`build_evidence` loads `glossabet.json`, walks and role-classifies the repo
 (`scanner.walk_repository`), reads each included code/doc file and hashes its
 bytes, reuses cached extraction only when that digest matches, folds production
 identifiers into `_Vocabulary`, extracts production imports, optionally builds
 structural groups from Graphify, computes naming candidates and terminology,
 and returns the evidence dict, which is atomically written to
-`glossarize-out/evidence.json`. `analyze` additionally prints a human-readable
+`glossabet-out/evidence.json`. `analyze` additionally prints a human-readable
 terminology report (`_print_terminology_report`). Test and fixture paths stay in
 the inventory/cache but outside vocabulary signals; generated and vendored
 paths are not read. A warm scan still reads every included file to establish
@@ -414,7 +428,7 @@ that evidence as partial.
 
 **`inspect`** (`cli.py` → `agent_context.inspect_command`). Loads and validates
 the optional glossary first, builds fresh evidence through the same scanner as
-`scan`, refreshes `glossarize-out/evidence.json`, projects the result through
+`scan`, refreshes `glossabet-out/evidence.json`, projects the result through
 the independent `AgentContext` limits, and emits one JSON document on stdout.
 Malformed, oversized, or symlinked glossaries and a context that exceeds its
 hard byte ceiling exit `1` without a lower-trust fallback. The installed skill
@@ -430,14 +444,14 @@ directly.
 **`drift`** (`cli.py` → `drift.drift_command` → `build_drift`). Requires a
 glossary (`require_glossary`, exits `1` if absent). Builds fresh evidence,
 indexes the glossary's canonical/watched tokens and ownership scopes, runs the
-four checks within those path regions, writes `glossarize-out/drift.json`, and
+four checks within those path regions, writes `glossabet-out/drift.json`, and
 prints the report.
 
 **`validate`** (`cli.py` → `reconcile.validate_command` → `build_validation`).
 Requires a glossary. Builds fresh evidence (with the Graphify graph if present),
 matches canonical concepts against structural groups in both directions,
 delegates vocabulary-drift and concept-collision detection to `drift.py`, writes
-`glossarize-out/validation.json`, and prints the report. Validation embeds the
+`glossabet-out/validation.json`, and prints the report. Validation embeds the
 adapter's presence/usability/freshness/warning state; all structural sections
 carry `skipped: true` plus a reason when usable groups were not loaded.
 Scoped lexical checks still run, while structural sections disclose partial or
@@ -451,8 +465,8 @@ disabled, and these scanned-root-relative pathspecs:
 
 ```
 .
-:(exclude)glossarize-out
-:(exclude)glossarize-out/**
+:(exclude)glossabet-out
+:(exclude)glossabet-out/**
 ```
 
 The engine runs Git from the directory being scanned. The skill no longer runs
@@ -470,9 +484,9 @@ a false clean claim. `freshness.status: current` in `AgentContext` means
 generated in the current invocation; it is not an atomic-snapshot or
 authenticated-content claim.
 
-This filtered comparison is not an ignore-file mutation. Glossarize never
+This filtered comparison is not an ignore-file mutation. Glossabet never
 creates or edits a target `.gitignore`; it merely reserves the top-level
-`glossarize-out/` namespace for its own artifacts. Within it,
+`glossabet-out/` namespace for its own artifacts. Within it,
 `evidence.json`, `drift.json`, and `validation.json` are regenerable reports.
 `glossary.json` is different: it persists human-governed vocabulary state and
 must be retained unless that state is intentionally discarded or recoverable.
@@ -481,7 +495,7 @@ reserved directory and is never excluded from freshness.
 
 ## Security and trust boundaries
 
-Glossarize is pointed at repositories that may be untrusted, so the scanned
+Glossabet is pointed at repositories that may be untrusted, so the scanned
 repo's contents are treated as attacker-controllable input. The enforced
 boundaries — sensitive-file/directory exclusion, symlink-escape prevention, no
 contamination, per-input size caps, neutralizing the scanned repo's git

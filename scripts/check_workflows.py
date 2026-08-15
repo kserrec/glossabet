@@ -124,6 +124,8 @@ def validate_workflow_texts(workflows: dict[str, str]) -> list[str]:
             "python scripts/check_workflows.py",
             "python evaluation/run.py --verify-results evaluation/results.json",
             "uv build --no-sources --clear",
+            "python scripts/build_plugin.py dist",
+            "git diff --exit-code -- plugins/glossabet",
             "python scripts/check_distribution.py dist",
             "python scripts/wheel_smoke.py dist",
         ],
@@ -156,7 +158,7 @@ def validate_workflow_texts(workflows: dict[str, str]) -> list[str]:
     for condition in (
         "github.ref_type == 'tag'",
         "startsWith(github.ref_name, 'v')",
-        "inputs.confirmation == 'publish-glossarize-to-pypi'",
+        "inputs.confirmation == 'publish-glossabet-to-pypi'",
     ):
         if condition not in publish:
             errors.append(f"release publish guard is missing {condition!r}")
@@ -168,6 +170,8 @@ def validate_workflow_texts(workflows: dict[str, str]) -> list[str]:
             "python scripts/check_workflows.py",
             "python evaluation/run.py --verify-results evaluation/results.json",
             "uv build --no-sources --clear",
+            "python scripts/build_plugin.py dist",
+            "git diff --exit-code -- plugins/glossabet",
             'python scripts/check_distribution.py dist --tag "${{ github.ref_name }}"',
             "python scripts/wheel_smoke.py dist",
             "pypa/gh-action-pypi-publish@",

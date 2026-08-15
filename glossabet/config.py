@@ -1,6 +1,6 @@
 """Bounded, deterministic repository configuration and path-role rules.
 
-``glossarize.json`` is repository-controlled input. Its paths are literal,
+``glossabet.json`` is repository-controlled input. Its paths are literal,
 POSIX-style repository-relative prefixes: no glob expansion, filesystem
 probing, or code execution. Ignore rules win; otherwise the most-specific
 configured role wins over conservative built-in conventions.
@@ -12,13 +12,13 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from glossarize.artifacts import (
+from glossabet.artifacts import (
     ArtifactError,
     confined_artifact_path,
     oversized,
 )
 
-CONFIG_FILE = "glossarize.json"
+CONFIG_FILE = "glossabet.json"
 CONFIG_SCHEMA_VERSION = 1
 MAX_CONFIG_BYTES = 1_000_000
 MAX_PATH_RULES = 500

@@ -11,7 +11,7 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable
 from heapq import nsmallest
 
-from glossarize.coverage import coverage_ledger
+from glossabet.coverage import coverage_ledger
 
 MODULE_CANDIDATE_CAP = 10
 TERM_CANDIDATE_CAP = 15

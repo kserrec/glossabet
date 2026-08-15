@@ -1,8 +1,8 @@
-"""Install the canonical agent skill from the Glossarize distribution.
+"""Install the canonical agent skill from the Glossabet distribution.
 
 The repository copy at ``skill/SKILL.md`` is the source of truth. Hatch maps
-that file into the wheel as ``glossarize/_skill/SKILL.md``; source checkouts
-fall back to the repository path so ``uv run glossarize install`` behaves the
+that file into the wheel as ``glossabet/_skill/SKILL.md``; source checkouts
+fall back to the repository path so ``uv run glossabet install`` behaves the
 same before and after packaging.
 
 Installation writes one user-selected file outside the analyzed repository.
@@ -18,13 +18,13 @@ import tempfile
 from importlib import resources
 from pathlib import Path
 
-from glossarize.cli import EXIT_OK, EXIT_USER_ERROR
-from glossarize.display import escape_terminal_text
+from glossabet.cli import EXIT_OK, EXIT_USER_ERROR
+from glossabet.display import escape_terminal_text
 
 AGENTS = ("codex", "claude")
 _DESTINATIONS = {
-    "codex": Path(".agents") / "skills" / "glossarize",
-    "claude": Path(".claude") / "skills" / "glossarize",
+    "codex": Path(".agents") / "skills" / "glossabet",
+    "claude": Path(".claude") / "skills" / "glossabet",
 }
 
 
@@ -41,7 +41,7 @@ def default_skill_directory(agent: str, *, home: Path | None = None) -> Path:
 
 def canonical_skill_text() -> str:
     """Read the canonical skill from package data or a source checkout."""
-    packaged = resources.files("glossarize").joinpath("_skill", "SKILL.md")
+    packaged = resources.files("glossabet").joinpath("_skill", "SKILL.md")
     try:
         return packaged.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -50,7 +50,7 @@ def canonical_skill_text() -> str:
             return source.read_text(encoding="utf-8")
         except FileNotFoundError as exc:
             raise RuntimeError(
-                "the canonical skill is missing from this Glossarize installation"
+                "the canonical skill is missing from this Glossabet installation"
             ) from exc
 
 
@@ -142,7 +142,7 @@ def install_command(
         path, outcome = install_skill(destination, force=force)
     except InstallError as exc:
         print(
-            "glossarize: " + escape_terminal_text(str(exc)),
+            "glossabet: " + escape_terminal_text(str(exc)),
             file=sys.stderr,
         )
         return EXIT_USER_ERROR
@@ -154,5 +154,5 @@ def install_command(
     }
     safe_agent = escape_terminal_text(agent)
     safe_path = escape_terminal_text(str(path))
-    print(f"{verbs[outcome]} Glossarize skill for {safe_agent}: {safe_path}")
+    print(f"{verbs[outcome]} Glossabet skill for {safe_agent}: {safe_path}")
     return EXIT_OK

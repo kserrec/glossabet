@@ -15,25 +15,25 @@ import sys
 from collections import defaultdict
 from itertools import combinations, islice
 
-from glossarize.artifacts import repo_root, write_artifact
-from glossarize.coverage import coverage_ledger, coverage_reasons
-from glossarize.display import escape_terminal_text
-from glossarize.drift import build_drift
-from glossarize.evidence import build_evidence, write_evidence
-from glossarize.glossary import (
+from glossabet.artifacts import repo_root, write_artifact
+from glossabet.coverage import coverage_ledger, coverage_reasons
+from glossabet.display import escape_terminal_text
+from glossabet.drift import build_drift
+from glossabet.evidence import build_evidence, write_evidence
+from glossabet.glossary import (
     concept_scope,
     path_in_scope,
     require_glossary,
     scope_evidence,
 )
-from glossarize.matching import (
+from glossabet.matching import (
     EvidenceIndex,
     code_identifier_occurrence,
     code_term_occurrence,
     production_corpus_complete,
     repository_corpus_complete,
 )
-from glossarize.tokenize import tokenize_term
+from glossabet.tokenize import tokenize_term
 
 VALIDATION_SCHEMA_VERSION = 6
 VALIDATION_FILE = "validation.json"

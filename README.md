@@ -1,15 +1,15 @@
-# Glossarize
+# Glossabet
 
 Make a codebase's vocabulary explicit, canonical, inspectable, and
 maintainable.
 
-Glossarize helps a team establish shared names for the parts of a repository —
+Glossabet helps a team establish shared names for the parts of a repository —
 subsystems, entities, boundaries, protocols, surfaces — and keep that
 vocabulary healthy as the code evolves. Deterministic machinery gathers
-lexical and structural evidence; an agent skill (`/glossarize`) brainstorms
+lexical and structural evidence; an agent skill (`/glossabet`) brainstorms
 names grounded in that evidence; **the human decides what becomes canonical**.
 
-Optionally, Glossarize consumes [Graphify](https://github.com/Graphify-Labs/graphify)
+Optionally, Glossabet consumes [Graphify](https://github.com/Graphify-Labs/graphify)
 output as richer structural evidence and can reconcile the settled glossary
 against the structural graph — surfacing unnamed architecture, orphaned
 concepts, vocabulary drift, and boundary mismatches. Graphify is never
@@ -19,7 +19,7 @@ The adapter supports Graphify 0.9.42's exported `links`, `source_file`,
 `file_type`, `community_name`, and `built_at_commit` fields as well as the
 older accepted `edges`/`source` shapes. Evidence distinguishes a graph file
 being present from usable community structure being loaded. When Graphify's
-commit stamp is available, Glossarize reports the structure as current, stale,
+commit stamp is available, Glossabet reports the structure as current, stale,
 or unverified against the repository's HEAD and worktree; structural
 validation is explicitly skipped when no usable groups were loaded. “Current”
 means the graph's recorded commit matches a clean checkout; because the graph
@@ -28,7 +28,7 @@ content authentication.
 
 ## Why repository vocabulary matters
 
-Glossarize is built on an empirically supported problem: names act as part of
+Glossabet is built on an empirically supported problem: names act as part of
 a program's documentation, developers do not naturally converge on the same
 names, and inconsistencies between names and meaning make code harder to
 understand. Relevant studies include:
@@ -71,8 +71,8 @@ understand. Relevant studies include:
   by a two-to-one ratio.
 
 This research supports the need for deliberate, repository-specific vocabulary
-work. It does **not** by itself prove that Glossarize saves time or produces
-better naming decisions. Glossarize's own small Phase 15 evaluation is reported
+work. It does **not** by itself prove that Glossabet saves time or produces
+better naming decisions. Glossabet's own small Phase 15 evaluation is reported
 separately below and does not turn those studies into a product-efficacy claim.
 
 ## Evaluation status
@@ -104,23 +104,30 @@ reproduction command are in [`EVALUATION.md`](EVALUATION.md); raw results are
 in [`evaluation/results.json`](evaluation/results.json).
 
 **Status: 0.1.0 source alpha under post-audit hardening; not yet published to
-PyPI and not yet a trusted-alpha release.** Packaging, the current CI matrix,
-and local smoke tests exist, but installed-agent evaluation,
-name/distribution clearance, and outside alpha evidence remain on the
-authoritative roadmap. Do not describe the current stopping point as
-release-ready. See [`PLAN.md`](PLAN.md) for the closure sequence and
+PyPI or a plugin directory and not yet a trusted-alpha release.** The
+Glossabet name decision and local Codex plugin lifecycle are recorded and
+tested, but installed-agent evaluation and outside alpha evidence remain on
+the authoritative roadmap. Do not describe the current stopping point as
+release-ready. See [`NAME-CLEARANCE.md`](NAME-CLEARANCE.md) for the
+point-in-time name checks, [`DISTRIBUTION.md`](DISTRIBUTION.md) for exact
+installation ownership, [`PLAN.md`](PLAN.md) for the closure sequence, and
 [`RELEASING.md`](RELEASING.md) for external actions.
 
-From a source checkout, install the CLI and its canonical skill for Codex:
+The preferred future Codex artifact is the version-coupled plugin prototype at
+`plugins/glossabet/`. It carries the canonical skill and a matching wheel that
+runs from the plugin cache without adding a command to `PATH`. No public
+marketplace entry exists yet. For local use from a source checkout, the
+standalone fallback installs the CLI and then makes a separate skill copy:
 
 ```bash
 uv tool install . --reinstall
-glossarize install
+glossabet install
 ```
 
 Codex currently loads personal skills from `~/.agents/skills`; Claude Code
-users can instead run `glossarize install --agent claude`, which targets
-`~/.claude/skills`. The wheel carries the exact canonical
+users can instead run `glossabet install --agent claude`, which targets
+`~/.claude/skills`. That Claude route is experimental until an installed
+Claude Code session is directly tested. The wheel carries the exact canonical
 [`skill/SKILL.md`](skill/SKILL.md), and installation refuses to overwrite a
 different skill unless `--force` is explicit. The locations follow the
 [official OpenAI Codex documentation](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills)
@@ -136,39 +143,39 @@ The full explanation and expected result are in
 [`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md). The CLI surface is:
 
 ```
-glossarize install           install the canonical agent skill (Codex default)
-glossarize scan <repo>       deterministic, git-stamped evidence (cached, incremental)
-glossarize analyze <repo>    scan + terminology report (register, overlaps, overloads)
-glossarize inspect <repo>    fresh, bounded JSON context for the agent skill
-glossarize save <repo>       validate/save glossary JSON from standard input
-glossarize show <repo>       display the current glossary
-glossarize drift <repo>      live vocabulary vs the canonical glossary
-glossarize validate <repo>   reconcile glossary vs evidence and the Graphify graph
+glossabet install           install the canonical agent skill (Codex default)
+glossabet scan <repo>       deterministic, git-stamped evidence (cached, incremental)
+glossabet analyze <repo>    scan + terminology report (register, overlaps, overloads)
+glossabet inspect <repo>    fresh, bounded JSON context for the agent skill
+glossabet save <repo>       validate/save glossary JSON from standard input
+glossabet show <repo>       display the current glossary
+glossabet drift <repo>      live vocabulary vs the canonical glossary
+glossabet validate <repo>   reconcile glossary vs evidence and the Graphify graph
 ```
 
-The installed skill requires `glossarize inspect .` from the exact repository
+The installed skill requires `glossabet inspect .` from the exact repository
 or subproject root. That command safely validates repository-controlled JSON,
 builds current evidence, refreshes `evidence.json`, and emits a separate
 versioned context capped at 1 MB. The context reports scanner omissions under
 `coverage.corpus` and agent-projection omissions under `coverage.context`.
-The skill never opens Glossarize JSON artifacts itself and does not fall back
+The skill never opens Glossabet JSON artifacts itself and does not fall back
 to unrestricted recursive reading when the CLI boundary fails. When the human
-settles terms, the skill sends the complete JSON document to `glossarize save
+settles terms, the skill sends the complete JSON document to `glossabet save
 .` on standard input; that command bounds, strictly validates, confines, and
 atomically persists `glossary.json` instead of letting the agent write it.
 
-Artifacts live in `<repo>/glossarize-out/` (evidence, glossary, drift and
+Artifacts live in `<repo>/glossabet-out/` (evidence, glossary, drift and
 validation reports). The incremental extraction cache is user-owned state,
 not repository input: it lives under the platform cache directory
-(`$XDG_CACHE_HOME/glossarize` or `~/.cache/glossarize` on Linux,
-`~/Library/Caches/glossarize` on macOS, and `%LOCALAPPDATA%\glossarize` on
-Windows). `GLOSSARIZE_CACHE_DIR` can override that base; caching is disabled
+(`$XDG_CACHE_HOME/glossabet` or `~/.cache/glossabet` on Linux,
+`~/Library/Caches/glossabet` on macOS, and `%LOCALAPPDATA%\glossabet` on
+Windows). `GLOSSABET_CACHE_DIR` can override that base; caching is disabled
 if the selected directory resolves inside the scanned repository.
 
 ### Artifact ownership, freshness, and cleanup
 
-The top-level `<repo>/glossarize-out/` directory is reserved for
-Glossarize-owned files. Do not put unrelated project files there. Its contents
+The top-level `<repo>/glossabet-out/` directory is reserved for
+Glossabet-owned files. Do not put unrelated project files there. Its contents
 have two different lifecycles:
 
 - `evidence.json`, `drift.json`, and `validation.json` are derived reports.
@@ -176,25 +183,29 @@ have two different lifecycles:
   respectively (the latter two require an existing glossary).
 - `glossary.json` is the machine-readable record of human-governed vocabulary,
   including settled and still-proposed terms. It is owned and written by the
-  Glossarize workflow, but it is not disposable: preserve it unless that state
+  Glossabet workflow, but it is not disposable: preserve it unless that state
   is intentionally being discarded or is recoverable from version control.
   For a shared team glossary, commit both `GLOSSARY.md` and
-  `glossarize-out/glossary.json`.
+  `glossabet-out/glossary.json`.
 
 The evidence freshness stamp records the commit and worktree state
-with live Git state while excluding only that top-level `glossarize-out/`
+with live Git state while excluding only that top-level `glossabet-out/`
 directory. This makes a clean repository immediately fresh after its first
 scan, whether generated output is tracked or untracked. Changes elsewhere
-inside the scanned root — including `GLOSSARY.md`, `graphify-out/`, and legacy
-`.glossarize/` — remain visible. A subproject scan uses that subproject, not an
-enclosing Git worktree, as its scope. Git-ignored files follow Git's normal
+inside the scanned root — including `GLOSSARY.md` and `graphify-out/` — remain
+visible. Pre-rename `.glossarize/` and `glossarize-out/` paths stay excluded so
+old tool artifacts cannot contaminate a new scan. A subproject scan uses that
+subproject, not an enclosing Git worktree, as its scope. The freshness check
+still treats cache and pre-rename paths like ordinary Git state unless Git
+ignores them; only the top-level current `glossabet-out/` is filtered from Git
+status. Git-ignored files follow Git's normal
 semantics and therefore cannot make the stamp dirty; a repository without a
 readable `HEAD` is reported as unverified. The skill does not reimplement this
 check: `inspect` builds its bounded context from live inputs in that same CLI
 invocation. This is not an atomic filesystem snapshot; do not scan while an
 untrusted process is mutating the checkout.
 
-Glossarize never creates or edits the target repository's `.gitignore`.
+Glossabet never creates or edits the target repository's `.gitignore`.
 Repository owners decide which artifacts to track. Removing the derived
 reports is sufficient cleanup when the glossary should be retained; the
 user-cache directory can be removed independently because it is only a
@@ -203,18 +214,18 @@ performance optimization.
 The installed agent skill is separate user-owned state. Uninstalling the
 Python package removes the CLI but deliberately does not delete that copied
 `SKILL.md`; if the skill is no longer wanted, inspect and remove only the
-reported `glossarize` skill directory for the selected agent.
+reported `glossabet` skill directory for the selected agent.
 
 ### Repository analysis scope
 
-Glossarize analyzes production vocabulary by default. Test and fixture files
+Glossabet analyzes production vocabulary by default. Test and fixture files
 remain visible in the file and module inventory, with an explicit `role`, but
 their lexical content does not drive vocabulary, naming, synonym, overload,
 drift, or lexical reconciliation signals. Generated and vendored paths are not
 read lexically and are reported under `skipped`. Graphify remains a separate
 structural input with its own provenance and freshness limits.
 
-An optional `glossarize.json` at the scanned root can add ignored paths,
+An optional `glossabet.json` at the scanned root can add ignored paths,
 classify project-specific layouts, or mark a conventionally non-production
 path as production:
 
@@ -324,7 +335,7 @@ Install the CLI onto your PATH and check it:
 
 ```
 uv tool install . --reinstall
-glossarize --version
+glossabet --version
 ```
 
 Build and verify the distributions without publishing them:
@@ -333,8 +344,11 @@ Build and verify the distributions without publishing them:
 uv run python scripts/check_workflows.py
 uv run python evaluation/run.py --verify-results evaluation/results.json
 uv build --no-sources
+uv run python scripts/build_plugin.py dist
+git diff --exit-code -- plugins/glossabet
 uv run python scripts/check_distribution.py dist --tag v0.1.0
 uv run python scripts/wheel_smoke.py dist
+uv run python scripts/plugin_smoke.py dist
 ```
 
 - `ARCHITECTURE.md` — how the engine is built and how to work on it (start here
@@ -344,6 +358,8 @@ uv run python scripts/wheel_smoke.py dist
 - `EVALUATION.md` — corpus, labels, measurements, thresholds, and limitations.
 - `docs/WALKTHROUGH.md` — reproducible first-use path and real-repository flow.
 - `RELEASING.md` — local gate plus all still-manual public account actions.
+- `DISTRIBUTION.md` — plugin versus wheel ownership, upgrades, and removal.
+- `NAME-CLEARANCE.md` — the chosen identity, exact checks, and their limits.
 - `CHANGELOG.md` — release-facing change history.
 - `PLAN.md` — the authoritative roadmap and the binding design principles.
-- `skill/SKILL.md` — the canonical `/glossarize` agent skill.
+- `skill/SKILL.md` — the canonical `/glossabet` agent skill.

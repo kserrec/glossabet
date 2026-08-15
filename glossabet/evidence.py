@@ -1,4 +1,4 @@
-"""RepositoryEvidence: build and persist glossarize-out/evidence.json.
+"""RepositoryEvidence: build and persist glossabet-out/evidence.json.
 
 Deterministic by construction: no timestamps, sorted collections, stable
 tie-breaks. Bounded by construction (PLAN.md principle 12): every cap is
@@ -16,25 +16,25 @@ from dataclasses import dataclass
 from itertools import combinations
 from pathlib import Path
 
-from glossarize import __version__
-from glossarize.artifacts import OUT_DIR, repo_root, write_artifact
-from glossarize.cache import entry_if_valid, load_cache, save_cache
-from glossarize.config import load_config
-from glossarize.coverage import coverage_ledger
-from glossarize.display import escape_terminal_text
-from glossarize.graphify import (
+from glossabet import __version__
+from glossabet.artifacts import OUT_DIR, repo_root, write_artifact
+from glossabet.cache import entry_if_valid, load_cache, save_cache
+from glossabet.config import load_config
+from glossabet.coverage import coverage_ledger
+from glossabet.display import escape_terminal_text
+from glossabet.graphify import (
     build_structural_groups,
     disabled_structural_groups,
     structure_candidates,
 )
-from glossarize.imports import build_imports_section, extract_imports, module_of
-from glossarize.importance import build_naming_candidates
-from glossarize.scanner import detect_monorepo, walk_repository
-from glossarize.terminology import (
+from glossabet.imports import build_imports_section, extract_imports, module_of
+from glossabet.importance import build_naming_candidates
+from glossabet.scanner import detect_monorepo, walk_repository
+from glossabet.terminology import (
     MODULE_CONTEXT_ANALYSIS_CAP,
     build_terminology,
 )
-from glossarize.tokenize import (
+from glossabet.tokenize import (
     doc_words,
     iter_identifiers,
     tokenization_contract,
@@ -61,9 +61,9 @@ class Limits:
 # execution. Command-line -c beats repo-local config.
 _GIT_SAFE_CONFIG = ("-c", "core.fsmonitor=", "-c", "core.hooksPath=/dev/null")
 
-# Freshness describes repository inputs, not Glossarize's own output. Keep the
+# Freshness describes repository inputs, not Glossabet's own output. Keep the
 # pathspec here literal and mirrored in skill/SKILL.md: the whole top-level
-# output directory is Glossarize-owned, whether its files are tracked or
+# output directory is Glossabet-owned, whether its files are tracked or
 # untracked. The pathspec is relative to `git -C root`, not Git's top level,
 # because a supported per-subproject scan may start inside a larger worktree.
 # --no-renames ensures a move across that ownership boundary still exposes the
@@ -382,7 +382,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
 
     return {
         "schema_version": SCHEMA_VERSION,
-        "generator": {"name": "glossarize", "version": __version__},
+        "generator": {"name": "glossabet", "version": __version__},
         "repository": {"git": git_stamp},
         "configuration": config.as_evidence(),
         "totals": {
@@ -662,7 +662,7 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
         )
         print(
             "Vocabulary is usually healthier per sub-project — consider "
-            "running glossarize at a lower level for each sub-project.",
+            "running glossabet at a lower level for each sub-project.",
             file=sys.stderr,
         )
     if report:

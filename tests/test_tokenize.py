@@ -2,7 +2,7 @@
 
 import pytest
 
-from glossarize.tokenize import (
+from glossabet.tokenize import (
     doc_words,
     iter_identifiers,
     tokenization_contract,

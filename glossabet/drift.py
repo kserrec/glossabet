@@ -12,25 +12,25 @@ from __future__ import annotations
 
 from itertools import combinations
 
-from glossarize.artifacts import repo_root, write_artifact
-from glossarize.coverage import capped_collection, coverage_reasons
-from glossarize.display import escape_terminal_text
-from glossarize.evidence import build_evidence, write_evidence
-from glossarize.glossary import (
+from glossabet.artifacts import repo_root, write_artifact
+from glossabet.coverage import capped_collection, coverage_reasons
+from glossabet.display import escape_terminal_text
+from glossabet.evidence import build_evidence, write_evidence
+from glossabet.glossary import (
     concept_scope,
     path_in_scope,
     require_glossary,
     scope_evidence,
     scopes_overlap,
 )
-from glossarize.matching import (
+from glossabet.matching import (
     EvidenceIndex,
     code_term_occurrence,
     doc_term_occurrence,
     production_corpus_complete,
 )
-from glossarize.terminology import OVERLOAD_MIN_DISPERSION, OVERLOAD_MIN_MODULES
-from glossarize.tokenize import tokenize_term
+from glossabet.terminology import OVERLOAD_MIN_DISPERSION, OVERLOAD_MIN_MODULES
+from glossabet.tokenize import tokenize_term
 
 DRIFT_SCHEMA_VERSION = 5
 DRIFT_FILE = "drift.json"

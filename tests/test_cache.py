@@ -5,9 +5,9 @@ corruption) must read as a miss, never as stale data."""
 import json
 import os
 
-from glossarize import __version__
-from glossarize.cache import cache_path, load_cache
-from glossarize.evidence import build_evidence
+from glossabet import __version__
+from glossabet.cache import cache_path, load_cache
+from glossabet.evidence import build_evidence
 
 
 def make_repo(tmp_path):
@@ -101,7 +101,7 @@ def test_cache_lives_outside_repo_and_never_enters_evidence(tmp_path):
     build_evidence(root, cache=True)
     evidence = build_evidence(root, cache=True)
     blob = json.dumps(evidence)
-    assert ".glossarize" not in blob
+    assert ".glossabet" not in blob
     assert cache_path(root).is_file()
     assert not cache_path(root).resolve().is_relative_to(root.resolve())
     assert load_cache(root)["generator_version"] == __version__
@@ -117,7 +117,7 @@ def test_deeply_nested_cache_json_is_a_miss(tmp_path):
 def test_oversized_cache_is_a_miss(tmp_path, monkeypatch):
     # Security boundary (SECURITY.md): an untrusted repo shipping a giant
     # cache.json must be a miss, never read into memory and OOM the process.
-    monkeypatch.setattr("glossarize.artifacts.MAX_JSON_BYTES", 50)
+    monkeypatch.setattr("glossabet.artifacts.MAX_JSON_BYTES", 50)
     root = make_repo(tmp_path)
     path = cache_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -153,7 +153,7 @@ def test_same_size_same_mtime_rewrite_invalidates_by_content(tmp_path):
 
 def test_repository_supplied_legacy_cache_is_never_trusted(tmp_path):
     root = make_repo(tmp_path)
-    legacy = root / ".glossarize"
+    legacy = root / ".glossabet"
     legacy.mkdir()
     (legacy / "cache.json").write_text(json.dumps({
         "cache_version": 2,
@@ -181,7 +181,7 @@ def test_cache_is_disabled_if_configured_inside_scanned_repo(
 ):
     root = make_repo(tmp_path)
     unsafe = root / ".user-cache"
-    monkeypatch.setenv("GLOSSARIZE_CACHE_DIR", str(unsafe))
+    monkeypatch.setenv("GLOSSABET_CACHE_DIR", str(unsafe))
 
     build_evidence(root, cache=True)
     stats = {}

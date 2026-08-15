@@ -6,9 +6,9 @@ pairwise work must be visibly bounded."""
 import json
 from collections import Counter, defaultdict
 
-from glossarize.cli import main
-from glossarize.evidence import build_evidence
-from glossarize.terminology import (
+from glossabet.cli import main
+from glossabet.evidence import build_evidence
+from glossabet.terminology import (
     OVERLOAD_MODULE_ANALYSIS_CAP,
     PAIR_TOP_N,
     build_terminology,
@@ -233,4 +233,4 @@ def test_analyze_command_end_to_end(tmp_path, capsys):
     assert "house register" in out
     assert "vocabulary overlaps" in out
     assert "nominations" in out  # the not-verdicts reminder
-    assert (tmp_path / "glossarize-out" / "evidence.json").is_file()
+    assert (tmp_path / "glossabet-out" / "evidence.json").is_file()

@@ -12,11 +12,11 @@ import math
 from collections import Counter
 from itertools import combinations
 
-from glossarize.coverage import (
+from glossabet.coverage import (
     capped_collection,
     coverage_reasons,
 )
-from glossarize.tokenize import tokenize_identifier
+from glossabet.tokenize import tokenize_identifier
 
 PAIR_TOP_N = 150
 # Phase 15's pinned corpus found only false sibling-field nominations below

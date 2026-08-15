@@ -3,9 +3,9 @@
 import json
 import os
 
-from glossarize import agent_context
-from glossarize.cli import EXIT_USER_ERROR, main
-from glossarize.glossary import save_glossary
+from glossabet import agent_context
+from glossabet.cli import EXIT_USER_ERROR, main
+from glossabet.glossary import save_glossary
 
 
 def _concept(index: int) -> dict:
@@ -32,7 +32,7 @@ def test_inspect_emits_versioned_context_and_refreshes_evidence(tmp_path, capsys
     ]
     assert context["glossary"] == {"present": False}
     assert context["coverage"]["corpus"]["complete"] is True
-    assert (tmp_path / "glossarize-out" / "evidence.json").is_file()
+    assert (tmp_path / "glossabet-out" / "evidence.json").is_file()
 
 
 def test_inspect_output_is_deterministic_for_unchanged_inputs(tmp_path, capsys):
@@ -82,7 +82,7 @@ def test_glossary_projection_truncation_is_visible_at_section_level(
 def test_inspect_refuses_malformed_glossary_instead_of_treating_it_as_absent(
     tmp_path, capsys
 ):
-    out = tmp_path / "glossarize-out"
+    out = tmp_path / "glossabet-out"
     out.mkdir()
     (out / "glossary.json").write_text("{broken")
 
@@ -147,7 +147,7 @@ def test_inspect_rejects_symlinked_glossary_without_reading_target(
     outside = tmp_path / "outside.json"
     outside.write_text(json.dumps({"schema_version": 1, "concepts": []}))
     repo = tmp_path / "repo"
-    out = repo / "glossarize-out"
+    out = repo / "glossabet-out"
     out.mkdir(parents=True)
     os.symlink(outside, out / "glossary.json")
 
@@ -159,13 +159,13 @@ def test_inspect_rejects_symlinked_glossary_without_reading_target(
 
 
 def test_inspect_rejects_oversized_glossary(tmp_path, capsys, monkeypatch):
-    out = tmp_path / "glossarize-out"
+    out = tmp_path / "glossabet-out"
     out.mkdir()
     (out / "glossary.json").write_text(
         json.dumps({"schema_version": 1, "concepts": [_concept(0)]})
     )
-    monkeypatch.setattr("glossarize.glossary.MAX_JSON_BYTES", 20)
-    monkeypatch.setattr("glossarize.artifacts.MAX_JSON_BYTES", 20)
+    monkeypatch.setattr("glossabet.glossary.MAX_JSON_BYTES", 20)
+    monkeypatch.setattr("glossabet.artifacts.MAX_JSON_BYTES", 20)
 
     assert main(["inspect", str(tmp_path), "--no-graphify"]) == EXIT_USER_ERROR
 
