@@ -1,8 +1,9 @@
 # Glossarize — Plan
 
-Status: **phases 0–17 complete** as of 2026-08-14.
-Phases 11–17 turn the 2026-08-14 deep-dive findings into bounded,
-single-pass work.
+Status: **phases 0–18 complete; Phase 19 next** as of 2026-08-14.
+Phases 18–23 are the complete post-audit route from the current local package
+to a defensible trusted alpha. Public release remains a separate, explicit
+authorization gate after those phases.
 This document is the authoritative roadmap. Provenance: merged from the working
 sessions of 2026-08-14 — Claude's loop/reconciliation analysis, ChatGPT's
 "Robust Repository Vocabulary System" spec and repo-transition notes, and the
@@ -41,8 +42,8 @@ this system correspond to the system we built? **Graphify is never required.**
 │  nominates, proposes, brainstorms, defers   │
 │  to the human; finalizes only when told     │
 └───────────────────┬─────────────────────────┘
-                    │ reads evidence when present,
-                    │ falls back to direct repo reading
+                    │ requests a fresh, bounded agent context
+                    │ through the CLI; reads named source files
 ┌───────────────────▼─────────────────────────┐
 │  glossarize engine / CLI  (deterministic)   │
 │  scanning · terminology mining · register   │
@@ -153,6 +154,8 @@ the reconciliation phase, which is their first real consumer.
 ```
 glossarize scan .        build/refresh RepositoryEvidence          (Phase 2)
 glossarize analyze .     terminology + register analysis           (Phase 4)
+glossarize inspect .     emit fresh bounded agent context          (Phase 18)
+glossarize save .        validate/save glossary JSON from stdin    (Phase 18)
 glossarize show          display current glossary                  (Phase 6)
 glossarize drift .       compare live vocabulary vs canonical      (Phase 7)
 glossarize validate .    glossary ↔ evidence/graph reconciliation  (Phase 10)
@@ -347,6 +350,209 @@ without repository-owner knowledge.
 walkthrough, execute the full suite, and uninstall cleanly; release docs state
 exactly what remains manual and externally visible.
 
+### Phase 18 — Agent boundary and hostile glossary/input hardening ✅ 2026-08-14
+
+**Goal:** make the CLI the sole machine-data boundary for the agent skill and
+make hostile glossary data safe to validate and display at bounded cost.
+
+**Steps:**
+
+1. Add `glossarize inspect .`, which performs a fresh scan through the existing
+   confined scanner, safely loads the optional glossary, persists the normal
+   evidence artifact, and emits a versioned, size-bounded JSON context for the
+   agent. Every truncated collection carries counts and completeness metadata.
+2. Rewrite the skill's opening protocol to invoke `inspect`; remove direct
+   reads of Glossarize JSON artifacts and the unrestricted repository-reading
+   fallback. Route finalized machine state through bounded stdin to
+   `glossarize save .` rather than letting the skill write the artifact. If the
+   matching CLI is unavailable or the context is invalid, stop with a precise
+   installation/version error. Targeted reads of source files named by the safe
+   context remain part of the brainstorm workflow.
+3. Make glossary validation strict at every object level, cap concepts,
+   aliases, bindings, scopes, strings, and reported diagnostics before
+   expensive work, and replace pairwise vocabulary-owner checks with an
+   indexed overlap check whose work scales with accepted input size.
+4. Centralize terminal rendering for repository-controlled values and error
+   messages. Reject control and bidirectional-format characters in glossary
+   identity fields and render hostile characters visibly rather than emitting
+   raw terminal control sequences.
+5. Add adversarial contract, schema, scale, symlink, malformed/oversized input,
+   and terminal-output regressions; synchronize `README.md`, `ARCHITECTURE.md`,
+   `SECURITY.md`, and `PRIVACY.md` with the verified boundary.
+
+**Acceptance:** the installed skill never opens `evidence.json`, never opens or
+writes `glossary.json` itself, and never silently bypasses the CLI; the context is
+fresh, bounded, and explicit about omissions; typo fields and over-budget
+glossaries fail cleanly with bounded diagnostics; vocabulary ownership
+validation is non-quadratic; hostile repository/glossary strings cannot emit
+raw terminal control sequences; focused and full suites pass.
+
+### Phase 19 — Completeness and downstream complexity accounting
+
+**Goal:** ensure every terminology and Graphify claim is based on all accepted
+evidence—or is explicitly marked partial—and keep drift/reconciliation work
+bounded after glossary loading.
+
+**Steps:**
+
+1. Introduce one shared coverage ledger for capped candidate, terminology,
+   structure, validation, and drift collections; every consumer must carry
+   exact totals where known, dropped counts, reasons, and a completeness flag.
+2. Include the 151st-and-later ranked terminology candidates in totals and
+   mark the section partial when details are capped. Apply the same rule to
+   structural candidates so `structures_complete` cannot remain true after
+   candidates are dropped.
+3. Match a Graphify structural group against its complete bounded member token
+   set; keep the six-member list only as a display sample. Replace permissive
+   suffix/substring provenance tests with exact normalized source and type
+   checks, including near-match counterexamples.
+4. Replace group-by-concept matching in reconciliation with an inverted token
+   index and count/stream boundary findings without materializing all
+   member-pair combinations. Bound all remaining glossary-by-corpus work and
+   report why anything was omitted.
+5. Add scaling and threshold-edge tests for `build_drift()`,
+   `build_validation()`, Graphify groups, terminology ranking, and coverage
+   propagation.
+
+**Acceptance:** no accepted 151st term or seventh Graphify member can disappear
+behind a `complete: true` claim; near-match provenance is not misclassified;
+downstream work has explicit budgets and sub-quadratic indexed paths; every
+omission is observable and regression-tested.
+
+### Phase 20 — Release automation and evidence integrity
+
+**Goal:** make local release evidence reproducible and ensure the release job
+cannot publish an artifact that skipped the supported test matrix.
+
+**Steps:**
+
+1. Extract the full supported-platform test matrix into a reusable workflow
+   and require the manual release workflow to call it before build or publish.
+   Strengthen workflow-policy tests so meaningful gate weakening fails.
+2. Constrain Hatchling to a reviewed stable range, record its direct and
+   transitive cost, and retain pytest as the earned dev-only test dependency;
+   preserve the zero-runtime-dependency package.
+3. Add source/corpus digests and engine/version metadata to evaluation output,
+   rerun the evaluation on the current engine and fixtures, and reject stale or
+   mismatched result files in release checks.
+4. Correct Phase 17-era release language everywhere: the package is locally
+   packageable, not publicly released or efficacy-proven. Keep all claims
+   scoped to the measured corpus and reviewer set.
+
+**Acceptance:** release automation cannot reach build/publish unless the full
+matrix passes; workflow mutation tests prove that dependency; build tooling is
+constrained and justified; evaluation results identify their exact inputs and
+current engine; documentation makes no stale readiness claim.
+
+### Phase 21 — Name clearance and preferred Codex distribution
+
+**Goal:** settle the product identity before publishing it and prove the
+preferred Codex plugin experience without weakening the standalone package.
+
+**Steps:**
+
+1. Run and record current package, repository, command, plugin-directory, and
+   relevant trademark/name searches. Choose one explicit exit before any
+   public artifact: keep `Glossarize`, qualify it, or rename all user-facing
+   surfaces atomically.
+2. Build a local Codex plugin prototype that contains the canonical skill and
+   matching CLI package, with an explicit version-coupling check and a clean
+   install/update/remove smoke test. Do not advertise unsupported host
+   behavior; the Claude target remains experimental until separately tested.
+3. Keep the wheel/`uv tool install` route as the atomic fallback and document
+   exactly which install route owns the CLI, skill copy, upgrades, and removal.
+
+**Acceptance:** a recorded clearance decision covers every public surface; a
+clean Codex plugin install supplies matching skill/CLI versions and removes
+cleanly; the wheel fallback remains reproducible; no channel or host is called
+supported without a direct probe.
+
+### Phase 22 — Installed-agent and structural evaluation
+
+**Goal:** test the product through the interface a real user invokes and add
+the missing deterministic evidence for Graphify-backed structural claims.
+
+**Steps:**
+
+1. Add labelled Graphify cases for unnamed boundaries, overloads, orphans,
+   fragmentation, the seventh member, near-match provenance, and truncation;
+   measure structural precision/recall where the labels are complete.
+2. Run the actually installed Codex skill against fresh, stale, absent,
+   malformed, oversized, symlinked, partial, monorepo, resumed-glossary,
+   missing-CLI, and sensitive-file scenarios. Capture bounded tool traces and
+   verify that it neither reads excluded content nor writes before approval.
+3. Add a second independent reviewer to the current evaluation protocol and
+   record disagreements separately from deterministic engine correctness.
+
+**Acceptance:** both lexical and structural measurements are reproducible;
+the installed skill/CLI boundary passes every hostile and lifecycle scenario;
+reviewer usefulness is supported by at least two independent reviewers, with
+no claim broader than the tested corpus.
+
+### Trusted-alpha gate — external evidence, not an implementation phase
+
+Before Phase 23, invite at least two consenting maintainers to use the exact
+installed build on enough additional repositories to bring the measured total
+to at least five varied repositories. Record opt-in scope, repository traits,
+failures, false alarms, usefulness feedback, and the exact build tested; never
+copy private repository content into this repository. This gate necessarily
+waits on humans and is not treated as a single `$next` implementation pass.
+
+### Phase 23 — Exact-artifact release candidate gate
+
+**Goal:** prove one immutable source state and its built artifacts after the
+trusted-alpha gate, without publishing them.
+
+**Steps:**
+
+1. Rerun installed-agent scenarios, deterministic evaluation, the full CI
+   matrix, workflow-policy tests, and wheel/sdist smoke tests from one clean
+   source commit; record artifact hashes and version coupling.
+2. Verify license inclusion, metadata, links, clean install, upgrade,
+   uninstall, and plugin fallback behavior against those exact artifacts.
+3. Produce a release-candidate report that separates proven local behavior,
+   measured alpha evidence, known limitations, and every remaining external
+   action.
+
+**Acceptance:** all evidence names the same source commit and artifact hashes;
+the source tree is clean; no unresolved critical/high correctness or security
+finding remains; the report contains no unmeasured efficacy or availability
+claim.
+
+### External publication gate — explicit authorization required
+
+GitHub private vulnerability reporting, Dependabot security updates, package
+registration/upload, Git tags/releases, and plugin-directory publication are
+account or public-state changes. They are covered work, but are performed only
+after Phase 23 and only with Kyle's explicit authorization. Any steps Kyle must
+perform are presented one at a time with the account affected, public or
+irreversible consequence, exact click/type action, and observable completion
+state. Publication is not done merely because local gates pass.
+
+## Post-audit issue closure map
+
+| Verified issue or release gap | Closure |
+| --- | --- |
+| Skill directly reads/writes artifacts and can bypass the engine | Phase 18.1–18.2 |
+| Glossary validation can grow quadratically and diagnostics are unbounded | Phase 18.3; downstream work Phase 19.4 |
+| Repository-controlled terminal text can carry control sequences | Phase 18.4 |
+| Terminology/structure caps can conceal omitted candidates | Phase 19.1–19.2 |
+| Graphify matching ignores members after the six-item sample | Phase 19.3 |
+| Graphify provenance uses permissive substring/suffix matching | Phase 19.3 |
+| Unknown glossary fields are silently accepted | Phase 18.3 |
+| Checked-in evaluation results predate the current engine | Phase 20.3 |
+| Release workflow does not depend on the full test matrix | Phase 20.1 |
+| Workflow tests protect labels more than gate semantics | Phase 20.1 |
+| Actual installed-agent behavior is not end-to-end tested | Phase 22.2 |
+| Structural findings lack a labelled evaluation set | Phase 22.1 |
+| Current corpus/reviewer/adopter evidence is too small for broad claims | Phase 22.3 plus trusted-alpha gate |
+| Product/package/plugin name needs clearance before publication | Phase 21.1 |
+| Preferred Codex plugin distribution and version coupling are unproven | Phase 21.2–21.3 |
+| Build backend is unconstrained | Phase 20.2 |
+| GitHub private reporting and dependency security updates are disabled | External publication gate |
+| Release documentation overstates the current stopping point | Phase 20.4 and Phase 23.3 |
+| Healthy foundations—full tests, CI matrix, wheel smoke, license, research links, pytest, and zero runtime dependencies—must not regress | Acceptance gates in Phases 18–23 |
+
 ### Later / unscheduled
 - Graphify pass-2 relabeling guide (instruction-level recipe as a doc);
   upstream `--glossary` contribution to Graphify if welcomed.
@@ -359,7 +565,8 @@ exactly what remains manual and externally visible.
 - Cross-repo / organization-wide vocabulary (design `glossary.json` so a
   shared mode isn't precluded; graphify `merge-graphs` is prior art).
 - Additional evidence adapters (LSP, other analyzers).
-- PyPI publication after Phase 17 and explicit authorization.
+- Public package/plugin publication only after Phase 23, the trusted-alpha
+  gate, and explicit authorization.
 
 ## Settled decisions (2026-08-14)
 
@@ -369,9 +576,10 @@ exactly what remains manual and externally visible.
    mapped byte-for-byte into the wheel. `glossarize install` defaults to the
    current Codex personal location `~/.agents/skills/glossarize/`; the
    explicit Claude Code target is `~/.claude/skills/glossarize/`. Both are
-   installed copies. The skill itself
-   changes only twice, additively: the evidence protocol (Phase 3) and
-   glossary resumption (Phase 6). Philosophy untouched.
+   installed copies. The original prediction that the skill would change only
+   twice was invalidated by the post-Phase-17 boundary audit: Phase 18 changes
+   the evidence transport from direct artifact reads to a required CLI-owned
+   context. The philosophy remains untouched.
 3. **Public, Apache-2.0** — matching Graphify (verified: Graphify is
    Apache-2.0, not MIT).
 4. **Test framework: pytest** (dev-only dependency; cost accepted for

@@ -30,6 +30,9 @@ degrade according to a documented contract. Aggregate lexical work is bounded
 per scan by source-file, source-byte, walked-entry, and per-directory-entry
 ceilings. These ceilings bound input work; they are not a fixed wall-clock or
 peak-memory guarantee because identifiers and repository layouts vary.
+Glossary structure and the agent-facing output have independent semantic
+ceilings, and repository-controlled terminal text must not execute control
+sequences or reorder the displayed result.
 
 ## Boundaries enforced in code
 
@@ -52,7 +55,8 @@ peak-memory guarantee because identifiers and repository layouts vary.
   unrelated file inside the repository. Regressions:
   `test_symlinked_config_is_rejected_without_reading_target`,
   `test_symlinked_graph_degrades_without_reading_target`,
-  `test_glossary_symlink_is_rejected_without_reading_target`.
+  `test_glossary_symlink_is_rejected_without_reading_target`, and
+  `test_inspect_rejects_symlinked_glossary_without_reading_target`.
 - **Reads are individually size-bounded.** Walked code, documentation, and
   inspected root manifests are capped at `MAX_FILE_BYTES` (2 MB). Direct JSON
   artifacts and the user cache are capped at `MAX_JSON_BYTES` (64 MB) before
@@ -110,6 +114,45 @@ peak-memory guarantee because identifiers and repository layouts vary.
   the built-wheel smoke test compare the bytes rather than maintaining an
   independent hand-copied skill.
 
+### Agent context and terminal output
+
+- **The skill consumes CLI output, not repository artifacts.** The installed
+  skill starts with `glossarize inspect .`. The command loads the optional
+  glossary through the same confined, strict validator as `show`, builds fresh
+  evidence through the bounded scanner, refreshes the normal evidence
+  artifact atomically, and emits one versioned JSON document. The skill is
+  explicitly forbidden from opening Glossarize JSON artifacts or falling back
+  to an unrestricted recursive read when this command fails. Regressions are
+  in `tests/test_skill.py` and `tests/test_agent_context.py`.
+- **The skill persists machine state through the CLI.** After the human settles
+  terms, the skill sends the complete JSON document to `glossarize save .` on
+  standard input; it never writes or patches `glossary.json` directly. The
+  command accepts at most 64 MB (reading one detection byte beyond the limit),
+  parses one document, applies strict validation, and delegates to the confined
+  atomic writer. Invalid input leaves an existing glossary intact. Regressions
+  include
+  `test_save_command_validates_stdin_and_writes_atomically`,
+  `test_save_command_rejects_invalid_stdin_without_writing`, and
+  `test_save_command_bounds_standard_input`, and
+  `test_save_command_cannot_follow_a_glossary_symlink`.
+- **Agent output has an independent hard bound.** The context deterministically
+  caps named top-level collections and nested lists, truncates overlong strings
+  with an omission record, and refuses either more than 100 distinct omission
+  records or more than 1,000,000 UTF-8 bytes. `coverage.corpus` describes scanner
+  coverage and `coverage.context` describes projection coverage; neither can
+  silently read as complete after an omission. Regressions:
+  `test_context_sampling_is_explicit` and
+  `test_context_hard_byte_limit_fails_cleanly`.
+- **Terminal controls are data, not instructions.** CLI stdout/stderr pass
+  through `display.py`. Repository/user-controlled C0/C1 controls, DEL, Unicode
+  line separators, and bidirectional-format characters are rendered as visible
+  escape spellings. Glossary identity fields reject them; prose permits only
+  ordinary line feed/tab layout and the renderer escapes those when embedded
+  in a displayed value. JSON output uses JSON escaping as an additional layer.
+  Regressions: `test_repository_control_sequences_are_rendered_visibly`,
+  `test_unexpected_exception_text_is_terminal_safe`, and
+  `test_terminal_controls_and_bidi_formatting_are_rejected`.
+
 ### Incremental cache
 
 - **A repository cannot supply trusted extraction results.** Cache state lives
@@ -152,13 +195,23 @@ Glossarize program or its output artifacts.
   malformed JSON, and symlinks are rejected as user errors. Matching is plain
   string-prefix comparison; configuration never causes a filesystem path to
   be opened directly. Regressions are in `tests/test_config.py`.
-- **Glossary scopes are bounded data, not path reads.** Optional concept
-  scopes accept only a non-empty list of literal repository-relative path
-  prefixes. Absolute paths, parent traversal, globs, backslashes, empty lists,
-  duplicate paths, and unknown fields are rejected. Scope checks compare paths
-  already present in bounded evidence; they never open a path named by the
-  glossary. Terms and aliases are NFKC-casefolded for ownership checks so
-  canonically equivalent Unicode spellings cannot evade collision detection.
+- **Glossary data is strict and semantically bounded.** Every glossary object
+  rejects unknown fields. Optional concept scopes accept only a non-empty list
+  of non-overlapping literal repository-relative path prefixes; absolute paths,
+  parent traversal, globs, backslashes, empty lists, duplicates, and unknown
+  fields are rejected. A valid document may contain at most 10,000 concepts,
+  50,000 aliases, 50,000 bindings, and 50,000 scope prefixes; identity strings
+  are capped at 1,024 characters, prose at 16,384, aggregate scope text at
+  1,000,000 characters, inherited vocabulary/scope work at 5,000,000
+  characters, and returned diagnostics at 100. Aggregate counts are checked
+  before per-entry validation. Scope checks
+  compare paths already present in bounded evidence; they never open a glossary
+  path. NFKC-casefolded ownership uses a per-term path-prefix trie, so disjoint
+  scopes do not trigger pairwise owner comparisons. Regressions include
+  `test_unknown_glossary_fields_are_rejected_at_every_object_level`,
+  `test_validation_diagnostics_are_bounded`,
+  `test_concept_budget_is_checked_before_per_concept_validation`, and
+  `test_vocabulary_owner_validation_uses_indexed_scope_lookup`.
 - **Target Git configuration cannot name an executable.** Each
   `git rev-parse`/`git status` call overrides `core.fsmonitor` and
   `core.hooksPath`, uses no shell, disables credential prompts, and has a
@@ -208,8 +261,9 @@ prompts and global/system Git configuration, uses no shell, and neither imports
 nor executes target-project code. The checked-out source is still untrusted
 input to the same scanner boundaries.
 
-The `/glossarize` skill is a separate agent-mediated interface. When it asks an
-agent to read code or generated evidence, that content is handled according to
+The `/glossarize` skill is a separate agent-mediated interface. It receives the
+bounded JSON emitted by `glossarize inspect .` and may then read context-named
+production code. That content is handled according to
 the agent host and model provider's data policy. Glossarize cannot enforce that
 external policy, and the path-based exclusions above do not make artifacts
 safe to send to an unapproved service.
@@ -258,7 +312,8 @@ the opt-in developer/release operations that do use the network.
   read/write-redirection reasons above.
 - The scanner assumes the repository is not being adversarially mutated
   concurrently between path validation and file access. Do not run it while an
-  untrusted process is rewriting the same checkout.
+  untrusted process is rewriting the same checkout. An `inspect` context is
+  generated in one command, but is not an atomic filesystem snapshot.
 - Corpus ceilings make lexical processing finite, but reaching one necessarily
   makes repository coverage partial. `walk_remainder.exact: false` means the
   number and nature of unseen paths are unknown; consumers must not interpret

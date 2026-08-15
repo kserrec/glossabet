@@ -103,10 +103,13 @@ The complete methodology, licenses, baseline, thresholds, limitations, and
 reproduction command are in [`EVALUATION.md`](EVALUATION.md); raw results are
 in [`evaluation/results.json`](evaluation/results.json).
 
-**Status: 0.1.0 alpha prepared, not yet published to PyPI.** The source is
-public and the complete local release gate passes; account-backed publication
-and GitHub private vulnerability reporting remain deliberately manual. See
-[`RELEASING.md`](RELEASING.md) for the exact boundary.
+**Status: 0.1.0 source alpha under post-audit hardening; not yet published to
+PyPI and not yet a trusted-alpha release.** Packaging, the current CI matrix,
+and local smoke tests exist, but downstream completeness work, release-workflow
+coupling, installed-agent evaluation, name/distribution clearance, and outside
+alpha evidence remain on the authoritative roadmap. Do not describe the
+current stopping point as release-ready. See [`PLAN.md`](PLAN.md) for the
+closure sequence and [`RELEASING.md`](RELEASING.md) for external actions.
 
 From a source checkout, install the CLI and its canonical skill for Codex:
 
@@ -136,10 +139,23 @@ The full explanation and expected result are in
 glossarize install           install the canonical agent skill (Codex default)
 glossarize scan <repo>       deterministic, git-stamped evidence (cached, incremental)
 glossarize analyze <repo>    scan + terminology report (register, overlaps, overloads)
+glossarize inspect <repo>    fresh, bounded JSON context for the agent skill
+glossarize save <repo>       validate/save glossary JSON from standard input
 glossarize show <repo>       display the current glossary
 glossarize drift <repo>      live vocabulary vs the canonical glossary
 glossarize validate <repo>   reconcile glossary vs evidence and the Graphify graph
 ```
+
+The installed skill requires `glossarize inspect .` from the exact repository
+or subproject root. That command safely validates repository-controlled JSON,
+builds current evidence, refreshes `evidence.json`, and emits a separate
+versioned context capped at 1 MB. The context reports scanner omissions under
+`coverage.corpus` and agent-projection omissions under `coverage.context`.
+The skill never opens Glossarize JSON artifacts itself and does not fall back
+to unrestricted recursive reading when the CLI boundary fails. When the human
+settles terms, the skill sends the complete JSON document to `glossarize save
+.` on standard input; that command bounds, strictly validates, confines, and
+atomically persists `glossary.json` instead of letting the agent write it.
 
 Artifacts live in `<repo>/glossarize-out/` (evidence, glossary, drift and
 validation reports). The incremental extraction cache is user-owned state,
@@ -165,7 +181,7 @@ have two different lifecycles:
   For a shared team glossary, commit both `GLOSSARY.md` and
   `glossarize-out/glossary.json`.
 
-The evidence freshness check compares the recorded commit and worktree state
+The evidence freshness stamp records the commit and worktree state
 with live Git state while excluding only that top-level `glossarize-out/`
 directory. This makes a clean repository immediately fresh after its first
 scan, whether generated output is tracked or untracked. Changes elsewhere
@@ -173,7 +189,10 @@ inside the scanned root — including `GLOSSARY.md`, `graphify-out/`, and legacy
 `.glossarize/` — remain visible. A subproject scan uses that subproject, not an
 enclosing Git worktree, as its scope. Git-ignored files follow Git's normal
 semantics and therefore cannot make the stamp dirty; a repository without a
-readable `HEAD` is reported as unverified.
+readable `HEAD` is reported as unverified. The skill does not reimplement this
+check: `inspect` builds its bounded context from live inputs in that same CLI
+invocation. This is not an atomic filesystem snapshot; do not scan while an
+untrusted process is mutating the checkout.
 
 Glossarize never creates or edits the target repository's `.gitignore`.
 Repository owners decide which artifacts to track. Removing the derived
@@ -258,7 +277,10 @@ be drawn from it.
   defined local context used for structural matching.
 - One NFKC-casefolded canonical term or alias may belong to only one concept
   in overlapping scopes. Ambiguous aliases are rejected before the glossary
-  is saved or consumed.
+  is saved or consumed. Every glossary object rejects unknown fields, and
+  concept/alias/binding/scope/string counts have documented semantic ceilings.
+  Ownership validation uses an indexed path-prefix lookup rather than comparing
+  every same-word concept pair.
 - Heuristic thresholds are labelled `signal_strength` (`strong`, `moderate`,
   or `weak`), not “confidence.” Directly proven lexical or binding facts use
   `certainty: observed`. Probabilistic confidence labels remain reserved for
@@ -270,6 +292,9 @@ be drawn from it.
   means unevaluated input could contain additional findings. Reports then say
   “evaluated findings” and identify the partial coverage instead of presenting
   the count as exhaustive.
+- Repository-controlled text is terminal data, never terminal instructions.
+  The CLI renders control and bidirectional-format characters as visible
+  escape spellings; glossary identity fields reject them outright.
 
 ## Development and release verification
 

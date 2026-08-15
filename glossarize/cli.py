@@ -12,6 +12,7 @@ import traceback
 from typing import NoReturn as _NoReturn
 
 from glossarize import __version__
+from glossarize.display import escape_terminal_text, safe_terminal_streams
 
 EXIT_OK = 0
 EXIT_USER_ERROR = 1
@@ -23,7 +24,8 @@ class _Parser(argparse.ArgumentParser):
     # internal defects here, so usage problems exit 1 instead.
     def error(self, message: str) -> _NoReturn:
         self.print_usage(sys.stderr)
-        self.exit(EXIT_USER_ERROR, f"{self.prog}: error: {message}\n")
+        safe_message = escape_terminal_text(message)
+        self.exit(EXIT_USER_ERROR, f"{self.prog}: error: {safe_message}\n")
 
 
 def _add_repository_path(command: argparse.ArgumentParser) -> None:
@@ -62,8 +64,21 @@ def build_parser() -> argparse.ArgumentParser:
     _add_repository_path(analyze)
     _add_graphify_toggle(analyze)
 
+    inspect = sub.add_parser(
+        "inspect",
+        help="emit a fresh, bounded JSON context for the agent skill",
+    )
+    _add_repository_path(inspect)
+    _add_graphify_toggle(inspect)
+
     show = sub.add_parser("show", help="display the current glossary")
     _add_repository_path(show)
+
+    save = sub.add_parser(
+        "save",
+        help="validate and save glossary JSON received on standard input",
+    )
+    _add_repository_path(save)
 
     drift = sub.add_parser(
         "drift", help="check live vocabulary against the canonical glossary"
@@ -119,10 +134,20 @@ def _run(argv: list[str] | None) -> int:
 
         return analyze_command(args.path, graphify=not args.no_graphify)
 
+    if args.command == "inspect":
+        from glossarize.agent_context import inspect_command
+
+        return inspect_command(args.path, graphify=not args.no_graphify)
+
     if args.command == "show":
         from glossarize.glossary import show_command
 
         return show_command(args.path)
+
+    if args.command == "save":
+        from glossarize.glossary import save_command
+
+        return save_command(args.path)
 
     if args.command == "drift":
         from glossarize.drift import drift_command
@@ -145,7 +170,7 @@ def _run(argv: list[str] | None) -> int:
     return EXIT_DEFECT  # unreachable; error() exits
 
 
-def main(argv: list[str] | None = None) -> int:
+def _main(argv: list[str] | None = None) -> int:
     try:
         return _run(argv)
     except SystemExit:
@@ -156,12 +181,21 @@ def main(argv: list[str] | None = None) -> int:
         from glossarize.artifacts import ArtifactError
 
         if isinstance(exc, ArtifactError):
-            print(f"glossarize: {exc}", file=sys.stderr)
+            print(
+                "glossarize: " + escape_terminal_text(str(exc)),
+                file=sys.stderr,
+            )
             return EXIT_USER_ERROR
-        traceback.print_exc()
+        print(escape_terminal_text(traceback.format_exc()), file=sys.stderr)
         print(
             "glossarize: internal error — this is a defect in glossarize, "
             "not a usage mistake.",
             file=sys.stderr,
         )
         return EXIT_DEFECT
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run one CLI invocation with terminal-safe standard streams."""
+    with safe_terminal_streams():
+        return _main(argv)

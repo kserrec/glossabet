@@ -67,6 +67,17 @@ def test_scan_is_deterministic_including_own_output(tmp_path):
     assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
 
 
+def test_first_output_directory_does_not_change_walk_budget(tmp_path):
+    (tmp_path / "service.py").write_text("payment_service = 1\n")
+    first = build_evidence(tmp_path)
+
+    write_evidence(tmp_path, first)
+    second = build_evidence(tmp_path)
+
+    assert first["skipped"]["corpus_budget"] == second["skipped"]["corpus_budget"]
+    assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
+
+
 def test_truncation_is_capped_marked_and_counted(tmp_path):
     (tmp_path / "a.py").write_text("alpha_word\nbeta_word\nbeta_word\n")
     (tmp_path / "b.py").write_text("beta_word\ngamma_word\ndelta_word\n")

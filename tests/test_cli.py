@@ -37,3 +37,33 @@ def test_install_help_states_the_default_agent(capsys):
     output = capsys.readouterr().out
     assert "Codex by default" in output
     assert "--force" in output
+
+
+def test_repository_control_sequences_are_rendered_visibly(capsys):
+    hostile_path = (
+        "missing\nforged\t\r\x1b]8;;https://example.invalid\x07\u202ename"
+    )
+
+    assert main(["scan", hostile_path]) == EXIT_USER_ERROR
+
+    error = capsys.readouterr().err
+    assert "\x1b" not in error
+    assert "\x07" not in error
+    assert "\u202e" not in error
+    assert "missing\nforged" not in error
+    for visible in ("\\n", "\\t", "\\r", "\\x1b", "\\x07", "\\u202e"):
+        assert visible in error
+
+
+def test_unexpected_exception_text_is_terminal_safe(capsys, monkeypatch):
+    def fail(_argv):
+        raise RuntimeError("forged\nline\x1b]0;title\x07")
+
+    monkeypatch.setattr("glossarize.cli._run", fail)
+
+    assert main([]) == 2
+
+    error = capsys.readouterr().err
+    assert "\x1b" not in error and "\x07" not in error
+    assert "forged\nline" not in error
+    assert "forged\\nline\\x1b]0;title\\x07" in error

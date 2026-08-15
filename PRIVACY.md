@@ -10,11 +10,11 @@ After installation, the `glossarize` CLI makes no network requests, sends no
 telemetry, uses no account, and calls no language model. It processes files on
 the machine where it runs.
 
-For `scan`, `analyze`, `drift`, and `validate`, the CLI may read:
+For `scan`, `analyze`, `inspect`, `drift`, and `validate`, the CLI may read:
 
 - ordinary source and documentation files under the selected repository;
-- root `glossarize.json`, `GLOSSARY.md`, and Glossarize-owned JSON artifacts
-  when the selected command needs them;
+- root `glossarize.json` and Glossarize-owned JSON artifacts when the selected
+  command needs them (`GLOSSARY.md` is deliberately excluded from analysis);
 - optional `graphify-out/graph.json` as repository-controlled structural
   evidence; and
 - local Git commit and worktree status through a constrained `git` subprocess.
@@ -43,19 +43,29 @@ itself may contact the package index chosen by the user's package manager.
 
 ## Agent-mediated skill
 
-The installed skill is a Markdown instruction set. When invoked, an agent may
-read Glossarize artifacts and repository files in order to understand real
-components and propose names. The agent host may send that content to its
-model provider or other configured tools according to that host's current
-privacy, retention, training, workspace, and connector settings. Glossarize
-does not operate or control those services and cannot enforce their policies.
+The installed skill is a Markdown instruction set. When invoked, it first runs
+`glossarize inspect .` and parses that command's versioned, bounded JSON
+output. It is forbidden from opening Glossarize's repository JSON artifacts or
+falling back to unrestricted recursive reading. The context includes sampled
+repository paths, identifiers, documentation vocabulary, Graphify labels, and
+the validated optional glossary; it records both scanner and context
+omissions. The agent may then read production files named by the context to
+understand real components and propose names. After the human approves terms,
+the agent passes the complete machine-readable glossary to `glossarize save .`
+on standard input; the skill does not write the repository JSON artifact
+directly.
+
+The agent host may send the CLI context and those selected files to its model
+provider or other configured tools according to that host's current privacy,
+retention, training, workspace, and connector settings. Glossarize does not
+operate or control those services and cannot enforce their policies.
 
 Before invoking the skill on confidential code:
 
 - verify that the selected agent account, workspace, model provider, and any
   enabled connectors are approved for that repository;
-- inspect `glossarize-out/evidence.json` as confidential repository-derived
-  data, not as a sanitized export; and
+- treat the `glossarize inspect .` context as confidential
+  repository-derived data, not as an anonymized or secret-scrubbed export; and
 - remember that the local path exclusions do not remove secrets embedded in
   ordinarily named source or documentation files.
 

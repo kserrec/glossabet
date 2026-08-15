@@ -14,8 +14,9 @@ deterministic command-line engine plus an agent skill (`skill/SKILL.md`). The
 engine reads a repository and produces evidence: what files and modules exist,
 what identifiers and documentation words appear and how often, which modules
 import which, and (optionally) structural groups from a
-[Graphify](https://github.com/Graphify-Labs/graphify) graph. The skill reads
-that evidence, brainstorms names, and defers to the human, who alone decides
+[Graphify](https://github.com/Graphify-Labs/graphify) graph. The skill requests
+a fresh, bounded context through the CLI, reads the production files named by
+that context, brainstorms names, and defers to the human, who alone decides
 what becomes canonical. Once a glossary exists, the engine can detect **drift**
 (the code's live vocabulary diverging from the settled glossary) and
 **reconcile** the glossary against the evidence and graph.
@@ -29,13 +30,14 @@ finalizes vocabulary and never renames code.
 ```
   human decides ────────────────────────────────────┐
         ▲                                             │
-        │ brainstorms names from evidence             │ writes GLOSSARY.md +
-  /glossarize skill (skill/SKILL.md)                  │ glossary.json when told
+        │ brainstorms names from evidence             │ approves vocabulary;
+  /glossarize skill (skill/SKILL.md)                  │ skill writes GLOSSARY.md,
+        │                                             │ CLI saves glossary.json
         ▲                                             ▼
-        │ reads evidence.json (falls back to raw repo if absent/stale)
+        │ runs `glossarize inspect .`; parses bounded JSON stdout
   ┌─────┴──────────────────────────────────────────────────────┐
   │ glossarize engine / CLI  (this Python package)              │
-  │   install · scan · analyze · show · drift · validate        │
+  │ install · inspect · save · scan · analyze · show · drift · validate│
   └─────┬───────────────────────────────────────────────────────┘
         │ normalizes every source into one intermediate representation
    ┌────┴─────────┐
@@ -46,11 +48,12 @@ finalizes vocabulary and never renames code.
 ```
 
 The skill is a Markdown behavioral spec, not code in this package. This
-document covers the engine; the skill's contract with the engine is that the
-evidence fields it names (`repository.git.head`, `vocabulary.tokens`,
-`monorepo.detected`, etc.) exist and mean what the skill says —
-`tests/test_skill.py` pins exactly that, so schema drift can't silently break
-the skill.
+document covers the engine; the skill's contract with it is the
+`AgentContext` emitted by `glossarize inspect .`. The skill never opens
+repository JSON artifacts itself and has no raw-repository fallback when the
+CLI boundary fails. `tests/test_skill.py` and `tests/test_agent_context.py` pin
+the versioned fields and failure behavior so schema drift cannot silently
+break grounding.
 
 ## Running it
 
@@ -83,6 +86,18 @@ Scan this repository with the installed CLI:
 glossarize analyze .
 ```
 
+Emit the bounded context consumed by the installed skill:
+
+```
+glossarize inspect .
+```
+
+Persist a validated glossary JSON document supplied on standard input:
+
+```
+glossarize save .
+```
+
 Or run the CLI without installing:
 
 ```
@@ -91,12 +106,12 @@ uv run glossarize analyze .
 
 ## The intermediate representation: RepositoryEvidence
 
-Everything the engine produces flows through one dictionary, built by
+Deterministic engine analysis flows through one dictionary, built by
 `build_evidence()` in `glossarize/evidence.py` and written to
 `<repo>/glossarize-out/evidence.json`. Both evidence sources (the lexical
-scanner and the Graphify adapter) normalize into it, so every consumer above
-that boundary — the terminology report, drift, reconciliation, and the skill —
-is source-agnostic. Its top-level shape:
+scanner and the Graphify adapter) normalize into it, so the terminology report,
+drift, reconciliation, and the agent-context projector are source-agnostic.
+The skill does not read this artifact directly. Its top-level shape:
 
 | Key | What it holds |
 |-----|---------------|
@@ -141,6 +156,26 @@ Two invariants govern this structure and are the reason it can be trusted:
   scopes overlap; reuse is valid only between disjoint scopes. Drift and
   lexical validation filter occurrences and stable bindings by that boundary.
 
+## The agent-facing representation: AgentContext
+
+`glossarize/agent_context.py` projects current `RepositoryEvidence` plus the
+strictly validated optional glossary into the JSON printed by
+`glossarize inspect .`. The command loads the glossary through
+`confined_artifact_path()`, performs a fresh scan, atomically refreshes the
+ordinary evidence artifact, and emits no progress text on standard output.
+
+The context has its own `context_schema_version`. Agent-facing collections are
+sampled at documented per-field limits, arbitrary nested lists have a smaller
+default limit, strings have a character ceiling, omission records are bounded,
+and the final UTF-8 JSON is capped at 1 MB. A projection needing more than 100
+distinct omission records fails rather than hiding which collection was cut.
+`coverage.corpus` preserves scanner
+coverage; `coverage.context` separately identifies every agent-projection
+omission and whether that projection is complete. If the final object still
+cannot fit, the command exits as a user error instead of emitting partial JSON.
+This is a model-context boundary, not a replacement for the full deterministic
+artifact used by other engine commands.
+
 ## Module map
 
 The package is `glossarize/`. Grouped by role:
@@ -149,6 +184,11 @@ The package is `glossarize/`. Grouped by role:
 - `cli.py` — argparse dispatcher. Owns the exit-status contract: `0` success,
   `1` user error (bad usage, missing input, malformed glossary), `2` internal
   defect. A custom parser remaps argparse's own exit-2-on-usage-error to `1`.
+  Both terminal streams are protected for the entire invocation.
+- `display.py` — centralized terminal rendering. C0/C1 controls, DEL, line
+  separators, and bidirectional-format characters from repository/user data
+  are rendered as visible escape spellings rather than emitted as terminal
+  instructions. Glossary identity fields reject them during validation.
 - `artifacts.py` — the reserved `glossarize-out/` plumbing shared by every command:
   `OUT_DIR`, `repo_root()` (the "is this a directory" check + resolve),
   `confined_artifact_path()` (direct artifacts may contain no symlink
@@ -198,6 +238,10 @@ The package is `glossarize/`. Grouped by role:
   `_git_stamp()` (runs `git` with the repo's dangerous config keys neutralized
   and the shared Glossarize-output pathspec — see Security) and the
   `scan`/`analyze` command handlers.
+- `agent_context.py` — the `inspect` command and versioned skill boundary.
+  It loads the optional glossary through the confined validator, builds fresh
+  evidence, applies deterministic list/string/output limits, records all
+  projection omissions, and prints JSON only.
 
 **Analysis over the evidence**
 - `imports.py` — best-effort, regex-level import extraction per language
@@ -264,6 +308,9 @@ The package is `glossarize/`. Grouped by role:
   `scope.path_prefixes` are literal repository-relative subsystem boundaries;
   aliases inherit the concept scope. NFKC-casefolded vocabulary has one owner
   within overlapping scopes, while disjoint scopes may deliberately reuse it.
+  Every object rejects unknown fields; accepted concepts, aliases, bindings,
+  scope paths, strings, and diagnostics have semantic ceilings. Vocabulary
+  ownership uses a per-term path-prefix trie rather than pairwise owner scans.
 - `drift.py` — `build_drift()` compares fresh evidence against the glossary:
   new terms paralleling canonical ones, discouraged/deprecated terms still in
   use, canonical terms fading from code, and canonical terms living in disjoint
@@ -339,6 +386,21 @@ content while remaining byte-identical to a cold scan. Any scanner-budget stop
 is visible in `skipped.corpus_budget` and on stderr; downstream users must treat
 that evidence as partial.
 
+**`inspect`** (`cli.py` → `agent_context.inspect_command`). Loads and validates
+the optional glossary first, builds fresh evidence through the same scanner as
+`scan`, refreshes `glossarize-out/evidence.json`, projects the result through
+the independent `AgentContext` limits, and emits one JSON document on stdout.
+Malformed, oversized, or symlinked glossaries and a context that exceeds its
+hard byte ceiling exit `1` without a lower-trust fallback. The installed skill
+parses this output and reads only production paths it names.
+
+**`save`** (`cli.py` → `glossary.save_command`). Accepts at most 64 MB from
+standard input (reading one additional byte only to detect overflow), parses
+exactly one JSON document, applies the strict glossary schema and semantic
+budgets, then calls `save_glossary()` for a confined, atomic replacement. The
+skill uses this flow after human approval and never writes the machine artifact
+directly.
+
 **`drift`** (`cli.py` → `drift.drift_command` → `build_drift`). Requires a
 glossary (`require_glossary`, exits `1` if absent). Builds fresh evidence,
 indexes the glossary's canonical/watched tokens and ownership scopes, runs the
@@ -357,7 +419,7 @@ skipped scope coverage because normalized Graphify groups have no path map.
 
 ## Git freshness and artifact lifecycle
 
-`_git_stamp()` and the skill use the same live-state definition. They read
+`_git_stamp()` records the live-state definition used in evidence. It reads
 `HEAD`, then run porcelain-v1 status with all untracked files, rename detection
 disabled, and these scanned-root-relative pathspecs:
 
@@ -367,8 +429,9 @@ disabled, and these scanned-root-relative pathspecs:
 :(exclude)glossarize-out/**
 ```
 
-The engine runs Git from the directory being scanned, and the skill runs the
-same check from that directory. The exclusions deliberately omit Git's `top`
+The engine runs Git from the directory being scanned. The skill no longer runs
+Git itself: `inspect` creates its context from the live scan in the same
+invocation. The exclusions deliberately omit Git's `top`
 modifier so a subproject scan inside a larger worktree excludes the
 subproject's output rather than an unrelated checkout-root path. They apply
 whether output is tracked or untracked. Disabling rename detection ensures a
@@ -377,8 +440,9 @@ No other path inside the scanned root is filtered: source, `GLOSSARY.md`,
 Graphify output, and the legacy repository-local cache path all retain normal
 Git status behavior. Git-ignored files remain invisible under Git's own rules,
 and a missing/unreadable `HEAD` or failed status check yields `null` rather than
-a false clean claim. The skill calls evidence fresh only when the recorded and
-live commits match and both dirty states are explicitly false.
+a false clean claim. `freshness.status: current` in `AgentContext` means
+generated in the current invocation; it is not an atomic-snapshot or
+authenticated-content claim.
 
 This filtered comparison is not an ignore-file mutation. Glossarize never
 creates or edits a target `.gitignore`; it merely reserves the top-level
@@ -431,6 +495,7 @@ structural validation is partial until an adapter supplies trustworthy paths.
 
 ## Where things stand
 
-`PLAN.md` is the authoritative roadmap. Phases 0–17 are complete; public PyPI
-publication and enabling GitHub private vulnerability reporting remain
-external, explicitly authorized actions rather than an implementation phase.
+`PLAN.md` is the authoritative roadmap. Phases 0–18 are complete; Phase 18
+implements the post-audit agent/input boundary. Phases 19–23, trusted-alpha
+evidence, and explicit external authorization remain before public package or
+plugin publication.

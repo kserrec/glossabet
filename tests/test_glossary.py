@@ -2,6 +2,7 @@
 states drift detection depends on being impossible, deterministic writes,
 and the show command."""
 
+import io
 import json
 import os
 
@@ -10,6 +11,7 @@ import pytest
 from glossarize.cli import main
 from glossarize.glossary import (
     GlossaryError,
+    MAX_VALIDATION_ERRORS,
     load_glossary,
     path_in_scope,
     save_glossary,
@@ -383,3 +385,268 @@ def test_glossary_symlink_is_rejected_without_reading_target(tmp_path):
 
     with pytest.raises(GlossaryError, match="symlinked artifact"):
         load_glossary(repo)
+
+
+@pytest.mark.parametrize(
+    "mutate,fragment",
+    [
+        (lambda g: g.update(typo=True), "top level has unknown field"),
+        (lambda g: g["concepts"][0].update(typo=True), "concepts[0] has unknown field"),
+        (
+            lambda g: g["concepts"][0]["aliases"][0].update(typo=True),
+            "aliases[0] has unknown field",
+        ),
+        (
+            lambda g: g["concepts"][0].update(
+                bindings=[{"ref": "symbol:Payment", "typo": True}]
+            ),
+            "bindings[0] has unknown field",
+        ),
+    ],
+)
+def test_unknown_glossary_fields_are_rejected_at_every_object_level(
+    mutate, fragment
+):
+    glossary = json.loads(json.dumps(GLOSSARY))
+    mutate(glossary)
+
+    assert any(fragment in error for error in validate_glossary(glossary))
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("term", "Payment\x1b]0;forged\x07"),
+        ("id", "payment\nforged"),
+        ("term", "Pay\u202ement"),
+        ("definition", "Looks safe\x9b2J"),
+    ],
+)
+def test_terminal_controls_and_bidi_formatting_are_rejected(field, value):
+    glossary = json.loads(json.dumps(GLOSSARY))
+    glossary["concepts"][0][field] = value
+
+    errors = validate_glossary(glossary)
+
+    assert any("terminal control or bidirectional" in error for error in errors)
+
+
+def test_human_prose_may_contain_newlines_and_tabs():
+    glossary = json.loads(json.dumps(GLOSSARY))
+    glossary["concepts"][0]["definition"] = "First line.\n\tSecond line."
+
+    assert validate_glossary(glossary) == []
+
+
+def test_show_renders_prose_layout_controls_visibly(tmp_path, capsys):
+    glossary = json.loads(json.dumps(GLOSSARY))
+    glossary["concepts"][0]["definition"] = "First line.\n\tSecond line."
+    save_glossary(tmp_path, glossary)
+
+    assert main(["show", str(tmp_path)]) == 0
+
+    output = capsys.readouterr().out
+    assert "First line.\\n\\tSecond line." in output
+    assert "First line.\n\tSecond line." not in output
+
+
+def test_validation_diagnostics_are_bounded():
+    glossary = {"schema_version": 1, "concepts": [None] * 500}
+
+    errors = validate_glossary(glossary)
+
+    assert len(errors) == MAX_VALIDATION_ERRORS
+    assert "additional validation error(s) omitted" in errors[-1]
+
+
+def test_concept_budget_is_checked_before_per_concept_validation(monkeypatch):
+    monkeypatch.setattr("glossarize.glossary.MAX_GLOSSARY_CONCEPTS", 2)
+    glossary = {"schema_version": 1, "concepts": [None, None, None]}
+
+    errors = validate_glossary(glossary)
+
+    assert errors == ["concepts exceeds the 2-concept limit"]
+    assert not any("must be an object" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    "constant,field,values,fragment",
+    [
+        (
+            "MAX_GLOSSARY_ALIASES",
+            "aliases",
+            [{"term": f"Alias {index}", "status": "alias"} for index in range(3)],
+            "aliases exceeds the 2-entry limit",
+        ),
+        (
+            "MAX_GLOSSARY_BINDINGS",
+            "bindings",
+            [{"ref": f"symbol:Name{index}"} for index in range(3)],
+            "bindings exceeds the 2-entry limit",
+        ),
+        (
+            "MAX_GLOSSARY_SCOPE_PREFIXES",
+            "scope",
+            {"path_prefixes": ["a", "b", "c"]},
+            "scope path prefixes exceeds the 2-entry limit",
+        ),
+    ],
+)
+def test_aggregate_child_budgets_are_checked_before_entry_validation(
+    monkeypatch, constant, field, values, fragment
+):
+    monkeypatch.setattr(f"glossarize.glossary.{constant}", 2)
+    concept = {
+        "id": "x", "term": "X", "definition": "A concept.",
+        "status": "canonical", field: values,
+    }
+
+    errors = validate_glossary({"schema_version": 1, "concepts": [concept]})
+
+    assert errors == [fragment]
+
+
+def test_identity_and_prose_string_limits_are_independent(monkeypatch):
+    concept = {
+        "id": "x", "term": "T" * 21, "definition": "D" * 7,
+        "status": "canonical",
+    }
+    monkeypatch.setattr("glossarize.glossary.MAX_GLOSSARY_IDENTITY_CHARS", 20)
+    monkeypatch.setattr("glossarize.glossary.MAX_GLOSSARY_PROSE_CHARS", 6)
+
+    errors = validate_glossary({"schema_version": 1, "concepts": [concept]})
+
+    assert any("field 'term' exceeds 20 characters" in error for error in errors)
+    assert any(
+        "field 'definition' exceeds 6 characters" in error for error in errors
+    )
+
+
+def test_scope_character_and_inherited_ownership_work_are_bounded(monkeypatch):
+    concept = {
+        "id": "x", "term": "X", "definition": "A concept.",
+        "status": "canonical",
+        "scope": {"path_prefixes": ["abc", "def"]},
+        "aliases": [
+            {"term": "Former X", "status": "alias"},
+            {"term": "Old X", "status": "deprecated"},
+        ],
+    }
+    monkeypatch.setattr("glossarize.glossary.MAX_GLOSSARY_SCOPE_CHARACTERS", 5)
+    monkeypatch.setattr(
+        "glossarize.glossary.MAX_GLOSSARY_OWNERSHIP_SCOPE_CHARACTERS", 10
+    )
+
+    errors = validate_glossary({"schema_version": 1, "concepts": [concept]})
+
+    assert any("5-character aggregate limit" in error for error in errors)
+    assert any("10-character limit" in error for error in errors)
+
+
+def test_unknown_field_diagnostic_uses_a_bounded_sample():
+    glossary = {
+        "schema_version": 1,
+        "concepts": [],
+        **{f"unknown-{index:03d}": True for index in range(100)},
+    }
+
+    errors = validate_glossary(glossary)
+
+    assert len(errors) == 1
+    assert "and 90 more" in errors[0]
+    assert len(errors[0]) < 500
+
+
+def test_vocabulary_owner_validation_uses_indexed_scope_lookup(monkeypatch):
+    # The former implementation called scopes_overlap once for every previous
+    # owner of the same word. This corpus made 7,998,000 pairwise checks. The
+    # indexed implementation does not call that helper during validation.
+    def pairwise_lookup_is_a_regression(*_args):
+        raise AssertionError("pairwise scope comparison used")
+
+    monkeypatch.setattr(
+        "glossarize.glossary.scopes_overlap", pairwise_lookup_is_a_regression
+    )
+    concepts = [
+        {
+            "id": f"session-{index}",
+            "term": "Session",
+            "definition": "A subsystem-local session.",
+            "status": "canonical",
+            "scope": {"path_prefixes": [f"packages/p{index:04d}"]},
+        }
+        for index in range(4_000)
+    ]
+
+    assert validate_glossary({"schema_version": 1, "concepts": concepts}) == []
+
+
+def test_overlapping_paths_inside_one_scope_are_rejected():
+    glossary = json.loads(json.dumps(GLOSSARY))
+    glossary["concepts"][0]["scope"] = {
+        "path_prefixes": ["src", "src/payments"]
+    }
+
+    assert any(
+        "contains overlapping paths" in error
+        for error in validate_glossary(glossary)
+    )
+
+
+def test_save_command_validates_stdin_and_writes_atomically(
+    tmp_path, capsys, monkeypatch
+):
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(GLOSSARY)))
+
+    assert main(["save", str(tmp_path)]) == 0
+
+    captured = capsys.readouterr()
+    assert "saved glossary" in captured.out
+    loaded = load_glossary(tmp_path)
+    assert [concept["id"] for concept in loaded["concepts"]] == [
+        "billing", "payment"
+    ]
+
+
+def test_save_command_rejects_invalid_stdin_without_writing(
+    tmp_path, capsys, monkeypatch
+):
+    path = save_glossary(tmp_path, GLOSSARY)
+    original = path.read_bytes()
+    invalid = json.loads(json.dumps(GLOSSARY))
+    invalid["concepts"][0]["typo"] = True
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(invalid)))
+
+    assert main(["save", str(tmp_path)]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "unknown field" in captured.err
+    assert path.read_bytes() == original
+
+
+def test_save_command_bounds_standard_input(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr("glossarize.glossary.MAX_JSON_BYTES", 20)
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(GLOSSARY)))
+
+    assert main(["save", str(tmp_path)]) == 1
+
+    assert "larger than 20 bytes" in capsys.readouterr().err
+    assert not (tmp_path / "glossarize-out" / "glossary.json").exists()
+
+
+def test_save_command_cannot_follow_a_glossary_symlink(
+    tmp_path, capsys, monkeypatch
+):
+    outside = tmp_path / "outside.json"
+    outside.write_text("do not replace")
+    repo = tmp_path / "repo"
+    out = repo / "glossarize-out"
+    out.mkdir(parents=True)
+    os.symlink(outside, out / "glossary.json")
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(GLOSSARY)))
+
+    assert main(["save", str(repo)]) == 1
+
+    assert "symlinked artifact paths are not trusted" in capsys.readouterr().err
+    assert outside.read_text() == "do not replace"

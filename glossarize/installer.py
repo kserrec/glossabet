@@ -19,6 +19,7 @@ from importlib import resources
 from pathlib import Path
 
 from glossarize.cli import EXIT_OK, EXIT_USER_ERROR
+from glossarize.display import escape_terminal_text
 
 AGENTS = ("codex", "claude")
 _DESTINATIONS = {
@@ -140,7 +141,10 @@ def install_command(
     try:
         path, outcome = install_skill(destination, force=force)
     except InstallError as exc:
-        print(f"glossarize: {exc}", file=sys.stderr)
+        print(
+            "glossarize: " + escape_terminal_text(str(exc)),
+            file=sys.stderr,
+        )
         return EXIT_USER_ERROR
 
     verbs = {
@@ -148,5 +152,7 @@ def install_command(
         "current": "Already current",
         "replaced": "Replaced",
     }
-    print(f"{verbs[outcome]} Glossarize skill for {agent}: {path}")
+    safe_agent = escape_terminal_text(agent)
+    safe_path = escape_terminal_text(str(path))
+    print(f"{verbs[outcome]} Glossarize skill for {safe_agent}: {safe_path}")
     return EXIT_OK

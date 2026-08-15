@@ -20,6 +20,7 @@ from glossarize import __version__
 from glossarize.artifacts import OUT_DIR, repo_root, write_artifact
 from glossarize.cache import entry_if_valid, load_cache, save_cache
 from glossarize.config import load_config
+from glossarize.display import escape_terminal_text
 from glossarize.graphify import (
     build_structural_groups,
     disabled_structural_groups,
@@ -447,14 +448,18 @@ def _print_terminology_report(evidence: dict) -> None:
     print(f"identifier length: {dist or 'n/a'}")
     for label, key in (("suffixes", "common_suffix_tokens"),
                        ("prefixes", "common_prefix_tokens")):
-        affixes = ", ".join(f"{a['token']} ({a['identifiers']})" for a in reg[key])
+        affixes = ", ".join(
+            f"{escape_terminal_text(a['token'])} ({a['identifiers']})"
+            for a in reg[key]
+        )
         print(f"common {label}: {affixes or 'none'}")
 
     layers = term["layers"]
     print("\n== code vs docs vocabulary ==")
     for label, key in (("shared", "shared_top"), ("code-only", "code_only_top"),
                        ("doc-only", "doc_only_top")):
-        print(f"{label}: {', '.join(layers[key]) or 'none'}")
+        values = ", ".join(escape_terminal_text(item) for item in layers[key])
+        print(f"{label}: {values or 'none'}")
 
     syn = term["synonym_candidates"]
     print(f"\n== possible vocabulary overlaps "
@@ -462,9 +467,14 @@ def _print_terminology_report(evidence: dict) -> None:
     if not syn["items"]:
         print("none nominated")
     for item in syn["items"]:
+        left = escape_terminal_text(item["a"])
+        right = escape_terminal_text(item["b"])
+        contexts = ", ".join(
+            escape_terminal_text(context) for context in item["shared_contexts"]
+        )
         print(
-            f"{item['a']} ~ {item['b']} (similarity {item['similarity']}; "
-            f"shared contexts: {', '.join(item['shared_contexts'])})"
+            f"{left} ~ {right} (similarity {item['similarity']}; "
+            f"shared contexts: {contexts})"
         )
     if syn["dropped_items"]:
         print(f"... and {syn['dropped_items']} more not shown")
@@ -474,19 +484,35 @@ def _print_terminology_report(evidence: dict) -> None:
     if not over["items"]:
         print("none nominated")
     for item in over["items"]:
-        mods = ", ".join(m["path"] for m in item["modules"])
-        print(f"{item['term']} across {mods} (dispersion {item['dispersion']})")
+        mods = ", ".join(
+            escape_terminal_text(module["path"])
+            for module in item["modules"]
+        )
+        term_name = escape_terminal_text(item["term"])
+        print(f"{term_name} across {mods} (dispersion {item['dispersion']})")
     if over["dropped_items"]:
         print(f"... and {over['dropped_items']} more not shown")
 
     naming = evidence["naming_candidates"]
     print("\n== naming candidates (import graph is best-effort) ==")
     for cand in naming["modules"]:
-        print(f"module {cand['path']} — {'; '.join(cand['reasons'])}")
+        path = escape_terminal_text(cand["path"])
+        reasons = "; ".join(
+            escape_terminal_text(reason) for reason in cand["reasons"]
+        )
+        print(f"module {path} — {reasons}")
     for cand in naming["terms"]:
-        print(f"term {cand['term']} — {'; '.join(cand['reasons'])}")
+        term_name = escape_terminal_text(cand["term"])
+        reasons = "; ".join(
+            escape_terminal_text(reason) for reason in cand["reasons"]
+        )
+        print(f"term {term_name} — {reasons}")
     for cand in naming["structures"]:
-        print(f"structure {cand['label']} — {'; '.join(cand['reasons'])}")
+        label = escape_terminal_text(cand["label"])
+        reasons = "; ".join(
+            escape_terminal_text(reason) for reason in cand["reasons"]
+        )
+        print(f"structure {label} — {reasons}")
     dropped = (naming["modules_dropped"] + naming["terms_dropped"]
                + naming["structures_dropped"])
     if dropped:
@@ -515,7 +541,10 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
     out_path = write_evidence(root, evidence)
     structural = evidence["structural_groups"]
     for warning in structural.get("warnings", []):
-        print(f"graphify adapter: {warning}", file=sys.stderr)
+        print(
+            f"graphify adapter: {escape_terminal_text(warning)}",
+            file=sys.stderr,
+        )
     if structural.get("available"):
         freshness = structural["freshness"]
         groups_summary = f"{len(structural['groups'])} structural group(s)"
@@ -527,7 +556,8 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
             f"graphify graph: {structural['nodes']} nodes, "
             f"{structural['edges']} edges, "
             f"{groups_summary}; "
-            f"freshness {freshness['status']} — {freshness['detail']}"
+            f"freshness {escape_terminal_text(freshness['status'])} — "
+            f"{escape_terminal_text(freshness['detail'])}"
         )
     elif structural.get("present"):
         print("graphify graph present, but no usable structural groups loaded")
@@ -542,7 +572,7 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
         f"{totals['doc_files']} doc files "
         f"({len(evidence['languages'])} languages); terminology scope: "
         f"{evidence['terminology']['scope']['code_files']} production code "
-        f"file(s) -> {out_path}"
+        f"file(s) -> {escape_terminal_text(str(out_path))}"
     )
     skipped = evidence["skipped"]
     if skipped["sensitive"]:
@@ -593,8 +623,14 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
         )
     mono = evidence["monorepo"]
     if mono["detected"]:
+        reasons = "; ".join(
+            escape_terminal_text(reason) for reason in mono["reasons"]
+        )
         print(
-            "monorepo detected: " + "; ".join(mono["reasons"]) + ".\n"
+            "monorepo detected: " + reasons + ".",
+            file=sys.stderr,
+        )
+        print(
             "Vocabulary is usually healthier per sub-project — consider "
             "running glossarize at a lower level for each sub-project.",
             file=sys.stderr,

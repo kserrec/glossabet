@@ -13,6 +13,7 @@ from __future__ import annotations
 from itertools import combinations
 
 from glossarize.artifacts import repo_root, write_artifact
+from glossarize.display import escape_terminal_text
 from glossarize.evidence import build_evidence, write_evidence
 from glossarize.glossary import (
     concept_scope,
@@ -339,28 +340,38 @@ def _print_report(drift: dict) -> None:
                 annotation = f"certainty {finding['certainty']}"
             else:
                 annotation = f"signal {finding['signal_strength']}"
-            print(f"{finding['summary']} [{annotation}]")
+            summary = escape_terminal_text(finding["summary"])
+            safe_annotation = escape_terminal_text(annotation)
+            print(f"{summary} [{safe_annotation}]")
             if finding.get("scope", {}).get("kind") == "path-prefixes":
                 print(
                     "    scope: "
-                    + ", ".join(finding["scope"]["path_prefixes"])
+                    + ", ".join(
+                        escape_terminal_text(path)
+                        for path in finding["scope"]["path_prefixes"]
+                    )
                 )
             evidence = finding["evidence"]
             if "shared_contexts" in evidence:
                 print(
                     "    shared contexts: "
-                    + ", ".join(evidence["shared_contexts"])
+                    + ", ".join(
+                        escape_terminal_text(context)
+                        for context in evidence["shared_contexts"]
+                    )
                 )
             if "locations" in evidence and evidence["locations"]:
                 sample = ", ".join(
-                    location["path"] for location in evidence["locations"][:3]
+                    escape_terminal_text(location["path"])
+                    for location in evidence["locations"][:3]
                 )
                 print(f"    e.g. {sample}")
             if isinstance(evidence.get("modules"), list):
                 print(
                     "    modules: "
                     + ", ".join(
-                        module["path"] for module in evidence["modules"]
+                        escape_terminal_text(module["path"])
+                        for module in evidence["modules"]
                     )
                 )
         if section["dropped_items"]:

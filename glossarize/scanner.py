@@ -253,6 +253,16 @@ def walk_repository(root: Path, config: RepositoryConfig) -> WalkResult:
 
         kept_dirs: list[tuple[Path, str]] = []
         for index, (entry, is_directory_symlink) in enumerate(directories):
+            d = entry.name
+            relative = d if is_root else f"{rel_dir}/{d}"
+            # Generated tool namespaces are not repository evidence. Prune
+            # them before charging the cross-repository walk counter so the
+            # first scan and later scans remain identical after Glossarize
+            # creates its own output directory. The enclosing directory's
+            # bounded scandir snapshot still limits the work needed to find
+            # these fixed names.
+            if d in SELF_DIRS:
+                continue
             if result.corpus_budget.walk_entries >= MAX_WALK_ENTRIES:
                 result.corpus_budget.truncate_walk(
                     rel_dir,
@@ -262,17 +272,16 @@ def walk_repository(root: Path, config: RepositoryConfig) -> WalkResult:
                 stop_walk = True
                 break
             result.corpus_budget.walk_entries += 1
-            d = entry.name
-            relative = d if is_root else f"{rel_dir}/{d}"
-            # Sensitive classification precedes every other prune so the
-            # exclusion is reported, never silent (mirrors the file rule).
+            # After fixed tool namespaces, sensitive classification precedes
+            # every repository-controlled prune so the exclusion is reported,
+            # never silent (mirrors the file rule).
             if is_sensitive(d):
                 result.skipped_sensitive.append(relative)
                 continue
             if config.is_ignored(relative):
                 result.skipped_configured.append(relative)
                 continue
-            if d.startswith(".") or d in SELF_DIRS:
+            if d.startswith("."):
                 continue
             role = config.role_for(relative, is_dir=True)
             if (
@@ -291,6 +300,10 @@ def walk_repository(root: Path, config: RepositoryConfig) -> WalkResult:
         ):
             result.sub_roots.append(rel_dir)
         for index, entry in enumerate(files):
+            fname = entry.name
+            rel = fname if is_root else f"{rel_dir}/{fname}"
+            if fname in SELF_FILES:
+                continue
             if result.corpus_budget.walk_entries >= MAX_WALK_ENTRIES:
                 result.corpus_budget.truncate_walk(
                     rel_dir,
@@ -300,10 +313,9 @@ def walk_repository(root: Path, config: RepositoryConfig) -> WalkResult:
                 stop_walk = True
                 break
             result.corpus_budget.walk_entries += 1
-            fname = entry.name
-            rel = fname if is_root else f"{rel_dir}/{fname}"
-            # Sensitive classification precedes the hidden-file skip so that
-            # exclusions like .env are reported, never silently dropped.
+            # After the fixed glossary filename, sensitive classification
+            # precedes the hidden-file skip so exclusions are reported rather
+            # than silently dropped.
             if is_sensitive(fname):
                 result.skipped_sensitive.append(rel)
                 continue
@@ -311,8 +323,6 @@ def walk_repository(root: Path, config: RepositoryConfig) -> WalkResult:
                 result.skipped_configured.append(rel)
                 continue
             if fname.startswith(".") and fname not in WORKSPACE_MANIFESTS:
-                continue
-            if fname in SELF_FILES:
                 continue
             role = config.role_for(rel)
             if role in EXCLUDED_CONTENT_ROLES:

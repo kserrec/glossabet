@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -24,6 +25,30 @@ def _one_wheel(dist: Path) -> Path:
 def _run(command: list[str], *, cwd: Path, env: dict[str, str]) -> None:
     print(f"$ {' '.join(command)}", flush=True)
     subprocess.run(command, cwd=cwd, env=env, check=True)
+
+
+def _capture(
+    command: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    input_text: str | None = None,
+) -> str:
+    print(f"$ {' '.join(command)}", flush=True)
+    result = subprocess.run(
+        command,
+        cwd=cwd,
+        env=env,
+        input=input_text,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    if result.stdout:
+        print(result.stdout, end="", flush=True)
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr, flush=True)
+    return result.stdout
 
 
 def main() -> int:
@@ -72,6 +97,39 @@ def main() -> int:
         if installed_skill.read_bytes() != (ROOT / "skill" / "SKILL.md").read_bytes():
             raise RuntimeError("wheel-installed skill differs from the canonical skill")
 
+        boundary_repo = work / "agent-boundary"
+        boundary_repo.mkdir()
+        (boundary_repo / "service.py").write_text(
+            "class PaymentService:\n    pass\n", encoding="utf-8"
+        )
+        glossary = {
+            "schema_version": 1,
+            "concepts": [
+                {
+                    "id": "payment-service",
+                    "term": "Payment Service",
+                    "definition": "The service that owns payment attempts.",
+                    "status": "canonical",
+                }
+            ],
+        }
+        _capture(
+            [str(cli), "save", str(boundary_repo)],
+            cwd=work,
+            env=env,
+            input_text=json.dumps(glossary),
+        )
+        context_text = _capture(
+            [str(cli), "inspect", str(boundary_repo), "--no-graphify"],
+            cwd=work,
+            env=env,
+        )
+        context = json.loads(context_text)
+        if context.get("context_schema_version") != 1:
+            raise RuntimeError("wheel-installed inspect returned the wrong schema")
+        if context.get("glossary", {}).get("concepts") != glossary["concepts"]:
+            raise RuntimeError("wheel-installed inspect lost validated glossary state")
+
         _run(
             [str(python), str(ROOT / "scripts" / "run_walkthrough.py")],
             cwd=work,
@@ -94,8 +152,8 @@ def main() -> int:
             raise RuntimeError("pip uninstall unexpectedly removed the user-installed skill")
 
     print(
-        "wheel smoke passed: isolated install, skill install, walkthrough, "
-        "package uninstall, and temporary cleanup completed"
+        "wheel smoke passed: isolated install, skill install, agent boundary, "
+        "walkthrough, package uninstall, and temporary cleanup completed"
     )
     return 0
 

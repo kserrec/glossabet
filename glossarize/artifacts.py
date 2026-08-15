@@ -16,6 +16,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from glossarize.display import escape_terminal_text
+
 OUT_DIR = "glossarize-out"
 
 # Directly-read repository JSON (graph.json and glossary.json) is bounded like
@@ -43,7 +45,10 @@ def repo_root(path_arg: str) -> Path | None:
     """Resolved repository root, or None after reporting the user error."""
     root = Path(path_arg)
     if not root.is_dir():
-        print(f"glossarize: not a directory: {path_arg}", file=sys.stderr)
+        print(
+            "glossarize: not a directory: " + escape_terminal_text(path_arg),
+            file=sys.stderr,
+        )
         return None
     return root.resolve()
 

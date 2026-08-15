@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 import sys
 import unicodedata
-from collections import defaultdict
 from pathlib import Path
 
 from glossarize.artifacts import (
@@ -25,6 +24,7 @@ from glossarize.artifacts import (
     repo_root,
     write_artifact,
 )
+from glossarize.display import contains_terminal_control, escape_terminal_text
 
 GLOSSARY_SCHEMA_VERSION = 1
 GLOSSARY_FILE = "glossary.json"
@@ -38,6 +38,30 @@ BINDING_KINDS = frozenset({"symbol", "file", "module"})
 _REQUIRED_CONCEPT_KEYS = ("id", "term", "definition", "status")
 SCOPE_PATHS_KEY = "path_prefixes"
 
+_TOP_LEVEL_KEYS = frozenset({"schema_version", "concepts"})
+_CONCEPT_KEYS = frozenset(
+    {
+        "id", "term", "definition", "status", "scope", "aliases",
+        "bindings", "notes",
+    }
+)
+_ALIAS_KEYS = frozenset({"term", "status", "note"})
+_BINDING_KEYS = frozenset({"ref"})
+
+# JSON bytes are bounded before parsing, but validation also needs semantic
+# limits: a compact hostile document can otherwise create quadratic owner
+# comparisons or an enormous diagnostic. These are accepted-input ceilings,
+# not targets for a useful human glossary.
+MAX_GLOSSARY_CONCEPTS = 10_000
+MAX_GLOSSARY_ALIASES = 50_000
+MAX_GLOSSARY_BINDINGS = 50_000
+MAX_GLOSSARY_SCOPE_PREFIXES = 50_000
+MAX_GLOSSARY_SCOPE_CHARACTERS = 1_000_000
+MAX_GLOSSARY_OWNERSHIP_SCOPE_CHARACTERS = 5_000_000
+MAX_GLOSSARY_IDENTITY_CHARS = 1_024
+MAX_GLOSSARY_PROSE_CHARS = 16_384
+MAX_VALIDATION_ERRORS = 100
+
 
 class GlossaryError(ValueError):
     """The glossary file exists but is not usable as written."""
@@ -47,26 +71,108 @@ def _fold_vocabulary(term: str) -> str:
     return unicodedata.normalize("NFKC", term.strip()).casefold()
 
 
-def _scope_from_raw(raw: object, where: str, errors: list[str]) -> tuple[str, ...] | None:
+def _bounded_repr(value: object, limit: int = 160) -> str:
+    if isinstance(value, str):
+        if len(value) <= limit:
+            return repr(value)
+        return repr(value[:limit]) + "…"
+    if isinstance(value, bytes):
+        if len(value) <= limit:
+            return repr(value)
+        return repr(value[:limit]) + "…"
+    if isinstance(value, (list, tuple, set, frozenset, dict)):
+        return f"<{type(value).__name__} with {len(value)} item(s)>"
+    if value is None or isinstance(value, (bool, int, float)):
+        return repr(value)
+    return f"<{type(value).__name__}>"
+
+
+class _ValidationErrors:
+    """Count every error while retaining a fixed-size useful prefix."""
+
+    def __init__(self) -> None:
+        self.messages: list[str] = []
+        self.total = 0
+
+    def add(self, message: str) -> None:
+        self.total += 1
+        if len(self.messages) < MAX_VALIDATION_ERRORS - 1:
+            self.messages.append(message)
+
+    def finish(self) -> list[str]:
+        omitted = self.total - len(self.messages)
+        if omitted:
+            self.messages.append(
+                f"... {omitted} additional validation error(s) omitted"
+            )
+        return self.messages
+
+
+def _unknown_fields(
+    value: dict, allowed: frozenset[str], where: str,
+    errors: _ValidationErrors,
+) -> None:
+    unknown_count = 0
+    samples: list[object] = []
+    for key in value:
+        if isinstance(key, str) and key in allowed:
+            continue
+        unknown_count += 1
+        if len(samples) < 10:
+            samples.append(key)
+    if unknown_count:
+        rendered = ", ".join(
+            sorted(_bounded_repr(key) for key in samples)
+        )
+        if unknown_count > len(samples):
+            rendered += f", ... and {unknown_count - len(samples)} more"
+        errors.add(f"{where} has unknown field(s): {rendered}")
+
+
+def _string_field(
+    value: object,
+    where: str,
+    errors: _ValidationErrors,
+    *,
+    required: bool,
+    prose: bool = False,
+) -> str | None:
+    if not isinstance(value, str) or (required and not value.strip()):
+        qualifier = "non-empty " if required else ""
+        errors.add(f"{where} must be a {qualifier}string")
+        return None
+    limit = MAX_GLOSSARY_PROSE_CHARS if prose else MAX_GLOSSARY_IDENTITY_CHARS
+    if len(value) > limit:
+        errors.add(f"{where} exceeds {limit} characters")
+        return None
+    if contains_terminal_control(value, allow_layout=prose):
+        errors.add(
+            f"{where} contains a terminal control or bidirectional-format character"
+        )
+        return None
+    return value
+
+
+def _scope_from_raw(
+    raw: object, where: str, errors: _ValidationErrors,
+) -> tuple[tuple[str, ...] | None, bool]:
     """Validate and normalize one concept scope; ``None`` means repository-wide."""
     if raw is None:
-        errors.append(f"{where}.scope must be an object; omit it for repository-wide")
-        return None
+        errors.add(f"{where}.scope must be an object; omit it for repository-wide")
+        return None, False
     if not isinstance(raw, dict):
-        errors.append(f"{where}.scope must be an object")
-        return None
-    unknown = sorted(set(raw) - {SCOPE_PATHS_KEY})
-    if unknown:
-        errors.append(f"{where}.scope has unknown field(s): {', '.join(unknown)}")
+        errors.add(f"{where}.scope must be an object")
+        return None, False
+    _unknown_fields(raw, frozenset({SCOPE_PATHS_KEY}), f"{where}.scope", errors)
     prefixes = raw.get(SCOPE_PATHS_KEY)
     if not isinstance(prefixes, list) or not prefixes:
-        errors.append(f"{where}.scope.{SCOPE_PATHS_KEY} must be a non-empty list")
-        return None
+        errors.add(f"{where}.scope.{SCOPE_PATHS_KEY} must be a non-empty list")
+        return None, False
     valid: list[str] = []
     for index, prefix in enumerate(prefixes):
         path_where = f"{where}.scope.{SCOPE_PATHS_KEY}[{index}]"
-        if not isinstance(prefix, str) or not prefix:
-            errors.append(f"{path_where} must be a non-empty string")
+        prefix = _string_field(prefix, path_where, errors, required=True)
+        if prefix is None:
             continue
         parts = prefix.split("/")
         if (
@@ -77,14 +183,151 @@ def _scope_from_raw(raw: object, where: str, errors: list[str]) -> tuple[str, ..
             or any(part in ("", ".", "..") for part in parts)
             or any(char in prefix for char in "*?[]")
         ):
-            errors.append(
+            errors.add(
                 f"{path_where} must be a literal repository-relative path prefix"
             )
             continue
         valid.append(prefix)
     if len(set(valid)) != len(valid):
-        errors.append(f"{where}.scope.{SCOPE_PATHS_KEY} contains duplicate paths")
-    return tuple(sorted(set(valid))) if valid else None
+        errors.add(f"{where}.scope.{SCOPE_PATHS_KEY} contains duplicate paths")
+    unique = set(valid)
+    overlapping = False
+    ancestry: list[str] = []
+    for prefix in sorted(unique):
+        while ancestry and not prefix.startswith(ancestry[-1] + "/"):
+            ancestry.pop()
+        if ancestry:
+            overlapping = True
+            break
+        ancestry.append(prefix)
+    if overlapping:
+        errors.add(
+            f"{where}.scope.{SCOPE_PATHS_KEY} contains overlapping paths"
+        )
+    usable = bool(valid) and len(unique) == len(valid) and not overlapping
+    return (tuple(sorted(unique)) if usable else None), usable
+
+
+class _ScopeNode:
+    __slots__ = ("children", "owner_here", "subtree_owner")
+
+    def __init__(self) -> None:
+        self.children: dict[str, _ScopeNode] = {}
+        self.owner_here: tuple[int, str, str] | None = None
+        self.subtree_owner: tuple[int, str, str] | None = None
+
+
+class _ScopeOwnerIndex:
+    """Find one overlapping vocabulary owner in path-prefix time.
+
+    A repository-wide owner overlaps every path. Scoped owners live in a trie:
+    overlap is either an owner on an ancestor node or any owner in the queried
+    node's subtree. Validation therefore avoids comparing every concept with
+    every earlier concept that uses the same word.
+    """
+
+    def __init__(self) -> None:
+        self.global_owner: tuple[int, str, str] | None = None
+        self.root = _ScopeNode()
+
+    def conflict(
+        self, scope: tuple[str, ...] | None
+    ) -> tuple[int, str, str] | None:
+        if self.global_owner is not None:
+            return self.global_owner
+        if scope is None:
+            return self.root.subtree_owner
+        for prefix in scope:
+            node = self.root
+            for part in prefix.split("/"):
+                if node.owner_here is not None:
+                    return node.owner_here
+                child = node.children.get(part)
+                if child is None:
+                    break
+                node = child
+            else:
+                if node.owner_here is not None:
+                    return node.owner_here
+                if node.subtree_owner is not None:
+                    return node.subtree_owner
+        return None
+
+    def add(
+        self, scope: tuple[str, ...] | None, owner: tuple[int, str, str]
+    ) -> None:
+        if scope is None:
+            if self.global_owner is None:
+                self.global_owner = owner
+            return
+        for prefix in scope:
+            node = self.root
+            if node.subtree_owner is None:
+                node.subtree_owner = owner
+            for part in prefix.split("/"):
+                node = node.children.setdefault(part, _ScopeNode())
+                if node.subtree_owner is None:
+                    node.subtree_owner = owner
+            if node.owner_here is None:
+                node.owner_here = owner
+
+
+def _within_aggregate_limits(
+    concepts: list[object], errors: _ValidationErrors
+) -> bool:
+    starting_errors = errors.total
+    if len(concepts) > MAX_GLOSSARY_CONCEPTS:
+        errors.add(
+            f"concepts exceeds the {MAX_GLOSSARY_CONCEPTS}-concept limit"
+        )
+        return False
+    aliases = bindings = scope_prefixes = scope_characters = 0
+    ownership_scope_characters = 0
+    for concept in concepts:
+        if not isinstance(concept, dict):
+            continue
+        raw_aliases = concept.get("aliases")
+        raw_bindings = concept.get("bindings")
+        raw_scope = concept.get("scope")
+        if isinstance(raw_aliases, list):
+            aliases += len(raw_aliases)
+        if isinstance(raw_bindings, list):
+            bindings += len(raw_bindings)
+        if isinstance(raw_scope, dict):
+            raw_prefixes = raw_scope.get(SCOPE_PATHS_KEY)
+            if isinstance(raw_prefixes, list):
+                scope_prefixes += len(raw_prefixes)
+                concept_scope_characters = sum(
+                    len(prefix) for prefix in raw_prefixes
+                    if isinstance(prefix, str)
+                )
+                scope_characters += concept_scope_characters
+                vocabulary_entries = 1 + (
+                    len(raw_aliases) if isinstance(raw_aliases, list) else 0
+                )
+                ownership_scope_characters += (
+                    vocabulary_entries * max(1, concept_scope_characters)
+                )
+    if aliases > MAX_GLOSSARY_ALIASES:
+        errors.add(f"aliases exceeds the {MAX_GLOSSARY_ALIASES}-entry limit")
+    if bindings > MAX_GLOSSARY_BINDINGS:
+        errors.add(f"bindings exceeds the {MAX_GLOSSARY_BINDINGS}-entry limit")
+    if scope_prefixes > MAX_GLOSSARY_SCOPE_PREFIXES:
+        errors.add(
+            "scope path prefixes exceeds the "
+            f"{MAX_GLOSSARY_SCOPE_PREFIXES}-entry limit"
+        )
+    if scope_characters > MAX_GLOSSARY_SCOPE_CHARACTERS:
+        errors.add(
+            "scope path prefixes exceed the "
+            f"{MAX_GLOSSARY_SCOPE_CHARACTERS}-character aggregate limit"
+        )
+    if ownership_scope_characters > MAX_GLOSSARY_OWNERSHIP_SCOPE_CHARACTERS:
+        errors.add(
+            "vocabulary ownership scope work exceeds the "
+            f"{MAX_GLOSSARY_OWNERSHIP_SCOPE_CHARACTERS}-character limit"
+        )
+    return errors.total == starting_errors
 
 
 def concept_scope(concept: dict) -> tuple[str, ...] | None:
@@ -124,122 +367,157 @@ def scope_evidence(scope: tuple[str, ...] | None) -> dict:
 
 
 def validate_glossary(glossary: object) -> list[str]:
-    errors: list[str] = []
+    errors = _ValidationErrors()
     if not isinstance(glossary, dict):
         return ["top level must be an object"]
+    _unknown_fields(glossary, _TOP_LEVEL_KEYS, "top level", errors)
     if glossary.get("schema_version") != GLOSSARY_SCHEMA_VERSION:
-        errors.append(
+        errors.add(
             f"schema_version must be {GLOSSARY_SCHEMA_VERSION}, "
-            f"got {glossary.get('schema_version')!r}"
+            f"got {_bounded_repr(glossary.get('schema_version'))}"
         )
     concepts = glossary.get("concepts")
     if not isinstance(concepts, list):
-        errors.append("concepts must be a list")
-        return errors
+        errors.add("concepts must be a list")
+        return errors.finish()
+    if not _within_aggregate_limits(concepts, errors):
+        return errors.finish()
     seen_ids: set[str] = set()
-    vocabulary_owners: dict[
-        str, list[tuple[int, str, str, tuple[str, ...] | None]]
-    ] = defaultdict(list)
+    vocabulary_owners: dict[str, _ScopeOwnerIndex] = {}
+
+    def claim_vocabulary(
+        folded: str, owner: tuple[int, str, str],
+        scope: tuple[str, ...] | None,
+    ) -> tuple[int, str, str] | None:
+        index = vocabulary_owners.setdefault(folded, _ScopeOwnerIndex())
+        previous = index.conflict(scope)
+        index.add(scope, owner)
+        return previous
+
     for i, concept in enumerate(concepts):
         where = f"concepts[{i}]"
         if not isinstance(concept, dict):
-            errors.append(f"{where} must be an object")
+            errors.add(f"{where} must be an object")
             continue
+        _unknown_fields(concept, _CONCEPT_KEYS, where, errors)
+        strings: dict[str, str | None] = {}
         for key in _REQUIRED_CONCEPT_KEYS:
-            value = concept.get(key)
-            if not isinstance(value, str) or not value.strip():
-                errors.append(f"{where} needs a non-empty string {key!r}")
-        status = concept.get("status")
-        if isinstance(status, str) and status not in STATUSES:
-            errors.append(
+            strings[key] = _string_field(
+                concept.get(key), f"{where} field {key!r}", errors,
+                required=True, prose=key == "definition",
+            )
+        for key in ("notes",):
+            if key in concept:
+                _string_field(
+                    concept[key], f"{where}.{key}", errors,
+                    required=False, prose=True,
+                )
+        status = strings["status"]
+        if status is not None and status not in STATUSES:
+            errors.add(
                 f"{where} status {status!r} not one of {sorted(STATUSES)}"
             )
-        scope = (
+        scope, scope_valid = (
             _scope_from_raw(concept["scope"], where, errors)
-            if "scope" in concept else None
+            if "scope" in concept else (None, True)
         )
-        cid = concept.get("id")
-        if isinstance(cid, str) and cid.strip():
+        cid = strings["id"]
+        if cid is not None:
             if cid in seen_ids:
-                errors.append(f"{where} duplicate id {cid!r}")
+                errors.add(f"{where} duplicate id {cid!r}")
             seen_ids.add(cid)
-        term = concept.get("term")
-        if isinstance(term, str) and term.strip():
+        term = strings["term"]
+        owner_id = cid if cid is not None else "<invalid>"
+        if term is not None and scope_valid:
             folded = _fold_vocabulary(term)
-            for previous in vocabulary_owners[folded]:
-                if previous[0] != i and scopes_overlap(previous[3], scope):
-                    if previous[2] == "term":
-                        errors.append(
-                            f"{where} duplicate term {term!r} in overlapping "
-                            f"scopes ({previous[1]!r} and {cid!r})"
-                        )
-                    else:
-                        errors.append(
-                            f"{where} term {term!r} maps to multiple concepts "
-                            f"in overlapping scopes ({previous[1]!r} and {cid!r})"
-                        )
-            vocabulary_owners[folded].append((i, str(cid), "term", scope))
+            previous = claim_vocabulary(
+                folded, (i, owner_id, "term"), scope
+            )
+            if previous is not None:
+                if previous[2] == "term":
+                    errors.add(
+                        f"{where} duplicate term {term!r} in overlapping "
+                        f"scopes ({previous[1]!r} and {owner_id!r})"
+                    )
+                else:
+                    errors.add(
+                        f"{where} term {term!r} maps to multiple concepts "
+                        f"in overlapping scopes ({previous[1]!r} and "
+                        f"{owner_id!r})"
+                    )
         aliases = concept.get("aliases", [])
         if not isinstance(aliases, list):
-            errors.append(f"{where}.aliases must be a list")
+            errors.add(f"{where}.aliases must be a list")
             aliases = []
         for j, alias in enumerate(aliases):
             aw = f"{where}.aliases[{j}]"
-            alias_term = alias.get("term") if isinstance(alias, dict) else None
-            if (
-                not isinstance(alias_term, str)
-                or not alias_term.strip()
-            ):
-                errors.append(f"{aw} needs a 'term'")
+            if not isinstance(alias, dict):
+                errors.add(f"{aw} must be an object")
                 continue
-            alias_status = alias.get("status")
-            if not isinstance(alias_status, str) or alias_status not in STATUSES:
-                errors.append(
+            _unknown_fields(alias, _ALIAS_KEYS, aw, errors)
+            alias_term = _string_field(
+                alias.get("term"), f"{aw}.term", errors, required=True
+            )
+            alias_status = _string_field(
+                alias.get("status"), f"{aw}.status", errors, required=True
+            )
+            if "note" in alias:
+                _string_field(
+                    alias["note"], f"{aw}.note", errors,
+                    required=False, prose=True,
+                )
+            if alias_status is not None and alias_status not in STATUSES:
+                errors.add(
                     f"{aw} status {alias_status!r} not one of "
                     f"{sorted(STATUSES)}"
                 )
+            if alias_term is None or not scope_valid:
+                continue
             folded_alias = _fold_vocabulary(alias_term)
-            conflicting = [
-                owner for owner in vocabulary_owners[folded_alias]
-                if owner[0] == i or scopes_overlap(owner[3], scope)
-            ]
-            if conflicting:
-                previous = conflicting[0]
+            previous = claim_vocabulary(
+                folded_alias, (i, owner_id, "alias"), scope
+            )
+            if previous is not None:
                 if previous[0] != i:
-                    errors.append(
+                    errors.add(
                         f"{aw} alias term {alias_term!r} maps to multiple "
                         f"concepts in overlapping scopes "
-                        f"({previous[1]!r} and {cid!r})"
+                        f"({previous[1]!r} and {owner_id!r})"
                     )
                 else:
-                    errors.append(
+                    errors.add(
                         f"{aw} duplicate vocabulary term {alias_term!r} "
-                        f"within concept {cid!r}"
+                        f"within concept {owner_id!r}"
                     )
-            vocabulary_owners[folded_alias].append(
-                (i, str(cid), "alias", scope)
-            )
         bindings = concept.get("bindings", [])
         if not isinstance(bindings, list):
-            errors.append(f"{where}.bindings must be a list")
+            errors.add(f"{where}.bindings must be a list")
             bindings = []
         for j, binding in enumerate(bindings):
             bw = f"{where}.bindings[{j}]"
-            ref = binding.get("ref") if isinstance(binding, dict) else None
-            if not isinstance(ref, str) or ":" not in ref:
-                errors.append(f"{bw} needs a 'ref' like 'symbol:Name'")
+            if not isinstance(binding, dict):
+                errors.add(f"{bw} must be an object")
+                continue
+            _unknown_fields(binding, _BINDING_KEYS, bw, errors)
+            ref = _string_field(
+                binding.get("ref"), f"{bw}.ref", errors, required=True
+            )
+            if ref is None:
+                continue
+            if ":" not in ref:
+                errors.add(f"{bw} needs a 'ref' like 'symbol:Name'")
                 continue
             kind, _, target = ref.partition(":")
             if not target.strip():
-                errors.append(f"{bw} needs a 'ref' like 'symbol:Name'")
+                errors.add(f"{bw} needs a 'ref' like 'symbol:Name'")
                 continue
             if kind not in BINDING_KINDS:
-                errors.append(
+                errors.add(
                     f"{bw} unsupported ref kind {kind!r} — bindings target "
                     f"stable identities only ({sorted(BINDING_KINDS)}); "
                     "community/node ids are not stable across graph rebuilds"
                 )
-    return errors
+    return errors.finish()
 
 
 def glossary_path(root: Path) -> Path:
@@ -298,11 +576,15 @@ def require_glossary(root: Path, missing: str) -> dict | None:
     try:
         glossary = load_glossary(root)
     except GlossaryError as exc:
-        print(f"glossarize: {exc}", file=sys.stderr)
+        print(
+            "glossarize: " + escape_terminal_text(str(exc)),
+            file=sys.stderr,
+        )
         return None
     if glossary is None:
+        safe_missing = escape_terminal_text(missing)
         print(
-            f"glossarize: {missing} — run /glossarize and settle terms "
+            f"glossarize: {safe_missing} — run /glossarize and settle terms "
             f"first ({OUT_DIR}/{GLOSSARY_FILE})",
             file=sys.stderr,
         )
@@ -317,7 +599,10 @@ def show_command(path_arg: str) -> int:
     try:
         glossary = load_glossary(root)
     except GlossaryError as exc:
-        print(f"glossarize: {exc}", file=sys.stderr)
+        print(
+            "glossarize: " + escape_terminal_text(str(exc)),
+            file=sys.stderr,
+        )
         return 1
     if glossary is None:
         print(
@@ -341,13 +626,77 @@ def show_command(path_arg: str) -> int:
             continue
         print(f"\n== {status} ==")
         for concept in group:
-            print(f"{concept['term']} — {concept['definition']}")
+            term = escape_terminal_text(concept["term"])
+            definition = escape_terminal_text(concept["definition"])
+            print(f"{term} — {definition}")
             scope = concept_scope(concept)
             if scope is not None:
-                print(f"    scope: {', '.join(scope)}")
+                print(
+                    "    scope: "
+                    + ", ".join(escape_terminal_text(path) for path in scope)
+                )
             for alias in concept.get("aliases", []):
-                note = f" ({alias['note']})" if alias.get("note") else ""
-                print(f"    alias: {alias['term']} [{alias['status']}]{note}")
+                alias_term = escape_terminal_text(alias["term"])
+                alias_status = escape_terminal_text(alias["status"])
+                note = (
+                    f" ({escape_terminal_text(alias['note'])})"
+                    if alias.get("note") else ""
+                )
+                print(f"    alias: {alias_term} [{alias_status}]{note}")
             if concept.get("notes"):
-                print(f"    note: {concept['notes']}")
+                print(f"    note: {escape_terminal_text(concept['notes'])}")
+    return 0
+
+
+def save_command(path_arg: str) -> int:
+    """Validate JSON from stdin and persist it through the safe writer."""
+    root = repo_root(path_arg)
+    if root is None:
+        return 1
+    if sys.stdin.isatty():
+        print(
+            "glossarize: save requires one glossary JSON document on "
+            "standard input",
+            file=sys.stderr,
+        )
+        return 1
+
+    stream = getattr(sys.stdin, "buffer", sys.stdin)
+    try:
+        raw = stream.read(MAX_JSON_BYTES + 1)
+    except (OSError, UnicodeError) as exc:
+        print(
+            "glossarize: cannot read glossary JSON from standard input: "
+            + escape_terminal_text(str(exc)),
+            file=sys.stderr,
+        )
+        return 1
+    encoded_size = (
+        len(raw.encode("utf-8")) if isinstance(raw, str) else len(raw)
+    )
+    if encoded_size > MAX_JSON_BYTES:
+        print(
+            "glossarize: glossary JSON on standard input is larger than "
+            f"{MAX_JSON_BYTES} bytes",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        glossary = json.loads(raw)
+    except (ValueError, UnicodeError, RecursionError) as exc:
+        print(
+            "glossarize: glossary JSON on standard input is unreadable ("
+            + escape_terminal_text(str(exc)) + ")",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        path = save_glossary(root, glossary)
+    except (GlossaryError, ArtifactError) as exc:
+        print(
+            "glossarize: " + escape_terminal_text(str(exc)),
+            file=sys.stderr,
+        )
+        return 1
+    print("saved glossary: " + escape_terminal_text(str(path)))
     return 0

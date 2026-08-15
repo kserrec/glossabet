@@ -1,19 +1,23 @@
-"""Skill/engine interface: the evidence fields the skill's protocol references
-must actually exist in built evidence — schema drift here silently breaks the
-skill's grounding."""
+"""Skill/engine interface: the CLI context fields named by the protocol must
+exist, and the skill must never bypass that boundary for artifact reads."""
 
 from pathlib import Path
 
-from glossarize.evidence import _GIT_FRESHNESS_STATUS_ARGS, build_evidence
+from glossarize.agent_context import (
+    AGENT_CONTEXT_SCHEMA_VERSION,
+    build_agent_context,
+)
+from glossarize.evidence import build_evidence
 
 SKILL = Path(__file__).resolve().parents[1] / "skill" / "SKILL.md"
 
 
-def test_skill_exists_with_evidence_protocol():
+def test_skill_exists_with_cli_context_protocol():
     text = SKILL.read_text()
-    assert "glossarize-out/evidence.json" in text
+    assert "glossarize inspect ." in text
+    assert f"`context_schema_version` other than `{AGENT_CONTEXT_SCHEMA_VERSION}`" in text
     assert "monorepo" in text
-    assert "stale" in text.lower()
+    assert "freshly generated" in text.lower()
 
 
 def test_distribution_skill_copy_is_declared_from_the_canonical_source():
@@ -21,21 +25,14 @@ def test_distribution_skill_copy_is_declared_from_the_canonical_source():
     assert '"skill/SKILL.md" = "glossarize/_skill/SKILL.md"' in pyproject
 
 
-def test_skill_freshness_uses_the_engine_output_boundary():
+def test_skill_requires_the_engine_boundary_without_artifact_fallback():
     text = SKILL.read_text()
-    for fragment in (
-        "--porcelain=v1",
-        "--untracked-files=all",
-        "--no-renames",
-        ":(exclude)glossarize-out",
-        ":(exclude)glossarize-out/**",
-    ):
-        assert fragment in _GIT_FRESHNESS_STATUS_ARGS
-        assert fragment in text
-    assert (
-        "Never edit the target repository's `.gitignore`"
-        in " ".join(text.split())
-    )
+    normalized = " ".join(text.split())
+    assert "Never open, read, search, or parse Glossarize's repository JSON artifacts yourself" in normalized
+    assert "Do not replace a failed command with recursive repository reading" in normalized
+    assert "fall back to direct repository reading" not in normalized
+    assert "glossarize save ." in text
+    assert "Never write, patch, or open `glossarize-out/glossary.json` yourself" in normalized
 
 
 def test_skill_glossary_protocol_matches_engine():
@@ -51,34 +48,38 @@ def test_skill_glossary_protocol_matches_engine():
     assert "disjoint path scope" in text
 
 
-def test_skill_referenced_fields_exist_in_evidence(tmp_path):
+def test_skill_referenced_fields_exist_in_agent_context(tmp_path):
     (tmp_path / "a.py").write_text("payment_service = 1\n")
     evidence = build_evidence(tmp_path)
+    context = build_agent_context(evidence, None)
     text = SKILL.read_text()
-    # Dotted paths the protocol names:
-    assert evidence["repository"]["git"].keys() >= {"head", "dirty"}
-    assert "repository.git.head" in text and "repository.git.dirty" in text
+    assert context["context_schema_version"] == AGENT_CONTEXT_SCHEMA_VERSION
+    assert context["freshness"]["status"] == "current"
+    assert context["repository"]["git"].keys() >= {"head", "dirty"}
+    assert "`repository.git`" in text
     # Top-level sections the protocol feeds into Steps 1-3:
     for key in ("totals", "languages", "modules", "files", "vocabulary", "monorepo"):
-        assert key in evidence, key
+        assert key in context, key
         assert f"`{key}`" in text or f"`monorepo.{key}" in text or key in text, key
     for vocab_key in ("identifiers", "tokens", "doc_terms"):
-        assert vocab_key in evidence["vocabulary"]
+        assert vocab_key in context["vocabulary"]
         assert f"vocabulary.{vocab_key}" in text
-    assert evidence["vocabulary"]["normalization"]["parser_backed"] is False
+    assert context["vocabulary"]["normalization"]["parser_backed"] is False
     assert "`vocabulary.normalization`" in text
     assert "monorepo.detected" in text
-    assert {"detected", "reasons", "sub_roots"} <= evidence["monorepo"].keys()
-    assert evidence["configuration"]["present"] is False
+    assert {"detected", "reasons", "sub_roots"} <= context["monorepo"].keys()
+    assert context["configuration"]["present"] is False
     assert "`configuration`" in text
-    assert evidence["terminology"]["scope"]["roles"] == ["production"]
+    assert context["terminology"]["scope"]["roles"] == ["production"]
     assert "`terminology.scope`" in text
-    assert evidence["files"]["code"][0]["role"] == "production"
+    assert context["files"]["code"][0]["role"] == "production"
     assert "`files[*].role`" in text
-    assert evidence["skipped"]["corpus_budget"]["complete"] is True
-    assert "`skipped.corpus_budget.complete`" in text
+    assert context["coverage"]["corpus"]["complete"] is True
+    assert "`coverage.corpus.complete`" in text
+    assert context["coverage"]["context"]["complete"] is True
+    assert "`coverage.context.complete`" in text
     assert "`walk_remainder.exact`" in text
-    structural = evidence["structural_groups"]
+    structural = context["structural_groups"]
     assert {"present", "available", "warnings"} <= structural.keys()
     for field in (
         "structural_groups.present",

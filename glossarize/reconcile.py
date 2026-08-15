@@ -15,6 +15,7 @@ import sys
 from itertools import combinations
 
 from glossarize.artifacts import repo_root, write_artifact
+from glossarize.display import escape_terminal_text
 from glossarize.drift import build_drift
 from glossarize.evidence import build_evidence, write_evidence
 from glossarize.glossary import (
@@ -437,7 +438,8 @@ def _print_report(validation: dict) -> None:
         }
         print(
             f"graphify: usable structural groups; freshness "
-            f"{freshness['status']} — {freshness['detail']}"
+            f"{escape_terminal_text(freshness['status'])} — "
+            f"{escape_terminal_text(freshness['detail'])}"
         )
         if graph.get("groups_dropped"):
             print(
@@ -476,7 +478,9 @@ def _print_report(validation: dict) -> None:
                 annotation = f"certainty {finding['certainty']}"
             else:
                 annotation = f"signal {finding['signal_strength']}"
-            print(f"{finding['summary']} [{annotation}]")
+            summary = escape_terminal_text(finding["summary"])
+            safe_annotation = escape_terminal_text(annotation)
+            print(f"{summary} [{safe_annotation}]")
         if section["dropped_items"]:
             print(f"... and {section['dropped_items']} more not shown")
     print(
@@ -497,6 +501,9 @@ def validate_command(path_arg: str) -> int:
     validation = build_validation(evidence, glossary)
     write_artifact(root, VALIDATION_FILE, validation)
     for warning in validation["graph"]["warnings"]:
-        print(f"graphify adapter: {warning}", file=sys.stderr)
+        print(
+            f"graphify adapter: {escape_terminal_text(warning)}",
+            file=sys.stderr,
+        )
     _print_report(validation)
     return 0
