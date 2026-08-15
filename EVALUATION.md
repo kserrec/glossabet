@@ -279,12 +279,16 @@ sync required the final rebuild. The first public-main CI run then proved that
 the evaluator's tree identity had also included an ignored local
 `__pycache__` file: local verification saw that file, while every clean CI
 checkout correctly did not. The identity function now excludes only Python's
-interpreter-generated cache directories, a focused regression test preserves
-that behavior, and the same final wheel passed all 11 scenarios again against
-the corrected identity. Temporary plugin and marketplace state was removed and
-verified absent after every run. That makes the three post-Phase 22 batches
-three for three and the combined observation seven of eight complete batches;
-the sample remains too small to claim a stable future success rate.
+interpreter-generated cache directories. The replacement matrix passed on
+Linux and macOS but exposed a second issue on every Windows job: sorting native
+`Path` objects ordered mixed-case plugin paths differently by operating system.
+Identity now sorts canonical POSIX relative-path strings, with focused
+regressions for both failure modes, and the same final wheel passed all 11
+scenarios again against the final evaluator. Temporary plugin and marketplace
+state was removed and verified absent after every run. That makes the four
+post-Phase 22 batches four for four and the combined observation eight of nine
+complete batches; the sample remains too small to claim a stable future success
+rate.
 
 The authenticated regeneration command temporarily changes user-level Codex
 plugin/marketplace state and then removes only its uniquely named state. The
@@ -336,9 +340,9 @@ and compare its accuracy against this recorded standard-library baseline.
   fixtures, not on varied third-party Graphify exports.
 - Installed-agent evidence covers Codex CLI 0.147.0 on one Linux host. Other
   Codex versions and operating systems, ChatGPT, and Claude Code are unverified.
-- The installed-agent preflight passed seven of eight observed full plugin
+- The installed-agent preflight passed eight of nine observed full plugin
   batches. Phase 22 passed four of five, including one of two unchanged
-  attempts against that exact wheel; all three post-Phase 22 batches passed,
+  attempts against that exact wheel; all four post-Phase 22 batches passed,
   including the final wheel's corrected clean-tree evidence run. Reliability
   beyond that small observed sample is unknown.
 - The multilingual fixture covers representative Python and Clojure forms,

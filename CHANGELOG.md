@@ -40,8 +40,11 @@ This first alpha is prepared but has not been published to PyPI.
   metadata; executable wheel entries did not change.
 - Installed-agent plugin identity now excludes interpreter-generated
   `__pycache__` directories. A clean GitHub Actions checkout proved that the
-  previous identity could bind ignored local bytecode, and a focused regression
-  test now preserves clean-checkout parity.
+  previous identity could bind ignored local bytecode; the replacement matrix
+  then proved that sorting native `Path` objects produced a different mixed-case
+  file order on Windows. Identity now sorts canonical POSIX relative-path
+  strings, with focused regressions for both clean-checkout and cross-platform
+  parity.
 
 - Bounded analysis collections now share exact coverage ledgers; terminology,
   naming, Graphify, drift, and validation propagate every known omission.

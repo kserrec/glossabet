@@ -77,7 +77,7 @@ def _tree_sha256(root: Path) -> str:
         for name in sorted(names):
             if not _dotenv_part(name):
                 files.append(Path(current) / name)
-    for path in sorted(files):
+    for path in sorted(files, key=lambda item: item.relative_to(root).as_posix()):
         relative = path.relative_to(root).as_posix().encode()
         content = path.read_bytes()
         digest.update(len(relative).to_bytes(8, "big"))

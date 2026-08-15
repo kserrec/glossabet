@@ -1,5 +1,6 @@
 """Installed Codex boundary evidence is current, bounded, and fail-closed."""
 
+import hashlib
 import json
 from copy import deepcopy
 from pathlib import Path
@@ -67,6 +68,29 @@ def test_plugin_identity_ignores_interpreter_bytecode_cache(tmp_path):
     cache.write_bytes(b"generated interpreter cache")
 
     assert _tree_sha256(plugin) == clean_identity
+
+
+def test_plugin_identity_uses_platform_independent_path_order(tmp_path):
+    plugin = tmp_path / "plugin"
+    contents = {
+        "skills/glossabet/SKILL.md": b"skill",
+        "skills/glossabet/assets/engine.whl": b"wheel",
+        "skills/glossabet/scripts/run_glossabet.py": b"runner",
+    }
+    for relative, content in contents.items():
+        path = plugin / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+
+    expected = hashlib.sha256()
+    for relative, content in sorted(contents.items()):
+        encoded = relative.encode()
+        expected.update(len(encoded).to_bytes(8, "big"))
+        expected.update(encoded)
+        expected.update(len(content).to_bytes(8, "big"))
+        expected.update(content)
+
+    assert _tree_sha256(plugin) == expected.hexdigest()
 
 
 def test_agent_verifier_rejects_stale_weakened_or_failing_evidence(tmp_path):

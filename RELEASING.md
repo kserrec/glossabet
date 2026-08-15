@@ -120,11 +120,13 @@ installed-agent evaluation consumed Codex usage and passed 11/11 scenarios on
 the refreshed exact wheel. Its uniquely named user-level Codex marketplace and
 plugin state was removed and verified absent afterward. A clean public-main CI
 checkout exposed that the first evidence identity included an ignored local
-Python `__pycache__` file; the identity now excludes interpreter cache
-directories, a focused regression protects clean-checkout parity, and the same
-exact wheel passed 11/11 again under the corrected identity. This refresh did
-not invite outside testers, begin Phase 23, create a release, or publish a
-package.
+Python `__pycache__` file. The replacement matrix then exposed native `Path`
+sorting's operating-system-dependent order for mixed-case plugin paths.
+Identity now excludes interpreter cache directories and sorts canonical POSIX
+relative-path strings; focused regressions protect both clean-checkout and
+cross-platform parity, and the same exact wheel passed 11/11 again under the
+final evaluator. This refresh did not invite outside testers, begin Phase 23,
+create a release, or publish a package.
 
 ## External setup still requiring Kyle
 

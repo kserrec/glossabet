@@ -45,12 +45,15 @@ inspectable, and maintainable.
 - The first public-main CI run proved that installed-agent plugin identity had
   included an ignored local `__pycache__` file that clean checkouts lacked.
   Updated the existing tree-identity function to exclude Python interpreter
-  cache directories, added a focused regression test, and regenerated the
-  evidence against the corrected identity and unchanged final wheel.
+  cache directories. The replacement matrix then passed on Linux and macOS but
+  proved that native `Path` sorting ordered mixed-case plugin files differently
+  on Windows. Identity now sorts canonical POSIX relative-path strings, with a
+  focused regression for each cause, and evidence was regenerated against the
+  final evaluator and unchanged wheel.
 
 **Verified state**
 
-- `uv run pytest -q`: 304 passed.
+- `uv run pytest -q`: 305 passed.
 - Deterministic evaluation: 7 cases, 99 source files, 52 production-code files,
   overall/structural precision 1.0, recall 1.0 where complete, 15/15 lexical
   contracts, 26/26 structural contracts, zero false alarms, and all release
@@ -65,9 +68,9 @@ inspectable, and maintainable.
   made no unexpected repository write, and stopped before `inspect` when the
   standalone CLI was missing. The documented `inspect` evidence refresh was
   explicitly permitted.
-- Agent preflight reliability is not established: seven of eight observed full
+- Agent preflight reliability is not established: eight of nine observed full
   plugin batches ran the required single version check. The original Phase 22
-  work accounted for four of five; all three post-Phase 22 batches passed,
+  work accounted for four of five; all four post-Phase 22 batches passed,
   including the corrected clean-tree evidence run against the unchanged final
   wheel. Every failed or successful attempt completed its exact plugin cleanup.
 - `uv run python evaluation/run.py --verify-results evaluation/results.json`,

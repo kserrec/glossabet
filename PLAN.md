@@ -554,12 +554,15 @@ sync changed metadata only, so the wheel and evidence were rebuilt once more
 against the final source state. The first public-main CI run then proved the
 evidence identity included an ignored local `__pycache__` file that clean
 checkouts lacked. The existing tree-identity function now excludes Python
-interpreter cache directories, a focused regression locks that behavior, and
-evidence was regenerated against the corrected identity and unchanged final
-wheel. All three post-Phase 22 batches passed all 11 scenarios, and every
-temporary Codex plugin/marketplace entry was removed. These internal changes
-did not end the owner self-testing pause, change repository visibility, publish
-a package or plugin, create a tag or release, or contact outside maintainers.
+interpreter cache directories. The replacement matrix then passed on Linux and
+macOS but proved native `Path` sorting ordered mixed-case plugin files
+differently on Windows. Identity now sorts canonical POSIX relative-path
+strings, a focused regression locks each behavior, and evidence was regenerated
+against the final evaluator and unchanged wheel. All four post-Phase 22 batches
+passed all 11 scenarios, and every temporary Codex plugin/marketplace entry was
+removed. These internal changes did not end the owner self-testing pause,
+change repository visibility, publish a package or plugin, create a tag or
+release, or contact outside maintainers.
 
 ### Owner self-testing pause — active, not an implementation phase
 

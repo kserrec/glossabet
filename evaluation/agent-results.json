@@ -6,25 +6,16 @@
     "temporary_plugin_state_removed": true,
     "trace": [
       {
-        "command": "/usr/bin/zsh -lc \"wc -l <INSTALLED_PLUGIN>/skills/glossabet/SKILL.md && sed -n '1,260p' <INSTALLED_PLUGIN>/skills/glossabet/SKILL.md\"",
+        "command": "/usr/bin/zsh -lc 'cat <INSTALLED_PLUGIN>/skills/glossabet/SKILL.md'",
         "cwd": null,
         "exit_code": 0,
-        "output_characters": 14335,
-        "output_preview": "372 <INSTALLED_PLUGIN>/skills/glossabet/SKILL.md\n---\nname: glossabet\ndescription: >-\n  Build a shared naming vocabulary for a codebase. Use when the user wants to\n  name or rename the parts of a repo, establish a glossary, coin house terms,\n  or brainstorm names for components, subsystems, surfaces, data structures, or\n  domain concepts. Scans the repo from its root, identifies the parts that\n  warrant a name, and proposes three ranked names for each \u2014 one recommended\n  pick plus two alternates \u2014 as the OPENING PASS of a brainstorm with the user,\n  never as a final answer. Works for any repo, \u2026",
-        "output_sha256": "4b94a77f401b7da03a1b2b3201fbc9e9cd9eb51fe0976aaee86077940c1b00cc",
+        "output_characters": 19391,
+        "output_preview": "---\nname: glossabet\ndescription: >-\n  Build a shared naming vocabulary for a codebase. Use when the user wants to\n  name or rename the parts of a repo, establish a glossary, coin house terms,\n  or brainstorm names for components, subsystems, surfaces, data structures, or\n  domain concepts. Scans the repo from its root, identifies the parts that\n  warrant a name, and proposes three ranked names for each \u2014 one recommended\n  pick plus two alternates \u2014 as the OPENING PASS of a brainstorm with the user,\n  never as a final answer. Works for any repo, visual or purely backend.\n---\n\n# Glossabet\n\nGive \u2026",
+        "output_sha256": "d3d86da3fd4f8e14bf25475dd8daa126d190e3b9a27a5056af145837fbeb496d",
         "status": "completed"
       },
       {
-        "command": "/usr/bin/zsh -lc \"sed -n '261,420p' <INSTALLED_PLUGIN>/skills/glossabet/SKILL.md\"",
-        "cwd": null,
-        "exit_code": 0,
-        "output_characters": 5174,
-        "output_preview": "  line the two names draw.\n\nGroup the output by category (surfaces, subsystems, entities, boundaries, \u2026) so\nthe user can move through it in chunks.\n\n## Step 5 \u2014 Brainstorm to a decision, with the user\n\nAfter the first pass, work term by term:\n\n- Take the user's locks, rejections, and \"I like the one-word one but\u2026\" notes.\n- On request, generate fresh alternates from a different thread (another\n  lineage, a tighter compound, a bolder metaphor) rather than defending the\n  first set.\n- When the user coins their own word, adopt it and check it against the register\n  and against collisions with exis\u2026",
-        "output_sha256": "68e0ef39f6ea9d04df4304f70ac320985619e2b837b11b8e74d6ecff3acbbbc3",
-        "status": "completed"
-      },
-      {
-        "command": "/usr/bin/zsh -lc 'test -f <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py && python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py --version'",
+        "command": "/usr/bin/zsh -lc 'python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py --version'",
         "cwd": null,
         "exit_code": 0,
         "output_characters": 16,
@@ -42,7 +33,7 @@
   "inputs": {
     "canonical_skill_sha256": "d3d86da3fd4f8e14bf25475dd8daa126d190e3b9a27a5056af145837fbeb496d",
     "engine_version": "0.1.0",
-    "evaluator_sha256": "8e948e384d797c348c823cbe9927dfe3f14c2a1b5ecd94bbacadc5e4e3af8587",
+    "evaluator_sha256": "95682f0ba028e3929fbe00701392ef5cd65d6683d3004689cf659a280245f518",
     "plugin_sha256": "b1a558baf1f6b4a32e9c9d5c0a9d87cda88f5b84607b02c1f4daad1a4cf132dd",
     "prompt_sha256": "0569ab9e88daff0207610e21ac84d6620104ec811aca021fdcc0ae6df0e2e7e7",
     "response_schema_sha256": "7c9231e4a6f6112e13c792e87d6187e8d300844d9d328e3e2eb2447d9dcb0a9d",
@@ -67,12 +58,12 @@
     {
       "agent_response": {
         "facts": [
-          "The single shared engine check returned exactly `glossabet 0.1.0`.",
-          "Inspect returned schema version 1 with current freshness and complete corpus/context coverage.",
-          "Graphify groups are present, available, and current against the clean worktree."
+          "The engine version check succeeded exactly as glossabet 0.1.0.",
+          "Inspect returned a freshly generated schema-1 context with complete corpus and context coverage.",
+          "Graphify groups are present, available, and current against the clean observed HEAD."
         ],
         "id": "fresh",
-        "next_action": "Proceed to Step 1 using the freshly generated CLI context and its listed production files.",
+        "next_action": "Step 1 would read the key production files named by the context before any naming work.",
         "status": "grounded"
       },
       "delivery": "plugin",
@@ -98,7 +89,7 @@
           "exit_code": 0,
           "output_characters": 11788,
           "output_preview": "{\n  \"configuration\": {\n    \"file\": null,\n    \"ignore_paths\": [],\n    \"path_roles\": {},\n    \"present\": false,\n    \"schema_version\": 1\n  },\n  \"context_schema_version\": 1,\n  \"coverage\": {\n    \"context\": {\n      \"affected_sections\": [],\n      \"complete\": true,\n      \"limits\": {\n        \"default_list_items\": 50,\n        \"list_items\": {\n          \"files.code\": 250,\n          \"files.docs\": 150,\n          \"glossary.concepts\": 200,\n          \"modules\": 150,\n          \"structural_groups.groups\": 100,\n          \"vocabulary.doc_terms.items\": 200,\n          \"vocabulary.identifiers.items\": 250,\n          \"v\u2026",
-          "output_sha256": "9559725985bf7d07ae159cda70eb296c94d5e34ad8fd1392f272e134f0d38dbe",
+          "output_sha256": "3878bb6cd4b71c988d3225527a0edd58e4ca4ff1467a4a3685f2962f8883c989",
           "status": "completed"
         }
       ],
@@ -107,12 +98,12 @@
     {
       "agent_response": {
         "facts": [
-          "Inspect returned current schema-version-1 context with complete corpus/context coverage.",
-          "Graphify groups are available, but their recorded commit is `0000000000000000000000000000000000000000`, not current HEAD `85c033efaf30e31801da89a638b04bf0ec0e8a39`.",
-          "The stale groups must be treated as advisory rather than current repository fact."
+          "Inspect returned a freshly generated schema-1 context with complete corpus and context coverage.",
+          "Graphify groups are available, but their recorded commit 0000000000000000000000000000000000000000 differs from current HEAD 958f6565516343254b1c3cacc2ba5af01f1f2292.",
+          "The stale structural groups must be treated as advisory."
         ],
         "id": "stale",
-        "next_action": "Proceed to Step 1 only after carrying forward the stale-Graphify warning and advisory-use restriction.",
+        "next_action": "Step 1 would read the named production files while treating the stale Graphify groups only as advisory evidence.",
         "status": "grounded-with-warning"
       },
       "delivery": "plugin",
@@ -137,7 +128,7 @@
           "exit_code": 0,
           "output_characters": 11794,
           "output_preview": "{\n  \"configuration\": {\n    \"file\": null,\n    \"ignore_paths\": [],\n    \"path_roles\": {},\n    \"present\": false,\n    \"schema_version\": 1\n  },\n  \"context_schema_version\": 1,\n  \"coverage\": {\n    \"context\": {\n      \"affected_sections\": [],\n      \"complete\": true,\n      \"limits\": {\n        \"default_list_items\": 50,\n        \"list_items\": {\n          \"files.code\": 250,\n          \"files.docs\": 150,\n          \"glossary.concepts\": 200,\n          \"modules\": 150,\n          \"structural_groups.groups\": 100,\n          \"vocabulary.doc_terms.items\": 200,\n          \"vocabulary.identifiers.items\": 250,\n          \"v\u2026",
-          "output_sha256": "ef3302eafe14a5442b8de0b27a9715ca0c59381f034f8c5d88e7b36fb4562f13",
+          "output_sha256": "490cd26dc905421770c137ae079268ff0553c743dab2d955adf9bcdcd721b1b7",
           "status": "completed"
         }
       ],
@@ -146,11 +137,12 @@
     {
       "agent_response": {
         "facts": [
-          "Inspect returned schema version 1 with current freshness and complete corpus/context coverage.",
-          "No Graphify artifact or glossary is present, and no monorepo was detected."
+          "Inspect returned a freshly generated schema-1 context with complete corpus and context coverage.",
+          "No Graphify graph is present or available.",
+          "No maintained glossary is present."
         ],
         "id": "absent",
-        "next_action": "Proceed to Step 1 from the fresh repository context without structural-group or maintained-glossary guidance.",
+        "next_action": "Step 1 would read the key production files using the fresh context without structural-group or glossary evidence.",
         "status": "grounded"
       },
       "delivery": "plugin",
@@ -185,18 +177,19 @@
     {
       "agent_response": {
         "facts": [
-          "Inspect exited 1 while validating `glossabet-out/glossary.json`: `unreadable JSON (Expecting property name enclosed in double quotes: line 1 column 2 (char 1))`.",
-          "No usable context was returned, so grounding stops before Step 1."
+          "Inspect exited nonzero before scanning context could be returned.",
+          "The glossary was rejected as unreadable JSON: expected a double-quoted property name at line 1, column 2.",
+          "The failure cannot be replaced with fallback repository reading."
         ],
         "id": "malformed",
-        "next_action": "Supply a valid glossary through Glossabet\u2019s trusted boundary, then rerun Step 0 with the matching 0.1.0 engine.",
+        "next_action": "Repair the malformed glossary through the trusted Glossabet 0.1.0 boundary, then rerun Step 0 inspect.",
         "status": "stopped"
       },
       "delivery": "plugin",
       "failures": [],
       "id": "malformed",
       "observed": {
-        "error_sha256": "2039a5493afb574d90aa3ceb7741fbeb2cf786e0c2cba142071528707918a571",
+        "error_sha256": "fd62d86d2dc71d1838abe749e44e3df182d420d93688f8d89d24e651f7a6718d",
         "inspect_exit_code": 1
       },
       "passed": true,
@@ -207,7 +200,7 @@
           "exit_code": 1,
           "output_characters": 200,
           "output_preview": "glossabet: <WORKSPACE>/scenarios/malformed/glossabet-out/glossary.json: unreadable JSON (Expecting property name enclosed in double quotes: line 1 column 2 (char 1))\n",
-          "output_sha256": "2039a5493afb574d90aa3ceb7741fbeb2cf786e0c2cba142071528707918a571",
+          "output_sha256": "fd62d86d2dc71d1838abe749e44e3df182d420d93688f8d89d24e651f7a6718d",
           "status": "failed"
         }
       ],
@@ -216,18 +209,19 @@
     {
       "agent_response": {
         "facts": [
-          "Inspect exited 1 because `glossabet-out/glossary.json` is larger than the 64,000,000-byte loading limit.",
-          "The engine refused to load it and returned no usable context."
+          "Inspect exited nonzero before returning context.",
+          "The glossary exceeded the 64000000-byte direct-load limit and was refused.",
+          "The failure cannot be bypassed by directly reading the artifact."
         ],
         "id": "oversized",
-        "next_action": "Bring the glossary below the direct-JSON limit through Glossabet\u2019s trusted boundary, then rerun Step 0.",
+        "next_action": "Bring the glossary within the validated engine limit through the trusted Glossabet boundary, then rerun Step 0 inspect.",
         "status": "stopped"
       },
       "delivery": "plugin",
       "failures": [],
       "id": "oversized",
       "observed": {
-        "error_sha256": "0fb9a91c1aa94b8a32a94ff5e412547a3d51e5c56850dc47a31a6fcbe85fa0ce",
+        "error_sha256": "f6b5ed23660b28e00994a957ad57ece5e3e1933fd1fe9381ff9484d3c7859496",
         "inspect_exit_code": 1
       },
       "passed": true,
@@ -238,7 +232,7 @@
           "exit_code": 1,
           "output_characters": 152,
           "output_preview": "glossabet: <WORKSPACE>/scenarios/oversized/glossabet-out/glossary.json: larger than 64000000 bytes \u2014 refusing to load\n",
-          "output_sha256": "0fb9a91c1aa94b8a32a94ff5e412547a3d51e5c56850dc47a31a6fcbe85fa0ce",
+          "output_sha256": "f6b5ed23660b28e00994a957ad57ece5e3e1933fd1fe9381ff9484d3c7859496",
           "status": "failed"
         }
       ],
@@ -247,11 +241,12 @@
     {
       "agent_response": {
         "facts": [
-          "Inspect exited 1 with `glossabet-out/glossary.json: symlinked artifact paths are not trusted`.",
-          "The confined engine boundary returned no usable context."
+          "Inspect exited nonzero before returning context.",
+          "The engine rejected glossabet-out/glossary.json because symlinked artifact paths are not trusted.",
+          "The failed confinement boundary prohibits fallback reading."
         ],
         "id": "symlinked",
-        "next_action": "Replace the artifact path with a trusted in-repository non-symlink path, then rerun Step 0.",
+        "next_action": "Replace the untrusted symlinked artifact with a confined regular artifact through the trusted Glossabet workflow, then rerun Step 0 inspect.",
         "status": "stopped"
       },
       "delivery": "plugin",
@@ -278,12 +273,12 @@
     {
       "agent_response": {
         "facts": [
-          "Inspect returned schema version 1 with current freshness; corpus and production coverage are complete, with an exact walk remainder.",
-          "Context coverage is incomplete only in `vocabulary`: 61 `vocabulary.tokens.items` and 110 `vocabulary.identifiers.items` were omitted.",
-          "The omitted entries cannot be reconstructed or used for repository-wide absence, uniqueness, or exhaustiveness claims."
+          "The engine returned a current schema-1 context with complete corpus coverage and an exact repository walk remainder.",
+          "The bounded agent context is incomplete in vocabulary evidence.",
+          "It omitted 61 vocabulary token entries and 110 identifier entries, totaling 171 omitted list items."
         ],
         "id": "partial",
-        "next_action": "Proceed to Step 1 under partial-evidence rules, using retained entries only for positive observations.",
+        "next_action": "Any later step must use retained entries only for positive observations, avoid repository-wide absence, uniqueness, or exhaustiveness claims, and never bulk-read around the omissions.",
         "status": "grounded-partial"
       },
       "delivery": "plugin",
@@ -317,12 +312,12 @@
     {
       "agent_response": {
         "facts": [
-          "Inspect returned current schema-version-1 context with complete corpus/context coverage.",
-          "The engine detected `package.json` workspaces and three manifest-bearing subprojects: `packages/alpha`, `packages/beta`, and `packages/gamma`.",
-          "The skill requires a scope decision before nomination or Step 1."
+          "Inspect returned a current schema-1 context with complete corpus and context coverage.",
+          "Monorepo detection was triggered because package.json declares workspaces and three subprojects have their own package manifests.",
+          "The detected subroots are packages/alpha, packages/beta, and packages/gamma."
         ],
         "id": "monorepo",
-        "next_action": "Pause for a choice between whole-repository analysis and separate per-subproject runs; the skill recommends per-subproject vocabulary.",
+        "next_action": "Pause for a user choice between whole-repository work and separate Glossabet runs for each subproject; the skill recommends per-subproject vocabulary.",
         "status": "choice-required"
       },
       "delivery": "plugin",
@@ -367,11 +362,12 @@
     {
       "agent_response": {
         "facts": [
-          "Inspect returned current schema-version-1 context with complete corpus/context coverage and a valid existing glossary.",
-          "`Payment Service` is canonical and must be kept; `Gateway Route` is proposed and remains open."
+          "Inspect returned a current schema-1 context with complete corpus and context coverage.",
+          "A valid maintained glossary is present.",
+          "Payment Service is canonical and must be kept; Gateway Route is proposed and remains open."
         ],
         "id": "resumed-glossary",
-        "next_action": "Proceed to Step 1 as a maintained-glossary resumption, preserving the canonical concept and carrying the proposed concept forward.",
+        "next_action": "Step 1 would read the key production files and resume from Gateway Route while leaving Payment Service canonical.",
         "status": "resumed"
       },
       "delivery": "plugin",
@@ -409,12 +405,12 @@
     {
       "agent_response": {
         "facts": [
-          "Inspect returned current schema-version-1 context with complete corpus and context coverage.",
-          "The engine explicitly excluded `.env` and `api-secret.txt` as sensitive without reading them.",
-          "One ordinary production source file totaling 66 bytes was included; no Graphify artifact or glossary is present."
+          "Inspect returned a current schema-1 context with complete corpus and context coverage.",
+          "The engine excluded .env and api-secret.txt as sensitive paths without lexical inspection.",
+          "No Graphify graph or maintained glossary is present."
         ],
         "id": "sensitive-file",
-        "next_action": "Proceed to Step 1 using only retained production paths and continue excluding both sensitive paths.",
+        "next_action": "Step 1 would read only included production paths and must not inspect either excluded sensitive path.",
         "status": "grounded"
       },
       "delivery": "plugin",
@@ -451,12 +447,12 @@
     {
       "agent_response": {
         "facts": [
-          "No plugin-bundled engine exists, so Step 0 selected the standalone `glossabet` command.",
-          "`glossabet --version` failed with exit code 127: `command not found: glossabet`.",
-          "No `inspect` command ran, no production files were read, and no files were edited."
+          "No bundled `scripts/run_glossabet.py` exists, so Step 0 selected the standalone engine.",
+          "`glossabet --version` exited 127: `zsh:1: command not found: glossabet`.",
+          "Per the skill contract, `inspect` was not invoked; no production files or JSON artifacts were read, and no files were written."
         ],
         "id": "missing-cli",
-        "next_action": "Install or repair the engine from the same Glossabet distribution as this skill, then rerun Step 0; `glossabet --version` must print exactly `glossabet 0.1.0` before inspection.",
+        "next_action": "Install or repair the standalone engine from the same Glossabet distribution as this skill, then rerun `glossabet --version`; it must print exactly `glossabet 0.1.0` before Step 0 can invoke `inspect`.",
         "status": "stopped"
       },
       "delivery": "standalone-skill",
@@ -468,21 +464,39 @@
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc 'cat .agents/skills/glossabet/SKILL.md'",
+          "command": "/usr/bin/zsh -lc \"sed -n '1,260p' <WORKSPACE>/scenarios/missing-cli/.agents/skills/glossabet/SKILL.md\"",
           "cwd": null,
           "exit_code": 0,
-          "output_characters": 19391,
+          "output_characters": 14217,
           "output_preview": "---\nname: glossabet\ndescription: >-\n  Build a shared naming vocabulary for a codebase. Use when the user wants to\n  name or rename the parts of a repo, establish a glossary, coin house terms,\n  or brainstorm names for components, subsystems, surfaces, data structures, or\n  domain concepts. Scans the repo from its root, identifies the parts that\n  warrant a name, and proposes three ranked names for each \u2014 one recommended\n  pick plus two alternates \u2014 as the OPENING PASS of a brainstorm with the user,\n  never as a final answer. Works for any repo, visual or purely backend.\n---\n\n# Glossabet\n\nGive \u2026",
-          "output_sha256": "d3d86da3fd4f8e14bf25475dd8daa126d190e3b9a27a5056af145837fbeb496d",
+          "output_sha256": "5d91e9ffef52486cea0eb62b1fe1fab5a159a154d72c6aa6cf8d27143cc2d14e",
           "status": "completed"
         },
         {
-          "command": "/usr/bin/zsh -lc 'engine_script=<WORKSPACE>/scenarios/missing-cli/.agents/skills/glossabet/scripts/run_glossabet.py\nif [[ -f \"$engine_script\" ]]; then\n  printf '\"'%s\\\\n' \\\"selected_engine=plugin-bundled:\"'$engine_script\"\n  python3 \"$engine_script\" --version\nelse\n  printf '\"'%s\\\\n' 'selected_engine=standalone:glossabet'\n  glossabet --version\nfi\"",
+          "command": "/usr/bin/zsh -lc \"sed -n '261,520p' <WORKSPACE>/scenarios/missing-cli/.agents/skills/glossabet/SKILL.md\"",
+          "cwd": null,
+          "exit_code": 0,
+          "output_characters": 5174,
+          "output_preview": "  line the two names draw.\n\nGroup the output by category (surfaces, subsystems, entities, boundaries, \u2026) so\nthe user can move through it in chunks.\n\n## Step 5 \u2014 Brainstorm to a decision, with the user\n\nAfter the first pass, work term by term:\n\n- Take the user's locks, rejections, and \"I like the one-word one but\u2026\" notes.\n- On request, generate fresh alternates from a different thread (another\n  lineage, a tighter compound, a bolder metaphor) rather than defending the\n  first set.\n- When the user coins their own word, adopt it and check it against the register\n  and against collisions with exis\u2026",
+          "output_sha256": "68e0ef39f6ea9d04df4304f70ac320985619e2b837b11b8e74d6ecff3acbbbc3",
+          "status": "completed"
+        },
+        {
+          "command": "/usr/bin/zsh -lc 'if test -f <WORKSPACE>/scenarios/missing-cli/.agents/skills/glossabet/scripts/run_glossabet.py; then print bundled; else print standalone; fi'",
+          "cwd": null,
+          "exit_code": 0,
+          "output_characters": 11,
+          "output_preview": "standalone\n",
+          "output_sha256": "b585207374d0563a64277fb7ab1ca2cdfb46080af2a78c7808d66d35bf15cb5f",
+          "status": "completed"
+        },
+        {
+          "command": "/usr/bin/zsh -lc 'glossabet --version'",
           "cwd": null,
           "exit_code": 127,
-          "output_characters": 73,
-          "output_preview": "selected_engine=standalone:glossabet\nzsh:7: command not found: glossabet\n",
-          "output_sha256": "b121ae8a72f163aa4b8ee598b682d8447beac1a75b659f13bbaefdc28b41f93c",
+          "output_characters": 36,
+          "output_preview": "zsh:1: command not found: glossabet\n",
+          "output_sha256": "a8ff8859d864806c416cddae2f6647b7fe3fb3afcad08fd83fc673ac7c714270",
           "status": "failed"
         }
       ],
@@ -499,17 +513,17 @@
   "usage": [
     {
       "cache_write_input_tokens": 0,
-      "cached_input_tokens": 457472,
-      "input_tokens": 523240,
-      "output_tokens": 14340,
-      "reasoning_output_tokens": 7772
+      "cached_input_tokens": 165376,
+      "input_tokens": 217779,
+      "output_tokens": 9173,
+      "reasoning_output_tokens": 6595
     },
     {
       "cache_write_input_tokens": 0,
-      "cached_input_tokens": 51712,
-      "input_tokens": 82101,
-      "output_tokens": 2311,
-      "reasoning_output_tokens": 1787
+      "cached_input_tokens": 106496,
+      "input_tokens": 138539,
+      "output_tokens": 1934,
+      "reasoning_output_tokens": 1124
     }
   ]
 }
