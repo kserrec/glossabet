@@ -16,7 +16,11 @@ from glossabet.coverage import (
     capped_collection,
     coverage_reasons,
 )
-from glossabet.tokenize import tokenize_identifier
+from glossabet.tokenize import (
+    TOKEN_ORIGIN_DOMAIN,
+    TOKEN_ORIGIN_LANGUAGE,
+    tokenize_identifier,
+)
 
 PAIR_TOP_N = 150
 # Phase 15's pinned corpus found only false sibling-field nominations below
@@ -362,8 +366,28 @@ def build_terminology(identifier_counts: Counter, token_counts: Counter,
                       module_neighbor_sets: dict,
                       doc_term_counts: Counter,
                       module_neighbor_truncated: set[tuple[str, str]] | None = None,
+                      token_origins: dict[str, str] | None = None,
                       ) -> dict:
-    ranked = sorted(token_counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    token_origins = token_origins or {}
+    language_tokens_excluded = sum(
+        token_origins.get(term) == TOKEN_ORIGIN_LANGUAGE
+        for term in token_counts
+    )
+    eligibility_reasons = []
+    if language_tokens_excluded:
+        eligibility_reasons.append(
+            f"{language_tokens_excluded} language-origin vocabulary token(s) "
+            "excluded before terminology eligibility"
+        )
+    ranked = sorted(
+        (
+            (term, count)
+            for term, count in token_counts.items()
+            if token_origins.get(term, TOKEN_ORIGIN_DOMAIN)
+            == TOKEN_ORIGIN_DOMAIN
+        ),
+        key=lambda kv: (-kv[1], kv[0]),
+    )
     eligible_tokens = [term for term, count in ranked if count >= 2]
     top_tokens, token_coverage = capped_collection(
         eligible_tokens,
@@ -371,10 +395,13 @@ def build_terminology(identifier_counts: Counter, token_counts: Counter,
         cap_reason=(
             f"terminology analysis cap is the top {PAIR_TOP_N} eligible tokens"
         ),
+        incomplete_reasons=eligibility_reasons,
     )
     return {
         "considered_tokens": len(top_tokens),
         "vocabulary_size": len(token_counts),
+        "domain_vocabulary_size": len(token_counts) - language_tokens_excluded,
+        "language_vocabulary_size": language_tokens_excluded,
         "coverage": {"eligible_tokens": token_coverage},
         "register": _register(identifier_counts),
         "layers": _layers(token_counts, doc_term_counts),

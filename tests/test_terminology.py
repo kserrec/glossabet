@@ -185,6 +185,37 @@ def test_151st_eligible_token_is_counted_and_propagates_partial_coverage():
                    for reason in coverage["reasons"])
 
 
+def test_language_tokens_do_not_consume_the_top_150_eligibility_budget():
+    token_counts = Counter({
+        f"domain{index:03}": 2 for index in range(PAIR_TOP_N)
+    })
+    token_counts["dict"] = 10_000
+    counters = defaultdict(Counter)
+    module_contexts = defaultdict(lambda: defaultdict(set))
+
+    terminology = build_terminology(
+        Counter(), token_counts, counters, counters, counters, counters,
+        module_contexts, Counter(), set(),
+        {**{term: "domain" for term in token_counts}, "dict": "language"},
+    )
+
+    assert terminology["vocabulary_size"] == PAIR_TOP_N + 1
+    assert terminology["domain_vocabulary_size"] == PAIR_TOP_N
+    assert terminology["language_vocabulary_size"] == 1
+    assert terminology["considered_tokens"] == PAIR_TOP_N
+    assert terminology["coverage"]["eligible_tokens"] == {
+        "total_items": PAIR_TOP_N,
+        "included_items": PAIR_TOP_N,
+        "dropped_items": 0,
+        "total_items_exact": True,
+        "complete": False,
+        "reasons": [
+            "1 language-origin vocabulary token(s) excluded before "
+            "terminology eligibility"
+        ],
+    }
+
+
 def test_overload_module_pair_work_is_bounded_and_reported():
     module_count = OVERLOAD_MODULE_ANALYSIS_CAP + 1
     modules = {

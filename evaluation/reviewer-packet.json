@@ -2,9 +2,9 @@
   "engine": {
     "drift_schema_version": 5,
     "evaluation_schema_version": 4,
-    "evidence_schema_version": 7,
+    "evidence_schema_version": 8,
     "name": "glossabet",
-    "source_sha256": "fd6b09d0f9b2405b2ee13a61c01e4d45e6e85676f3848d917556ce2d69ab9224",
+    "source_sha256": "10e2ee13a935a97cfac7908fd003906713a7c2a0c2cda325c1cceaacde51d5d9",
     "validation_schema_version": 6,
     "version": "0.1.0"
   },

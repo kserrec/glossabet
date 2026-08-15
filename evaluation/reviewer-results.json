@@ -153,7 +153,7 @@
     "secondary_usefulness_rate": 0.85,
     "secondary_usefulness_threshold": 0.8
   },
-  "evaluation_results_sha256": "b4c82ab732b737c4ea4a690835f8e323beb8779b4c7d896ce5ad7a7481b072b6",
+  "evaluation_results_sha256": "d51f9b124ddd243c8bfd69692b0992ad2b37f8484f4b385bef6256ef9ace58e9",
   "judgments": [
     {
       "reason": "The complete evidence places \u201csession\u201d in three clearly disjoint domains\u2014authentication, database transactions, and machine-learning inference\u2014giving maintainers a concrete reason to review whether more specific names are needed.",
@@ -256,7 +256,7 @@
       "useful": true
     }
   ],
-  "packet_sha256": "5bb014d8c28f54845444f0372b63eece17a5b8c6fee5b9e9552ed008f18f5725",
+  "packet_sha256": "a7f9eb26b0723ee0ec7f9d89bdf2f6cae992619f5c36e7681eda84d3c800463d",
   "reviewer": {
     "blinded_to_primary_labels": true,
     "codex_version": "0.147.0",
@@ -278,6 +278,10 @@
       "evaluator_sha256": "07c6eb14bea4c06de7bdc862912043fbe0ac69abca89fd02b6a843a1aed1e746",
       "prompt_sha256": "cb0f60c0ba944519ad90da2ca9b4c67c9af4f25cc30d69b80ec989f471c05462",
       "response_schema_sha256": "e097b9763a8967530dfffb25c51f0e4a1a69ecc2b65269312f000e853483dd37"
+    },
+    "judgment_reuse": {
+      "basis": "Phase 24 changed only the packet engine identity; question, sources, and all 20 blinded finding payloads were exactly unchanged",
+      "reused": true
     },
     "kind": "codex-exec",
     "model": "configured default; Codex CLI JSONL did not report it",

@@ -1,8 +1,8 @@
 # Glossabet — Plan
 
-Status: **phases 0–22 complete; phases 24–28 (owner self-testing findings)
-are the next implementation work; owner self-testing pause active before the
-trusted-alpha gate** as of 2026-08-15. Phases 18–23 are the complete
+Status: **phases 0–22 and Phase 24 complete; Phase 25 is the next
+implementation work; owner self-testing pause active before the trusted-alpha
+gate** as of 2026-08-15. Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
 Phases 24–28 were added 2026-08-15 from Kyle's self-testing findings and run
 before the trusted-alpha gate and Phase 23 in execution order, so outside
@@ -585,7 +585,7 @@ and publication setup. Execution order: 24 → 25 → 26 (each feeds the next),
 three passes; see its section). All five must complete before the
 trusted-alpha gate.
 
-### Phase 24 — Language/domain vocabulary partition
+### Phase 24 — Language/domain vocabulary partition ✅ 2026-08-15
 
 **Goal:** stop language-supplied vocabulary (builtins and ubiquitous stdlib
 names) from consuming bounded analysis budgets, while keeping evidence
@@ -608,6 +608,28 @@ complete and every exclusion reported.
 terminology eligible-top-150 slot or a term naming candidate; every
 language-tag exclusion is visible in coverage; determinism and the complete
 token record are regression-tested.
+
+**Completion evidence:** RepositoryEvidence v8 tags every retained code token
+as `language` or `domain`. The deliberately conservative Python table includes
+the verified builtins while leaving `open`, `type`, `run`, `match`, and
+`register` available as domain vocabulary; an occurrence in an unlisted
+language promotes a same-spelled token to domain. On this repository, all 1,962
+tokens remain in evidence: 21 are language-origin and 1,941 domain-origin. The
+21 language tokens are named in both coverage ledgers, consume none of the 150
+terminology slots, and produce no term nomination. The remaining generic
+nominees (`json`, `path`, `file`, `name`, `run`, `root`) are deliberately left
+for Phase 26 rather than smuggling distinctiveness work into this phase. Five
+focused regressions cover the required Python set and domain exceptions,
+tag-not-delete behavior, mixed-language domain precedence, top-150 exclusion,
+naming exclusion, coverage, and determinism. The refreshed seven-case,
+five-run evaluation retains precision 1.0, zero false alarms, and passing
+thresholds; its 20 blinded finding payloads were exactly unchanged, so the
+existing second-reviewer judgments were retained with explicit reuse
+provenance. The full suite passes 310 tests, and a newly built standalone wheel
+passes its isolated smoke test. The checked-in plugin wheel and installed-agent
+evidence remain the last exact Phase 22 bundle rather than being silently
+relabelled as Phase 24 evidence; they must be rebuilt and rerun no later than
+Phase 27's installed-skill acceptance check.
 
 ### Phase 25 — Register integrity
 

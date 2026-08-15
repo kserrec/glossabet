@@ -76,6 +76,27 @@ def test_vocabulary_normalizes_across_conventions(tmp_path):
     assert tokens["payment"]["locations"][0]["path"] == "src/payment_service.py"
 
 
+def test_language_tokens_are_tagged_not_deleted_and_domain_use_wins(tmp_path):
+    (tmp_path / "builtins.py").write_text(
+        "items = dict()\nitems.append(len(items))\n"
+    )
+    (tmp_path / "domain.js").write_text("const dict = domain_dictionary\n")
+
+    first = build_evidence(tmp_path)
+    second = build_evidence(tmp_path)
+    tokens = {
+        item["term"]: item
+        for item in first["vocabulary"]["tokens"]["items"]
+    }
+
+    assert tokens["append"]["origin"] == "language"
+    assert tokens["len"]["origin"] == "language"
+    assert tokens["dict"]["origin"] == "domain"
+    assert tokens["domain"]["origin"] == "domain"
+    assert all(item["origin"] in {"language", "domain"} for item in tokens.values())
+    assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
+
+
 def test_scan_is_deterministic_including_own_output(tmp_path):
     root = make_repo(tmp_path)
     first = build_evidence(root)

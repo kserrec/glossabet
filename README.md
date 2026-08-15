@@ -112,12 +112,16 @@ in [`evaluation/results.json`](evaluation/results.json).
 
 **Status: 0.1.0 source alpha under an owner self-testing pause; not yet
 published to PyPI or a plugin directory and not yet a trusted-alpha release.**
-Phases 0–22 are complete, including 11/11 installed-skill scenarios on Codex
-CLI 0.147.0/Linux. Owner-run testing and additional checks are underway before
-any outside maintainer invitation. Package metadata, the embedded plugin wheel,
-and installed-agent evidence are synchronized with the renamed GitHub
-repository. The trusted-alpha evidence gate and Phase 23 remain later work; do
-not describe the current stopping point as release-ready. See
+Phases 0–22 and Phase 24 are complete; Phase 25 is next. The earlier work
+includes 11/11 installed-skill scenarios on Codex CLI 0.147.0/Linux. Owner-run
+testing and Phases 25–28 remain before any outside maintainer invitation.
+Package metadata, the embedded plugin wheel, and installed-agent evidence are
+bound to the renamed GitHub repository. The source engine now includes Phase
+24; the checked-in plugin wheel remains the last exact Phase 22
+installed-agent-proven bundle and is not yet a Phase 24 delivery artifact. It
+must be refreshed with the installed-skill scenarios no later than Phase 27.
+The trusted-alpha evidence gate and Phase 23 remain later work; do not describe
+the current stopping point as release-ready. See
 [`NAME-CLEARANCE.md`](NAME-CLEARANCE.md) for the
 point-in-time name checks, [`DISTRIBUTION.md`](DISTRIBUTION.md) for exact
 installation ownership, [`PLAN.md`](PLAN.md) for the closure sequence, and
@@ -235,6 +239,16 @@ drift, or lexical reconciliation signals. Generated and vendored paths are not
 read lexically and are reported under `skipped`. Graphify remains a separate
 structural input with its own provenance and freshness limits.
 
+Retained code tokens are tagged `origin: domain` or `origin: language` from the
+current conservative Python builtin table; unlisted languages and tokens
+default to domain. Language tokens stay in the full evidence record, but only
+domain tokens can consume terminology's top-150 analysis budget or the
+term-nomination pool. Every such exclusion is counted in the affected coverage
+ledger. If a spelling has any domain occurrence, domain wins, so one language's
+builtin cannot hide a same-spelled project concept in another language.
+Ambiguous words including `open`, `type`, `run`, and `match` deliberately remain
+domain evidence.
+
 An optional `glossabet.json` at the scanned root can add ignored paths,
 classify project-specific layouts, or mark a conventionally non-production
 path as production:
@@ -291,6 +305,10 @@ be drawn from it.
   sigils and predicate/bang suffixes are lexical boundaries. This remains a
   lexical approximation and reads comments/string contents like other source
   text; it is not a parser.
+- Every retained code token carries a language/domain origin. Curated language
+  builtins are tagged rather than deleted, domain use wins for mixed-origin
+  spellings, and language-token exclusions from terminology/naming budgets are
+  explicit in coverage rather than silently shrinking the input.
 - A compound glossary term occurs in code only when its normalized words are
   contiguous inside one identifier, such as `PaymentRequest` or
   `create_payment_request`. Independent word hits elsewhere do not establish

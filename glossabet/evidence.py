@@ -35,13 +35,15 @@ from glossabet.terminology import (
     build_terminology,
 )
 from glossabet.tokenize import (
+    TOKEN_ORIGIN_DOMAIN,
     doc_words,
     iter_identifiers,
+    token_origin,
     tokenization_contract,
     tokenize_identifier,
 )
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 EVIDENCE_FILE = "evidence.json"
 
@@ -174,6 +176,7 @@ class _Vocabulary:
         self.token_files: dict[str, Counter] = defaultdict(Counter)
         self.token_modules: dict[str, Counter] = defaultdict(Counter)
         self.token_patterns: dict[str, Counter] = defaultdict(Counter)
+        self.token_origins: dict[str, str] = {}
         self.neighbors: dict[str, Counter] = defaultdict(Counter)
         self.module_neighbor_sets: dict[str, dict[str, set]] = defaultdict(
             lambda: defaultdict(set)
@@ -182,7 +185,13 @@ class _Vocabulary:
         self.identifier_counts: Counter = Counter()
         self.identifier_files: dict[str, Counter] = defaultdict(Counter)
 
-    def fold(self, identifiers: dict[str, int], rel: str, module: str) -> None:
+    def fold(
+        self,
+        identifiers: dict[str, int],
+        rel: str,
+        module: str,
+        language: str,
+    ) -> None:
         """Fold one code file's identifier counts into every view."""
         for name, count in sorted(identifiers.items()):
             self.identifier_counts[name] += count
@@ -193,6 +202,15 @@ class _Vocabulary:
                 self.token_counts[token] += count
                 self.token_files[token][rel] += count
                 self.token_modules[token][module] += count
+                occurrence_origin = token_origin(token, language)
+                if (
+                    token not in self.token_origins
+                    or occurrence_origin == TOKEN_ORIGIN_DOMAIN
+                ):
+                    # Domain wins across occurrences. A Python builtin named
+                    # ``dict`` must not hide a same-spelled project concept in
+                    # another language.
+                    self.token_origins[token] = occurrence_origin
             if len(tokens) >= 2:
                 for index, token in enumerate(tokens):
                     pattern = tuple(tokens[:index] + ["*"] + tokens[index + 1:])
@@ -281,7 +299,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
             production_code_files.append((rel, language))
             if entry["imports"]:
                 file_imports.append((rel, language, entry["imports"]))
-            vocabulary.fold(entry["identifiers"], rel, module)
+            vocabulary.fold(entry["identifiers"], rel, module, language)
 
     doc_term_counts: Counter = Counter()
     doc_term_files: dict[str, Counter] = defaultdict(Counter)
@@ -315,6 +333,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
         )
         return {
             "term": term,
+            "origin": vocabulary.token_origins[term],
             "count": count,
             "files": len(per_file),
             "modules": len(vocabulary.token_modules.get(term, ())),
@@ -375,6 +394,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
     naming = build_naming_candidates(
         imports_section, production_modules_list, vocabulary.token_counts,
         vocabulary.token_files, vocabulary.token_modules, doc_term_counts,
+        vocabulary.token_origins,
     )
     structural_naming = structure_candidates(structural)
     naming["coverage"].update(structural_naming.pop("coverage"))
@@ -426,6 +446,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
                 vocabulary.token_patterns, vocabulary.neighbors,
                 vocabulary.module_neighbor_sets, doc_term_counts,
                 vocabulary.module_neighbor_truncated,
+                vocabulary.token_origins,
             ),
             "scope": {
                 "roles": ["production"],
@@ -455,8 +476,9 @@ def _print_terminology_report(evidence: dict) -> None:
     reg = term["register"]
     print(
         f"\n== house register ({reg['unique_identifiers']} unique identifiers, "
-        f"top {term['considered_tokens']} of {term['vocabulary_size']} "
-        f"tokens analyzed from {term['scope']['code_files']} production "
+        f"top {term['considered_tokens']} of "
+        f"{term.get('domain_vocabulary_size', term['vocabulary_size'])} "
+        f"domain tokens analyzed from {term['scope']['code_files']} production "
         f"code file(s)) =="
     )
     token_coverage = term.get("coverage", {}).get("eligible_tokens")

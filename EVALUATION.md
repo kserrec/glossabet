@@ -81,7 +81,7 @@ Phase 15 made three conservative changes to the existing synonym heuristic:
    as `*_queue` and `run_*`; and
 3. context similarity must be at least 0.55 instead of 0.40.
 
-The current Phase 22 five-run replay emitted 20 scored findings, all labelled
+The current Phase 24 five-run replay emitted 20 scored findings, all labelled
 correct and useful by the primary reviewer, with no labelled finding missed
 where recall was complete:
 
@@ -152,10 +152,18 @@ Boundary, and found the tenant-fragmentation count insufficient without module
 or context detail. The deterministic correctness labels were not changed to
 manufacture agreement.
 
+Phase 24 changed the engine identity and vocabulary-origin metadata but did not
+change any of the 20 blinded review payloads. Before carrying the existing
+judgments forward, the refresh compared the old and new packets after removing
+only the engine identity and required exact equality of the question, sources,
+and every finding. `reviewer-results.json` records that reuse explicitly. This
+is refreshed provenance for unchanged judgments, not a new reviewer run or new
+independent evidence.
+
 ## Runtime and truncation
 
-On the recorded 8-core Linux host with CPython 3.12.3, the sum of per-case
-five-run medians was 0.520 seconds cold and 0.525 seconds warm—5.248 and 5.298
+On the recorded 9-core Linux host with CPython 3.12.13, the sum of per-case
+five-run medians was 0.384 seconds cold and 0.401 seconds warm—3.879 and 4.048
 seconds per thousand included source files. Every warm run reused 100% of
 eligible extraction entries and produced evidence byte-identical to its cold
 run. The corpus is too small for the measured warm/cold difference to establish
@@ -267,6 +275,13 @@ Phase 22 JSON at that time recorded that successful exact-bundle run. It proved
 one complete boundary execution, not a zero-flake rate for future model
 invocations.
 
+Phase 24 changed the source engine but deliberately did not relabel this older
+installed-agent evidence. The checked-in plugin wheel remains the exact Phase
+22 bundle described here; it does not yet deliver Phase 24. A fresh standalone
+Phase 24 wheel passes the isolated wheel smoke, while the release distribution
+check correctly reports that it differs from the checked-in plugin. The plugin
+and scenario evidence must be refreshed together no later than Phase 27.
+
 After the repository and documentation rename, Kyle separately authorized an
 exact local artifact refresh without ending the owner self-testing pause. The
 final rebuilt wheel differed from the Phase 22 wheel only in `METADATA` and
@@ -349,6 +364,8 @@ and compare its accuracy against this recorded standard-library baseline.
   beyond that small observed sample is unknown.
 - The multilingual fixture covers representative Python and Clojure forms,
   not every identifier grammar among the 30 recognized languages.
+- Language-origin classification currently has a curated Python builtin table;
+  unlisted languages and tokens conservatively remain domain vocabulary.
 - Lexical extraction still sees identifier-like words in comments and string
   contents. It does not claim parser-level symbol identity.
 - Scoped structural validation remains partial until an adapter supplies

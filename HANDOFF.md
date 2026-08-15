@@ -1,7 +1,7 @@
 # Session handoff — 2026-08-15
 
-This handoff becomes stale when Kyle ends the owner self-testing pause or new
-project work begins. `PLAN.md` remains the authoritative durable roadmap.
+This handoff was refreshed after Phase 24 and becomes stale when the next phase
+begins. `PLAN.md` remains the authoritative durable roadmap.
 
 **Project:** Glossabet is a Python CLI, canonical agent skill, and local Codex
 plugin prototype for making a codebase's vocabulary explicit, canonical,
@@ -9,6 +9,11 @@ inspectable, and maintainable.
 
 **Completed this session**
 
+- Completed Phase 24's language/domain vocabulary partition. RepositoryEvidence
+  v8 retains every token with a `language` or `domain` origin, excludes only
+  domain-ineligible tokens from terminology/naming budgets, and records every
+  exclusion in coverage. The current conservative table covers the verified
+  Python builtins; unlisted languages and ambiguous words remain domain.
 - Completed Phase 22 without changing the production engine, CLI, or skill.
 - Added two original Graphify fixtures covering all structural finding
   families, the seventh member beyond the display sample, exact provenance,
@@ -53,7 +58,7 @@ inspectable, and maintainable.
 
 **Verified state**
 
-- `uv run pytest -q`: 305 passed.
+- `uv run pytest -q`: 310 passed.
 - Deterministic evaluation: 7 cases, 99 source files, 52 production-code files,
   overall/structural precision 1.0, recall 1.0 where complete, 15/15 lexical
   contracts, 26/26 structural contracts, zero false alarms, and all release
@@ -62,6 +67,10 @@ inspectable, and maintainable.
   (0.85), and three preserved disagreements: p-limit `Pause Queue` fading,
   the authentication/authorization Identity Boundary, and tenant fragmentation.
   This reviewer was Codex, not an outside maintainer.
+- Phase 24 changed only the blinded packet's engine identity: its question,
+  sources, and all 20 finding payloads compared exactly equal. The existing
+  judgments were retained with explicit reuse provenance; this is not a new
+  independent reviewer run.
 - Installed-agent evaluation: 11/11 scenarios passed on Codex CLI 0.147.0,
   CPython 3.12.3, and Linux. Codex read the exact temporary plugin skill,
   version-checked its bundled 0.1.0 engine, never exposed the sensitive canary,
@@ -77,6 +86,11 @@ inspectable, and maintainable.
   `uv run python scripts/agent_eval.py --verify-results
   evaluation/agent-results.json`, and `uv run python evaluation/review.py
   --verify-results evaluation/reviewer-results.json` all pass.
+- A fresh standalone Phase 24 wheel passed `scripts/wheel_smoke.py`. The
+  release distribution check correctly rejects it against the checked-in
+  plugin wheel, which remains the last exact Phase 22 installed-agent-proven
+  bundle. Do not describe that plugin as carrying Phase 24; rebuild it and
+  rerun the installed-skill scenarios no later than Phase 27.
 - Public-main CI for commit `2be99b6` passed all 15 CPython 3.10–3.14 jobs on
   Linux, macOS, and Windows plus the separate evidence, build, and
   distribution-smoke job.
@@ -106,8 +120,11 @@ inspectable, and maintainable.
   perform additional checks himself. Do not invite anyone, collect outside
   alpha evidence, begin Phase 23, or perform publication setup until Kyle
   explicitly ends this pause.
-- After that explicit instruction, the trusted-alpha gate requires at least two
-  consenting maintainers to try the exact installed build on enough additional
-  varied repositories to bring the measured total to at least five. Record
-  opt-in scope, repository traits, failures, false alarms, usefulness, and
-  exact build identity without copying private repository content here.
+- Phase 25 (register integrity) is the next implementation pass, followed by
+  Phase 26, Phase 27, and Phase 28.1–28.3. All must finish before the
+  trusted-alpha gate.
+- After those phases and an explicit end to the pause, the trusted-alpha gate
+  requires at least two consenting maintainers to try the exact installed build
+  on enough varied repositories to bring the measured total to at least five.
+  Record opt-in scope, repository traits, failures, false alarms, usefulness,
+  and exact build identity without copying private repository content here.

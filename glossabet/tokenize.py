@@ -26,21 +26,40 @@ _ASCII_WORD_RE = re.compile(
 )
 
 # Cross-language keywords and near-universal syntax words, filtered from the
-# vocabulary because they describe the language, not the domain. Deliberately
-# moderate: overlaps with domain words (match, type, open) are accepted noise
-# reduction — Phase 4's analysis works on what remains.
+# vocabulary because they describe syntax rather than either the language or
+# project domain vocabulary. Deliberately ambiguous words such as ``match``,
+# ``open``, ``register``, and ``type`` remain available as domain evidence.
 KEYWORD_TOKENS = frozenset("""
     if else elif for while return def class import from self this var let
     const function func fn true false none null nil void int str string bool
-    float double char pub mod use match type struct enum impl trait end do
+    float double char pub mod use struct enum impl trait end do
     then begin and or not in is as with try except catch finally raise throw
-    new static public private protected final print println module open val
+    new static public private protected final print println module val
     mutable rec let when case switch break continue default goto extern
-    sizeof typedef union unsigned signed long short auto register volatile
+    sizeof typedef union unsigned signed long short auto volatile
     assert lambda yield async await global nonlocal del pass exec require
     package interface extends implements super instanceof typeof delete
     fun some ref begin object inherit method virtual constraint functor
 """.split())
+
+# Source-language vocabulary is retained in evidence but does not compete with
+# project vocabulary for terminology/naming budgets. These sets are
+# intentionally conservative: an unlisted token remains domain vocabulary.
+# The Python set starts with unambiguous builtins and ubiquitous operations
+# observed in the repository and evaluation corpus; plausible domain words
+# such as ``open``, ``type``, ``run``, and ``match`` stay out.
+LANGUAGE_BUILTIN_TOKENS: dict[str, frozenset[str]] = {
+    "python": frozenset(
+        """
+        append bytearray callable classmethod delattr dict divmod enumerate
+        frozenset getattr hasattr isinstance issubclass len memoryview repr
+        reversed setattr sorted staticmethod tuple
+        """.split()
+    ),
+}
+
+TOKEN_ORIGIN_LANGUAGE = "language"
+TOKEN_ORIGIN_DOMAIN = "domain"
 
 # Words too common in prose to carry naming signal.
 DOC_STOPWORDS = frozenset("""
@@ -67,6 +86,20 @@ def tokenization_contract() -> dict:
         "forms": ["camelCase", "PascalCase", "snake_case", "clojure-kebab-case"],
         "parser_backed": False,
     }
+
+
+def token_origin(token: str, language: str | None) -> str:
+    """Classify one normalized token at one source-language occurrence.
+
+    Languages without a curated set, and tokens deliberately omitted from a
+    set, remain domain evidence. Aggregation promotes a token to ``domain`` if
+    any occurrence is domain-origin, so one language's builtin cannot erase a
+    same-spelled project concept used in another language.
+    """
+    language_tokens = LANGUAGE_BUILTIN_TOKENS.get(language or "", ())
+    if token in language_tokens:
+        return TOKEN_ORIGIN_LANGUAGE
+    return TOKEN_ORIGIN_DOMAIN
 
 
 def tokenize_identifier(name: str) -> list[str]:

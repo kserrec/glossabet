@@ -19,6 +19,9 @@ This first alpha is prepared but has not been published to PyPI.
 - Labelled Graphify structural and truncation fixtures, a blinded
   second-reviewer lane, and an 11-scenario installed-Codex boundary harness
   with bounded traces and exact temporary-plugin cleanup.
+- Conservative source-language builtin tagging (currently Python) that retains
+  complete lexical evidence while reserving terminology and naming budgets for
+  project-domain vocabulary.
 - The canonical agent skill and `glossabet install` for current Codex and
   Claude Code personal skill locations.
 - A version-coupled Codex plugin prototype carrying the canonical skill and a

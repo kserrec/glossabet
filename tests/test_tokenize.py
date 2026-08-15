@@ -3,8 +3,12 @@
 import pytest
 
 from glossabet.tokenize import (
+    LANGUAGE_BUILTIN_TOKENS,
+    TOKEN_ORIGIN_DOMAIN,
+    TOKEN_ORIGIN_LANGUAGE,
     doc_words,
     iter_identifiers,
+    token_origin,
     tokenization_contract,
     tokenize_identifier,
 )
@@ -70,3 +74,18 @@ def test_tokenization_contract_is_explicitly_lexical():
     assert contract["unicode_normalization"] == "NFKC+casefold"
     assert contract["digits"] == "suffix-to-preceding-word; standalone-dropped"
     assert contract["parser_backed"] is False
+
+
+def test_python_builtin_partition_is_conservative_and_language_specific():
+    python_builtins = LANGUAGE_BUILTIN_TOKENS["python"]
+    assert {"dict", "len", "append", "isinstance", "sorted"} <= python_builtins
+    assert not {"open", "type", "run", "match"} & python_builtins
+    assert token_origin("dict", "python") == TOKEN_ORIGIN_LANGUAGE
+    assert token_origin("dict", "javascript") == TOKEN_ORIGIN_DOMAIN
+    assert token_origin("project", "python") == TOKEN_ORIGIN_DOMAIN
+
+
+def test_plausible_domain_words_survive_cross_language_keyword_filtering():
+    assert tokenize_identifier("open_type_run_match_register") == [
+        "open", "type", "run", "match", "register",
+    ]

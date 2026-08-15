@@ -12,6 +12,7 @@ from collections.abc import Iterable
 from heapq import nsmallest
 
 from glossabet.coverage import coverage_ledger
+from glossabet.tokenize import TOKEN_ORIGIN_DOMAIN, TOKEN_ORIGIN_LANGUAGE
 
 MODULE_CANDIDATE_CAP = 10
 TERM_CANDIDATE_CAP = 15
@@ -58,9 +59,12 @@ def _module_candidates(imports_section: dict, modules: list[dict],
 
 def _term_candidates(token_counts: Counter, token_files: dict,
                      token_modules: dict,
-                     doc_term_counts: Counter) -> Iterable[dict]:
+                     doc_term_counts: Counter,
+                     token_origins: dict[str, str]) -> Iterable[dict]:
     ranked = sorted(token_counts.items(), key=lambda kv: (-kv[1], kv[0]))
     for term, count in ranked:
+        if token_origins.get(term, TOKEN_ORIGIN_DOMAIN) != TOKEN_ORIGIN_DOMAIN:
+            continue
         files = len(token_files.get(term, ()))
         spread = len(token_modules.get(term, ()))
         doc_mentions = doc_term_counts.get(term, 0)
@@ -86,7 +90,8 @@ def _term_candidates(token_counts: Counter, token_files: dict,
 
 
 def _ranked(
-    candidates: Iterable[dict], cap: int, key, label: str
+    candidates: Iterable[dict], cap: int, key, label: str,
+    *, incomplete_reasons: Iterable[str] = (),
 ) -> tuple[list[dict], dict]:
     total = 0
 
@@ -97,7 +102,7 @@ def _ranked(
             yield candidate
 
     kept = nsmallest(cap, counted(), key=key)
-    reasons = []
+    reasons = list(incomplete_reasons)
     if total > len(kept):
         reasons.append(f"{label} candidate detail cap is {cap} items")
     return kept, coverage_ledger(total, len(kept), reasons=reasons)
@@ -106,7 +111,19 @@ def _ranked(
 def build_naming_candidates(imports_section: dict, modules: list[dict],
                             token_counts: Counter, token_files: dict,
                             token_modules: dict,
-                            doc_term_counts: Counter) -> dict:
+                            doc_term_counts: Counter,
+                            token_origins: dict[str, str] | None = None) -> dict:
+    token_origins = token_origins or {}
+    language_tokens_excluded = sum(
+        token_origins.get(term) == TOKEN_ORIGIN_LANGUAGE
+        for term in token_counts
+    )
+    term_input_reasons = []
+    if language_tokens_excluded:
+        term_input_reasons.append(
+            f"{language_tokens_excluded} language-origin vocabulary token(s) "
+            "excluded from the term naming candidate pool"
+        )
     module_items, module_coverage = _ranked(
         _module_candidates(imports_section, modules, doc_term_counts),
         MODULE_CANDIDATE_CAP,
@@ -114,10 +131,14 @@ def build_naming_candidates(imports_section: dict, modules: list[dict],
         label="module naming",
     )
     term_items, term_coverage = _ranked(
-        _term_candidates(token_counts, token_files, token_modules, doc_term_counts),
+        _term_candidates(
+            token_counts, token_files, token_modules, doc_term_counts,
+            token_origins,
+        ),
         TERM_CANDIDATE_CAP,
         key=lambda candidate: (-candidate["score"], candidate["term"]),
         label="term naming",
+        incomplete_reasons=term_input_reasons,
     )
     return {
         "modules": module_items,

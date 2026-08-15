@@ -132,7 +132,7 @@ The skill does not read this artifact directly. Its top-level shape:
 | `naming_candidates` | ranked "likely deserves a name" nominations (modules, terms, structures) |
 | `structural_groups` | Graphify presence, usability, warnings, commit freshness, and normalized groups |
 | `files` | code/doc files with their production/test/fixture role |
-| `vocabulary` | normalization contract plus production-scoped, capped `tokens`, enriched `identifiers`, and `doc_terms` tables |
+| `vocabulary` | normalization contract plus production-scoped, capped origin-tagged `tokens`, enriched `identifiers`, and `doc_terms` tables |
 | `terminology` | production scope, register stats, code-vs-doc layers, synonym and overload nominations |
 | `monorepo` | `{detected, reasons, sub_roots}` |
 | `skipped` | sensitive, oversized, escaping-symlink, configured, generated, vendored, and corpus-budget exclusions |
@@ -234,17 +234,21 @@ The package is `glossabet/`. Grouped by role:
   drops standalone numeric hunks. `tokenize_term()` applies the same contract
   to glossary terms; `doc_words()` extracts Unicode prose vocabulary.
   Cross-language keywords and prose stopwords are filtered as deliberate,
-  documented noise reduction. The source matcher is still lexical and sees
-  identifier-like text in comments/strings; it does not claim parser syntax.
+  documented noise reduction. The current conservative Python builtin table
+  tags retained tokens as language or domain vocabulary; unlisted languages
+  and ambiguous words stay domain. The source matcher is still lexical and
+  sees identifier-like text in comments/strings; it does not claim parser
+  syntax.
 
 **The aggregation hub**
 - `evidence.py` — `build_evidence()` orchestrates everything: walk the repo,
   read each included production/test/fixture file (via the cache when valid),
   fold only production identifiers into the `_Vocabulary` aggregate (token,
-  identifier-unit, per-file/per-module, and neighbor views), read production
-  docs into the terminology layer, then assemble the evidence dict. Identifier
-  entries retain normalized tokens and bounded locations so compound matching
-  can prove one lexical unit rather than infer from aggregate words. Also holds
+  identifier-unit, per-file/per-module, origin, and neighbor views), read
+  production docs into the terminology layer, then assemble the evidence
+  dict. Identifier entries retain normalized tokens and bounded locations so
+  compound matching can prove one lexical unit rather than infer from aggregate
+  words. Also holds
   `_git_stamp()` (runs `git` with the repo's dangerous config keys neutralized
   and the shared Glossabet-output pathspec — see Security) and the
   `scan`/`analyze` command handlers.
@@ -262,8 +266,9 @@ The package is `glossabet/`. Grouped by role:
 - `importance.py` — `build_naming_candidates()` combines import fan-in/fan-out,
   file counts, and doc mentions into ranked "likely deserves a name"
   nominations, each carrying its reasons in plain numbers. It screens the
-  complete bounded vocabulary in a streaming top-k pass, so candidates below
-  the old frequency pool still enter exact totals without an unbounded list.
+  domain-origin bounded vocabulary in a streaming top-k pass, reports how many
+  language tokens were excluded, and lets candidates below the old frequency
+  pool enter exact totals without an unbounded list.
 - `terminology.py` — `build_terminology()`: house-register statistics
   (naming-style and identifier-length distributions, common prefixes/suffixes),
   code-vs-doc vocabulary layers, and two nomination kinds — synonym candidates
@@ -272,7 +277,8 @@ The package is `glossabet/`. Grouped by role:
   contexts). Synonym nominations require low cross-term file overlap, at least
   two shared positional identifier patterns, and calibrated context similarity
   so sibling fields are not mistaken for replacements. All inputs are
-  production-scoped and all pairwise work is capped to the top-N vocabulary;
+  production-scoped and all pairwise work is capped to the top-N domain
+  vocabulary after counted language-token exclusion;
   overload dispersion also has an explicit per-term module ceiling. The full
   eligible-token total and every detail/sample/work omission use the shared
   coverage ledger rather than turning a bounded sample into an exhaustive
@@ -551,10 +557,14 @@ structural validation is partial until an adapter supplies trustworthy paths.
 
 ## Where things stand
 
-`PLAN.md` is the authoritative roadmap. Phases 0–22 are complete, and the
-owner self-testing pause is active. No outside maintainer invitation or Phase
-23 work begins until Kyle explicitly ends that pause. Package metadata, the
-embedded plugin wheel, and installed-agent evidence are synchronized with the
-renamed GitHub repository. The trusted-alpha evidence gate, Phase 23, and
-explicit external authorization remain before public package or plugin
+`PLAN.md` is the authoritative roadmap. Phases 0–22 and Phase 24 are complete;
+Phase 25 is next, and the owner self-testing pause remains active. Phases 25–28
+finish before any outside maintainer invitation, and no Phase 23 work begins
+until the trusted-alpha gate passes. Package metadata, the embedded plugin
+wheel, and installed-agent evidence remain bound to the renamed GitHub
+repository, but the checked-in plugin wheel is still the last exact Phase 22
+installed-agent-proven bundle; Phase 24 currently lives in source and the
+standalone source build. The plugin must be refreshed and its installed-skill
+scenarios rerun no later than Phase 27. The trusted-alpha evidence gate, Phase
+23, and explicit external authorization remain before public package or plugin
 publication.

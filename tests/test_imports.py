@@ -84,6 +84,28 @@ def test_term_nomination_rewards_doc_presence(tmp_path):
     assert any("docs" in r for r in terms["payment"]["reasons"])
 
 
+def test_term_nominations_exclude_language_tokens_and_report_the_filter(tmp_path):
+    for module in ("left", "right"):
+        directory = tmp_path / module
+        directory.mkdir()
+        (directory / "service.py").write_text(
+            "dict_value = dict()\nshared_boundary = dict_value\n"
+        )
+
+    evidence = build_evidence(tmp_path)
+    naming = evidence["naming_candidates"]
+    terms = {candidate["term"] for candidate in naming["terms"]}
+
+    assert "dict" not in terms
+    assert {"shared", "boundary"} & terms
+    term_coverage = naming["coverage"]["terms"]
+    assert term_coverage["complete"] is False
+    assert (
+        "1 language-origin vocabulary token(s) excluded from the term naming "
+        "candidate pool"
+    ) in term_coverage["reasons"]
+
+
 def test_bounds_reported(tmp_path):
     evidence = build_evidence(make_repo(tmp_path))
     assert "edges_truncated" in evidence["imports"]
