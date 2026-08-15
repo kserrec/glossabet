@@ -446,6 +446,17 @@ current engine; documentation makes no stale readiness claim.
 
 ### Phase 21 — Name clearance and preferred Codex distribution
 
+**Decision checkpoint (2026-08-14):** Kyle selected **Glossabet** as the new
+product identity. The intended coinage is `glossa` plus the ending of
+`alphabet`, pronounced “GLOSS-uh-bet.” Point-in-time preliminary checks found
+no exact current product/company/app use, GitHub repository or account, major
+package-registry entry, registration for the checked `.com`, `.net`, `.org`,
+`.dev`, `.io`, or `.ai` domains, exact or close U.S. federal trademark record,
+or historical `glossabet.com` capture. These checks neither reserve the name
+nor replace legal clearance. Phase 21 remains unfinished: the repository and
+all executable surfaces still use **Glossarize**, and the recorded clearance,
+atomic rename, and distribution work below have not started.
+
 **Goal:** settle the product identity before publishing it and prove the
 preferred Codex plugin experience without weakening the standalone package.
 
