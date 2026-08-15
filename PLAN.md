@@ -581,7 +581,8 @@ layers — statistics, scoring, projection, delivery — not in the binding
 contracts. These are implementation phases and are permitted during the
 owner self-testing pause, which forbids only outside invitations, Phase 23,
 and publication setup. Execution order: 24 → 25 → 26 (each feeds the next),
-27 independently, 28 after 27. All five must complete before the
+27 independently, then 28.1 → 28.2/28.3 after 27 (Phase 28 is split into
+three passes; see its section). All five must complete before the
 trusted-alpha gate.
 
 ### Phase 24 — Language/domain vocabulary partition
@@ -691,28 +692,66 @@ read the canonical vocabulary with no user invocation — consumption becomes
 ambient while changing vocabulary stays human-gated. (Depends on Phase 27.
 This is the product's steady state: ambient read, human-authorized write.)
 
+Phase 28 is oversized for one pass and is split per the one-phase-per-pass
+rule into three sub-phases, each its own implementation pass with its own
+acceptance check and commit. They are three different kinds of work:
+28.1 is pure engine/CLI, 28.2 is plugin/host lifecycle verified by
+installed-agent scenario batches rather than unit tests, and 28.3 writes to
+user-owned files — the most sensitive operation Glossabet performs — and
+carries its own hostile-scenario review. 28.2 and 28.3 both depend on 28.1
+and are independent of each other, so a blocked hook host cannot strand the
+digest or the sync command.
+
+#### Phase 28.1 — Brief digest
+
 **Steps:**
 
 1. `glossabet brief`: a deterministic digest of `glossary.json` (canonical
    terms, one-line definitions, scopes, aliases) bounded at 4 KB with the
    git stamp included. Staleness rules apply in full: the digest names the
    glossary state it renders.
-2. Primary channel: the plugin ships a session-start hook that runs `brief`
-   fresh in each session — fresh by construction, no repository mutation.
-3. Fallback channel: `glossabet sync-context`, an explicit human-invoked
-   command that writes a stamped managed block into `CLAUDE.md`/`AGENTS.md`
-   for hosts without hooks. Never written unbidden; `drift` and `validate`
-   flag a stale block.
-4. Document the boundary in the skill and README: the ambient layer is
-   read-only consumption; nominating, coining, and finalizing vocabulary
-   still require a human `/glossabet` session. Rendered digest text follows
-   the Phase 18.4 terminal-safety rules for repository-controlled content.
+2. Digest text follows the Phase 18.4 terminal-safety rules for
+   repository-controlled content and is covered by the determinism,
+   no-contamination, and no-secrets tests.
+3. Document the ambient boundary in the skill and README: the ambient layer
+   is read-only consumption; nominating, coining, and finalizing vocabulary
+   still require a human `/glossabet` session.
+
+**Acceptance:** brief output is deterministic, bounded, stamped, and covered
+by the safety tests; it is usable by hand (piped or pasted into context)
+before any delivery channel exists.
+
+#### Phase 28.2 — Session-start hook
+
+**Steps:**
+
+1. The plugin ships a session-start hook that runs `brief` fresh in each
+   session — fresh by construction, no repository mutation. With no
+   glossary present the hook contributes nothing.
+2. Extend the installed-agent scenario batches to cover hook delivery,
+   binding evidence to exact artifact bytes per the Phase 22 machinery.
 
 **Acceptance:** a fresh agent session with the hook installed sees the
-canonical terms without any user mention of glossabet; no code path writes
-to user-owned files without an explicit human command; a stale sync block is
-flagged by drift/validate; brief output is deterministic, bounded, and
-covered by the no-contamination and no-secrets tests.
+canonical terms without any user mention of glossabet, proven on the probed
+hosts; hosts without lifecycle probes are documented as unverified rather
+than claimed.
+
+#### Phase 28.3 — Sync-context managed block
+
+**Steps:**
+
+1. `glossabet sync-context`: an explicit human-invoked command that writes
+   a stamped managed block into `CLAUDE.md`/`AGENTS.md` for hosts without
+   hooks. Never written unbidden; marker and collision semantics with
+   hand-written surrounding content are defined before code.
+2. `drift` and `validate` flag a stale or hand-edited managed block.
+3. Hostile-scenario review of the write path: this is the only place
+   Glossabet touches user-owned files outside the confirmed glossary
+   finalize, and tests prove no other code path can.
+
+**Acceptance:** no code path writes to user-owned files without an explicit
+human command; a stale sync block is flagged by drift/validate; hostile
+write-path scenarios pass.
 
 ### Owner self-testing pause — active, not an implementation phase
 
@@ -797,7 +836,7 @@ Each finding was verified against the engine's own output on this repository.
 | Prose and builtin spellings corrupt the reported house register (55.4% flat / 66.2% one-word on a snake_case multi-word repo); no evaluation measured register accuracy | Phase 25 |
 | Naming candidates rank raw frequency: `json`, `path`, `file`, `name`, `run`, `root`; importance never consults overload dispersion | Phase 26 |
 | Agent context is 552 KB for 73 files (~90% vocabulary, 161 KB location lists); the 1 MB limit is a ceiling, not a budget | Phase 27 |
-| The glossary reaches agents only inside `/glossabet` naming sessions; ordinary sessions re-invent vocabulary that lands as drift | Phase 28 |
+| The glossary reaches agents only inside `/glossabet` naming sessions; ordinary sessions re-invent vocabulary that lands as drift | Phase 28.1–28.3 |
 
 ### Later / unscheduled
 - Graphify pass-2 relabeling guide (instruction-level recipe as a doc);
