@@ -42,10 +42,15 @@ inspectable, and maintainable.
   `METADATA` and `RECORD` changed; executable entries remained byte-identical.
   A final README status sync changed metadata only, so the wheel and evidence
   were rebuilt once more against the final source state.
+- The first public-main CI run proved that installed-agent plugin identity had
+  included an ignored local `__pycache__` file that clean checkouts lacked.
+  Updated the existing tree-identity function to exclude Python interpreter
+  cache directories, added a focused regression test, and regenerated the
+  evidence against the corrected identity and unchanged final wheel.
 
 **Verified state**
 
-- `uv run pytest -q`: 303 passed.
+- `uv run pytest -q`: 304 passed.
 - Deterministic evaluation: 7 cases, 99 source files, 52 production-code files,
   overall/structural precision 1.0, recall 1.0 where complete, 15/15 lexical
   contracts, 26/26 structural contracts, zero false alarms, and all release
@@ -60,11 +65,11 @@ inspectable, and maintainable.
   made no unexpected repository write, and stopped before `inspect` when the
   standalone CLI was missing. The documented `inspect` evidence refresh was
   explicitly permitted.
-- Agent preflight reliability is not established: six of seven observed full
+- Agent preflight reliability is not established: seven of eight observed full
   plugin batches ran the required single version check. The original Phase 22
-  work accounted for four of five; both post-Phase 22 metadata-only refreshes
-  passed, including the current final wheel's first full batch. Every failed or
-  successful attempt completed its exact plugin cleanup.
+  work accounted for four of five; all three post-Phase 22 batches passed,
+  including the corrected clean-tree evidence run against the unchanged final
+  wheel. Every failed or successful attempt completed its exact plugin cleanup.
 - `uv run python evaluation/run.py --verify-results evaluation/results.json`,
   `uv run python scripts/agent_eval.py --verify-results
   evaluation/agent-results.json`, and `uv run python evaluation/review.py
@@ -83,7 +88,7 @@ inspectable, and maintainable.
 - Package project URLs, the embedded plugin wheel, and installed-agent evidence
   now use and bind to `kserrec/glossabet`. The refreshed evidence records plugin
   tree SHA-256
-  `a2bc528e23478e4fa708a40dbfe97f081f482901323d60c45351a06966df5cc5`.
+  `b1a558baf1f6b4a32e9c9d5c0a9d87cda88f5b84607b02c1f4daad1a4cf132dd`.
 - No package or plugin was published; no Codex plugin, tag, release, domain,
   security setting, visibility setting, invitation, or outreach was created or
   changed. Kyle's separate legacy `~/.local/bin/glossarize` 0.0.1 installation

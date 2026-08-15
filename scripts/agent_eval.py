@@ -70,7 +70,9 @@ def _tree_sha256(root: Path) -> str:
     files: list[Path] = []
     for current, directories, names in os.walk(root):
         directories[:] = sorted(
-            name for name in directories if not _dotenv_part(name)
+            name
+            for name in directories
+            if name != "__pycache__" and not _dotenv_part(name)
         )
         for name in sorted(names):
             if not _dotenv_part(name):

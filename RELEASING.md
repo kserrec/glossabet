@@ -118,8 +118,13 @@ the rebuilt wheel with the Phase 22 wheel showed changes only to `METADATA` and
 `RECORD`; every executable package entry was byte-identical. The authenticated
 installed-agent evaluation consumed Codex usage and passed 11/11 scenarios on
 the refreshed exact wheel. Its uniquely named user-level Codex marketplace and
-plugin state was removed and verified absent afterward. This refresh did not
-invite outside testers, begin Phase 23, create a release, or publish a package.
+plugin state was removed and verified absent afterward. A clean public-main CI
+checkout exposed that the first evidence identity included an ignored local
+Python `__pycache__` file; the identity now excludes interpreter cache
+directories, a focused regression protects clean-checkout parity, and the same
+exact wheel passed 11/11 again under the corrected identity. This refresh did
+not invite outside testers, begin Phase 23, create a release, or publish a
+package.
 
 ## External setup still requiring Kyle
 

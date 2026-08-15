@@ -273,12 +273,18 @@ final rebuilt wheel differed from the Phase 22 wheel only in `METADATA` and
 `RECORD`; every executable package entry was byte-identical. The final wheel
 passed all 11 scenarios in its first full batch. The current committed JSON
 records that run and binds it to plugin tree SHA-256
-`a2bc528e23478e4fa708a40dbfe97f081f482901323d60c45351a06966df5cc5`.
+`b1a558baf1f6b4a32e9c9d5c0a9d87cda88f5b84607b02c1f4daad1a4cf132dd`.
 An earlier metadata-only refresh also passed before the final README status
-sync required the final rebuild. Temporary plugin and marketplace state was
-removed and verified absent after both runs. That makes the two post-Phase 22
-refreshes two for two and the combined observation six of seven complete
-batches; the sample remains too small to claim a stable future success rate.
+sync required the final rebuild. The first public-main CI run then proved that
+the evaluator's tree identity had also included an ignored local
+`__pycache__` file: local verification saw that file, while every clean CI
+checkout correctly did not. The identity function now excludes only Python's
+interpreter-generated cache directories, a focused regression test preserves
+that behavior, and the same final wheel passed all 11 scenarios again against
+the corrected identity. Temporary plugin and marketplace state was removed and
+verified absent after every run. That makes the three post-Phase 22 batches
+three for three and the combined observation seven of eight complete batches;
+the sample remains too small to claim a stable future success rate.
 
 The authenticated regeneration command temporarily changes user-level Codex
 plugin/marketplace state and then removes only its uniquely named state. The
@@ -330,10 +336,10 @@ and compare its accuracy against this recorded standard-library baseline.
   fixtures, not on varied third-party Graphify exports.
 - Installed-agent evidence covers Codex CLI 0.147.0 on one Linux host. Other
   Codex versions and operating systems, ChatGPT, and Claude Code are unverified.
-- The installed-agent preflight passed six of seven observed full plugin
+- The installed-agent preflight passed seven of eight observed full plugin
   batches. Phase 22 passed four of five, including one of two unchanged
-  attempts against that exact wheel; both post-Phase 22 metadata-only refreshes
-  passed, including the current final wheel's first full batch. Reliability
+  attempts against that exact wheel; all three post-Phase 22 batches passed,
+  including the final wheel's corrected clean-tree evidence run. Reliability
   beyond that small observed sample is unknown.
 - The multilingual fixture covers representative Python and Clojure forms,
   not every identifier grammar among the 30 recognized languages.

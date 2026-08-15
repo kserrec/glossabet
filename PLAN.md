@@ -551,11 +551,15 @@ embedded plugin wheel was rebuilt, and the installed-agent evidence was
 regenerated against those exact bytes. Only wheel `METADATA` and `RECORD`
 changed; executable entries remained byte-identical. A final README status
 sync changed metadata only, so the wheel and evidence were rebuilt once more
-against the final source state. Both post-Phase 22 refreshes passed all 11
-scenarios on their first full batches, and every temporary Codex
-plugin/marketplace entry was removed. These internal changes did not end the
-owner self-testing pause, change repository visibility, publish a package or
-plugin, create a tag or release, or contact outside maintainers.
+against the final source state. The first public-main CI run then proved the
+evidence identity included an ignored local `__pycache__` file that clean
+checkouts lacked. The existing tree-identity function now excludes Python
+interpreter cache directories, a focused regression locks that behavior, and
+evidence was regenerated against the corrected identity and unchanged final
+wheel. All three post-Phase 22 batches passed all 11 scenarios, and every
+temporary Codex plugin/marketplace entry was removed. These internal changes
+did not end the owner self-testing pause, change repository visibility, publish
+a package or plugin, create a tag or release, or contact outside maintainers.
 
 ### Owner self-testing pause — active, not an implementation phase
 

@@ -4,7 +4,7 @@ import json
 from copy import deepcopy
 from pathlib import Path
 
-from scripts.agent_eval import verify_results
+from scripts.agent_eval import _tree_sha256, verify_results
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,6 +53,20 @@ def test_committed_installed_agent_evidence_is_current_and_complete():
         "api-secret.txt",
     ]
     assert sensitive["unexpected_writes"] == []
+
+
+def test_plugin_identity_ignores_interpreter_bytecode_cache(tmp_path):
+    plugin = tmp_path / "plugin"
+    source = plugin / "skills" / "glossabet" / "scripts" / "run_glossabet.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("print('glossabet')\n", encoding="utf-8")
+    clean_identity = _tree_sha256(plugin)
+
+    cache = source.parent / "__pycache__" / "run_glossabet.cpython-312.pyc"
+    cache.parent.mkdir()
+    cache.write_bytes(b"generated interpreter cache")
+
+    assert _tree_sha256(plugin) == clean_identity
 
 
 def test_agent_verifier_rejects_stale_weakened_or_failing_evidence(tmp_path):

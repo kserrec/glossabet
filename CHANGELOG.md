@@ -38,6 +38,10 @@ This first alpha is prepared but has not been published to PyPI.
   security-report URL now use `kserrec/glossabet`. The version-coupled plugin
   wheel and installed-agent evidence were regenerated against that exact
   metadata; executable wheel entries did not change.
+- Installed-agent plugin identity now excludes interpreter-generated
+  `__pycache__` directories. A clean GitHub Actions checkout proved that the
+  previous identity could bind ignored local bytecode, and a focused regression
+  test now preserves clean-checkout parity.
 
 - Bounded analysis collections now share exact coverage ledgers; terminology,
   naming, Graphify, drift, and validation propagate every known omission.
