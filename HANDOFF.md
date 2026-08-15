@@ -3,6 +3,12 @@
 This handoff was refreshed after Phase 26 and becomes stale when the next phase
 begins. `PLAN.md` remains the authoritative durable roadmap.
 
+**Phase 27 work-branch note:** the compact AgentContext v2 implementation,
+matching canonical skill, rebuilt standalone/plugin wheel, and distribution
+checks are prepared. The real installed-agent rerun is blocked in the current
+managed environment because Codex cannot write its protected user state. Phase
+27 is not complete, and the committed agent result remains intentionally stale.
+
 **Project:** Glossabet is a Python CLI, canonical agent skill, and local Codex
 plugin prototype for making a codebase's vocabulary explicit, canonical,
 inspectable, and maintainable.
@@ -99,11 +105,11 @@ inspectable, and maintainable.
   `uv run python scripts/agent_eval.py --verify-results
   evaluation/agent-results.json`, and `uv run python evaluation/review.py
   --verify-results evaluation/reviewer-results.json` all pass.
-- A fresh standalone Phase 26 wheel passed `scripts/wheel_smoke.py`. The
-  release distribution check correctly rejects it against the checked-in
-  plugin wheel, which remains the last exact Phase 22 installed-agent-proven
-  bundle. Do not describe that plugin as carrying Phases 24–26; rebuild it and
-  rerun the installed-skill scenarios no later than Phase 27.
+- A fresh standalone Phase 27 candidate wheel passed `scripts/wheel_smoke.py`,
+  the checked-in plugin now carries that exact wheel and canonical skill, and
+  the release distribution check passes. Do not describe it as
+  installed-agent-proven until `scripts/agent_eval.py --run` succeeds on a host
+  with writable Codex user state and refreshes the committed result.
 - Public-main CI for commit `2be99b6` passed all 15 CPython 3.10–3.14 jobs on
   Linux, macOS, and Windows plus the separate evidence, build, and
   distribution-smoke job.

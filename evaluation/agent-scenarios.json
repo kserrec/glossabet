@@ -48,7 +48,7 @@
       "id": "partial",
       "delivery": "plugin",
       "expected_status": "grounded-partial",
-      "description": "A complete corpus whose agent projection omits identifier details."
+      "description": "A complete corpus whose lean projection exceeds the ordinary rollups and caps identifier details."
     },
     {
       "id": "monorepo",

@@ -118,14 +118,17 @@ in [`evaluation/results.json`](evaluation/results.json).
 
 **Status: 0.1.0 source alpha under an owner self-testing pause; not yet
 published to PyPI or a plugin directory and not yet a trusted-alpha release.**
-Phases 0–22 and Phases 24–26 are complete; Phase 27 is next. The earlier work
+Phases 0–22 and Phases 24–26 are complete. Phase 27's implementation and
+distribution are prepared on the current work branch, but its installed-agent
+acceptance rerun is still required before the phase can be marked complete.
+The earlier work
 includes 11/11 installed-skill scenarios on Codex CLI 0.147.0/Linux. Owner-run
-testing and Phases 27–28 remain before any outside maintainer invitation.
+testing and Phases 27–28.3 remain before any outside maintainer invitation.
 Package metadata, the embedded plugin wheel, and installed-agent evidence are
-bound to the renamed GitHub repository. The source engine now includes Phases
-24–26; the checked-in plugin wheel remains the last exact Phase 22
-installed-agent-proven bundle and carries none of those phases yet. It
-must be refreshed with the installed-skill scenarios no later than Phase 27.
+bound to the renamed GitHub repository. The rebuilt plugin wheel now matches
+the Phase 27 source and skill, but the committed installed-agent result still
+binds the earlier proven bundle and is intentionally stale until the real host
+rerun succeeds.
 The trusted-alpha evidence gate and Phase 23 remain later work; do not describe
 the current stopping point as release-ready. See
 [`NAME-CLEARANCE.md`](NAME-CLEARANCE.md) for the
@@ -166,7 +169,8 @@ The full explanation and expected result are in
 glossabet install           install the canonical agent skill (Codex default)
 glossabet scan <repo>       deterministic, git-stamped evidence (cached, incremental)
 glossabet analyze <repo>    scan + terminology report (register, overlaps, overloads)
-glossabet inspect <repo>    fresh, bounded JSON context for the agent skill
+glossabet inspect <repo>    fresh, lean JSON context for the agent skill
+glossabet inspect <repo> --full  detailed diagnostic projection
 glossabet save <repo>       validate/save glossary JSON from standard input
 glossabet show <repo>       display the current glossary
 glossabet drift <repo>      live vocabulary vs the canonical glossary
@@ -176,13 +180,18 @@ glossabet validate <repo>   reconcile glossary vs evidence and the Graphify grap
 The installed skill requires `glossabet inspect .` from the exact repository
 or subproject root. That command safely validates repository-controlled JSON,
 builds current evidence, refreshes `evidence.json`, and emits a separate
-versioned context capped at 1 MB. The context reports scanner omissions under
-`coverage.corpus` and agent-projection omissions under `coverage.context`.
-The skill never opens Glossabet JSON artifacts itself and does not fall back
-to unrestricted recursive reading when the CLI boundary fails. When the human
-settles terms, the skill sends the complete JSON document to `glossabet save
-.` on standard input; that command bounds, strictly validates, confines, and
-atomically persists `glossary.json` instead of letting the agent write it.
+versioned, compact context. The routine schema-v2 projection uses per-module
+vocabulary rollups and retains file locations only for naming candidates and
+register exemplars; on Glossabet itself its checked soft target is 80 KB. The
+1 MB ceiling remains a hard failure backstop for unusual repositories, not a
+routine budget. `inspect --full` emits the former detailed collection shape
+for diagnostics. Both modes report scanner omissions under `coverage.corpus`
+and every agent-projection omission under `coverage.context`. The skill never
+opens Glossabet JSON artifacts itself and does not fall back to unrestricted
+recursive reading when the CLI boundary fails. When the human settles terms,
+the skill sends the complete JSON document to `glossabet save .` on standard
+input; that command bounds, strictly validates, confines, and atomically
+persists `glossary.json` instead of letting the agent write it.
 
 Artifacts live in `<repo>/glossabet-out/` (evidence, glossary, drift and
 validation reports). The incremental extraction cache is user-owned state,

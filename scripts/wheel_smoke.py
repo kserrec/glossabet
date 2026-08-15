@@ -13,6 +13,9 @@ import venv
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from glossabet.agent_context import AGENT_CONTEXT_SCHEMA_VERSION  # noqa: E402
 
 
 def _one_wheel(dist: Path) -> Path:
@@ -125,7 +128,7 @@ def main() -> int:
             env=env,
         )
         context = json.loads(context_text)
-        if context.get("context_schema_version") != 1:
+        if context.get("context_schema_version") != AGENT_CONTEXT_SCHEMA_VERSION:
             raise RuntimeError("wheel-installed inspect returned the wrong schema")
         if context.get("glossary", {}).get("concepts") != glossary["concepts"]:
             raise RuntimeError("wheel-installed inspect lost validated glossary state")

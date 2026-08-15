@@ -70,6 +70,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_repository_path(inspect)
     _add_graphify_toggle(inspect)
+    inspect.add_argument(
+        "--full",
+        action="store_true",
+        help="emit the detailed pre-lean agent projection",
+    )
 
     show = sub.add_parser("show", help="display the current glossary")
     _add_repository_path(show)
@@ -137,7 +142,11 @@ def _run(argv: list[str] | None) -> int:
     if args.command == "inspect":
         from glossabet.agent_context import inspect_command
 
-        return inspect_command(args.path, graphify=not args.no_graphify)
+        return inspect_command(
+            args.path,
+            graphify=not args.no_graphify,
+            full=args.full,
+        )
 
     if args.command == "show":
         from glossabet.glossary import show_command
