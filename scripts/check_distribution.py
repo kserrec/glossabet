@@ -112,6 +112,7 @@ def _check_sdist(sdist: Path, version: str, canonical_skill: bytes) -> None:
                 _fail(f"source distribution contains a link/device: {member.name}")
 
         required_relative = {
+            ".github/workflows/quality.yml",
             "CHANGELOG.md",
             "LICENSE",
             "PRIVACY.md",
@@ -121,13 +122,17 @@ def _check_sdist(sdist: Path, version: str, canonical_skill: bytes) -> None:
             "docs/WALKTHROUGH.md",
             "examples/payment-service/glossarize-out/glossary.json",
             "examples/payment-service/src/payment_service.py",
+            "evaluation/results.json",
+            "evaluation/run.py",
             "glossarize/installer.py",
             "pyproject.toml",
             "scripts/check_distribution.py",
+            "scripts/check_workflows.py",
             "scripts/run_walkthrough.py",
             "scripts/wheel_smoke.py",
             "skill/SKILL.md",
             "tests/test_install.py",
+            "tests/test_release.py",
             "tests/test_walkthrough.py",
         }
         required = {prefix + name for name in required_relative}

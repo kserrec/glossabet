@@ -8,10 +8,15 @@ on:
         required: true
         type: string
 
-permissions: {}
+permissions:
+  contents: read
 
 jobs:
+  quality:
+    uses: ./.github/workflows/quality.yml
+
   publish:
+    needs: quality
     if: >-
       github.ref_type == 'tag' &&
       startsWith(github.ref_name, 'v') &&
@@ -31,6 +36,8 @@ jobs:
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: "0.11.33"
+      - run: python scripts/check_workflows.py
+      - run: python evaluation/run.py --verify-results evaluation/results.json
       - run: uv build --no-sources --clear
       - run: python scripts/check_distribution.py dist --tag "${{ github.ref_name }}"
       - run: python scripts/wheel_smoke.py dist

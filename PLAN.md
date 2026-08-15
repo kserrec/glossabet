@@ -1,6 +1,6 @@
 # Glossarize — Plan
 
-Status: **phases 0–19 complete; Phase 20 next** as of 2026-08-14.
+Status: **phases 0–20 complete; Phase 21 next** as of 2026-08-14.
 Phases 18–23 are the complete post-audit route from the current local package
 to a defensible trusted alpha. Public release remains a separate, explicit
 authorization gate after those phases.
@@ -419,7 +419,7 @@ behind a `complete: true` claim; near-match provenance is not misclassified;
 downstream work has explicit budgets and sub-quadratic indexed paths; every
 omission is observable and regression-tested.
 
-### Phase 20 — Release automation and evidence integrity
+### Phase 20 — Release automation and evidence integrity ✅ 2026-08-14
 
 **Goal:** make local release evidence reproducible and ensure the release job
 cannot publish an artifact that skipped the supported test matrix.

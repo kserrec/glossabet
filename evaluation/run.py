@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import statistics
 import subprocess
 import sys
@@ -25,13 +26,20 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from glossarize import __version__  # noqa: E402
 from glossarize.cache import CACHE_ROOT_ENV  # noqa: E402
-from glossarize.drift import build_drift  # noqa: E402
-from glossarize.evidence import build_evidence  # noqa: E402
+from glossarize.drift import (  # noqa: E402
+    DRIFT_SCHEMA_VERSION,
+    build_drift,
+)
+from glossarize.evidence import (  # noqa: E402
+    SCHEMA_VERSION as EVIDENCE_SCHEMA_VERSION,
+    build_evidence,
+)
 from glossarize.glossary import validate_glossary  # noqa: E402
 
-EVALUATION_SCHEMA_VERSION = 2
+EVALUATION_SCHEMA_VERSION = 3
 DEFAULT_MANIFEST = PROJECT_ROOT / "evaluation" / "corpus.json"
 DEFAULT_RESULTS = PROJECT_ROOT / "evaluation" / "results.json"
+RELEASE_RUNTIME_RUNS = 5
 GIT_SAFE_CONFIG = ("-c", "core.fsmonitor=", "-c", "core.hooksPath=/dev/null")
 DRIFT_SECTIONS = (
     "parallel_terms",
@@ -39,10 +47,94 @@ DRIFT_SECTIONS = (
     "canonical_fading",
     "canonical_overloaded",
 )
+SOURCE_METADATA_KEYS = (
+    "kind",
+    "path",
+    "checkout_dir",
+    "url",
+    "commit",
+    "primary_language",
+    "license_spdx",
+    "license_url",
+    "provenance",
+)
 
 
 class EvaluationError(ValueError):
     """The corpus, checkout, or labels cannot support a valid evaluation."""
+
+
+def _dotenv_part(name: str) -> bool:
+    return (
+        name == ".env"
+        or name.endswith(".env")
+        or name.startswith(".env.")
+        or ".env." in name
+    )
+
+
+def _digest_paths(root: Path, relative_paths: list[str]) -> str:
+    """Hash path names and bytes with unambiguous framing."""
+    base = root.resolve()
+    digest = hashlib.sha256()
+    for relative in sorted(set(relative_paths)):
+        rel = Path(relative)
+        if (
+            rel.is_absolute()
+            or ".." in rel.parts
+            or any(_dotenv_part(part) for part in rel.parts)
+        ):
+            raise EvaluationError(f"unsafe corpus digest path: {relative}")
+        path = (base / rel).resolve()
+        try:
+            path.relative_to(base)
+        except ValueError as exc:
+            raise EvaluationError(
+                f"corpus digest path escapes its source root: {relative}"
+            ) from exc
+        try:
+            content = path.read_bytes()
+        except OSError as exc:
+            raise EvaluationError(
+                f"could not hash evaluation input {relative}: {exc}"
+            ) from exc
+        name = rel.as_posix().encode("utf-8")
+        digest.update(len(name).to_bytes(8, "big"))
+        digest.update(name)
+        digest.update(len(content).to_bytes(8, "big"))
+        digest.update(content)
+    return digest.hexdigest()
+
+
+def _engine_metadata() -> dict:
+    source_paths = [
+        path.relative_to(PROJECT_ROOT).as_posix()
+        for path in (PROJECT_ROOT / "glossarize").glob("**/*.py")
+        if not any(_dotenv_part(part) for part in path.parts)
+    ]
+    source_paths.append("evaluation/run.py")
+    return {
+        "name": "glossarize",
+        "version": __version__,
+        "source_sha256": _digest_paths(PROJECT_ROOT, source_paths),
+        "evidence_schema_version": EVIDENCE_SCHEMA_VERSION,
+        "drift_schema_version": DRIFT_SCHEMA_VERSION,
+        "evaluation_schema_version": EVALUATION_SCHEMA_VERSION,
+    }
+
+
+def _corpus_identity(root: Path, evidence: dict) -> dict:
+    paths = [
+        item["path"]
+        for kind in ("code", "docs")
+        for item in evidence["files"][kind]
+    ]
+    if evidence.get("configuration", {}).get("present"):
+        paths.append("glossarize.json")
+    return {
+        "sha256": _digest_paths(root, paths),
+        "files_hashed": len(set(paths)),
+    }
 
 
 def _read_manifest(path: Path) -> tuple[dict, str]:
@@ -51,11 +143,26 @@ def _read_manifest(path: Path) -> tuple[dict, str]:
         manifest = json.loads(raw)
     except (ValueError, RecursionError) as exc:
         raise EvaluationError(f"{path}: unreadable JSON ({exc})") from exc
-    if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != 2:
         raise EvaluationError(f"{path}: unsupported evaluation manifest")
     sources = manifest.get("sources")
     if not isinstance(sources, list) or not sources:
         raise EvaluationError(f"{path}: sources must be a non-empty list")
+    for source in sources:
+        if not isinstance(source, dict) or not isinstance(source.get("id"), str):
+            raise EvaluationError(f"{path}: every source needs a string id")
+        digest = source.get("corpus_sha256")
+        files = source.get("corpus_files")
+        if (
+            not isinstance(digest, str)
+            or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+            or not isinstance(files, int)
+            or isinstance(files, bool)
+            or files < 0
+        ):
+            raise EvaluationError(
+                f"{path}: {source['id']} needs a valid corpus digest/count"
+            )
     return manifest, hashlib.sha256(raw).hexdigest()
 
 
@@ -305,6 +412,19 @@ def _ratio(numerator: int, denominator: int) -> float | None:
     return round(numerator / denominator, 4) if denominator else None
 
 
+def _source_metadata(source: dict) -> dict:
+    return {
+        key: source[key] for key in SOURCE_METADATA_KEYS if key in source
+    }
+
+
+def _manifest_corpus_identity(source: dict) -> dict:
+    return {
+        "sha256": source["corpus_sha256"],
+        "files_hashed": source["corpus_files"],
+    }
+
+
 def _evaluate_source(source: dict, root: Path, runs: int,
                      cache_root: Path) -> dict:
     errors = validate_glossary(source["glossary"])
@@ -357,16 +477,15 @@ def _evaluate_source(source: dict, root: Path, runs: int,
     source_files = totals["code_files"] + totals["doc_files"]
     warm_reused = sum(item["reused"] for item in warm_stats)
     warm_processed = warm_reused + sum(item["extracted"] for item in warm_stats)
+    corpus = _corpus_identity(root, cold_evidence)
+    if corpus != _manifest_corpus_identity(source):
+        raise EvaluationError(
+            f"{source['id']}: accepted corpus digest/count does not match manifest"
+        )
     return {
         "id": source["id"],
-        "source": {
-            key: source[key]
-            for key in (
-                "kind", "url", "commit", "primary_language", "license_spdx",
-                "license_url", "provenance",
-            )
-            if key in source
-        },
+        "source": _source_metadata(source),
+        "corpus": corpus,
         "files": {
             "source": source_files,
             "production_code": cold_evidence["terminology"]["scope"]["code_files"],
@@ -524,6 +643,89 @@ def _thresholds(aggregate: dict, thresholds: dict | None) -> dict:
     }
 
 
+def verify_results(
+    results_path: Path,
+    manifest_path: Path = DEFAULT_MANIFEST,
+) -> list[str]:
+    """Check that committed evaluation evidence matches current inputs."""
+    manifest, manifest_sha256 = _read_manifest(manifest_path)
+    try:
+        results = json.loads(results_path.read_bytes())
+    except (OSError, ValueError, RecursionError) as exc:
+        raise EvaluationError(
+            f"{results_path}: unreadable evaluation results ({exc})"
+        ) from exc
+    if not isinstance(results, dict):
+        raise EvaluationError(f"{results_path}: results must be a JSON object")
+
+    errors: list[str] = []
+    if results.get("schema_version") != EVALUATION_SCHEMA_VERSION:
+        errors.append(
+            "evaluation schema does not match the current evaluator "
+            f"({results.get('schema_version')!r} != {EVALUATION_SCHEMA_VERSION})"
+        )
+    expected_engine = _engine_metadata()
+    if results.get("engine") != expected_engine:
+        errors.append("engine version, schema, or source digest is stale")
+    if results.get("manifest_sha256") != manifest_sha256:
+        errors.append("evaluation manifest digest is stale")
+
+    cases = results.get("cases")
+    if not isinstance(cases, list):
+        errors.append("evaluation cases are missing or malformed")
+        cases = []
+    case_by_id = {
+        case.get("id"): case
+        for case in cases
+        if isinstance(case, dict) and isinstance(case.get("id"), str)
+    }
+    result_ids = [
+        case.get("id") for case in cases if isinstance(case, dict)
+    ]
+    expected_ids = [source["id"] for source in manifest["sources"]]
+    if result_ids != expected_ids or len(case_by_id) != len(cases):
+        errors.append("evaluation case ids/order do not match the manifest")
+
+    sha256_pattern = re.compile(r"[0-9a-f]{64}")
+    for source in manifest["sources"]:
+        case = case_by_id.get(source["id"])
+        if case is None:
+            continue
+        if case.get("source") != _source_metadata(source):
+            errors.append(f"{source['id']}: source metadata is stale")
+        corpus = case.get("corpus")
+        if (
+            not isinstance(corpus, dict)
+            or sha256_pattern.fullmatch(str(corpus.get("sha256", ""))) is None
+            or not isinstance(corpus.get("files_hashed"), int)
+            or corpus["files_hashed"] < 0
+        ):
+            errors.append(f"{source['id']}: corpus digest metadata is malformed")
+            continue
+        if corpus != _manifest_corpus_identity(source):
+            errors.append(f"{source['id']}: corpus digest does not match manifest")
+        if source.get("kind") == "local":
+            root = _source_root(source, None, False)
+            current = _corpus_identity(
+                root, build_evidence(root, cache=False, graphify=False)
+            )
+            if corpus != current:
+                errors.append(f"{source['id']}: local corpus digest is stale")
+
+    method = results.get("method", {})
+    if method.get("runtime_runs_per_case") != RELEASE_RUNTIME_RUNS:
+        errors.append(
+            "evaluation results do not contain the required five-run sample"
+        )
+    thresholds = results.get("release_thresholds", {})
+    if (
+        thresholds.get("configured") is not True
+        or thresholds.get("passed") is not True
+    ):
+        errors.append("evaluation release thresholds are not configured and passing")
+    return errors
+
+
 def run(manifest_path: Path, output_path: Path, repositories_root: Path | None,
         fetch: bool, runs: int, selected: set[str]) -> dict:
     manifest, manifest_sha256 = _read_manifest(manifest_path)
@@ -559,10 +761,11 @@ def run(manifest_path: Path, output_path: Path, repositories_root: Path | None,
     )
     result = {
         "schema_version": EVALUATION_SCHEMA_VERSION,
-        "engine_version": __version__,
+        "engine": _engine_metadata(),
         "manifest_sha256": manifest_sha256,
         "environment": {
             "python": platform.python_version(),
+            "python_implementation": platform.python_implementation(),
             "platform": platform.platform(),
             "cpu_count": os.cpu_count(),
         },
@@ -593,7 +796,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--runs", type=int, default=5)
     parser.add_argument("--case", action="append", default=[])
     parser.add_argument("--check", action="store_true")
+    parser.add_argument(
+        "--verify-results",
+        type=Path,
+        help="verify committed results against the current engine and corpus",
+    )
     args = parser.parse_args(argv)
+    if args.verify_results is not None:
+        try:
+            errors = verify_results(args.verify_results, args.manifest)
+        except (EvaluationError, OSError, subprocess.TimeoutExpired) as exc:
+            print(f"evaluation verification: {exc}", file=sys.stderr)
+            return 1
+        if errors:
+            for error in errors:
+                print(f"evaluation verification: {error}", file=sys.stderr)
+            return 1
+        print("evaluation results match the current engine and corpus")
+        return 0
     if args.runs < 1:
         parser.error("--runs must be at least 1")
 

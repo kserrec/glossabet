@@ -1,9 +1,9 @@
-"""Release automation stays tested, manual, and metadata-consistent."""
+"""Release automation stays full-matrix, manual, and metadata-consistent."""
 
-import re
 from pathlib import Path
 
 from glossarize import __version__
+from scripts.check_workflows import check_workflows, validate_workflow_texts
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -15,26 +15,73 @@ def test_release_metadata_matches_package_version_and_supported_pythons():
     for minor in range(10, 15):
         assert f'"Programming Language :: Python :: 3.{minor}"' in pyproject
     assert 'requires-python = ">=3.10"' in pyproject
+    assert 'requires = ["hatchling>=1.32,<1.33"]' in pyproject
+    assert "dependencies =" not in pyproject
+    assert 'dev = ["pytest"]' in pyproject
 
 
-def test_ci_covers_supported_versions_and_platforms():
-    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
-    assert "ubuntu-latest" in workflow
-    assert "macos-latest" in workflow
-    assert "windows-latest" in workflow
-    for minor in range(10, 15):
-        assert f'"3.{minor}"' in workflow
-    assert "scripts/check_distribution.py" in workflow
-    assert "scripts/wheel_smoke.py" in workflow
+def _workflow_texts() -> dict[str, str]:
+    directory = ROOT / ".github" / "workflows"
+    return {
+        name: (directory / name).read_text(encoding="utf-8")
+        for name in ("quality.yml", "ci.yml", "release.yml")
+    }
+
+
+def test_reusable_quality_gate_controls_ci_and_release():
+    assert check_workflows() == []
     attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
     assert "* text=auto eol=lf" in attributes
 
 
-def test_publish_workflow_is_manual_and_confirmation_gated():
-    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
-    assert "workflow_dispatch:" in workflow
-    assert "publish-glossarize-to-pypi" in workflow
-    assert "github.ref_type == 'tag'" in workflow
-    assert "id-token: write" in workflow
-    assert "gh-action-pypi-publish" in workflow
-    assert not re.search(r"(?m)^\s{2}(push|release):", workflow)
+def test_workflow_policy_rejects_meaningful_gate_weakening():
+    originals = _workflow_texts()
+    mutations = [
+        (
+            "quality.yml",
+            "os: [ubuntu-latest, macos-latest, windows-latest]",
+            "os: [ubuntu-latest, macos-latest]",
+        ),
+        (
+            "quality.yml",
+            'python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]',
+            'python-version: ["3.11", "3.12", "3.13", "3.14"]',
+        ),
+        ("quality.yml", "needs: test", "needs: []"),
+        (
+            "ci.yml",
+            "uses: ./.github/workflows/quality.yml",
+            "uses: ./.github/workflows/bypass.yml",
+        ),
+        (
+            "release.yml",
+            "uses: ./.github/workflows/quality.yml",
+            "uses: ./.github/workflows/bypass.yml",
+        ),
+        ("release.yml", "needs: quality", "needs: []"),
+        (
+            "release.yml",
+            "inputs.confirmation == 'publish-glossarize-to-pypi'",
+            "inputs.confirmation != ''",
+        ),
+        (
+            "release.yml",
+            "python evaluation/run.py --verify-results evaluation/results.json",
+            "python -c pass",
+        ),
+        (
+            "release.yml",
+            "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33",
+            "pypa/gh-action-pypi-publish@v1",
+        ),
+    ]
+
+    for filename, original, weakened in mutations:
+        assert original in originals[filename]
+        workflows = dict(originals)
+        workflows[filename] = workflows[filename].replace(
+            original, weakened, 1
+        )
+        assert validate_workflow_texts(workflows), (
+            f"workflow policy accepted weakening in {filename}: {weakened}"
+        )

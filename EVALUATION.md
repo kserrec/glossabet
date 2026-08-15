@@ -1,8 +1,9 @@
 # Evaluation
 
-This document records Glossarize's Phase 15 calibration and Phase 16 lexical/
-scope extension. The machine-readable corpus, labels, raw per-run timings,
-findings, truncation markers, and threshold checks live in
+This document records Glossarize's Phase 15 calibration, Phase 16 lexical/scope
+extension, and Phase 20 replay on the current engine. The machine-readable
+corpus, labels, raw per-run timings, findings, truncation markers, provenance
+digests, and threshold checks live in
 [`evaluation/corpus.json`](evaluation/corpus.json) and
 [`evaluation/results.json`](evaluation/results.json).
 
@@ -69,8 +70,8 @@ Phase 15 made three conservative changes to the existing synonym heuristic:
    as `*_queue` and `run_*`; and
 3. context similarity must be at least 0.55 instead of 0.40.
 
-The final five-run measurement emitted 11 scored findings, all labelled correct
-and useful, with no labelled finding missed where recall was complete:
+The current Phase 20 five-run replay emitted 11 scored findings, all labelled
+correct and useful, with no labelled finding missed where recall was complete:
 
 | Metric | Result | Release threshold |
 |---|---:|---:|
@@ -111,13 +112,13 @@ false. It does not infer scope from a group label.
 
 ## Runtime and truncation
 
-On the recorded 8-core Linux host with Python 3.12.3, the sum of per-case
-five-run medians was 0.480 seconds cold and 0.514 seconds warm—5.34 and 5.71
+On the recorded 8-core Linux host with CPython 3.12.3, the sum of per-case
+five-run medians was 0.399 seconds cold and 0.358 seconds warm—4.43 and 3.97
 seconds per thousand included source files. Every warm run reused 100% of
 eligible extraction entries and produced evidence byte-identical to its cold
-run. Warm measurement was slower in this run, which reinforces that the corpus
-is too small to demonstrate a cache speedup; content hashing, Git checks,
-cache I/O, and aggregation still run on warm scans.
+run. The corpus is too small for the measured warm/cold difference to establish
+a general cache speedup; content hashing, Git checks, cache I/O, and aggregation
+still run on warm scans.
 
 Requests hit existing output caps: 1,072 identifier entries, 981 documentation
 terms, and 15 external-import entries were omitted from their displayed
@@ -127,7 +128,7 @@ index is truncated.
 
 ## Aggregate safety limits
 
-The measured corpus took about 5.34 cold seconds per thousand source files.
+The measured corpus took about 4.43 cold seconds per thousand source files.
 The scanner now applies immutable per-repository ceilings of:
 
 - 10,000 included code/documentation files;
@@ -137,7 +138,7 @@ The scanner now applies immutable per-repository ceilings of:
 
 Relative to the whole evaluation corpus, these retain about 111× file, 48×
 byte, and 526× walk-entry headroom. At the observed file-normalized rate, the
-file ceiling corresponds to roughly 53 seconds; repository composition and
+file ceiling corresponds to roughly 44 seconds; repository composition and
 hardware can change that substantially, so it is a safety bound rather than a
 runtime guarantee.
 
@@ -164,6 +165,19 @@ global/system Git configuration, and does not run or import target-project
 code. Fetch time is excluded from runtime measurements. Timings will vary by
 machine; quality labels and finding keys should remain stable at the pinned
 commits.
+
+The result identifies engine version 0.1.0, the evidence/drift/evaluator schema
+versions, a SHA-256 digest over the evaluator and every engine Python source
+file, the exact manifest digest, and a framed path/content digest over every
+accepted corpus file. The manifest pins that digest and accepted-file count for
+all five cases; local fixtures are additionally recomputed without network,
+while external cases retain their immutable commit identity. The reusable
+release gate rejects stale engine/manifest/corpus metadata, missing or reordered
+cases, malformed digests, fewer than five runs, or non-passing thresholds:
+
+```bash
+uv run python evaluation/run.py --verify-results evaluation/results.json
+```
 
 ## Parsing-adapter decision
 

@@ -74,6 +74,8 @@ glossarize show <repo>           # display the current glossary
 glossarize drift <repo>          # live vocabulary vs canonical glossary
 glossarize validate <repo>       # reconcile glossary vs evidence + graph
 uv build --no-sources            # build wheel + source distribution, do not publish
+uv run python scripts/check_workflows.py
+uv run python evaluation/run.py --verify-results evaluation/results.json
 uv run python scripts/check_distribution.py dist --tag v0.1.0
 uv run python scripts/wheel_smoke.py dist
 ```

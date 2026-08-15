@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "reviewed_on": "2026-08-14",
   "release_thresholds": {
     "terminology_precision_min": 0.8,
@@ -23,6 +23,8 @@
       "license_path": "LICENSE",
       "license_base": "project",
       "provenance": "Original Glossarize fixture; no third-party source.",
+      "corpus_sha256": "9e3212a62c4b0f0c063b9939a67d3427cf7f0be22c34a8344e35dd23a5ecdae6",
+      "corpus_files": 7,
       "glossary": {
         "schema_version": 1,
         "concepts": [
@@ -117,6 +119,8 @@
       "license_path": "LICENSE",
       "license_base": "project",
       "provenance": "Original Glossarize fixture; no third-party source.",
+      "corpus_sha256": "a0c5966fb4de794bc0a0a9f63b1131b32be6124c3b7ca0848ada8da421280df1",
+      "corpus_files": 6,
       "glossary": {
         "schema_version": 1,
         "concepts": [
@@ -205,6 +209,8 @@
       "license_url": "https://github.com/psf/requests/blob/8068356288978c4f54661ae6f95afe0e0831885e/LICENSE",
       "license_path": "LICENSE",
       "provenance": "Pinned public repository; source is fetched for evaluation and is not vendored here.",
+      "corpus_sha256": "6236cc3525a6dfca3c7d78f37078e42526e4cc1536824da10bc5042532fdef1e",
+      "corpus_files": 60,
       "glossary": {
         "schema_version": 1,
         "concepts": [
@@ -331,6 +337,8 @@
       "license_url": "https://github.com/rakyll/hey/blob/5626f79b8698df6daf9b25799c9805c6acc96740/LICENSE",
       "license_path": "LICENSE",
       "provenance": "Pinned public repository; source is fetched for evaluation and is not vendored here.",
+      "corpus_sha256": "c36d22921527b977b091c5397e3574eeeb07f94805642b6882438640318e7edd",
+      "corpus_files": 9,
       "glossary": {
         "schema_version": 1,
         "concepts": [
@@ -397,6 +405,8 @@
       "license_url": "https://github.com/sindresorhus/p-limit/blob/df476048d023ff868cd45b35ee47f5fb0ca2b25a/license",
       "license_path": "license",
       "provenance": "Pinned public repository; source is fetched for evaluation and is not vendored here.",
+      "corpus_sha256": "970ba7ae99fc7ef9a63a563f3a018dbc9c8a7a1bf847ce912cfa559e85003cd5",
+      "corpus_files": 8,
       "glossary": {
         "schema_version": 1,
         "concepts": [

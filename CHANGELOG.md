@@ -30,6 +30,12 @@ This first alpha is prepared but has not been published to PyPI.
   provenance classification, and downstream glossary checks use bounded
   indexes, capped overload-dispersion work, and streamed boundary accounting
   instead of unbounded cross-product scans.
+- CI and manual publication now share one full supported-platform quality gate;
+  policy mutation tests prevent matrix or dependency-chain weakening.
+- Evaluation results now identify the current engine and every corpus by
+  digest, and release checks reject stale or weakened evidence.
+- Hatchling is constrained to the reviewed 1.32.x build-only line; pytest
+  remains the sole development dependency and the wheel remains dependency-free.
 
 ### Security
 

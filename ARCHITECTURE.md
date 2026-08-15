@@ -58,8 +58,9 @@ break grounding.
 ## Running it
 
 Prerequisites: Python ≥ 3.10 and [uv](https://docs.astral.sh/uv/). The only
-runtime code is the Python standard library; `pytest` is the sole dev
-dependency. Nothing is fetched at runtime.
+runtime code is the Python standard library; `pytest` is the sole development
+dependency. Hatchling `>=1.32,<1.33` is used only in an isolated build
+environment. Nothing is fetched at application runtime.
 
 Run the test suite:
 
@@ -354,10 +355,14 @@ The package is `glossarize/`. Grouped by role:
   It can fetch pinned checkouts into a temporary directory, performs cold and
   warm scans without importing or executing target code, scores findings,
   records truncation/runtime/cache behavior, and checks release thresholds.
-- `evaluation/results.json` — the raw five-run Phase 15 result, including every
-  actual/expected finding key and per-case timing sample, extended in Phase 16
-  with 15 exact lexical-contract checks. `EVALUATION.md` documents methodology,
-  calibration history, dependency decisions, limitations, and reproduction.
+  Its verification mode rejects results whose engine source, schemas, manifest,
+  local corpora, pinned source metadata, run count, or thresholds are stale.
+- `evaluation/results.json` — the current five-run Phase 20 replay of the Phase
+  15/16 corpus, including every actual/expected finding key, per-case timing,
+  structured engine/version metadata, an engine-source digest, the manifest
+  digest, and one accepted-corpus digest per case. `EVALUATION.md` documents
+  methodology, calibration history, dependency decisions, limitations, and
+  reproduction.
 
 **Distribution and first use**
 - `examples/payment-service/` and `scripts/run_walkthrough.py` — an original,
@@ -372,10 +377,15 @@ The package is `glossarize/`. Grouped by role:
   the built wheel, installs its skill into a temporary target, runs the
   walkthrough, uninstalls the package, and proves the import and CLI entry
   point are gone.
-- `.github/workflows/ci.yml` — the full CPython 3.10–3.14 × Linux/macOS/Windows
-  matrix plus a packaging job. `release.yml` is a separate manual-only,
-  tag-and-confirmation-gated PyPI workflow; `RELEASING.md` records the external
-  account state that must exist before it can succeed.
+- `scripts/check_workflows.py` — fail-closed, standard-library policy checks
+  for the supported matrix and the CI → quality → package / release → quality
+  → publish dependency chains. Mutation tests prove the important weakenings
+  are rejected without adding a YAML dependency.
+- `.github/workflows/quality.yml` — the reusable CPython 3.10–3.14 ×
+  Linux/macOS/Windows matrix followed by evidence, build, distribution, and
+  wheel checks. Both `ci.yml` and the manual-only, tag-and-confirmation-gated
+  `release.yml` call it; publication additionally needs its successful result.
+  `RELEASING.md` records the external account state required for publication.
 
 ## Key flows
 
@@ -511,7 +521,6 @@ structural validation is partial until an adapter supplies trustworthy paths.
 
 ## Where things stand
 
-`PLAN.md` is the authoritative roadmap. Phases 0–18 are complete; Phase 18
-implements the post-audit agent/input boundary. Phases 19–23, trusted-alpha
-evidence, and explicit external authorization remain before public package or
-plugin publication.
+`PLAN.md` is the authoritative roadmap. Phases 0–20 are complete. Phases
+21–23, trusted-alpha evidence, and explicit external authorization remain
+before public package or plugin publication.

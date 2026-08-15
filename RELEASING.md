@@ -1,7 +1,10 @@
 # Release preparation and publication
 
-Glossarize 0.1.0 is release-ready locally but is **not published to PyPI**.
-The source repository is already public at
+Glossarize 0.1.0 is locally packageable and its current local verification
+gates pass, but it is **not release-ready and is not published to PyPI**. The
+remaining roadmap includes name/distribution clearance, installed-agent and
+structural evaluation, and outside trusted-alpha evidence. The source
+repository is already public at
 <https://github.com/kserrec/glossarize>. As verified on 2026-08-14, PyPI's
 `glossarize` JSON endpoint returns 404, so the name appears unused; that does
 not reserve it and must be checked again immediately before publication.
@@ -17,16 +20,36 @@ require his explicit authorization.
 - `pyproject.toml` carries version 0.1.0, Python/platform classifiers, SPDX
   licensing, project links, and an exact wheel mapping for the canonical
   skill.
-- `.github/workflows/ci.yml` runs the complete suite on CPython 3.10–3.14 on
-  Linux, macOS, and Windows, then builds and smoke-tests both distributions.
-- `.github/workflows/release.yml` is manual-only. It can publish only when run
-  from a `v*` tag with the exact confirmation text
+- `.github/workflows/quality.yml` is the one reusable gate: it runs the
+  complete suite on CPython 3.10–3.14 on Linux, macOS, and Windows, verifies
+  workflow policy and evaluation provenance, then builds and smoke-tests both
+  distributions. Ordinary CI and publication both call this same workflow.
+- `.github/workflows/release.yml` is manual-only. Its publish job requires the
+  reusable quality gate and can run only from a `v*` tag with the exact text
   `publish-glossarize-to-pypi`, and it expects a protected GitHub environment
   named `pypi` plus PyPI Trusted Publishing. It stores no long-lived PyPI
   token.
 - `SECURITY.md` is the public policy file and already points to the future
   private-report form. GitHub private vulnerability reporting is currently
   disabled, so the form will not work until the repository setting is enabled.
+
+## Dependency boundary and cost
+
+The application wheel declares zero runtime dependencies. Hatchling is a
+build-backend dependency only and is constrained to the reviewed
+`>=1.32,<1.33` line. The 1.32.0 universal wheel is 78,435 bytes and declares
+five unconditional direct dependencies (`packaging`, `pathspec`, `pluggy`,
+`tomlkit`, and `trove-classifiers`) plus `tomli` on Python 3.10; the current
+resolved releases add no deeper mandatory packages. PyPI listed no known
+vulnerabilities for Hatchling 1.32.0 on 2026-08-14. This is a point-in-time
+alerts snapshot, not a security guarantee.
+
+Pytest 9.1.1 remains the sole locked development dependency because it runs
+the concrete regression suite across the supported matrix. Its
+386,536-byte wheel brings `iniconfig`, `packaging`, `pluggy`, and `pygments`,
+plus platform/version-conditional `colorama`, `exceptiongroup` with
+`typing-extensions`, and `tomli`. Neither build nor development packages are
+declared in the published wheel's `Requires-Dist` metadata.
 
 ## Local release gate
 
@@ -37,6 +60,8 @@ directory rather than trusting stale artifacts in `dist/`:
 release_dir="$(mktemp -d)"
 uv sync --locked
 uv run pytest -q
+uv run python scripts/check_workflows.py
+uv run python evaluation/run.py --verify-results evaluation/results.json
 uv build --no-sources --out-dir "$release_dir"
 uv run python scripts/check_distribution.py "$release_dir" --tag v0.1.0
 uv run python scripts/wheel_smoke.py "$release_dir"

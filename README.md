@@ -105,9 +105,9 @@ in [`evaluation/results.json`](evaluation/results.json).
 
 **Status: 0.1.0 source alpha under post-audit hardening; not yet published to
 PyPI and not yet a trusted-alpha release.** Packaging, the current CI matrix,
-and local smoke tests exist, but release-workflow coupling, installed-agent
-evaluation, name/distribution clearance, and outside alpha evidence remain on
-the authoritative roadmap. Do not describe the current stopping point as
+and local smoke tests exist, but installed-agent evaluation,
+name/distribution clearance, and outside alpha evidence remain on the
+authoritative roadmap. Do not describe the current stopping point as
 release-ready. See [`PLAN.md`](PLAN.md) for the closure sequence and
 [`RELEASING.md`](RELEASING.md) for external actions.
 
@@ -309,8 +309,10 @@ be drawn from it.
 ## Development and release verification
 
 Prerequisites: Python ≥ 3.10 and [uv](https://docs.astral.sh/uv/). The runtime
-is standard-library only; `pytest` is the sole dev dependency. CI tests CPython
-3.10–3.14 on Linux, macOS, and Windows.
+is standard-library only; `pytest` is the sole development dependency, and
+Hatchling is isolated to builds. One reusable quality workflow tests CPython
+3.10–3.14 on Linux, macOS, and Windows before packaging; both ordinary CI and
+the manual publication workflow must pass it.
 
 Run the tests:
 
@@ -328,6 +330,8 @@ glossarize --version
 Build and verify the distributions without publishing them:
 
 ```bash
+uv run python scripts/check_workflows.py
+uv run python evaluation/run.py --verify-results evaluation/results.json
 uv build --no-sources
 uv run python scripts/check_distribution.py dist --tag v0.1.0
 uv run python scripts/wheel_smoke.py dist
