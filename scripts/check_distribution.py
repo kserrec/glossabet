@@ -92,7 +92,7 @@ def _check_wheel(wheel: Path, version: str, canonical_skill: bytes) -> None:
             _fail("wheel unexpectedly declares a runtime dependency")
         project_urls = metadata.get_all("Project-URL", [])
         if not any(
-            value == "Repository, https://github.com/kserrec/glossarize"
+            value == "Repository, https://github.com/kserrec/glossabet"
             for value in project_urls
         ):
             _fail("wheel metadata is missing the repository URL")

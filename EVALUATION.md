@@ -240,12 +240,13 @@ model identifier.
 
 ## Installed-agent boundary result
 
-[`scripts/agent_eval.py`](scripts/agent_eval.py) temporarily installed the
-repository's actual Codex plugin and exercised the canonical skill through
-Codex CLI 0.147.0 on Linux. All 11 scenarios passed: current, stale, and absent
-Graphify state; malformed, oversized, and symlinked glossaries; partial agent
-projection; monorepo scope choice; resumed glossary state; excluded sensitive
-files; and a standalone installed skill with no `glossabet` command on `PATH`.
+During Phase 22, [`scripts/agent_eval.py`](scripts/agent_eval.py) temporarily
+installed the repository's actual Codex plugin and exercised the canonical
+skill through Codex CLI 0.147.0 on Linux. All 11 scenarios passed: current,
+stale, and absent Graphify state; malformed, oversized, and symlinked
+glossaries; partial agent projection; monorepo scope choice; resumed glossary
+state; excluded sensitive files; and a standalone installed skill with no
+`glossabet` command on `PATH`.
 
 The bounded traces prove that Codex read the skill from the temporary plugin,
 version-checked that plugin's exact engine, and used one attributable `inspect`
@@ -262,8 +263,22 @@ batches performed while building Phase 22, four satisfied the required single
 version preflight. For the final wheel bytes specifically, the first of two
 unchanged batches stopped before scenario scoring because Codex did not produce
 exactly one successful version check; the unchanged repeat passed. The
-committed JSON is that successful exact-bundle run. It proves one complete
-boundary execution, not a zero-flake rate for future model invocations.
+Phase 22 JSON at that time recorded that successful exact-bundle run. It proved
+one complete boundary execution, not a zero-flake rate for future model
+invocations.
+
+After the repository and documentation rename, Kyle separately authorized an
+exact local artifact refresh without ending the owner self-testing pause. The
+final rebuilt wheel differed from the Phase 22 wheel only in `METADATA` and
+`RECORD`; every executable package entry was byte-identical. The final wheel
+passed all 11 scenarios in its first full batch. The current committed JSON
+records that run and binds it to plugin tree SHA-256
+`a2bc528e23478e4fa708a40dbfe97f081f482901323d60c45351a06966df5cc5`.
+An earlier metadata-only refresh also passed before the final README status
+sync required the final rebuild. Temporary plugin and marketplace state was
+removed and verified absent after both runs. That makes the two post-Phase 22
+refreshes two for two and the combined observation six of seven complete
+batches; the sample remains too small to claim a stable future success rate.
 
 The authenticated regeneration command temporarily changes user-level Codex
 plugin/marketplace state and then removes only its uniquely named state. The
@@ -315,9 +330,11 @@ and compare its accuracy against this recorded standard-library baseline.
   fixtures, not on varied third-party Graphify exports.
 - Installed-agent evidence covers Codex CLI 0.147.0 on one Linux host. Other
   Codex versions and operating systems, ChatGPT, and Claude Code are unverified.
-- The installed-agent preflight passed four of five observed full plugin
-  batches, including one of two unchanged attempts against the final wheel;
-  reliability beyond that small observed sample is unknown.
+- The installed-agent preflight passed six of seven observed full plugin
+  batches. Phase 22 passed four of five, including one of two unchanged
+  attempts against that exact wheel; both post-Phase 22 metadata-only refreshes
+  passed, including the current final wheel's first full batch. Reliability
+  beyond that small observed sample is unknown.
 - The multilingual fixture covers representative Python and Clojure forms,
   not every identifier grammar among the 30 recognized languages.
 - Lexical extraction still sees identifier-like words in comments and string

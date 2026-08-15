@@ -534,10 +534,10 @@ skill behavior changed in this phase. This remains controlled/local evidence,
 not outside maintainer adoption or broad efficacy evidence. Agent execution is
 stochastic: four of five observed full plugin batches satisfied the required
 version preflight, including one of two unchanged attempts against the final
-wheel bytes. The committed artifact is the successful exact-bundle run, not a
-zero-flake claim.
+wheel bytes. The Phase 22 artifact committed at that time was the successful
+exact-bundle run, not a zero-flake claim.
 
-### Repository identity update — completed 2026-08-15
+### Repository identity and exact-artifact update — completed 2026-08-15
 
 With Kyle's explicit authorization, the public GitHub repository was renamed
 from `kserrec/glossarize` to `kserrec/glossabet`, the configured `origin` was
@@ -545,24 +545,24 @@ changed to `git@github.com:kserrec/glossabet.git`, and the local checkout was
 moved from `/home/serrecchia/Projects/glossarize` to
 `/home/serrecchia/Projects/glossabet`. GitHub's old repository path was
 verified to resolve to the renamed repository, and the old local directory no
-longer exists. The package project URLs, distribution assertion, and embedded
-plugin wheel deliberately retain the verified redirecting
-`kserrec/glossarize` URL during owner self-testing so the exact Phase 22 wheel
-and installed-agent evidence remain valid. Before any outside alpha, switch
-those URLs to `kserrec/glossabet`, rebuild the plugin, and rerun the
-authenticated installed-agent evaluation against the resulting exact bytes.
-The rename did not push commits, change the repository's public visibility,
-publish a package or plugin, create a tag or release, or contact outside
-maintainers.
+longer exists. During the authorized documentation wrapup, the package project
+URLs and distribution assertion were switched to `kserrec/glossabet`, the
+embedded plugin wheel was rebuilt, and the installed-agent evidence was
+regenerated against those exact bytes. Only wheel `METADATA` and `RECORD`
+changed; executable entries remained byte-identical. A final README status
+sync changed metadata only, so the wheel and evidence were rebuilt once more
+against the final source state. Both post-Phase 22 refreshes passed all 11
+scenarios on their first full batches, and every temporary Codex
+plugin/marketplace entry was removed. These internal changes did not end the
+owner self-testing pause, change repository visibility, publish a package or
+plugin, create a tag or release, or contact outside maintainers.
 
 ### Owner self-testing pause — active, not an implementation phase
 
 Kyle is keeping the current build to himself while he runs it and performs
 additional checks. While this pause is active, do not invite maintainers,
 collect outside alpha evidence, begin Phase 23, or perform publication setup.
-Only Kyle's explicit instruction to resume outside testing ends the pause. The
-deferred package-URL, plugin-wheel, and exact-agent-evidence refresh is the
-first required action after that instruction and before invitations.
+Only Kyle's explicit instruction to resume outside testing ends the pause.
 
 ### Trusted-alpha gate — external evidence, not an implementation phase
 

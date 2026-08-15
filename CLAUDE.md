@@ -10,9 +10,9 @@ gathers evidence, the LLM brainstorms and reasons, and the human decides what
 becomes canonical — that division of labor is the product's central rule.
 
 `PLAN.md` is the only authoritative roadmap. Read its principles, non-goals,
-and current phase before nontrivial work. The existing skill (to live at
-`skill/SKILL.md`) is the behavioral spec; its philosophy is preserved
-verbatim, never diluted by machinery.
+and current phase before nontrivial work. The canonical skill at
+`skill/SKILL.md` is the behavioral spec; its philosophy is preserved verbatim,
+never diluted by machinery.
 
 ## Binding rules (digest — full versions in PLAN.md)
 
@@ -53,6 +53,9 @@ verbatim, never diluted by machinery.
 
 ## Workflow
 
+- Honor any pause recorded at the top of `PLAN.md`. The current owner
+  self-testing pause forbids outside maintainer invitations, Phase 23, and
+  publication setup until Kyle explicitly ends it.
 - Implement exactly one PLAN phase per pass; split oversized phases in the
   plan before touching code. `$next` selects the first incomplete phase whose
   dependencies are complete, implements, verifies, marks complete, stops.

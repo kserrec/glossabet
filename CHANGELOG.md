@@ -34,6 +34,10 @@ This first alpha is prepared but has not been published to PyPI.
   Glossabet across the package, import, command, skill, artifacts,
   configuration, cache, tests, and documentation. Pre-rename output/cache
   directories remain excluded inputs and are never migrated or deleted.
+- The hosted repository, configured remote, package project links, and private
+  security-report URL now use `kserrec/glossabet`. The version-coupled plugin
+  wheel and installed-agent evidence were regenerated against that exact
+  metadata; executable wheel entries did not change.
 
 - Bounded analysis collections now share exact coverage ledgers; terminology,
   naming, Graphify, drift, and validation propagate every known omission.

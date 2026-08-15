@@ -32,6 +32,16 @@ inspectable, and maintainable.
   generated launchers contained the old absolute checkout path. The stale
   editable `glossarize` installation was removed, `glossabet` 0.1.0 was
   installed, and `.venv/bin/pytest` now points to the renamed checkout.
+- Audited the ownership documentation against the implementation and current
+  official Codex skill/plugin documentation. Updated `README.md`,
+  `ARCHITECTURE.md`, and `CLAUDE.md` with the Glossabet-versus-glossary
+  distinction, fresh-clone setup, and active owner self-testing pause.
+- Switched all package project URLs and the distribution assertion to
+  `kserrec/glossabet`, rebuilt the embedded wheel, and regenerated the
+  installed-agent evidence against the exact new plugin hash. Only wheel
+  `METADATA` and `RECORD` changed; executable entries remained byte-identical.
+  A final README status sync changed metadata only, so the wheel and evidence
+  were rebuilt once more against the final source state.
 
 **Verified state**
 
@@ -50,11 +60,11 @@ inspectable, and maintainable.
   made no unexpected repository write, and stopped before `inspect` when the
   standalone CLI was missing. The documented `inspect` evidence refresh was
   explicitly permitted.
-- Agent preflight reliability is not established: four of five observed full
-  plugin batches ran the required single version check, including one of two
-  unchanged attempts against the final wheel bytes. The committed result is the
-  successful exact-bundle run; the failed attempt stopped before scenario
-  scoring and still completed plugin cleanup.
+- Agent preflight reliability is not established: six of seven observed full
+  plugin batches ran the required single version check. The original Phase 22
+  work accounted for four of five; both post-Phase 22 metadata-only refreshes
+  passed, including the current final wheel's first full batch. Every failed or
+  successful attempt completed its exact plugin cleanup.
 - `uv run python evaluation/run.py --verify-results evaluation/results.json`,
   `uv run python scripts/agent_eval.py --verify-results
   evaluation/agent-results.json`, and `uv run python evaluation/review.py
@@ -70,9 +80,10 @@ inspectable, and maintainable.
   `git@github.com:kserrec/glossabet.git`.
 - The checkout now lives at `/home/serrecchia/Projects/glossabet`; the old
   `/home/serrecchia/Projects/glossarize` directory no longer exists.
-- Package project URLs and the embedded plugin wheel still use GitHub's
-  verified redirecting `kserrec/glossarize` URL. This preserves the exact
-  Phase 22 wheel bytes and installed-agent evidence during owner self-testing.
+- Package project URLs, the embedded plugin wheel, and installed-agent evidence
+  now use and bind to `kserrec/glossabet`. The refreshed evidence records plugin
+  tree SHA-256
+  `a2bc528e23478e4fa708a40dbfe97f081f482901323d60c45351a06966df5cc5`.
 - No package or plugin was published; no Codex plugin, tag, release, domain,
   security setting, visibility setting, invitation, or outreach was created or
   changed. Kyle's separate legacy `~/.local/bin/glossarize` 0.0.1 installation
@@ -84,11 +95,8 @@ inspectable, and maintainable.
   perform additional checks himself. Do not invite anyone, collect outside
   alpha evidence, begin Phase 23, or perform publication setup until Kyle
   explicitly ends this pause.
-- After that explicit instruction, first switch the package URLs to
-  `kserrec/glossabet`, rebuild the embedded plugin wheel, and rerun the
-  authenticated installed-agent evaluation against those exact bytes. Then the
-  trusted-alpha gate requires at least two consenting maintainers to try that
-  exact installed build on enough additional varied repositories to bring the
-  measured total to at least five. Record opt-in scope, repository traits,
-  failures, false alarms, usefulness, and exact build identity without copying
-  private repository content here.
+- After that explicit instruction, the trusted-alpha gate requires at least two
+  consenting maintainers to try the exact installed build on enough additional
+  varied repositories to bring the measured total to at least five. Record
+  opt-in scope, repository traits, failures, false alarms, usefulness, and
+  exact build identity without copying private repository content here.

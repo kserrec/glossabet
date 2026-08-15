@@ -9,11 +9,13 @@ after that outside evidence. Phase 21 records the Glossabet decision and a
 working local Codex plugin lifecycle in `NAME-CLEARANCE.md` and
 `DISTRIBUTION.md`. The source repository remains public and was renamed with
 explicit authorization to <https://github.com/kserrec/glossabet>; its
-configured remote now matches. Package metadata temporarily retains the old
-GitHub URL, which was verified to redirect to the renamed repository, so the
-exact Phase 22 plugin wheel and installed-agent evidence remain unchanged
-during owner self-testing. As reverified on 2026-08-15, PyPI's `glossabet` JSON
-endpoint returns 404. That does not reserve the name and must be checked again
+configured remote now matches. With separate explicit authorization, package
+metadata and distribution assertions now use that renamed URL, the embedded
+plugin wheel was rebuilt, and its installed-agent evidence was regenerated.
+Only the wheel's `METADATA` and `RECORD` entries changed; its executable
+package entries remained byte-identical. Kyle's owner self-testing pause
+remains active. As reverified on 2026-08-15, PyPI's `glossabet` JSON endpoint
+returns 404. That does not reserve the name and must be checked again
 immediately before publication.
 
 No PyPI account, pending publisher, GitHub `pypi` environment, Git tag, GitHub
@@ -35,9 +37,11 @@ require his explicit authorization.
 - The Phase 22 installed-agent harness passed 11/11 bounded scenarios through
   Codex CLI 0.147.0 on Linux, including hostile direct inputs, truncation,
   monorepo/resume behavior, excluded sensitive content, and missing CLI. The
-  temporary plugin state was removed. The deterministic seven-case evaluation
-  and a separate blinded Codex reviewer also pass their recorded thresholds;
-  this remains local/controlled evidence, not outside adopter validation.
+  refreshed current wheel also passed all 11 scenarios on its first complete
+  batch, and the temporary plugin state was removed. The deterministic
+  seven-case evaluation and a separate blinded Codex reviewer also pass their
+  recorded thresholds; this remains local/controlled evidence, not outside
+  adopter validation.
 - `.github/workflows/quality.yml` is the one reusable gate: it runs the
   complete suite on CPython 3.10–3.14 on Linux, macOS, and Windows, verifies
   workflow policy plus deterministic, installed-agent, and second-reviewer
@@ -101,19 +105,21 @@ On 2026-08-15, with Kyle's explicit authorization, the public GitHub
 repository was renamed to `kserrec/glossabet`, the configured Git remote was
 updated to `git@github.com:kserrec/glossabet.git`, and the old GitHub path was
 directly verified to resolve to the renamed repository. No commits were pushed
-by the rename.
+by the rename. On the same date, with separate explicit authorization, the
+package project links, distribution assertion, embedded plugin wheel, and
+exact installed-agent evidence were refreshed for the renamed URL.
 
-## Deferred exact-artifact URL refresh
+## Exact-artifact URL refresh — completed
 
-During owner self-testing, `pyproject.toml`, the distribution assertion, and
-the embedded plugin wheel retain the verified redirecting
-`kserrec/glossarize` URL. Changing that metadata changes the wheel hash and
-would make the exact Phase 22 installed-agent evidence stale. After Kyle
-explicitly ends the pause, switch those URLs to `kserrec/glossabet`, rebuild
-the plugin wheel, and run the authenticated installed-agent evaluation before
-any outside alpha invitation. That evaluation consumes Codex usage and
-temporarily installs and then removes its uniquely named user-level Codex
-marketplace and plugin state.
+On 2026-08-15, Kyle explicitly authorized this internal refresh while keeping
+the owner self-testing pause in force. `pyproject.toml`, the distribution
+assertion, and the embedded plugin wheel now use `kserrec/glossabet`. Comparing
+the rebuilt wheel with the Phase 22 wheel showed changes only to `METADATA` and
+`RECORD`; every executable package entry was byte-identical. The authenticated
+installed-agent evaluation consumed Codex usage and passed 11/11 scenarios on
+the refreshed exact wheel. Its uniquely named user-level Codex marketplace and
+plugin state was removed and verified absent afterward. This refresh did not
+invite outside testers, begin Phase 23, create a release, or publish a package.
 
 ## External setup still requiring Kyle
 

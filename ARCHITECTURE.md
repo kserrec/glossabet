@@ -57,15 +57,19 @@ break grounding.
 
 ## Running it
 
-Prerequisites: Python ≥ 3.10 and [uv](https://docs.astral.sh/uv/). The only
-runtime code is the Python standard library; `pytest` is the sole development
-dependency. Hatchling `>=1.32,<1.33` is used only in an isolated build
-environment. Nothing is fetched at application runtime.
+Prerequisites: Git, Python ≥ 3.10, and [uv](https://docs.astral.sh/uv/). The
+only runtime code is the Python standard library; `pytest` is the sole
+development dependency. Hatchling `>=1.32,<1.33` is used only in an isolated
+build environment. Nothing is fetched at application runtime.
 
-Run the test suite:
+From a fresh clone, create the locked development environment and run the test
+suite:
 
-```
-uv run pytest
+```bash
+git clone https://github.com/kserrec/glossabet.git
+cd glossabet
+uv sync --locked
+uv run pytest -q
 ```
 
 The preferred Codex distribution is the version-coupled plugin described in
@@ -547,6 +551,10 @@ structural validation is partial until an adapter supplies trustworthy paths.
 
 ## Where things stand
 
-`PLAN.md` is the authoritative roadmap. Phases 0–22 are complete. The
-trusted-alpha evidence gate, Phase 23, and explicit external authorization
-remain before public package or plugin publication.
+`PLAN.md` is the authoritative roadmap. Phases 0–22 are complete, and the
+owner self-testing pause is active. No outside maintainer invitation or Phase
+23 work begins until Kyle explicitly ends that pause. Package metadata, the
+embedded plugin wheel, and installed-agent evidence are synchronized with the
+renamed GitHub repository. The trusted-alpha evidence gate, Phase 23, and
+explicit external authorization remain before public package or plugin
+publication.

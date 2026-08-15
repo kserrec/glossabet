@@ -9,6 +9,11 @@ vocabulary healthy as the code evolves. Deterministic machinery gathers
 lexical and structural evidence; an agent skill (`/glossabet`) brainstorms
 names grounded in that evidence; **the human decides what becomes canonical**.
 
+**Glossabet is the project and product name.** Its human-facing Markdown
+document is still a glossary: `GLOSSARY.md`. The machine-readable companion is
+`glossabet-out/glossary.json`; together they preserve the reasoning for people
+and the validated state used by the engine.
+
 Optionally, Glossabet consumes [Graphify](https://github.com/Graphify-Labs/graphify)
 output as richer structural evidence and can reconcile the settled glossary
 against the structural graph — surfacing unnamed architecture, orphaned
@@ -105,12 +110,14 @@ The complete methodology, licenses, baseline, thresholds, limitations, and
 reproduction command are in [`EVALUATION.md`](EVALUATION.md); raw results are
 in [`evaluation/results.json`](evaluation/results.json).
 
-**Status: 0.1.0 source alpha under post-audit hardening; not yet published to
-PyPI or a plugin directory and not yet a trusted-alpha release.** The
-Glossabet name decision and local Codex plugin lifecycle are recorded and
-tested. Phase 22 also passes 11/11 installed-skill scenarios on Codex CLI
-0.147.0/Linux. Outside maintainer alpha evidence is the next gate; do not
-describe the current stopping point as release-ready. See
+**Status: 0.1.0 source alpha under an owner self-testing pause; not yet
+published to PyPI or a plugin directory and not yet a trusted-alpha release.**
+Phases 0–22 are complete, including 11/11 installed-skill scenarios on Codex
+CLI 0.147.0/Linux. Owner-run testing and additional checks are underway before
+any outside maintainer invitation. Package metadata, the embedded plugin wheel,
+and installed-agent evidence are synchronized with the renamed GitHub
+repository. The trusted-alpha evidence gate and Phase 23 remain later work; do
+not describe the current stopping point as release-ready. See
 [`NAME-CLEARANCE.md`](NAME-CLEARANCE.md) for the
 point-in-time name checks, [`DISTRIBUTION.md`](DISTRIBUTION.md) for exact
 installation ownership, [`PLAN.md`](PLAN.md) for the closure sequence, and
@@ -322,16 +329,20 @@ be drawn from it.
 
 ## Development and release verification
 
-Prerequisites: Python ≥ 3.10 and [uv](https://docs.astral.sh/uv/). The runtime
-is standard-library only; `pytest` is the sole development dependency, and
-Hatchling is isolated to builds. One reusable quality workflow tests CPython
-3.10–3.14 on Linux, macOS, and Windows before packaging; both ordinary CI and
-the manual publication workflow must pass it.
+Prerequisites: Git, Python ≥ 3.10, and [uv](https://docs.astral.sh/uv/). The
+runtime is standard-library only; `pytest` is the sole development dependency,
+and Hatchling is isolated to builds. One reusable quality workflow tests
+CPython 3.10–3.14 on Linux, macOS, and Windows before packaging; both ordinary
+CI and the manual publication workflow must pass it.
 
-Run the tests:
+From a fresh clone, create the locked development environment and run the
+tests:
 
-```
-uv run pytest
+```bash
+git clone https://github.com/kserrec/glossabet.git
+cd glossabet
+uv sync --locked
+uv run pytest -q
 ```
 
 Install the CLI onto your PATH and check it:
