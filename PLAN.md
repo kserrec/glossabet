@@ -1,6 +1,6 @@
 # Glossabet — Plan
 
-Status: **phases 0–22 and Phases 24–25 complete; Phase 26 is the next
+Status: **phases 0–22 and Phases 24–26 complete; Phase 27 is the next
 implementation work; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-15. Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -670,7 +670,7 @@ checks and the new 1.0 release threshold pass. The finding payloads remain a
 separate evaluation surface, so register labels do not manufacture terminology
 or drift correctness.
 
-### Phase 26 — Nomination distinctiveness
+### Phase 26 — Nomination distinctiveness ✅ 2026-08-15
 
 **Goal:** `naming_candidates` must point at the repository's own concepts,
 not its most frequent tokens. (Depends on Phases 24–25. Nominations remain
@@ -695,6 +695,27 @@ evidence for the skill's Step 3, never verdicts.)
 concepts (e.g. `drift`, `register`, `nomination`, `coverage`, `staleness`)
 surface; nomination kinds are labelled; a labelled nomination-quality check
 exists in the evaluation and passes.
+
+**Completion evidence:** RepositoryEvidence v10 requires an explicit `domain`
+origin for every term candidate and ranks count-normalized distinct compound
+patterns from the existing vocabulary aggregate, with repository breadth,
+documentation, and exact source-file-name anchors as supporting signals. Each
+candidate reports raw uses, files, modules, documentation mentions, distinct
+compound patterns, compound uses, and any source-unit or context-dispersion
+evidence. Terminology now computes its bounded cross-module dispersion once;
+importance reuses that exact profile to label every retained term either
+`deserves a canonical name` or `deserves disambiguation`. All profile caps,
+unknowns, filters, and drops remain in shared coverage ledgers.
+
+On this repository, `drift`, `coverage`, `glossary`, `structural`, and other
+project concepts fill the ranked list while `json`, `path`, `file`, `name`,
+`run`, and `root` are absent. Evaluation manifest v5 and result schema v6 add
+an 11-check self-nomination contract: four required concepts with exact kinds,
+the six forbidden generic slots, and one all-candidates-typed assertion. All
+11 checks and the new 1.0 release threshold pass. The existing 20 blinded
+finding payloads remained exactly equal after removing only engine and
+manifest identities, so the second-reviewer judgments retain explicit reuse
+provenance rather than claiming a new review.
 
 ### Phase 27 — Lean agent context
 

@@ -94,7 +94,10 @@ drift, and structural findings with 100% precision, 100% recall where the
 expected set was complete, and zero false alarms. All 15 lexical contracts and
 all 26 structural contracts passed. Phase 25 also adds 16/16 passing register
 labels across the seven cases and this repository, covering dominant style and
-whether structurally styled names are predominantly multi-word. The primary
+whether structurally styled names are predominantly multi-word. Phase 26 adds
+an 11/11 passing self-nomination gate: four repository concepts must surface
+with their expected nomination kinds, six recorded generic tokens must not,
+and every retained term must be typed. The primary
 reviewer marked 20/20 findings
 useful; a separate Codex session, blinded to those labels and isolated from the
 repository, marked 17/20 useful and recorded three disagreements.
@@ -115,13 +118,13 @@ in [`evaluation/results.json`](evaluation/results.json).
 
 **Status: 0.1.0 source alpha under an owner self-testing pause; not yet
 published to PyPI or a plugin directory and not yet a trusted-alpha release.**
-Phases 0–22 and Phases 24–25 are complete; Phase 26 is next. The earlier work
+Phases 0–22 and Phases 24–26 are complete; Phase 27 is next. The earlier work
 includes 11/11 installed-skill scenarios on Codex CLI 0.147.0/Linux. Owner-run
-testing and Phases 26–28 remain before any outside maintainer invitation.
+testing and Phases 27–28 remain before any outside maintainer invitation.
 Package metadata, the embedded plugin wheel, and installed-agent evidence are
 bound to the renamed GitHub repository. The source engine now includes Phases
-24–25; the checked-in plugin wheel remains the last exact Phase 22
-installed-agent-proven bundle and carries neither phase yet. It
+24–26; the checked-in plugin wheel remains the last exact Phase 22
+installed-agent-proven bundle and carries none of those phases yet. It
 must be refreshed with the installed-skill scenarios no later than Phase 27.
 The trusted-alpha evidence gate and Phase 23 remain later work; do not describe
 the current stopping point as release-ready. See
@@ -251,6 +254,15 @@ ledger. If a spelling has any domain occurrence, domain wins, so one language's
 builtin cannot hide a same-spelled project concept in another language.
 Ambiguous words including `open`, `type`, `run`, and `match` deliberately remain
 domain evidence.
+
+Term nominations rank repository breadth, documentation, source-unit naming,
+and count-normalized compound productivity from existing identifier patterns.
+A token used in many distinct compounds therefore outranks an equally frequent
+standalone token without letting raw repetition dominate. Wide terms reuse
+terminology's bounded context-dispersion measurement and carry
+`nomination_kind: "deserves a canonical name"` or `"deserves disambiguation"`;
+each numeric input and every omission remain visible. These are evidence for
+the skill's naming review, never canonical decisions.
 
 An optional `glossabet.json` at the scanned root can add ignored paths,
 classify project-specific layouts, or mark a conventionally non-production

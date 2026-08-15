@@ -144,6 +144,18 @@ def test_overload_nomination_finds_disjoint_contexts(tmp_path):
     assert "session" in terms
     assert len(terms["session"]["modules"]) == 3
     assert terms["session"]["dispersion"] >= 0.8
+    profiles = {
+        item["term"]: item
+        for item in build_evidence(tmp_path)["terminology"][
+            "context_dispersion"
+        ]["items"]
+    }
+    assert profiles["session"] == {
+        "term": "session",
+        "dispersion": 1.0,
+        "modules": 3,
+        "divergent": True,
+    }
 
 
 def test_test_vocabulary_does_not_drive_synonym_or_overload_signals(tmp_path):
@@ -200,6 +212,7 @@ def test_bounds_are_reported(tmp_path):
     assert "vocabulary_size" in term
     assert "considered_pairs" in term["synonym_candidates"]
     assert "dropped_items" in term["synonym_candidates"]
+    assert "dropped_items" in term["context_dispersion"]
     assert "dropped_items" in term["overload_candidates"]
     assert term["coverage"]["eligible_tokens"]["complete"] is True
 
@@ -225,7 +238,9 @@ def test_151st_eligible_token_is_counted_and_propagates_partial_coverage():
             f"terminology analysis cap is the top {PAIR_TOP_N} eligible tokens"
         ],
     }
-    for name in ("synonym_candidates", "overload_candidates"):
+    for name in (
+        "synonym_candidates", "context_dispersion", "overload_candidates"
+    ):
         coverage = terminology[name]["coverage"]
         assert coverage["complete"] is False
         assert coverage["total_items_exact"] is False

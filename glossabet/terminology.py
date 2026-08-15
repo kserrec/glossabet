@@ -14,6 +14,7 @@ from itertools import combinations
 
 from glossabet.coverage import (
     capped_collection,
+    coverage_ledger,
     coverage_reasons,
 )
 from glossabet.tokenize import (
@@ -327,11 +328,19 @@ def _synonym_candidates(top_tokens: list[str], token_counts: Counter,
     }
 
 
-def _overload_candidates(top_tokens: list[str], token_modules: dict,
-                         module_neighbor_sets: dict,
-                         module_neighbor_truncated: set[tuple[str, str]],
-                         token_coverage: dict) -> dict:
-    items = []
+def _context_dispersion(
+    top_tokens: list[str],
+    module_neighbor_sets: dict,
+    module_neighbor_truncated: set[tuple[str, str]],
+    token_coverage: dict,
+) -> tuple[list[dict], dict]:
+    """Measure bounded cross-module context dispersion once.
+
+    Internal profiles retain complete context sets for overload detail. The
+    public projection keeps only plain numbers for importance consumers.
+    """
+    profiles = []
+    wide_terms = 0
     truncated_contexts = 0
     overfull_module_terms = 0
     for token in top_tokens:
@@ -340,6 +349,7 @@ def _overload_candidates(top_tokens: list[str], token_modules: dict,
         }
         if len(per_module) < OVERLOAD_MIN_MODULES:
             continue
+        wide_terms += 1
         token_truncated = sorted(
             module
             for module in per_module
@@ -363,8 +373,62 @@ def _overload_candidates(top_tokens: list[str], token_modules: dict,
             for x, y in combinations(sets, 2)
         ]
         dispersion = round(1.0 - (sum(sims) / len(sims)), 3)
-        if dispersion < OVERLOAD_MIN_DISPERSION:
+        profiles.append({
+            "term": token,
+            "dispersion": dispersion,
+            "module_count": len(per_module),
+            "divergent": dispersion >= OVERLOAD_MIN_DISPERSION,
+            "_per_module": per_module,
+        })
+
+    profiles.sort(key=lambda item: item["term"])
+    incomplete_reasons = coverage_reasons(
+        token_coverage, "eligible token input"
+    )
+    if truncated_contexts:
+        incomplete_reasons.append(
+            f"{truncated_contexts} term/module context set(s) reached the "
+            f"{MODULE_CONTEXT_ANALYSIS_CAP}-token analysis cap"
+        )
+    if overfull_module_terms:
+        incomplete_reasons.append(
+            f"{overfull_module_terms} term(s) exceeded the "
+            f"{OVERLOAD_MODULE_ANALYSIS_CAP}-module overload analysis cap"
+        )
+    coverage = coverage_ledger(
+        wide_terms,
+        len(profiles),
+        total_items_exact=token_coverage["complete"],
+        reasons=incomplete_reasons,
+    )
+    public_items = [
+        {
+            "term": item["term"],
+            "dispersion": item["dispersion"],
+            "modules": item["module_count"],
+            "divergent": item["divergent"],
+        }
+        for item in profiles
+    ]
+    return profiles, {
+        "items": public_items,
+        "dropped_items": coverage["dropped_items"],
+        "coverage": coverage,
+    }
+
+
+def _overload_candidates(
+    dispersion_profiles: list[dict],
+    token_modules: dict,
+    dispersion_coverage: dict,
+) -> dict:
+    items = []
+    for profile in dispersion_profiles:
+        if not profile["divergent"]:
             continue
+        token = profile["term"]
+        dispersion = profile["dispersion"]
+        per_module = profile["_per_module"]
         modules = sorted(
             per_module,
             key=lambda m: (-token_modules[token].get(m, 0), m),
@@ -396,30 +460,14 @@ def _overload_candidates(top_tokens: list[str], token_modules: dict,
             "coverage": {"modules": module_coverage},
         })
     items.sort(key=lambda i: (-i["dispersion"], i["term"]))
-    incomplete_reasons = coverage_reasons(
-        token_coverage, "eligible token input"
-    )
-    if truncated_contexts:
-        incomplete_reasons.append(
-            f"{truncated_contexts} term/module context set(s) reached the "
-            f"{MODULE_CONTEXT_ANALYSIS_CAP}-token analysis cap"
-        )
-    if overfull_module_terms:
-        incomplete_reasons.append(
-            f"{overfull_module_terms} term(s) exceeded the "
-            f"{OVERLOAD_MODULE_ANALYSIS_CAP}-module overload analysis cap"
-        )
+    incomplete_reasons = coverage_reasons(dispersion_coverage)
     kept, coverage = capped_collection(
         items,
         OVERLOAD_REPORT_CAP,
         cap_reason=(
             f"overload-candidate detail cap is {OVERLOAD_REPORT_CAP} items"
         ),
-        total_items_exact=(
-            token_coverage["complete"]
-            and truncated_contexts == 0
-            and overfull_module_terms == 0
-        ),
+        total_items_exact=dispersion_coverage["complete"],
         incomplete_reasons=incomplete_reasons,
     )
     return {
@@ -466,6 +514,12 @@ def build_terminology(identifier_counts: Counter, token_counts: Counter,
         ),
         incomplete_reasons=eligibility_reasons,
     )
+    dispersion_profiles, context_dispersion = _context_dispersion(
+        top_tokens,
+        module_neighbor_sets,
+        module_neighbor_truncated or set(),
+        token_coverage,
+    )
     return {
         "considered_tokens": len(top_tokens),
         "vocabulary_size": len(token_counts),
@@ -480,8 +534,9 @@ def build_terminology(identifier_counts: Counter, token_counts: Counter,
             top_tokens, token_counts, token_files, token_patterns, neighbors,
             token_coverage,
         ),
+        "context_dispersion": context_dispersion,
         "overload_candidates": _overload_candidates(
-            top_tokens, token_modules, module_neighbor_sets,
-            module_neighbor_truncated or set(), token_coverage,
+            dispersion_profiles, token_modules,
+            context_dispersion["coverage"],
         ),
     }

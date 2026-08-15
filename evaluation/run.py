@@ -36,6 +36,10 @@ from glossabet.evidence import (  # noqa: E402
 )
 from glossabet.glossary import validate_glossary  # noqa: E402
 from glossabet.graphify import GRAPH_PATH  # noqa: E402
+from glossabet.importance import (  # noqa: E402
+    NOMINATION_CANONICAL_NAME,
+    NOMINATION_DISAMBIGUATION,
+)
 from glossabet.reconcile import (  # noqa: E402
     VALIDATION_SCHEMA_VERSION,
     build_validation,
@@ -44,7 +48,7 @@ from glossabet.terminology import (  # noqa: E402
     REGISTER_STYLED_IDENTIFIERS,
 )
 
-EVALUATION_SCHEMA_VERSION = 5
+EVALUATION_SCHEMA_VERSION = 6
 DEFAULT_MANIFEST = PROJECT_ROOT / "evaluation" / "corpus.json"
 DEFAULT_RESULTS = PROJECT_ROOT / "evaluation" / "results.json"
 RELEASE_RUNTIME_RUNS = 5
@@ -161,7 +165,7 @@ def _read_manifest(path: Path) -> tuple[dict, str]:
         manifest = json.loads(raw)
     except (ValueError, RecursionError) as exc:
         raise EvaluationError(f"{path}: unreadable JSON ({exc})") from exc
-    if not isinstance(manifest, dict) or manifest.get("schema_version") != 4:
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != 5:
         raise EvaluationError(f"{path}: unsupported evaluation manifest")
     sources = manifest.get("sources")
     if not isinstance(sources, list) or not sources:
@@ -187,6 +191,8 @@ def _read_manifest(path: Path) -> tuple[dict, str]:
             )
     if not isinstance(manifest.get("self_register"), dict):
         raise EvaluationError(f"{path}: self_register must be an object")
+    if not isinstance(manifest.get("self_nominations"), dict):
+        raise EvaluationError(f"{path}: self_nominations must be an object")
     return manifest, hashlib.sha256(raw).hexdigest()
 
 
@@ -568,13 +574,96 @@ def _register_score(evidence: dict, expectation: object) -> dict:
     }
 
 
-def _evaluate_self_register(expectation: object) -> dict:
-    evidence = build_evidence(PROJECT_ROOT, cache=False, graphify=False)
+def _evaluate_self_register(expectation: object, evidence: dict) -> dict:
     return {
         "id": "glossabet",
         "source": {"kind": "local", "path": "."},
         **_register_score(evidence, expectation),
     }
+
+
+def _nomination_score(evidence: dict, expectation: object) -> dict:
+    if not isinstance(expectation, dict):
+        raise EvaluationError("nomination expectations must be an object")
+    required = expectation.get("required", [])
+    forbidden = expectation.get("forbidden_terms", [])
+    require_all_typed = expectation.get("require_all_typed")
+    valid_kinds = {
+        NOMINATION_CANONICAL_NAME,
+        NOMINATION_DISAMBIGUATION,
+    }
+    if (
+        not isinstance(required, list)
+        or not all(
+            isinstance(item, dict)
+            and isinstance(item.get("term"), str)
+            and item.get("nomination_kind") in valid_kinds
+            for item in required
+        )
+        or len({item["term"] for item in required}) != len(required)
+        or not isinstance(forbidden, list)
+        or not all(isinstance(term, str) and term for term in forbidden)
+        or len(set(forbidden)) != len(forbidden)
+        or not isinstance(require_all_typed, bool)
+    ):
+        raise EvaluationError("malformed nomination expectations")
+
+    candidates = {
+        item["term"]: item
+        for item in evidence["naming_candidates"]["terms"]
+    }
+    checks: list[dict] = []
+    for expected in required:
+        term = expected["term"]
+        actual = candidates.get(term, {}).get("nomination_kind")
+        checks.append({
+            "name": f"required:{term}",
+            "expected": expected["nomination_kind"],
+            "actual": actual,
+            "passed": actual == expected["nomination_kind"],
+        })
+    for term in forbidden:
+        actual = term in candidates
+        checks.append({
+            "name": f"forbidden:{term}",
+            "expected": False,
+            "actual": actual,
+            "passed": not actual,
+        })
+    if require_all_typed:
+        untyped = sorted(
+            term for term, item in candidates.items()
+            if item.get("nomination_kind") not in valid_kinds
+        )
+        checks.append({
+            "name": "all_candidates_typed",
+            "expected": [],
+            "actual": untyped,
+            "passed": not untyped,
+        })
+
+    passed = sum(check["passed"] for check in checks)
+    return {
+        "id": "glossabet",
+        "source": {"kind": "local", "path": "."},
+        "configured": True,
+        "expected": expectation,
+        "actual": [
+            {
+                "term": term,
+                "nomination_kind": item.get("nomination_kind"),
+            }
+            for term, item in sorted(candidates.items())
+        ],
+        "checks": len(checks),
+        "passed_checks": passed,
+        "passed": passed == len(checks),
+        "failures": [check for check in checks if not check["passed"]],
+    }
+
+
+def _evaluate_self_nominations(expectation: object, evidence: dict) -> dict:
+    return _nomination_score(evidence, expectation)
 
 
 def _structural_contract_score(
@@ -743,7 +832,9 @@ def _truncations(evidence: dict) -> list[dict]:
         marker = evidence["vocabulary"][name]["truncated"]
         if marker:
             events.append({"surface": f"vocabulary.{name}", **marker})
-    for name in ("synonym_candidates", "overload_candidates"):
+    for name in (
+        "synonym_candidates", "context_dispersion", "overload_candidates"
+    ):
         dropped = evidence["terminology"][name]["dropped_items"]
         if dropped:
             events.append({"surface": f"terminology.{name}", "dropped_items": dropped})
@@ -890,7 +981,11 @@ def _evaluate_source(source: dict, root: Path, runs: int,
     }
 
 
-def _aggregate(cases: list[dict], self_register: dict) -> dict:
+def _aggregate(
+    cases: list[dict],
+    self_register: dict,
+    self_nominations: dict,
+) -> dict:
     def combine(surface: str, key: str) -> int:
         return sum(len(case[surface][key]) for case in cases)
 
@@ -924,6 +1019,8 @@ def _aggregate(cases: list[dict], self_register: dict) -> dict:
         sum(case["register"]["passed_checks"] for case in cases)
         + self_register["passed_checks"]
     )
+    nomination_checks = self_nominations["checks"]
+    nomination_passed = self_nominations["passed_checks"]
     structural_contract_checks = sum(
         case["structural"]["contracts"]["checks"] for case in cases
     )
@@ -968,6 +1065,9 @@ def _aggregate(cases: list[dict], self_register: dict) -> dict:
             "reviewer_usefulness": _ratio(total_useful, total_actual),
             "lexical_contract_rate": _ratio(lexical_passed, lexical_checks),
             "register_accuracy": _ratio(register_passed, register_checks),
+            "nomination_quality": _ratio(
+                nomination_passed, nomination_checks
+            ),
             "structural_contract_rate": _ratio(
                 structural_contract_passed, structural_contract_checks
             ),
@@ -1028,6 +1128,9 @@ def _thresholds(aggregate: dict, thresholds: dict | None) -> dict:
         "minimum_cache_reuse_min": aggregate["cache"]["minimum_reuse_rate"],
         "lexical_contract_min": aggregate["quality"]["lexical_contract_rate"],
         "register_accuracy_min": aggregate["quality"]["register_accuracy"],
+        "nomination_quality_min": aggregate["quality"][
+            "nomination_quality"
+        ],
         "structural_contract_min": aggregate["quality"][
             "structural_contract_rate"
         ],
@@ -1152,12 +1255,21 @@ def verify_results(
                     f"{source['id']}: local register evidence is stale"
                 )
 
+    self_evidence = build_evidence(
+        PROJECT_ROOT, cache=False, graphify=False
+    )
     expected_self_register = _evaluate_self_register(
-        manifest["self_register"]
+        manifest["self_register"], self_evidence
     )
     self_register = results.get("self_register")
     if self_register != expected_self_register:
         errors.append("self register evidence is stale")
+    expected_self_nominations = _evaluate_self_nominations(
+        manifest["self_nominations"], self_evidence
+    )
+    self_nominations = results.get("self_nominations")
+    if self_nominations != expected_self_nominations:
+        errors.append("self nomination evidence is stale")
 
     method = results.get("method", {})
     if method.get("runtime_runs_per_case") != RELEASE_RUNTIME_RUNS:
@@ -1180,7 +1292,9 @@ def verify_results(
     expected_aggregate = None
     try:
         if cases:
-            expected_aggregate = _aggregate(cases, self_register)
+            expected_aggregate = _aggregate(
+                cases, self_register, self_nominations
+            )
     except (KeyError, TypeError, ValueError):
         errors.append("evaluation case metrics are malformed")
     if expected_aggregate is not None and aggregate != expected_aggregate:
@@ -1230,8 +1344,16 @@ def run(manifest_path: Path, output_path: Path, repositories_root: Path | None,
         import shutil
         shutil.rmtree(cache_root, ignore_errors=True)
 
-    self_register = _evaluate_self_register(manifest["self_register"])
-    aggregate = _aggregate(cases, self_register)
+    self_evidence = build_evidence(
+        PROJECT_ROOT, cache=False, graphify=False
+    )
+    self_register = _evaluate_self_register(
+        manifest["self_register"], self_evidence
+    )
+    self_nominations = _evaluate_self_nominations(
+        manifest["self_nominations"], self_evidence
+    )
+    aggregate = _aggregate(cases, self_register, self_nominations)
     thresholds = _thresholds(
         aggregate,
         manifest.get("release_thresholds") if not selected else None,
@@ -1257,6 +1379,7 @@ def run(manifest_path: Path, output_path: Path, repositories_root: Path | None,
         },
         "cases": cases,
         "self_register": self_register,
+        "self_nominations": self_nominations,
         "aggregate": aggregate,
         "release_thresholds": thresholds,
     }

@@ -1,14 +1,14 @@
 {
   "engine": {
     "drift_schema_version": 5,
-    "evaluation_schema_version": 5,
-    "evidence_schema_version": 9,
+    "evaluation_schema_version": 6,
+    "evidence_schema_version": 10,
     "name": "glossabet",
-    "source_sha256": "b4052fb03228cd1386f79f33318f15632cd697d38bc307445758c85efa80ad2a",
+    "source_sha256": "c4c07cb4ff973b169bb15c322cacc1839f9528e5bed0b5ebfbadbe31f79f220c",
     "validation_schema_version": 6,
     "version": "0.1.0"
   },
-  "evaluation_manifest_sha256": "f3ec3c38f37fae2bb8ac5053aa4e1c74288f148320b21cc252839c875bb6e9cc",
+  "evaluation_manifest_sha256": "70072cba63dc9f0bf426965a36f7fc31d7c8d94816ab837c3f54d2167df86b6c",
   "findings": [
     {
       "evidence": {

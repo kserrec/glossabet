@@ -2,7 +2,8 @@
 
 This document records Glossabet's Phase 15 calibration, Phase 16 lexical/scope
 extension, Phase 20 replay, Phase 22 structural/installed-agent/second-reviewer
-evidence, and Phase 25 register evaluation. The machine-readable corpus,
+evidence, Phase 25 register evaluation, and Phase 26 nomination evaluation.
+The machine-readable corpus,
 labels, raw per-run
 timings, findings, truncation markers, provenance digests, and threshold checks
 live in
@@ -39,6 +40,9 @@ provenance, and the 51st group beyond the adapter detail cap.
 Phase 25 adds two register labels for each case and for Glossabet itself:
 the dominant structurally styled identifier form and whether that partition is
 predominantly multi-word.
+Phase 26 adds an exact Glossabet self-check for term-nomination quality: four
+repository concepts and their expected nomination kinds, six generic terms
+that must not occupy the bounded list, and one all-candidates-typed contract.
 
 ## Labelling method
 
@@ -78,6 +82,14 @@ metric is the fraction of those 16 checks that pass. These are naming-register
 labels, not additional labels for synonym, overload, drift, or structural
 usefulness.
 
+The nomination labels are likewise a narrow regression contract, not a claim
+that the heuristic knows which terms should become canonical. They require
+`structural` to surface as `deserves disambiguation`, require `plugin`,
+`coverage`, and `drift` as `deserves a canonical name`, forbid `json`, `path`,
+`file`, `name`, `run`, and `root`, and require every retained term to use one of
+the two nomination kinds. The human still judges every nomination against the
+code.
+
 ## Calibration result
 
 The Phase 14 baseline emitted 64 scored findings. Eleven matched the labels and
@@ -94,7 +106,7 @@ Phase 15 made three conservative changes to the existing synonym heuristic:
    as `*_queue` and `run_*`; and
 3. context similarity must be at least 0.55 instead of 0.40.
 
-The current Phase 25 five-run replay emitted 20 scored findings, all labelled
+The current Phase 26 five-run replay emitted 20 scored findings, all labelled
 correct and useful by the primary reviewer, with no labelled finding missed
 where recall was complete:
 
@@ -112,6 +124,7 @@ where recall was complete:
 | Minimum warm-cache reuse | 100% | 100% |
 | Phase 16 lexical contract | 15/15 (100%) | 100% |
 | Phase 25 register accuracy | 16/16 (100%) | 100% |
+| Phase 26 nomination quality | 11/11 (100%) | 100% |
 | Phase 22 structural contract | 26/26 (100%) | 100% |
 
 All deterministic release thresholds and the separate second-reviewer
@@ -160,6 +173,25 @@ predominantly multi-word. Because the scanner remains lexical, this result is
 an evaluated statistics-layer correction, not a claim that comments and
 strings are parsed away.
 
+## Phase 26 nomination result
+
+RepositoryEvidence v10 admits only explicitly domain-tagged tokens to term
+nominations. It reuses the existing identifier-pattern index to report and
+score distinct compounds, normalizing diversity by raw uses and file spread so
+frequency alone cannot fill the list. Existing file locations also identify an
+exact same-named source unit; no additional repository collection was added.
+Every candidate retains its raw use, file, module, documentation, compound, and
+source-unit numbers.
+
+Terminology now exposes bounded context-dispersion profiles from the same
+top-150 domain-token analysis used for overload nominations. Importance reads
+that exact result: a divergent wide term is typed `deserves disambiguation`;
+other retained terms are typed `deserves a canonical name`. On Glossabet,
+`drift`, `coverage`, `glossary`, and `structural` surface while the six recorded
+generic terms are absent. All 11 labels pass. This validates the recorded
+self-testing failure and its counterexamples; it does not establish nomination
+quality on arbitrary repositories.
+
 ## Phase 22 structural and reviewer result
 
 The complete structural fixture emits the eight expected structural findings:
@@ -185,9 +217,9 @@ Boundary, and found the tenant-fragmentation count insufficient without module
 or context detail. The deterministic correctness labels were not changed to
 manufacture agreement.
 
-Phase 24 changed the engine identity and vocabulary-origin metadata; Phase 25
-changes the engine and manifest identities for register labels. Neither phase
-changes any of the 20 blinded finding payloads. Before carrying the existing
+Phase 24 changed the engine identity and vocabulary-origin metadata; Phases 25
+and 26 change the engine and manifest identities for register and nomination
+labels. None changes any of the 20 blinded finding payloads. Before carrying the existing
 judgments forward, each refresh compared the old and new packets after removing
 only the changed identity fields and required exact equality of the question,
 sources, and every finding. `reviewer-results.json` records the latest reuse
@@ -197,7 +229,7 @@ reviewer run or new independent evidence.
 ## Runtime and truncation
 
 On the recorded 9-core Linux host with CPython 3.12.13, the sum of per-case
-five-run medians was 0.335 seconds cold and 0.310 seconds warm—3.381 and 3.133
+five-run medians was 0.370 seconds cold and 0.323 seconds warm—3.733 and 3.266
 seconds per thousand included source files. Every warm run reused 100% of
 eligible extraction entries and produced evidence byte-identical to its cold
 run. The corpus is too small for the measured warm/cold difference to establish
@@ -213,7 +245,7 @@ truncated.
 
 ## Aggregate safety limits
 
-The measured corpus took 3.381 cold seconds per thousand source files.
+The measured corpus took 3.733 cold seconds per thousand source files.
 The scanner now applies immutable per-repository ceilings of:
 
 - 10,000 included code/documentation files;
@@ -256,8 +288,8 @@ and evaluator schema versions, a SHA-256 digest over the evaluator and every
 engine Python source file, the exact manifest digest, and a framed path/content
 digest over every accepted corpus file. The manifest pins that digest and
 accepted-file count for all seven cases; local fixtures and their structural
-and register scores plus Glossabet's self-register score are additionally
-recomputed without network, while external cases
+and register scores plus Glossabet's self-register and self-nomination scores
+are additionally recomputed without network, while external cases
 retain their immutable commit identity. The reusable release gate also
 recomputes aggregate metrics and thresholds, and rejects stale inputs, missing
 or reordered cases, fewer than five runs, weakened Graphify coverage, or
@@ -310,10 +342,10 @@ Phase 22 JSON at that time recorded that successful exact-bundle run. It proved
 one complete boundary execution, not a zero-flake rate for future model
 invocations.
 
-Phases 24–25 changed the source engine but deliberately did not relabel this
+Phases 24–26 changed the source engine but deliberately did not relabel this
 older installed-agent evidence. The checked-in plugin wheel remains the exact
 Phase 22 bundle described here; it delivers neither later phase. A fresh
-standalone Phase 25 wheel passes the isolated wheel smoke, while the release
+standalone Phase 26 wheel passes the isolated wheel smoke, while the release
 distribution check correctly reports that it differs from the checked-in
 plugin. The plugin
 and scenario evidence must be refreshed together no later than Phase 27.

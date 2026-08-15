@@ -10,12 +10,20 @@ import math
 from collections import Counter, defaultdict
 from collections.abc import Iterable
 from heapq import nsmallest
+from pathlib import PurePosixPath
 
 from glossabet.coverage import coverage_ledger
-from glossabet.tokenize import TOKEN_ORIGIN_DOMAIN, TOKEN_ORIGIN_LANGUAGE
+from glossabet.tokenize import (
+    TOKEN_ORIGIN_DOMAIN,
+    TOKEN_ORIGIN_LANGUAGE,
+    tokenize_identifier,
+)
 
 MODULE_CANDIDATE_CAP = 10
 TERM_CANDIDATE_CAP = 15
+SOURCE_UNIT_ANCHOR_WEIGHT = 15
+NOMINATION_CANONICAL_NAME = "deserves a canonical name"
+NOMINATION_DISAMBIGUATION = "deserves disambiguation"
 
 
 def _module_candidates(imports_section: dict, modules: list[dict],
@@ -60,29 +68,63 @@ def _module_candidates(imports_section: dict, modules: list[dict],
 def _term_candidates(token_counts: Counter, token_files: dict,
                      token_modules: dict,
                      doc_term_counts: Counter,
-                     token_origins: dict[str, str]) -> Iterable[dict]:
+                     token_origins: dict[str, str],
+                     token_patterns: dict,
+                     context_dispersion: dict) -> Iterable[dict]:
+    dispersion_by_term = {
+        item["term"]: item
+        for item in context_dispersion.get("items", [])
+    }
     ranked = sorted(token_counts.items(), key=lambda kv: (-kv[1], kv[0]))
     for term, count in ranked:
-        if token_origins.get(term, TOKEN_ORIGIN_DOMAIN) != TOKEN_ORIGIN_DOMAIN:
+        if token_origins.get(term) != TOKEN_ORIGIN_DOMAIN:
             continue
         files = len(token_files.get(term, ()))
         spread = len(token_modules.get(term, ()))
         doc_mentions = doc_term_counts.get(term, 0)
-        if spread < 2 and not doc_mentions:
-            continue  # a single-module term with no doc presence isn't hot
+        if spread < 2:
+            continue  # naming importance requires repository breadth
+        patterns = token_patterns.get(term, Counter())
+        distinct_compounds = len(patterns)
+        compound_uses = sum(patterns.values())
+        compound_density = compound_uses / max(1, count)
+        compound_diversity = distinct_compounds / math.sqrt(max(1, count))
+        source_units_named = sum(
+            tokenize_identifier(PurePosixPath(path).stem) == [term]
+            for path in token_files.get(term, ())
+        )
         reasons = [f"{count} use(s) across {files} file(s)"]
         if spread > 1:
             reasons.append(f"spread across {spread} module(s)")
         if doc_mentions:
             reasons.append(f"mentioned {doc_mentions} time(s) in docs")
+        reasons.append(
+            f"{distinct_compounds} distinct compound pattern(s) across "
+            f"{compound_uses} compound use(s)"
+        )
+        if source_units_named:
+            reasons.append(f"names {source_units_named} source file(s)")
+        dispersion = dispersion_by_term.get(term)
+        nomination_kind = NOMINATION_CANONICAL_NAME
+        if dispersion is not None:
+            reasons.append(
+                f"context dispersion {dispersion['dispersion']} across "
+                f"{dispersion['modules']} module(s)"
+            )
+            if dispersion["divergent"]:
+                nomination_kind = NOMINATION_DISAMBIGUATION
         score = (
-            spread * 3
-            + min(files, 20)
-            + math.log1p(count)
-            + math.log1p(doc_mentions) * 4
+            spread * 2
+            + math.log1p(min(count, 100))
+            + math.log1p(doc_mentions) * 2
+            + compound_diversity * 8
+            + (distinct_compounds / max(1, files)) * 6
+            + compound_density * 4
+            + min(source_units_named, 1) * SOURCE_UNIT_ANCHOR_WEIGHT
         )
         yield {
             "kind": "term",
+            "nomination_kind": nomination_kind,
             "term": term,
             "score": round(score, 2),
             "reasons": reasons,
@@ -112,17 +154,29 @@ def build_naming_candidates(imports_section: dict, modules: list[dict],
                             token_counts: Counter, token_files: dict,
                             token_modules: dict,
                             doc_term_counts: Counter,
-                            token_origins: dict[str, str] | None = None) -> dict:
+                            token_origins: dict[str, str] | None = None,
+                            token_patterns: dict | None = None,
+                            context_dispersion: dict | None = None) -> dict:
     token_origins = token_origins or {}
+    token_patterns = token_patterns or {}
+    context_dispersion = context_dispersion or {}
     language_tokens_excluded = sum(
         token_origins.get(term) == TOKEN_ORIGIN_LANGUAGE
         for term in token_counts
+    )
+    untagged_tokens_excluded = sum(
+        term not in token_origins for term in token_counts
     )
     term_input_reasons = []
     if language_tokens_excluded:
         term_input_reasons.append(
             f"{language_tokens_excluded} language-origin vocabulary token(s) "
             "excluded from the term naming candidate pool"
+        )
+    if untagged_tokens_excluded:
+        term_input_reasons.append(
+            f"{untagged_tokens_excluded} untagged vocabulary token(s) "
+            "excluded from the domain-only term naming candidate pool"
         )
     module_items, module_coverage = _ranked(
         _module_candidates(imports_section, modules, doc_term_counts),
@@ -133,7 +187,7 @@ def build_naming_candidates(imports_section: dict, modules: list[dict],
     term_items, term_coverage = _ranked(
         _term_candidates(
             token_counts, token_files, token_modules, doc_term_counts,
-            token_origins,
+            token_origins, token_patterns, context_dispersion,
         ),
         TERM_CANDIDATE_CAP,
         key=lambda candidate: (-candidate["score"], candidate["term"]),

@@ -3,6 +3,10 @@ must resolve across languages, external deps must separate, the lossy tag
 must be present, and every nomination must carry its reasons."""
 
 from glossabet.evidence import build_evidence
+from glossabet.importance import (
+    NOMINATION_CANONICAL_NAME,
+    NOMINATION_DISAMBIGUATION,
+)
 from glossabet.imports import extract_imports
 
 
@@ -84,6 +88,67 @@ def test_term_nomination_rewards_doc_presence(tmp_path):
     assert any("docs" in r for r in terms["payment"]["reasons"])
 
 
+def test_compound_productivity_outranks_equal_frequency(tmp_path):
+    for module, identifier in (
+        ("left", "build_anchor"),
+        ("right", "write_anchor"),
+    ):
+        directory = tmp_path / module
+        directory.mkdir()
+        (directory / "code.py").write_text(
+            f"{identifier} = 1\nsolitary = 1\n"
+        )
+
+    terms = {
+        candidate["term"]: candidate
+        for candidate in build_evidence(tmp_path)["naming_candidates"]["terms"]
+    }
+
+    assert terms["anchor"]["score"] > terms["solitary"]["score"]
+    assert (
+        "2 distinct compound pattern(s) across 2 compound use(s)"
+        in terms["anchor"]["reasons"]
+    )
+    assert (
+        "0 distinct compound pattern(s) across 0 compound use(s)"
+        in terms["solitary"]["reasons"]
+    )
+
+
+def test_term_nominations_use_context_dispersion_kinds(tmp_path):
+    modules = (
+        ("auth", ("login", "cookie")),
+        ("db", ("transaction", "commit")),
+        ("ml", ("inference", "model")),
+    )
+    for module, session_contexts in modules:
+        directory = tmp_path / module
+        directory.mkdir()
+        lines = [
+            "ledger_entry = 1",
+            "ledger_record = 1",
+            *(f"session_{context} = 1" for context in session_contexts),
+        ]
+        (directory / "code.py").write_text("\n".join(lines) + "\n")
+
+    evidence = build_evidence(tmp_path)
+    terms = {
+        candidate["term"]: candidate
+        for candidate in evidence["naming_candidates"]["terms"]
+    }
+
+    assert terms["ledger"]["nomination_kind"] == NOMINATION_CANONICAL_NAME
+    assert terms["session"]["nomination_kind"] == NOMINATION_DISAMBIGUATION
+    assert any(
+        reason == "context dispersion 0.0 across 3 module(s)"
+        for reason in terms["ledger"]["reasons"]
+    )
+    assert any(
+        reason == "context dispersion 1.0 across 3 module(s)"
+        for reason in terms["session"]["reasons"]
+    )
+
+
 def test_term_nominations_exclude_language_tokens_and_report_the_filter(tmp_path):
     for module in ("left", "right"):
         directory = tmp_path / module
@@ -104,6 +169,30 @@ def test_term_nominations_exclude_language_tokens_and_report_the_filter(tmp_path
         "1 language-origin vocabulary token(s) excluded from the term naming "
         "candidate pool"
     ) in term_coverage["reasons"]
+
+
+def test_untagged_tokens_are_not_assumed_to_be_domain_vocabulary():
+    from collections import Counter, defaultdict
+
+    from glossabet.importance import build_naming_candidates
+
+    naming = build_naming_candidates(
+        {"internal_edges": []},
+        [],
+        Counter({"untagged": 2}),
+        {"untagged": Counter({"a.py": 1, "b.py": 1})},
+        {"untagged": Counter({"left": 1, "right": 1})},
+        Counter(),
+        {},
+        defaultdict(Counter),
+        {},
+    )
+
+    assert naming["terms"] == []
+    assert (
+        "1 untagged vocabulary token(s) excluded from the domain-only term "
+        "naming candidate pool"
+    ) in naming["coverage"]["terms"]["reasons"]
 
 
 def test_bounds_reported(tmp_path):

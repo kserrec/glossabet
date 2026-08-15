@@ -43,7 +43,7 @@ from glossabet.tokenize import (
     tokenize_identifier,
 )
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 EVIDENCE_FILE = "evidence.json"
 
@@ -391,10 +391,19 @@ def build_evidence(root: Path, limits: Limits = Limits(),
         build_structural_groups(root, git_stamp) if graphify
         else disabled_structural_groups()
     )
+    terminology = build_terminology(
+        vocabulary.identifier_counts, vocabulary.token_counts,
+        vocabulary.token_files, vocabulary.token_modules,
+        vocabulary.token_patterns, vocabulary.neighbors,
+        vocabulary.module_neighbor_sets, doc_term_counts,
+        vocabulary.module_neighbor_truncated,
+        vocabulary.token_origins,
+    )
     naming = build_naming_candidates(
         imports_section, production_modules_list, vocabulary.token_counts,
         vocabulary.token_files, vocabulary.token_modules, doc_term_counts,
-        vocabulary.token_origins,
+        vocabulary.token_origins, vocabulary.token_patterns,
+        terminology["context_dispersion"],
     )
     structural_naming = structure_candidates(structural)
     naming["coverage"].update(structural_naming.pop("coverage"))
@@ -440,14 +449,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
             ),
         },
         "terminology": {
-            **build_terminology(
-                vocabulary.identifier_counts, vocabulary.token_counts,
-                vocabulary.token_files, vocabulary.token_modules,
-                vocabulary.token_patterns, vocabulary.neighbors,
-                vocabulary.module_neighbor_sets, doc_term_counts,
-                vocabulary.module_neighbor_truncated,
-                vocabulary.token_origins,
-            ),
+            **terminology,
             "scope": {
                 "roles": ["production"],
                 "code_files": analyzed_production_code_files,
@@ -573,10 +575,11 @@ def _print_terminology_report(evidence: dict) -> None:
         print(f"module {path} — {reasons}")
     for cand in naming["terms"]:
         term_name = escape_terminal_text(cand["term"])
+        nomination_kind = escape_terminal_text(cand["nomination_kind"])
         reasons = "; ".join(
             escape_terminal_text(reason) for reason in cand["reasons"]
         )
-        print(f"term {term_name} — {reasons}")
+        print(f"term {term_name} [{nomination_kind}] — {reasons}")
     for cand in naming["structures"]:
         label = escape_terminal_text(cand["label"])
         reasons = "; ".join(

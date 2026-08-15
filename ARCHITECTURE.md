@@ -129,11 +129,11 @@ The skill does not read this artifact directly. Its top-level shape:
 | `totals` | source/code/doc file, byte, and word counts, including per-role totals |
 | `languages`, `modules` | language tally; per-directory module and role inventory |
 | `imports` | best-effort internal edges + external dependency tally (lossy, tagged so) |
-| `naming_candidates` | ranked "likely deserves a name" nominations (modules, terms, structures) |
+| `naming_candidates` | ranked, typed "likely deserves a name" nominations (modules, terms, structures), with plain-number reasons |
 | `structural_groups` | Graphify presence, usability, warnings, commit freshness, and normalized groups |
 | `files` | code/doc files with their production/test/fixture role |
 | `vocabulary` | normalization contract plus production-scoped, capped origin-tagged `tokens`, enriched `identifiers`, and `doc_terms` tables |
-| `terminology` | production scope, self-accounting register stats, code-vs-doc layers, synonym and overload nominations |
+| `terminology` | production scope, self-accounting register stats, code-vs-doc layers, bounded context-dispersion profiles, synonym and overload nominations |
 | `monorepo` | `{detected, reasons, sub_roots}` |
 | `skipped` | sensitive, oversized, escaping-symlink, configured, generated, vendored, and corpus-budget exclusions |
 
@@ -264,11 +264,14 @@ The package is `glossabet/`. Grouped by role:
   it is never a real dependency graph. RepositoryEvidence imports are
   production-scoped by default.
 - `importance.py` — `build_naming_candidates()` combines import fan-in/fan-out,
-  file counts, and doc mentions into ranked "likely deserves a name"
-  nominations, each carrying its reasons in plain numbers. It screens the
-  domain-origin bounded vocabulary in a streaming top-k pass, reports how many
-  language tokens were excluded, and lets candidates below the old frequency
-  pool enter exact totals without an unbounded list.
+  repository breadth, doc mentions, source-unit naming, and count-normalized
+  diversity from the existing compound-pattern index into ranked "likely
+  deserves a name" nominations. Term candidates require an explicit domain
+  tag and carry every input in plain-number reasons. They reuse terminology's
+  bounded context-dispersion profiles to distinguish "deserves a canonical
+  name" from "deserves disambiguation." The score only orders evidence; it
+  never makes a term canonical. Streaming top-k selection still reports every
+  filtered input and capped detail.
 - `terminology.py` — `build_terminology()`: house-register statistics
   (naming-style and identifier-length distributions, common prefixes/suffixes),
   code-vs-doc vocabulary layers, and two nomination kinds — synonym candidates
@@ -279,7 +282,8 @@ The package is `glossabet/`. Grouped by role:
   so sibling fields are not mistaken for replacements. All inputs are
   production-scoped and all pairwise work is capped to the top-N domain
   vocabulary after counted language-token exclusion;
-  overload dispersion also has an explicit per-term module ceiling. The full
+  overload dispersion is computed once for both importance and overload
+  nominations and has an explicit per-term module ceiling. The full
   eligible-token total and every detail/sample/work omission use the shared
   coverage ledger rather than turning a bounded sample into an exhaustive
   claim. Register headline distributions use only multi-token spellings whose
@@ -563,14 +567,14 @@ structural validation is partial until an adapter supplies trustworthy paths.
 
 ## Where things stand
 
-`PLAN.md` is the authoritative roadmap. Phases 0–22 and Phases 24–25 are
-complete; Phase 26 is next, and the owner self-testing pause remains active.
-Phases 26–28 finish before any outside maintainer invitation, and no Phase 23
+`PLAN.md` is the authoritative roadmap. Phases 0–22 and Phases 24–26 are
+complete; Phase 27 is next, and the owner self-testing pause remains active.
+Phases 27–28 finish before any outside maintainer invitation, and no Phase 23
 work begins
 until the trusted-alpha gate passes. Package metadata, the embedded plugin
 wheel, and installed-agent evidence remain bound to the renamed GitHub
 repository, but the checked-in plugin wheel is still the last exact Phase 22
-installed-agent-proven bundle; Phases 24–25 currently live in source and the
+installed-agent-proven bundle; Phases 24–26 currently live in source and the
 standalone source build. The plugin must be refreshed and its installed-skill
 scenarios rerun no later than Phase 27. The trusted-alpha evidence gate, Phase
 23, and explicit external authorization remain before public package or plugin

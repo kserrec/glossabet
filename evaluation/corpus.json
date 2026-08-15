@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "reviewed_on": "2026-08-15",
   "release_thresholds": {
     "terminology_precision_min": 0.8,
@@ -14,11 +14,34 @@
     "minimum_cache_reuse_min": 1.0,
     "lexical_contract_min": 1.0,
     "register_accuracy_min": 1.0,
+    "nomination_quality_min": 1.0,
     "structural_contract_min": 1.0
   },
   "self_register": {
     "dominant_style": "snake_case",
     "predominantly_multi_word": true
+  },
+  "self_nominations": {
+    "required": [
+      {
+        "term": "structural",
+        "nomination_kind": "deserves disambiguation"
+      },
+      {
+        "term": "plugin",
+        "nomination_kind": "deserves a canonical name"
+      },
+      {
+        "term": "coverage",
+        "nomination_kind": "deserves a canonical name"
+      },
+      {
+        "term": "drift",
+        "nomination_kind": "deserves a canonical name"
+      }
+    ],
+    "forbidden_terms": ["json", "path", "file", "name", "run", "root"],
+    "require_all_typed": true
   },
   "sources": [
     {

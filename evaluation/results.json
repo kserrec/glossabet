@@ -19,6 +19,7 @@
       "false_alarms": 0,
       "false_alarms_per_1000_production_code_files": 0.0,
       "lexical_contract_rate": 1.0,
+      "nomination_quality": 1.0,
       "overall_precision": 1.0,
       "register_accuracy": 1.0,
       "reviewer_usefulness": 1.0,
@@ -29,10 +30,10 @@
       "terminology_recall_where_complete": 1.0
     },
     "runtime": {
-      "cold_median_seconds_total": 0.334679,
-      "cold_seconds_per_1000_source_files": 3.381,
-      "warm_median_seconds_total": 0.310197,
-      "warm_seconds_per_1000_source_files": 3.133
+      "cold_median_seconds_total": 0.369577,
+      "cold_seconds_per_1000_source_files": 3.733,
+      "warm_median_seconds_total": 0.3233,
+      "warm_seconds_per_1000_source_files": 3.266
     },
     "source_bytes": 661164,
     "source_files": 99,
@@ -464,21 +465,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.015693,
+        "cold_median": 0.018558,
         "cold_samples": [
-          0.026587,
-          0.017149,
-          0.015693,
-          0.014419,
-          0.01506
+          0.01976,
+          0.024961,
+          0.018558,
+          0.017855,
+          0.018142
         ],
-        "warm_median": 0.015734,
+        "warm_median": 0.018089,
         "warm_samples": [
-          0.021513,
-          0.019287,
-          0.015434,
-          0.014457,
-          0.015734
+          0.021048,
+          0.017851,
+          0.020002,
+          0.018089,
+          0.017858
         ]
       },
       "source": {
@@ -619,21 +620,21 @@
       },
       "review_items": [],
       "runtime_seconds": {
-        "cold_median": 0.014334,
+        "cold_median": 0.018109,
         "cold_samples": [
-          0.013796,
-          0.014334,
-          0.018772,
-          0.014542,
-          0.013713
+          0.017843,
+          0.018147,
+          0.015246,
+          0.01824,
+          0.018109
         ],
-        "warm_median": 0.017002,
+        "warm_median": 0.021539,
         "warm_samples": [
-          0.015332,
-          0.016802,
-          0.017002,
-          0.017331,
-          0.017105
+          0.021539,
+          0.022588,
+          0.02217,
+          0.020505,
+          0.021255
         ]
       },
       "source": {
@@ -902,21 +903,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.185873,
+        "cold_median": 0.193754,
         "cold_samples": [
-          0.207771,
-          0.224325,
-          0.185873,
-          0.170526,
-          0.168312
+          0.216204,
+          0.227889,
+          0.193754,
+          0.172371,
+          0.174507
         ],
-        "warm_median": 0.144492,
+        "warm_median": 0.143794,
         "warm_samples": [
-          0.128979,
-          0.18623,
-          0.144492,
-          0.126234,
-          0.147466
+          0.130346,
+          0.174112,
+          0.153928,
+          0.139099,
+          0.143794
         ]
       },
       "source": {
@@ -1065,21 +1066,21 @@
       },
       "review_items": [],
       "runtime_seconds": {
-        "cold_median": 0.04244,
+        "cold_median": 0.04827,
         "cold_samples": [
-          0.041801,
-          0.04244,
-          0.042589,
-          0.042061,
-          0.048061
+          0.046501,
+          0.051827,
+          0.048598,
+          0.04827,
+          0.046903
         ],
-        "warm_median": 0.048378,
+        "warm_median": 0.052522,
         "warm_samples": [
-          0.048378,
-          0.044503,
-          0.049052,
-          0.048999,
-          0.044395
+          0.052055,
+          0.049007,
+          0.055678,
+          0.058189,
+          0.052522
         ]
       },
       "source": {
@@ -1247,21 +1248,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.044544,
+        "cold_median": 0.046867,
         "cold_samples": [
-          0.047897,
-          0.043698,
-          0.044826,
-          0.044544,
-          0.044091
+          0.045842,
+          0.048017,
+          0.045871,
+          0.049356,
+          0.046867
         ],
-        "warm_median": 0.047207,
+        "warm_median": 0.045095,
         "warm_samples": [
-          0.051176,
-          0.047646,
-          0.046453,
-          0.047207,
-          0.044813
+          0.055892,
+          0.379709,
+          0.043687,
+          0.043941,
+          0.045095
         ]
       },
       "source": {
@@ -1564,21 +1565,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.014975,
+        "cold_median": 0.026359,
         "cold_samples": [
-          0.017587,
-          0.014955,
-          0.014975,
-          0.014247,
-          0.015865
+          0.017524,
+          0.018416,
+          0.029386,
+          0.026359,
+          0.035804
         ],
-        "warm_median": 0.018945,
+        "warm_median": 0.021221,
         "warm_samples": [
-          0.018945,
-          0.019046,
-          0.017659,
-          0.018878,
-          0.019721
+          0.02308,
+          0.031027,
+          0.021221,
+          0.020104,
+          0.019886
         ]
       },
       "source": {
@@ -1748,21 +1749,21 @@
       },
       "review_items": [],
       "runtime_seconds": {
-        "cold_median": 0.01682,
+        "cold_median": 0.01766,
         "cold_samples": [
-          0.01682,
-          0.018187,
-          0.024742,
-          0.016252,
-          0.016587
+          0.018455,
+          0.015511,
+          0.017102,
+          0.020164,
+          0.01766
         ],
-        "warm_median": 0.018439,
+        "warm_median": 0.02104,
         "warm_samples": [
-          0.017758,
-          0.01709,
-          0.018755,
-          0.018439,
-          0.02128
+          0.021256,
+          0.045591,
+          0.020517,
+          0.020684,
+          0.02104
         ]
       },
       "source": {
@@ -1825,10 +1826,10 @@
   ],
   "engine": {
     "drift_schema_version": 5,
-    "evaluation_schema_version": 5,
-    "evidence_schema_version": 9,
+    "evaluation_schema_version": 6,
+    "evidence_schema_version": 10,
     "name": "glossabet",
-    "source_sha256": "b4052fb03228cd1386f79f33318f15632cd697d38bc307445758c85efa80ad2a",
+    "source_sha256": "c4c07cb4ff973b169bb15c322cacc1839f9528e5bed0b5ebfbadbe31f79f220c",
     "validation_schema_version": 6,
     "version": "0.1.0"
   },
@@ -1838,7 +1839,7 @@
     "python": "3.12.13",
     "python_implementation": "CPython"
   },
-  "manifest_sha256": "f3ec3c38f37fae2bb8ac5053aa4e1c74288f148320b21cc252839c875bb6e9cc",
+  "manifest_sha256": "70072cba63dc9f0bf426965a36f7fc31d7c8d94816ab837c3f54d2167df86b6c",
   "method": {
     "external_source_vendored": false,
     "graphify": "per-case",
@@ -1890,7 +1891,7 @@
         "target": 50.0
       },
       {
-        "actual": 3.381,
+        "actual": 3.733,
         "name": "cold_seconds_per_1000_source_files_max",
         "passed": true,
         "target": 10.0
@@ -1921,6 +1922,12 @@
       },
       {
         "actual": 1.0,
+        "name": "nomination_quality_min",
+        "passed": true,
+        "target": 1.0
+      },
+      {
+        "actual": 1.0,
         "name": "structural_contract_min",
         "passed": true,
         "target": 1.0
@@ -1935,22 +1942,125 @@
     "configured": true,
     "passed": true
   },
-  "schema_version": 5,
+  "schema_version": 6,
+  "self_nominations": {
+    "actual": [
+      {
+        "nomination_kind": "deserves disambiguation",
+        "term": "cache"
+      },
+      {
+        "nomination_kind": "deserves a canonical name",
+        "term": "config"
+      },
+      {
+        "nomination_kind": "deserves disambiguation",
+        "term": "context"
+      },
+      {
+        "nomination_kind": "deserves a canonical name",
+        "term": "coverage"
+      },
+      {
+        "nomination_kind": "deserves a canonical name",
+        "term": "drift"
+      },
+      {
+        "nomination_kind": "deserves disambiguation",
+        "term": "expected"
+      },
+      {
+        "nomination_kind": "deserves disambiguation",
+        "term": "glossary"
+      },
+      {
+        "nomination_kind": "deserves a canonical name",
+        "term": "max"
+      },
+      {
+        "nomination_kind": "deserves a canonical name",
+        "term": "min"
+      },
+      {
+        "nomination_kind": "deserves a canonical name",
+        "term": "plugin"
+      },
+      {
+        "nomination_kind": "deserves a canonical name",
+        "term": "rate"
+      },
+      {
+        "nomination_kind": "deserves a canonical name",
+        "term": "review"
+      },
+      {
+        "nomination_kind": "deserves a canonical name",
+        "term": "scope"
+      },
+      {
+        "nomination_kind": "deserves disambiguation",
+        "term": "structural"
+      },
+      {
+        "nomination_kind": "deserves a canonical name",
+        "term": "warm"
+      }
+    ],
+    "checks": 11,
+    "configured": true,
+    "expected": {
+      "forbidden_terms": [
+        "json",
+        "path",
+        "file",
+        "name",
+        "run",
+        "root"
+      ],
+      "require_all_typed": true,
+      "required": [
+        {
+          "nomination_kind": "deserves disambiguation",
+          "term": "structural"
+        },
+        {
+          "nomination_kind": "deserves a canonical name",
+          "term": "plugin"
+        },
+        {
+          "nomination_kind": "deserves a canonical name",
+          "term": "coverage"
+        },
+        {
+          "nomination_kind": "deserves a canonical name",
+          "term": "drift"
+        }
+      ]
+    },
+    "failures": [],
+    "id": "glossabet",
+    "passed": true,
+    "passed_checks": 11,
+    "source": {
+      "kind": "local",
+      "path": "."
+    }
+  },
   "self_register": {
     "actual": {
       "composition": {
         "excluded_by_reason": {
           "language_tagged_flat": 23,
-          "no_lexical_tokens": 115,
-          "prose_dominated_flat": 1093
+          "no_lexical_tokens": 116,
+          "prose_dominated_flat": 1097
         },
-        "excluded_spellings": 1231,
-        "total_spellings": 3494,
+        "excluded_spellings": 1236,
+        "total_spellings": 3530,
         "used_by_reason": {
-          "corroborated_flat": 1107,
-          "structurally_styled": 1156
+          "corroborated_flat": 1112,
+          "structurally_styled": 1182
         },
-        "used_spellings": 2263
+        "used_spellings": 2294
       },
       "dominant_style": "snake_case",
       "multi_word_pct": 100.0,

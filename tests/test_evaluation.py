@@ -18,7 +18,7 @@ def test_manifest_pins_licensed_varied_sources():
     manifest = json.loads(MANIFEST.read_text())
     sources = manifest["sources"]
 
-    assert manifest["schema_version"] == 4
+    assert manifest["schema_version"] == 5
     assert len(sources) == 7
     assert len({source["id"] for source in sources}) == len(sources)
     assert {source["primary_language"] for source in sources} == {
@@ -47,6 +47,28 @@ def test_manifest_pins_licensed_varied_sources():
     assert manifest["self_register"] == {
         "dominant_style": "snake_case",
         "predominantly_multi_word": True,
+    }
+    assert manifest["self_nominations"] == {
+        "required": [
+            {
+                "term": "structural",
+                "nomination_kind": "deserves disambiguation",
+            },
+            {
+                "term": "plugin",
+                "nomination_kind": "deserves a canonical name",
+            },
+            {
+                "term": "coverage",
+                "nomination_kind": "deserves a canonical name",
+            },
+            {
+                "term": "drift",
+                "nomination_kind": "deserves a canonical name",
+            },
+        ],
+        "forbidden_terms": ["json", "path", "file", "name", "run", "root"],
+        "require_all_typed": True,
     }
 
 
@@ -86,6 +108,9 @@ def test_local_calibration_case_runs_without_network(tmp_path):
     assert result["self_register"]["actual"]["dominant_style"] == "snake_case"
     assert result["self_register"]["actual"]["predominantly_multi_word"] is True
     assert result["aggregate"]["quality"]["register_accuracy"] == 1.0
+    assert result["self_nominations"]["passed"] is True
+    assert result["self_nominations"]["checks"] == 11
+    assert result["aggregate"]["quality"]["nomination_quality"] == 1.0
     assert result["release_thresholds"] == {
         "configured": False,
         "passed": None,
@@ -211,6 +236,9 @@ def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path):
     def register_stale(result):
         result["self_register"]["actual"]["dominant_style"] = "camelCase"
 
+    def nomination_stale(result):
+        result["self_nominations"]["passed"] = False
+
     mutations = [
         (engine_stale, "engine version, schema, or source digest is stale"),
         (manifest_stale, "evaluation manifest digest is stale"),
@@ -220,6 +248,7 @@ def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path):
         (graphify_weakened, "Graphify case count is stale"),
         (structural_stale, "local structural evidence is stale"),
         (register_stale, "self register evidence is stale"),
+        (nomination_stale, "self nomination evidence is stale"),
         (thresholds_weakened, "thresholds are not configured and passing"),
     ]
     for index, (mutate, expected) in enumerate(mutations):

@@ -26,6 +26,11 @@ This first alpha is prepared but has not been published to PyPI.
   names from corroborated flat spellings, exclude language/prose noise with
   explicit reasons, and carry a labelled dominant-style/multi-word evaluation
   across the pinned corpus and Glossabet itself.
+- Distinctive term nominations that require explicit domain tags, reuse the
+  existing compound-pattern and bounded context-dispersion evidence, label
+  canonical-name versus disambiguation intent, and carry an exact
+  repository-level evaluation gate without making naming decisions for the
+  human.
 - The canonical agent skill and `glossabet install` for current Codex and
   Claude Code personal skill locations.
 - A version-coupled Codex plugin prototype carrying the canonical skill and a
