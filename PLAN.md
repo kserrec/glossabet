@@ -1,8 +1,12 @@
 # Glossabet — Plan
 
-Status: **phases 0–22 complete; owner self-testing pause active before the
+Status: **phases 0–22 complete; phases 24–28 (owner self-testing findings)
+are the next implementation work; owner self-testing pause active before the
 trusted-alpha gate** as of 2026-08-15. Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
+Phases 24–28 were added 2026-08-15 from Kyle's self-testing findings and run
+before the trusted-alpha gate and Phase 23 in execution order, so outside
+testers meet the corrected signals rather than re-reporting known defects.
 Public release remains a separate, explicit authorization gate after those
 phases.
 This document is the authoritative roadmap. Provenance: merged from the working
@@ -566,6 +570,189 @@ removed. These internal changes did not end the owner self-testing pause,
 change repository visibility, publish a package or plugin, create a tag or
 release, or contact outside maintainers.
 
+### Phases 24–28 — Self-testing quality findings (added 2026-08-15)
+
+Provenance: Kyle's owner self-testing surfaced five defects, each verified
+against the engine's own output on this repository on 2026-08-15 (`glossabet
+inspect .`: 552,619 bytes; `the` at count 246 in the identifier top ten;
+register reported as 55.4% flat / 66.2% one-word; top term nominations
+`json`, `path`, `file`, `name`, `run`, `root`). All five live in revisable
+layers — statistics, scoring, projection, delivery — not in the binding
+contracts. These are implementation phases and are permitted during the
+owner self-testing pause, which forbids only outside invitations, Phase 23,
+and publication setup. Execution order: 24 → 25 → 26 (each feeds the next),
+27 independently, then 28.1 → 28.2/28.3 after 27 (Phase 28 is split into
+three passes; see its section). All five must complete before the
+trusted-alpha gate.
+
+### Phase 24 — Language/domain vocabulary partition
+
+**Goal:** stop language-supplied vocabulary (builtins and ubiquitous stdlib
+names) from consuming bounded analysis budgets, while keeping evidence
+complete and every exclusion reported.
+
+**Steps:**
+
+1. Add per-language builtin token sets beside `KEYWORD_TOKENS`, built with
+   the same deliberately moderate stance: unambiguous language vocabulary
+   (Python `dict`, `len`, `append`, `isinstance`, `sorted`) enters; overlaps
+   with plausible domain words (`open`, `type`, `run`, `match`) stay domain.
+2. Tag, never delete: each vocabulary token carries an origin (`language` or
+   `domain`) in evidence. The full token record remains in the artifact.
+3. Terminology's top-150 eligibility and importance's term-candidate pool
+   consider domain-tagged tokens only; their coverage ledgers state the
+   language-token exclusion and its count so filtered output never reads as
+   complete.
+
+**Acceptance:** on this repository, no pure-builtin token occupies a
+terminology eligible-top-150 slot or a term naming candidate; every
+language-tag exclusion is visible in coverage; determinism and the complete
+token record are regression-tested.
+
+### Phase 25 — Register integrity
+
+**Goal:** the reported house register must describe names the repository
+coined — not comment prose or language builtins — and any filtered statistic
+must state its own composition. (Depends on Phase 24. The scanner stays
+lexical; this phase changes only the statistics layer.)
+
+**Steps:**
+
+1. Partition identifier spellings into structurally code-styled
+   (`snake_case`, `camelCase`, `PascalCase`, `UPPER_SNAKE` — a compound
+   spelling cannot be prose) and flat (ambiguous). Compute the headline
+   style and token-count distributions from the styled partition.
+2. Admit a flat spelling into the register only with code corroboration: not
+   language-tagged (Phase 24) and not prose-corroborated (its `doc_terms`
+   presence dominates its code presence). Report how many spellings were
+   used and how many were excluded, by reason.
+3. Add register accuracy to the evaluation harness: label the true register
+   of the pinned corpus repositories (and this repository: snake_case,
+   predominantly multi-word) and measure the reported register against the
+   labels. Phases 15/16 measured synonym/overload labels only; register
+   skew survived because no evaluation covered it.
+
+**Acceptance:** this repository's reported register reflects its snake_case
+multi-word reality; register output names its own composition and
+exclusions; a labelled register check exists in the evaluation and passes.
+
+### Phase 26 — Nomination distinctiveness
+
+**Goal:** `naming_candidates` must point at the repository's own concepts,
+not its most frequent tokens. (Depends on Phases 24–25. Nominations remain
+evidence for the skill's Step 3, never verdicts.)
+
+**Steps:**
+
+1. Term candidates draw from domain-tagged tokens only.
+2. Add a compound-productivity signal from the existing `token_patterns`
+   data: a token that anchors many distinct compounds (`evidence` in
+   `build_evidence`, `write_evidence`) outranks an equally frequent token
+   that only appears alone. No new evidence collection is required.
+3. Consult terminology's overload dispersion and emit typed nominations:
+   wide use with consistent contexts → "deserves a canonical name"; wide
+   use with divergent contexts → "deserves disambiguation." This resolves
+   the importance/overload tension by making both signals explicit instead
+   of leaving importance blind to dispersion.
+4. Every candidate keeps plain-number reasons; caps and drops stay reported.
+
+**Acceptance:** on this repository, generic tokens (`json`, `path`, `file`,
+`name`, `run`, `root`) no longer fill the term-candidate slots and domain
+concepts (e.g. `drift`, `register`, `nomination`, `coverage`, `staleness`)
+surface; nomination kinds are labelled; a labelled nomination-quality check
+exists in the evaluation and passes.
+
+### Phase 27 — Lean agent context
+
+**Goal:** the `inspect` projection must fit routine agent context budgets;
+the 1 MB ceiling is a failure backstop, never a target. (Independent of
+Phases 24–26; `evidence.json` is unchanged — this is projection-layer work
+in the existing agent-context module.)
+
+**Steps:**
+
+1. Serialize the agent context compactly (no indentation); measured 2× on
+   this repository (552 KB pretty vs ~268 KB compact).
+2. Replace per-item location lists (161 KB compact here, ~60% of the
+   vocabulary section) with per-module rollups; keep file-level locations
+   only where the skill reads files — naming candidates and register
+   exemplars. The coverage ledger records the projection's omissions.
+3. Set a soft size target (≤ 80 KB on this repository) checked by test, and
+   provide `inspect --full` for the current complete shape.
+
+**Acceptance:** `glossabet inspect .` on this repository emits at most the
+soft target (down from 552,619 bytes measured 2026-08-15); every omission
+relative to full evidence is observable in coverage; existing skill and
+hostile-input scenarios still pass.
+
+### Phase 28 — Ambient glossary consumption
+
+**Goal:** after one finalized naming session, agents in every later session
+read the canonical vocabulary with no user invocation — consumption becomes
+ambient while changing vocabulary stays human-gated. (Depends on Phase 27.
+This is the product's steady state: ambient read, human-authorized write.)
+
+Phase 28 is oversized for one pass and is split per the one-phase-per-pass
+rule into three sub-phases, each its own implementation pass with its own
+acceptance check and commit. They are three different kinds of work:
+28.1 is pure engine/CLI, 28.2 is plugin/host lifecycle verified by
+installed-agent scenario batches rather than unit tests, and 28.3 writes to
+user-owned files — the most sensitive operation Glossabet performs — and
+carries its own hostile-scenario review. 28.2 and 28.3 both depend on 28.1
+and are independent of each other, so a blocked hook host cannot strand the
+digest or the sync command.
+
+#### Phase 28.1 — Brief digest
+
+**Steps:**
+
+1. `glossabet brief`: a deterministic digest of `glossary.json` (canonical
+   terms, one-line definitions, scopes, aliases) bounded at 4 KB with the
+   git stamp included. Staleness rules apply in full: the digest names the
+   glossary state it renders.
+2. Digest text follows the Phase 18.4 terminal-safety rules for
+   repository-controlled content and is covered by the determinism,
+   no-contamination, and no-secrets tests.
+3. Document the ambient boundary in the skill and README: the ambient layer
+   is read-only consumption; nominating, coining, and finalizing vocabulary
+   still require a human `/glossabet` session.
+
+**Acceptance:** brief output is deterministic, bounded, stamped, and covered
+by the safety tests; it is usable by hand (piped or pasted into context)
+before any delivery channel exists.
+
+#### Phase 28.2 — Session-start hook
+
+**Steps:**
+
+1. The plugin ships a session-start hook that runs `brief` fresh in each
+   session — fresh by construction, no repository mutation. With no
+   glossary present the hook contributes nothing.
+2. Extend the installed-agent scenario batches to cover hook delivery,
+   binding evidence to exact artifact bytes per the Phase 22 machinery.
+
+**Acceptance:** a fresh agent session with the hook installed sees the
+canonical terms without any user mention of glossabet, proven on the probed
+hosts; hosts without lifecycle probes are documented as unverified rather
+than claimed.
+
+#### Phase 28.3 — Sync-context managed block
+
+**Steps:**
+
+1. `glossabet sync-context`: an explicit human-invoked command that writes
+   a stamped managed block into `CLAUDE.md`/`AGENTS.md` for hosts without
+   hooks. Never written unbidden; marker and collision semantics with
+   hand-written surrounding content are defined before code.
+2. `drift` and `validate` flag a stale or hand-edited managed block.
+3. Hostile-scenario review of the write path: this is the only place
+   Glossabet touches user-owned files outside the confirmed glossary
+   finalize, and tests prove no other code path can.
+
+**Acceptance:** no code path writes to user-owned files without an explicit
+human command; a stale sync block is flagged by drift/validate; hostile
+write-path scenarios pass.
+
 ### Owner self-testing pause — active, not an implementation phase
 
 Kyle is keeping the current build to himself while he runs it and performs
@@ -575,8 +762,9 @@ Only Kyle's explicit instruction to resume outside testing ends the pause.
 
 ### Trusted-alpha gate — external evidence, not an implementation phase
 
-Before Phase 23, invite at least two consenting maintainers to use the exact
-installed build on enough additional repositories to bring the measured total
+Before Phase 23, and only after Phases 24–28 are complete — outside testers
+should meet corrected signals, not re-report the known self-testing findings
+— invite at least two consenting maintainers to use the exact installed build on enough additional repositories to bring the measured total
 to at least five varied repositories. Record opt-in scope, repository traits,
 failures, false alarms, usefulness feedback, and the exact build tested; never
 copy private repository content into this repository. This gate necessarily
@@ -637,6 +825,18 @@ done merely because local gates pass.
 | GitHub private reporting and dependency security updates are disabled | External publication gate |
 | Release documentation overstates the current stopping point | Phase 20.4 and Phase 23.3 |
 | Healthy foundations—full tests, CI matrix, wheel smoke, license, research links, pytest, and zero runtime dependencies—must not regress | Acceptance gates in Phases 18–23 |
+
+## Self-testing findings closure map (2026-08-15)
+
+Each finding was verified against the engine's own output on this repository.
+
+| Verified finding | Closure |
+| --- | --- |
+| Language builtins consume terminology's top-150 budget and naming slots | Phase 24 |
+| Prose and builtin spellings corrupt the reported house register (55.4% flat / 66.2% one-word on a snake_case multi-word repo); no evaluation measured register accuracy | Phase 25 |
+| Naming candidates rank raw frequency: `json`, `path`, `file`, `name`, `run`, `root`; importance never consults overload dispersion | Phase 26 |
+| Agent context is 552 KB for 73 files (~90% vocabulary, 161 KB location lists); the 1 MB limit is a ceiling, not a budget | Phase 27 |
+| The glossary reaches agents only inside `/glossabet` naming sessions; ordinary sessions re-invent vocabulary that lands as drift | Phase 28.1–28.3 |
 
 ### Later / unscheduled
 - Graphify pass-2 relabeling guide (instruction-level recipe as a doc);
