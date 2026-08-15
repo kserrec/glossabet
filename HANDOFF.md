@@ -77,6 +77,9 @@ inspectable, and maintainable.
   `uv run python scripts/agent_eval.py --verify-results
   evaluation/agent-results.json`, and `uv run python evaluation/review.py
   --verify-results evaluation/reviewer-results.json` all pass.
+- Public-main CI for commit `2be99b6` passed all 15 CPython 3.10–3.14 jobs on
+  Linux, macOS, and Windows plus the separate evidence, build, and
+  distribution-smoke job.
 - No temporary Glossabet plugin or marketplace remains installed. The only
   configured marketplace is the pre-existing `openai-curated` entry.
 

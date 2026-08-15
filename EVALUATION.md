@@ -285,10 +285,12 @@ Linux and macOS but exposed a second issue on every Windows job: sorting native
 Identity now sorts canonical POSIX relative-path strings, with focused
 regressions for both failure modes, and the same final wheel passed all 11
 scenarios again against the final evaluator. Temporary plugin and marketplace
-state was removed and verified absent after every run. That makes the four
-post-Phase 22 batches four for four and the combined observation eight of nine
-complete batches; the sample remains too small to claim a stable future success
-rate.
+state was removed and verified absent after every run. Public-main CI for
+commit `2be99b6` then passed all 15 CPython 3.10–3.14 jobs across Linux, macOS,
+and Windows plus the separate evidence, build, and distribution-smoke job. That
+makes the four post-Phase 22 batches four for four and the combined observation
+eight of nine complete batches; the sample remains too small to claim a stable
+future success rate.
 
 The authenticated regeneration command temporarily changes user-level Codex
 plugin/marketplace state and then removes only its uniquely named state. The

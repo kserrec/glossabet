@@ -44,7 +44,8 @@ This first alpha is prepared but has not been published to PyPI.
   then proved that sorting native `Path` objects produced a different mixed-case
   file order on Windows. Identity now sorts canonical POSIX relative-path
   strings, with focused regressions for both clean-checkout and cross-platform
-  parity.
+  parity. Public-main CI for commit `2be99b6` passed all 15 Python/operating-
+  system matrix jobs plus the evidence, build, and distribution-smoke job.
 
 - Bounded analysis collections now share exact coverage ledgers; terminology,
   naming, Graphify, drift, and validation propagate every known omission.

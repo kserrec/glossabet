@@ -559,7 +559,9 @@ macOS but proved native `Path` sorting ordered mixed-case plugin files
 differently on Windows. Identity now sorts canonical POSIX relative-path
 strings, a focused regression locks each behavior, and evidence was regenerated
 against the final evaluator and unchanged wheel. All four post-Phase 22 batches
-passed all 11 scenarios, and every temporary Codex plugin/marketplace entry was
+passed all 11 scenarios. Public-main CI for commit `2be99b6` passed all 15
+Python/operating-system matrix jobs plus the evidence, build, and
+distribution-smoke job, and every temporary Codex plugin/marketplace entry was
 removed. These internal changes did not end the owner self-testing pause,
 change repository visibility, publish a package or plugin, create a tag or
 release, or contact outside maintainers.

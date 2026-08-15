@@ -125,8 +125,10 @@ sorting's operating-system-dependent order for mixed-case plugin paths.
 Identity now excludes interpreter cache directories and sorts canonical POSIX
 relative-path strings; focused regressions protect both clean-checkout and
 cross-platform parity, and the same exact wheel passed 11/11 again under the
-final evaluator. This refresh did not invite outside testers, begin Phase 23,
-create a release, or publish a package.
+final evaluator. Public-main CI for commit `2be99b6` passed all 15
+CPython/operating-system jobs plus the evidence, build, and distribution-smoke
+job. This refresh did not invite outside testers, begin Phase 23, create a
+release, or publish a package.
 
 ## External setup still requiring Kyle
 
