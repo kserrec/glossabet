@@ -11,8 +11,9 @@ support (PLAN principle 3). Graphify's artifacts are read, never written.
 from __future__ import annotations
 
 import json
+import unicodedata
 from collections import Counter
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from glossarize.artifacts import (
     ArtifactError,
@@ -20,11 +21,18 @@ from glossarize.artifacts import (
     confined_artifact_path,
     oversized,
 )
+from glossarize.coverage import capped_collection, coverage_ledger
+from glossarize.tokenize import tokenize_term
 
 GRAPH_PATH = "graphify-out/graph.json"
 GROUP_CAP = 50
 GOD_NODE_CAP = 8
 MEMBER_SAMPLE = 6
+STRUCTURE_CANDIDATE_CAP = 10
+
+_GLOSSARY_TYPES = frozenset({"glossary"})
+_DOCUMENT_TYPES = frozenset({"doc", "document", "paper", "markdown"})
+_DOCUMENT_SUFFIXES = frozenset({".md", ".rst", ".txt", ".pdf"})
 
 
 def _first(d: dict, keys, types=None):
@@ -42,6 +50,17 @@ def _unavailable(
         "adapter_enabled": not disabled,
         "present": present,
         "available": False,
+        "coverage": {
+            "groups": coverage_ledger(
+                0,
+                0,
+                total_items_exact=present is not True,
+                reasons=(
+                    ["Graphify input was present but could not be normalized"]
+                    if present is True else []
+                ),
+            ),
+        },
         "warnings": warnings,
     }
 
@@ -83,15 +102,37 @@ def _load_graph(root: Path) -> tuple[dict | None, bool, list[str]]:
     return data, True, []
 
 
+def _normalized_source(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value.strip()).casefold()
+    parts: list[str] = []
+    for part in normalized.replace("\\", "/").split("/"):
+        if part in {"", "."}:
+            continue
+        if part == ".." and parts and parts[-1] != "..":
+            parts.pop()
+        else:
+            parts.append(part)
+    return "/".join(parts)
+
+
 def _provenance(node: dict) -> str:
     source = _first(
         node, ("source_file", "source", "file", "path", "origin"), str
     ) or ""
-    if "glossarize-out" in source or source.endswith("GLOSSARY.md"):
+    normalized_source = _normalized_source(source)
+    source_parts = PurePosixPath(normalized_source).parts
+    ntype = unicodedata.normalize(
+        "NFKC", _first(node, ("file_type", "type", "kind"), str) or ""
+    ).strip().casefold()
+    if (
+        ntype in _GLOSSARY_TYPES
+        or "glossarize-out" in source_parts
+        or (source_parts and source_parts[-1] == "glossary.md")
+    ):
         return "glossary"
-    ntype = (_first(node, ("file_type", "type", "kind"), str) or "").lower()
-    if ntype in ("doc", "document", "paper", "markdown") or source.lower().endswith(
-        (".md", ".rst", ".txt", ".pdf")
+    if (
+        ntype in _DOCUMENT_TYPES
+        or PurePosixPath(normalized_source).suffix in _DOCUMENT_SUFFIXES
     ):
         return "doc"
     return "code"
@@ -299,14 +340,35 @@ def _group_items(
             visible,
             key=lambda member: (-degree[member], nodes[member]["label"]),
         )
+        member_labels = [nodes[member]["label"] for member in sample]
+        members_sample, sample_coverage = capped_collection(
+            member_labels,
+            MEMBER_SAMPLE,
+            cap_reason=(
+                f"structural member display cap is {MEMBER_SAMPLE} items"
+            ),
+        )
+        member_tokens = sorted({
+            token
+            for member in visible
+            for token in tokenize_term(nodes[member]["label"])
+        })
         items.append({
             "id": group_id,
             "label": group["label"],
             "cohesion": group["cohesion"],
             "size": len(visible),
-            "members_sample": [
-                nodes[member]["label"] for member in sample[:MEMBER_SAMPLE]
-            ],
+            "members_sample": members_sample,
+            # Reconciliation matches against every normalized token in the
+            # bounded Graphify input.  The six labels above remain display
+            # evidence only and can no longer hide a seventh matching member.
+            "member_tokens": member_tokens,
+            "coverage": {
+                "members_sample": sample_coverage,
+                "member_tokens": coverage_ledger(
+                    len(member_tokens), len(member_tokens)
+                ),
+            },
             "provenance": {
                 "code": provenance.get("code", 0),
                 "doc": provenance.get("doc", 0),
@@ -319,14 +381,19 @@ def _group_items(
 
 def _god_nodes(
     nodes: dict[str, dict], degree: Counter, glossary_nodes: set[str]
-) -> list[dict]:
-    return [
+) -> tuple[list[dict], dict]:
+    ranked = [
         {"label": nodes[node_id]["label"], "degree": count}
         for node_id, count in sorted(
             degree.items(), key=lambda item: (-item[1], item[0])
         )
         if node_id not in glossary_nodes
-    ][:GOD_NODE_CAP]
+    ]
+    return capped_collection(
+        ranked,
+        GOD_NODE_CAP,
+        cap_reason=f"god-node display cap is {GOD_NODE_CAP} items",
+    )
 
 
 def build_structural_groups(
@@ -365,6 +432,15 @@ def build_structural_groups(
 
     retained_groups = group_items[:GROUP_CAP]
     dropped_groups = group_items[GROUP_CAP:]
+    group_coverage = coverage_ledger(
+        len(group_items),
+        len(retained_groups),
+        reasons=(
+            [f"structural group detail cap is {GROUP_CAP} items"]
+            if dropped_groups else []
+        ),
+    )
+    god_nodes, god_coverage = _god_nodes(nodes, degree, glossary_nodes)
     return {
         "adapter_enabled": True,
         "present": True,
@@ -375,12 +451,16 @@ def build_structural_groups(
         "nodes": len(nodes) - len(glossary_nodes),
         "edges": edge_count,
         "groups": retained_groups,
-        "groups_dropped": len(dropped_groups),
-        "groups_complete": not dropped_groups,
+        "groups_dropped": group_coverage["dropped_items"],
+        "groups_complete": group_coverage["complete"],
         "naming_groups_dropped": sum(
             group["size"] >= 2 for group in dropped_groups
         ),
-        "god_nodes": _god_nodes(nodes, degree, glossary_nodes),
+        "god_nodes": god_nodes,
+        "coverage": {
+            "groups": group_coverage,
+            "god_nodes": god_coverage,
+        },
         "discounted_glossary_nodes": len(glossary_nodes),
         "warnings": warnings,
     }
@@ -390,11 +470,20 @@ def structure_candidates(structural: dict) -> dict:
     """Group-based naming nominations for the importance section."""
     source_groups_dropped = structural.get("naming_groups_dropped", 0)
     if not structural.get("available"):
+        group_coverage = structural.get("coverage", {}).get("groups", {})
+        total_exact = group_coverage.get("total_items_exact") is not False
+        reasons = [] if total_exact else [
+            "structural groups could not be normalized completely"
+        ]
+        coverage = coverage_ledger(
+            0, 0, total_items_exact=total_exact, reasons=reasons
+        )
         return {
             "structures": [],
             "structures_dropped": 0,
             "structures_source_groups_dropped": source_groups_dropped,
-            "structures_complete": source_groups_dropped == 0,
+            "structures_complete": coverage["complete"],
+            "coverage": {"structures": coverage},
         }
     candidates = []
     for group in structural["groups"]:
@@ -418,12 +507,25 @@ def structure_candidates(structural: dict) -> dict:
             "reasons": reasons,
         })
     candidates.sort(key=lambda c: (-c["score"], c["label"]))
-    cap = 10
+    known_total = len(candidates) + source_groups_dropped
+    included = min(len(candidates), STRUCTURE_CANDIDATE_CAP)
+    reasons = []
+    if len(candidates) > STRUCTURE_CANDIDATE_CAP:
+        reasons.append(
+            f"structure candidate detail cap is {STRUCTURE_CANDIDATE_CAP} items"
+        )
+    if source_groups_dropped:
+        reasons.append(
+            f"Graphify group cap omitted {source_groups_dropped} "
+            "naming-eligible structure(s)"
+        )
+    coverage = coverage_ledger(
+        known_total, included, reasons=reasons
+    )
     return {
-        "structures": candidates[:cap],
-        "structures_dropped": (
-            max(0, len(candidates) - cap) + source_groups_dropped
-        ),
+        "structures": candidates[:STRUCTURE_CANDIDATE_CAP],
+        "structures_dropped": coverage["dropped_items"],
         "structures_source_groups_dropped": source_groups_dropped,
-        "structures_complete": source_groups_dropped == 0,
+        "structures_complete": coverage["complete"],
+        "coverage": {"structures": coverage},
     }

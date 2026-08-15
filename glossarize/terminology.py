@@ -12,6 +12,10 @@ import math
 from collections import Counter
 from itertools import combinations
 
+from glossarize.coverage import (
+    capped_collection,
+    coverage_reasons,
+)
 from glossarize.tokenize import tokenize_identifier
 
 PAIR_TOP_N = 150
@@ -27,9 +31,11 @@ SYNONYM_REPORT_CAP = 20
 OVERLOAD_MIN_MODULES = 3
 OVERLOAD_MIN_DISPERSION = 0.8
 OVERLOAD_REPORT_CAP = 10
+OVERLOAD_MODULE_ANALYSIS_CAP = 50
 SHARED_CONTEXT_SAMPLE = 5
 SHARED_PATTERN_SAMPLE = 5
 MODULE_CONTEXT_SAMPLE = 5
+MODULE_CONTEXT_ANALYSIS_CAP = 30
 REGISTER_AFFIX_CAP = 8
 LAYER_CAP = 10
 
@@ -71,31 +77,67 @@ def _register(identifier_counts: Counter) -> dict:
             for k, v in sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
         } if total else {}
 
-    def top_affixes(counter: Counter) -> list[dict]:
-        ranked = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
-        return [
-            {"token": t, "identifiers": c}
-            for t, c in ranked[:REGISTER_AFFIX_CAP] if c >= 2
+    def top_affixes(counter: Counter) -> tuple[list[dict], dict]:
+        ranked = [
+            {"token": token, "identifiers": count}
+            for token, count in sorted(
+                counter.items(), key=lambda kv: (-kv[1], kv[0])
+            )
+            if count >= 2
         ]
+        return capped_collection(
+            ranked,
+            REGISTER_AFFIX_CAP,
+            cap_reason=(
+                f"register affix display cap is {REGISTER_AFFIX_CAP} items"
+            ),
+        )
+
+    suffix_items, suffix_coverage = top_affixes(suffixes)
+    prefix_items, prefix_coverage = top_affixes(prefixes)
 
     return {
         "unique_identifiers": total,
         "identifier_styles_pct": pct(styles),
         "token_count_distribution_pct": pct(token_counts_dist),
-        "common_suffix_tokens": top_affixes(suffixes),
-        "common_prefix_tokens": top_affixes(prefixes),
+        "common_suffix_tokens": suffix_items,
+        "common_prefix_tokens": prefix_items,
+        "coverage": {
+            "common_suffix_tokens": suffix_coverage,
+            "common_prefix_tokens": prefix_coverage,
+        },
     }
 
 
 def _layers(token_counts: Counter, doc_term_counts: Counter) -> dict:
-    def top(counter: Counter, keep) -> list[str]:
+    def top(counter: Counter, keep, label: str) -> tuple[list[str], dict]:
         ranked = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
-        return [t for t, _ in ranked if keep(t)][:LAYER_CAP]
+        items = [term for term, _ in ranked if keep(term)]
+        return capped_collection(
+            items,
+            LAYER_CAP,
+            cap_reason=f"{label} layer display cap is {LAYER_CAP} items",
+        )
+
+    shared, shared_coverage = top(
+        token_counts, lambda term: term in doc_term_counts, "shared"
+    )
+    code_only, code_coverage = top(
+        token_counts, lambda term: term not in doc_term_counts, "code-only"
+    )
+    doc_only, doc_coverage = top(
+        doc_term_counts, lambda term: term not in token_counts, "doc-only"
+    )
 
     return {
-        "shared_top": top(token_counts, lambda t: t in doc_term_counts),
-        "code_only_top": top(token_counts, lambda t: t not in doc_term_counts),
-        "doc_only_top": top(doc_term_counts, lambda t: t not in token_counts),
+        "shared_top": shared,
+        "code_only_top": code_only,
+        "doc_only_top": doc_only,
+        "coverage": {
+            "shared_top": shared_coverage,
+            "code_only_top": code_coverage,
+            "doc_only_top": doc_coverage,
+        },
     }
 
 
@@ -115,7 +157,7 @@ def _pattern_label(pattern: tuple[str, ...]) -> str:
 
 def _synonym_candidates(top_tokens: list[str], token_counts: Counter,
                         token_files: dict, token_patterns: dict,
-                        neighbors: dict) -> dict:
+                        neighbors: dict, token_coverage: dict) -> dict:
     # Inverse-frequency weighting: a ubiquitous context token (a repo's
     # "term"/"prop") says little about which two terms are parallel, so it
     # must not dominate the similarity.
@@ -165,33 +207,82 @@ def _synonym_candidates(top_tokens: list[str], token_counts: Counter,
         similarity = _cosine(na, nb, exclude={a, b}, weight=weight)
         if similarity < SYNONYM_MIN_SIMILARITY:
             continue
+        shared_items, shared_coverage = capped_collection(
+            shared,
+            SHARED_CONTEXT_SAMPLE,
+            cap_reason=(
+                f"shared-context display cap is {SHARED_CONTEXT_SAMPLE} items"
+            ),
+        )
+        pattern_labels = [_pattern_label(pattern) for pattern in shared_patterns]
+        pattern_items, pattern_coverage = capped_collection(
+            pattern_labels,
+            SHARED_PATTERN_SAMPLE,
+            cap_reason=(
+                f"shared-pattern display cap is {SHARED_PATTERN_SAMPLE} items"
+            ),
+        )
         items.append({
             "a": a,
             "b": b,
             "similarity": round(similarity, 3),
             "file_overlap_rate": round(file_overlap, 3),
-            "shared_contexts": shared[:SHARED_CONTEXT_SAMPLE],
-            "shared_patterns": [
-                _pattern_label(pattern)
-                for pattern in shared_patterns[:SHARED_PATTERN_SAMPLE]
-            ],
+            "shared_contexts": shared_items,
+            "shared_patterns": pattern_items,
+            "coverage": {
+                "shared_contexts": shared_coverage,
+                "shared_patterns": pattern_coverage,
+            },
         })
     items.sort(key=lambda i: (-i["similarity"], i["a"], i["b"]))
+    kept, coverage = capped_collection(
+        items,
+        SYNONYM_REPORT_CAP,
+        cap_reason=(
+            f"synonym-candidate detail cap is {SYNONYM_REPORT_CAP} items"
+        ),
+        total_items_exact=token_coverage["complete"],
+        incomplete_reasons=coverage_reasons(
+            token_coverage, "eligible token input"
+        ),
+    )
     return {
-        "items": items[:SYNONYM_REPORT_CAP],
+        "items": kept,
         "considered_pairs": considered,
-        "dropped_items": max(0, len(items) - SYNONYM_REPORT_CAP),
+        "dropped_items": coverage["dropped_items"],
+        "coverage": coverage,
     }
 
 
 def _overload_candidates(top_tokens: list[str], token_modules: dict,
-                         module_neighbor_sets: dict) -> dict:
+                         module_neighbor_sets: dict,
+                         module_neighbor_truncated: set[tuple[str, str]],
+                         token_coverage: dict) -> dict:
     items = []
+    truncated_contexts = 0
+    overfull_module_terms = 0
     for token in top_tokens:
         per_module = {
             m: s for m, s in module_neighbor_sets.get(token, {}).items() if s
         }
         if len(per_module) < OVERLOAD_MIN_MODULES:
+            continue
+        token_truncated = sorted(
+            module
+            for module in per_module
+            if (token, module) in module_neighbor_truncated
+        )
+        if token_truncated:
+            # A capped context set can change the dispersion calculation in
+            # either direction.  Skip the nomination instead of turning a
+            # partial sample into a seemingly complete collision signal.
+            truncated_contexts += len(token_truncated)
+            continue
+        if len(per_module) > OVERLOAD_MODULE_ANALYSIS_CAP:
+            # Pairwise dispersion is quadratic in the number of modules.
+            # Keep that work bounded and treat the skipped nomination as
+            # unknown rather than drawing a conclusion from a module sample.
+            overfull_module_terms += 1
             continue
         sets = list(per_module.values())
         sims = [
@@ -204,19 +295,64 @@ def _overload_candidates(top_tokens: list[str], token_modules: dict,
         modules = sorted(
             per_module,
             key=lambda m: (-token_modules[token].get(m, 0), m),
-        )[:4]
+        )
+        module_items = []
+        for module in modules:
+            contexts = sorted(per_module[module])
+            context_items, context_coverage = capped_collection(
+                contexts,
+                MODULE_CONTEXT_SAMPLE,
+                cap_reason=(
+                    f"module-context display cap is {MODULE_CONTEXT_SAMPLE} items"
+                ),
+            )
+            module_items.append({
+                "path": module,
+                "contexts": context_items,
+                "coverage": {"contexts": context_coverage},
+            })
+        kept_modules, module_coverage = capped_collection(
+            module_items,
+            4,
+            cap_reason="overload-candidate module display cap is 4 items",
+        )
         items.append({
             "term": token,
             "dispersion": dispersion,
-            "modules": [
-                {"path": m, "contexts": sorted(per_module[m])[:MODULE_CONTEXT_SAMPLE]}
-                for m in modules
-            ],
+            "modules": kept_modules,
+            "coverage": {"modules": module_coverage},
         })
     items.sort(key=lambda i: (-i["dispersion"], i["term"]))
+    incomplete_reasons = coverage_reasons(
+        token_coverage, "eligible token input"
+    )
+    if truncated_contexts:
+        incomplete_reasons.append(
+            f"{truncated_contexts} term/module context set(s) reached the "
+            f"{MODULE_CONTEXT_ANALYSIS_CAP}-token analysis cap"
+        )
+    if overfull_module_terms:
+        incomplete_reasons.append(
+            f"{overfull_module_terms} term(s) exceeded the "
+            f"{OVERLOAD_MODULE_ANALYSIS_CAP}-module overload analysis cap"
+        )
+    kept, coverage = capped_collection(
+        items,
+        OVERLOAD_REPORT_CAP,
+        cap_reason=(
+            f"overload-candidate detail cap is {OVERLOAD_REPORT_CAP} items"
+        ),
+        total_items_exact=(
+            token_coverage["complete"]
+            and truncated_contexts == 0
+            and overfull_module_terms == 0
+        ),
+        incomplete_reasons=incomplete_reasons,
+    )
     return {
-        "items": items[:OVERLOAD_REPORT_CAP],
-        "dropped_items": max(0, len(items) - OVERLOAD_REPORT_CAP),
+        "items": kept,
+        "dropped_items": coverage["dropped_items"],
+        "coverage": coverage,
     }
 
 
@@ -224,18 +360,30 @@ def build_terminology(identifier_counts: Counter, token_counts: Counter,
                       token_files: dict, token_modules: dict,
                       token_patterns: dict, neighbors: dict,
                       module_neighbor_sets: dict,
-                      doc_term_counts: Counter) -> dict:
+                      doc_term_counts: Counter,
+                      module_neighbor_truncated: set[tuple[str, str]] | None = None,
+                      ) -> dict:
     ranked = sorted(token_counts.items(), key=lambda kv: (-kv[1], kv[0]))
-    top_tokens = [t for t, c in ranked[:PAIR_TOP_N] if c >= 2]
+    eligible_tokens = [term for term, count in ranked if count >= 2]
+    top_tokens, token_coverage = capped_collection(
+        eligible_tokens,
+        PAIR_TOP_N,
+        cap_reason=(
+            f"terminology analysis cap is the top {PAIR_TOP_N} eligible tokens"
+        ),
+    )
     return {
         "considered_tokens": len(top_tokens),
         "vocabulary_size": len(token_counts),
+        "coverage": {"eligible_tokens": token_coverage},
         "register": _register(identifier_counts),
         "layers": _layers(token_counts, doc_term_counts),
         "synonym_candidates": _synonym_candidates(
-            top_tokens, token_counts, token_files, token_patterns, neighbors
+            top_tokens, token_counts, token_files, token_patterns, neighbors,
+            token_coverage,
         ),
         "overload_candidates": _overload_candidates(
-            top_tokens, token_modules, module_neighbor_sets
+            top_tokens, token_modules, module_neighbor_sets,
+            module_neighbor_truncated or set(), token_coverage,
         ),
     }

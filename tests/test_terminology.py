@@ -4,9 +4,15 @@ overload nomination must find one term living disjoint lives, and all
 pairwise work must be visibly bounded."""
 
 import json
+from collections import Counter, defaultdict
 
 from glossarize.cli import main
 from glossarize.evidence import build_evidence
+from glossarize.terminology import (
+    OVERLOAD_MODULE_ANALYSIS_CAP,
+    PAIR_TOP_N,
+    build_terminology,
+)
 
 
 def test_register_statistics(tmp_path):
@@ -147,6 +153,66 @@ def test_bounds_are_reported(tmp_path):
     assert "considered_pairs" in term["synonym_candidates"]
     assert "dropped_items" in term["synonym_candidates"]
     assert "dropped_items" in term["overload_candidates"]
+    assert term["coverage"]["eligible_tokens"]["complete"] is True
+
+
+def test_151st_eligible_token_is_counted_and_propagates_partial_coverage():
+    token_counts = Counter({f"token{index:03}": 2 for index in range(151)})
+    counters = defaultdict(Counter)
+    module_contexts = defaultdict(lambda: defaultdict(set))
+
+    terminology = build_terminology(
+        Counter(), token_counts, counters, counters, counters, counters,
+        module_contexts, Counter(), set(),
+    )
+
+    token_coverage = terminology["coverage"]["eligible_tokens"]
+    assert token_coverage == {
+        "total_items": 151,
+        "included_items": PAIR_TOP_N,
+        "dropped_items": 1,
+        "total_items_exact": True,
+        "complete": False,
+        "reasons": [
+            f"terminology analysis cap is the top {PAIR_TOP_N} eligible tokens"
+        ],
+    }
+    for name in ("synonym_candidates", "overload_candidates"):
+        coverage = terminology[name]["coverage"]
+        assert coverage["complete"] is False
+        assert coverage["total_items_exact"] is False
+        assert any("eligible token input" in reason
+                   for reason in coverage["reasons"])
+
+
+def test_overload_module_pair_work_is_bounded_and_reported():
+    module_count = OVERLOAD_MODULE_ANALYSIS_CAP + 1
+    modules = {
+        f"module-{index:03}": {f"context-{index:03}"}
+        for index in range(module_count)
+    }
+    counters = defaultdict(Counter)
+
+    terminology = build_terminology(
+        Counter(),
+        Counter({"session": module_count * 2}),
+        counters,
+        {"session": Counter({module: 2 for module in modules})},
+        counters,
+        counters,
+        {"session": modules},
+        Counter(),
+        set(),
+    )
+
+    overload = terminology["overload_candidates"]
+    assert overload["items"] == []
+    assert overload["coverage"]["total_items_exact"] is False
+    assert overload["coverage"]["complete"] is False
+    assert (
+        f"1 term(s) exceeded the {OVERLOAD_MODULE_ANALYSIS_CAP}-module "
+        "overload analysis cap"
+    ) in overload["coverage"]["reasons"]
 
 
 def test_terminology_is_deterministic(tmp_path):

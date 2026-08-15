@@ -1,6 +1,6 @@
 # Glossarize — Plan
 
-Status: **phases 0–18 complete; Phase 19 next** as of 2026-08-14.
+Status: **phases 0–19 complete; Phase 20 next** as of 2026-08-14.
 Phases 18–23 are the complete post-audit route from the current local package
 to a defensible trusted alpha. Public release remains a separate, explicit
 authorization gate after those phases.
@@ -387,7 +387,7 @@ glossaries fail cleanly with bounded diagnostics; vocabulary ownership
 validation is non-quadratic; hostile repository/glossary strings cannot emit
 raw terminal control sequences; focused and full suites pass.
 
-### Phase 19 — Completeness and downstream complexity accounting
+### Phase 19 — Completeness and downstream complexity accounting ✅ 2026-08-14
 
 **Goal:** ensure every terminology and Graphify claim is based on all accepted
 evidence—or is explicitly marked partial—and keep drift/reconciliation work

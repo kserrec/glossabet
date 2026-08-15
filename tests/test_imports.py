@@ -90,6 +90,13 @@ def test_bounds_reported(tmp_path):
     assert "external_truncated" in evidence["imports"]
     assert "modules_dropped" in evidence["naming_candidates"]
     assert "terms_dropped" in evidence["naming_candidates"]
+    coverage = evidence["naming_candidates"]["coverage"]
+    assert set(coverage) == {"modules", "terms", "structures"}
+    for ledger in coverage.values():
+        assert set(ledger) == {
+            "total_items", "included_items", "dropped_items",
+            "total_items_exact", "complete", "reasons",
+        }
 
 
 def test_bare_relative_import_creates_no_phantom_root_edge(tmp_path):

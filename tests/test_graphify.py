@@ -116,16 +116,18 @@ def test_graphify_0_9_42_export_contract_is_consumed(tmp_path):
     assert structural["present"] is True
     assert structural["available"] is True
     assert structural["nodes"] == 3 and structural["edges"] == 2
-    assert structural["groups"] == [{
-        "id": "7",
-        "label": "Payments",
-        "cohesion": None,
-        "size": 3,
-        "members_sample": [
-            "Payment Service", "Billing Guide", "Stripe Gateway"
-        ],
-        "provenance": {"code": 2, "doc": 1, "glossary": 0},
-    }]
+    assert len(structural["groups"]) == 1
+    group = structural["groups"][0]
+    assert group["id"] == "7" and group["label"] == "Payments"
+    assert group["cohesion"] is None and group["size"] == 3
+    assert group["members_sample"] == [
+        "Payment Service", "Billing Guide", "Stripe Gateway"
+    ]
+    assert group["member_tokens"] == [
+        "billing", "gateway", "guide", "payment", "service", "stripe"
+    ]
+    assert group["coverage"]["member_tokens"]["complete"] is True
+    assert group["provenance"] == {"code": 2, "doc": 1, "glossary": 0}
     assert structural["god_nodes"][0] == {
         "label": "Payment Service", "degree": 2
     }
@@ -177,9 +179,99 @@ def test_group_cap_marks_structure_nominations_partial(tmp_path, monkeypatch):
     assert len(structural["groups"]) == 2
     assert structural["groups_dropped"] == 1
     assert structural["groups_complete"] is False
+    assert structural["coverage"]["groups"]["total_items"] == 3
+    assert structural["coverage"]["groups"]["dropped_items"] == 1
     assert naming["structures_source_groups_dropped"] == 1
     assert naming["structures_dropped"] == 1
     assert naming["structures_complete"] is False
+
+
+def test_default_group_cap_has_exact_threshold_coverage(tmp_path):
+    graph = {
+        "nodes": [
+            {"id": index, "label": f"Group{index}", "community": index}
+            for index in range(51)
+        ],
+        "edges": [],
+    }
+
+    structural = build_evidence(make_repo(tmp_path, graph))["structural_groups"]
+    coverage = structural["coverage"]["groups"]
+
+    assert len(structural["groups"]) == 50
+    assert coverage["total_items"] == 51
+    assert coverage["included_items"] == 50
+    assert coverage["dropped_items"] == 1
+    assert coverage["complete"] is False
+
+
+def test_structure_candidate_detail_cap_marks_collection_partial(tmp_path):
+    graph = {
+        "nodes": [
+            {
+                "id": f"{group}-{member}",
+                "label": f"Node{group}{member}",
+                "community": group,
+            }
+            for group in range(11)
+            for member in range(2)
+        ],
+        "edges": [],
+    }
+
+    naming = build_evidence(make_repo(tmp_path, graph))["naming_candidates"]
+    coverage = naming["coverage"]["structures"]
+
+    assert len(naming["structures"]) == 10
+    assert naming["structures_dropped"] == 1
+    assert naming["structures_source_groups_dropped"] == 0
+    assert naming["structures_complete"] is False
+    assert coverage["total_items"] == 11
+    assert coverage["included_items"] == 10
+    assert coverage["complete"] is False
+
+
+def test_provenance_requires_exact_normalized_source_or_type(tmp_path):
+    graph = {
+        "nodes": [
+            {
+                "id": "near-dir", "label": "Near Output", "community": 0,
+                "source_file": "src/glossarize-output.py",
+            },
+            {
+                "id": "near-name", "label": "Near Glossary", "community": 0,
+                "source_file": "docs/NOT_GLOSSARY.md",
+            },
+            {
+                "id": "normalized-away", "label": "Escaped Output",
+                "community": 0,
+                "source_file": "glossarize-out/../src/value.py",
+            },
+            {
+                "id": "real-file", "label": "Real Glossary", "community": 0,
+                "source_file": "GLOSSARY.md",
+            },
+            {
+                "id": "real-dir", "label": "Glossary JSON", "community": 0,
+                "source_file": "glossarize-out/glossary.json",
+            },
+            {
+                "id": "real-type", "label": "Typed Glossary", "community": 0,
+                "source_file": "generated/value", "file_type": "glossary",
+            },
+        ],
+        "edges": [],
+    }
+
+    group = build_evidence(make_repo(tmp_path, graph))["structural_groups"][
+        "groups"
+    ][0]
+
+    assert group["provenance"] == {"code": 2, "doc": 1, "glossary": 3}
+    assert group["size"] == 3
+    assert set(group["members_sample"]) == {
+        "Escaped Output", "Near Output", "Near Glossary"
+    }
 
 
 def test_top_level_communities_variant_with_cohesion(tmp_path):

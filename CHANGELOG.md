@@ -22,6 +22,15 @@ This first alpha is prepared but has not been published to PyPI.
   multi-platform CI, distribution validation, and wheel install/uninstall
   smoke test.
 
+### Changed
+
+- Bounded analysis collections now share exact coverage ledgers; terminology,
+  naming, Graphify, drift, and validation propagate every known omission.
+- Graphify reconciliation matches complete member-token sets with exact
+  provenance classification, and downstream glossary checks use bounded
+  indexes, capped overload-dispersion work, and streamed boundary accounting
+  instead of unbounded cross-product scans.
+
 ### Security
 
 - Repository-controlled reads and writes are bounded and symlink-safe;

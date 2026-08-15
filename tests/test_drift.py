@@ -8,6 +8,7 @@ from glossarize.cli import main
 from glossarize.drift import build_drift
 from glossarize.evidence import Limits, build_evidence
 from glossarize.glossary import save_glossary
+from glossarize.matching import EvidenceIndex
 
 GLOSSARY = {
     "schema_version": 1,
@@ -296,6 +297,44 @@ def test_scoped_reuse_does_not_look_like_a_global_concept_collision(tmp_path):
     assert drift["scope_summary"] == {"repository": 0, "path_scoped": 3}
 
 
+def test_partial_overload_module_details_cannot_prove_scoped_collision(tmp_path):
+    contexts_by_subsystem = {
+        "a": ("apple", "apricot"),
+        "b": ("banana", "berry"),
+        "c": ("cherry", "citrus"),
+        "d": ("date", "dragonfruit"),
+        "e": ("elderberry", "evergreen"),
+    }
+    for subsystem, contexts in contexts_by_subsystem.items():
+        directory = tmp_path / subsystem
+        directory.mkdir()
+        directory.joinpath("session.py").write_text(
+            "\n".join(f"session_{context} = 1" for context in contexts)
+            + "\n"
+        )
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "abc-session",
+            "term": "Session",
+            "definition": "The session shared by three selected subsystems.",
+            "status": "canonical",
+            "scope": {"path_prefixes": ["a", "b", "c"]},
+        }],
+    }
+
+    drift = build_drift(build_evidence(tmp_path), glossary)
+    coverage = drift["canonical_overloaded"]["coverage"]
+
+    assert drift["canonical_overloaded"]["items"] == []
+    assert coverage["total_items_exact"] is False
+    assert coverage["complete"] is False
+    assert any(
+        "scoped overload check(s) omitted" in reason
+        for reason in coverage["reasons"]
+    )
+
+
 def test_truncated_locations_cannot_prove_a_scoped_term_is_absent(tmp_path):
     for subsystem in ("a", "z"):
         directory = tmp_path / subsystem
@@ -339,6 +378,89 @@ def test_partial_production_corpus_cannot_prove_a_term_is_absent(
     assert drift["canonical_fading"]["items"] == []
     assert drift["coverage"]["production_corpus_complete"] is False
     assert drift["total_findings_complete"] is False
+
+
+def test_terminology_cap_propagates_to_drift_collection_coverage(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr("glossarize.terminology.PAIR_TOP_N", 1)
+    (tmp_path / "terms.py").write_text(
+        "alpha_value = 1\nalpha_record = 2\n"
+        "beta_value = 3\nbeta_record = 4\n"
+    )
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "alpha", "term": "Alpha", "status": "canonical",
+            "definition": "The alpha concept.",
+        }],
+    }
+
+    drift = build_drift(build_evidence(tmp_path), glossary)
+    coverage = drift["parallel_terms"]["coverage"]
+
+    assert coverage["complete"] is False
+    assert coverage["total_items_exact"] is False
+    assert any("eligible token input" in reason
+               for reason in coverage["reasons"])
+    assert drift["total_findings_complete"] is False
+
+
+def test_compound_matching_budget_suppresses_unproven_absence(tmp_path):
+    (tmp_path / "terms.py").write_text(
+        "aaa_other = 1\npayment_request = 2\n"
+    )
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "payment-request", "term": "Payment Request",
+            "status": "canonical", "definition": "A payment request.",
+        }],
+    }
+    evidence = build_evidence(tmp_path)
+    matcher = EvidenceIndex(
+        evidence, ["Payment Request"], compound_start_budget=1
+    )
+
+    drift = build_drift(evidence, glossary, matcher=matcher)
+    work = drift["coverage"]["work"]["matching"][
+        "compound_match_positions"
+    ]
+
+    assert work["complete"] is False
+    assert work["dropped_items"] > 0
+    assert drift["canonical_fading"]["items"] == []
+    assert drift["canonical_fading"]["coverage"][
+        "total_items_exact"
+    ] is False
+
+
+def test_build_drift_indexes_duplicate_compound_terms_once(tmp_path):
+    (tmp_path / "terms.py").write_text(
+        "ordinary_value = 1\nrequest_queue = 2\n"
+    )
+    concept_count = 500
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": f"payment-request-{index}",
+                "term": "Payment Request",
+                "status": "canonical",
+                "definition": "A deliberately duplicated scaling fixture.",
+            }
+            for index in range(concept_count)
+        ],
+    }
+
+    drift = build_drift(build_evidence(tmp_path), glossary)
+    work = drift["coverage"]["work"]["matching"][
+        "compound_match_positions"
+    ]
+
+    assert work["complete"] is True
+    assert work["total_items"] < 20
+    assert drift["canonical_fading"]["coverage"]["total_items"] == concept_count
 
 
 def test_drift_command_end_to_end(tmp_path, capsys):

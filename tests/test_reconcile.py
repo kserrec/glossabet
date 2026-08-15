@@ -207,10 +207,11 @@ def test_partial_inventory_does_not_claim_missing_bindings_or_orphans(
 
     assert validation["unresolved_bindings"]["items"] == []
     assert validation["orphaned_concepts"]["items"] == []
-    assert validation["coverage"] == {
-        "production_corpus_complete": False,
-        "repository_corpus_complete": False,
-    }
+    assert validation["coverage"]["production_corpus_complete"] is False
+    assert validation["coverage"]["repository_corpus_complete"] is False
+    assert validation["coverage"]["collections"]["orphaned_concepts"][
+        "total_items_exact"
+    ] is False
     assert validation["total_findings_complete"] is False
 
 
@@ -231,14 +232,14 @@ def test_drift_sections_embedded(tmp_path):
 def test_without_graph_structural_checks_skip_cleanly(tmp_path):
     validation = validation_for(tmp_path, graph=None)
     assert validation["graph_available"] is False
-    assert validation["graph"] == {
-        "present": False,
-        "usable": False,
-        "freshness": None,
-        "warnings": [],
-        "groups_dropped": 0,
-        "groups_complete": None,
-    }
+    graph = validation["graph"]
+    assert graph["present"] is False
+    assert graph["usable"] is False
+    assert graph["freshness"] is None
+    assert graph["warnings"] == []
+    assert graph["groups_dropped"] == 0
+    assert graph["groups_complete"] is None
+    assert graph["coverage"]["complete"] is True
     for key in ("unnamed_structure", "boundary_mismatch",
                 "overloaded_structural_region"):
         assert validation[key]["skipped"] is True
@@ -498,6 +499,165 @@ def test_structural_scope_limit_is_explicit_instead_of_guessing(tmp_path):
         "skip_reason"
     ]
     assert validation["boundary_mismatch"]["partial"] is True
+
+
+def test_seventh_graph_member_participates_in_structural_matching(tmp_path):
+    graph = {
+        "nodes": [
+            {"id": index, "label": f"Alpha{index}", "community": 0}
+            for index in range(6)
+        ] + [{"id": 7, "label": "PaymentGateway", "community": 0}],
+        "edges": [],
+    }
+    (tmp_path / "main.py").write_text("payment_record = 1\n")
+    gout = tmp_path / "graphify-out"
+    gout.mkdir()
+    gout.joinpath("graph.json").write_text(json.dumps(graph))
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "payment",
+            "term": "Payment",
+            "definition": "An attempt to collect money.",
+            "status": "canonical",
+        }],
+    }
+
+    evidence = build_evidence(tmp_path)
+    group = evidence["structural_groups"]["groups"][0]
+    validation = build_validation(evidence, glossary)
+
+    assert "PaymentGateway" not in group["members_sample"]
+    assert "payment" in group["member_tokens"]
+    assert group["coverage"]["member_tokens"]["complete"] is True
+    assert validation["unnamed_structure"]["items"] == []
+
+
+def test_structural_matching_uses_inverted_token_candidates(
+    tmp_path, monkeypatch
+):
+    graph = {
+        "nodes": [
+            {
+                "id": index,
+                "label": f"Structure{index}",
+                "community": index,
+            }
+            for index in range(30)
+        ],
+        "edges": [],
+    }
+    (tmp_path / "main.py").write_text("ordinary_name = 1\n")
+    gout = tmp_path / "graphify-out"
+    gout.mkdir()
+    gout.joinpath("graph.json").write_text(json.dumps(graph))
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": f"concept-{index}",
+                "term": f"Concept{index}",
+                "definition": "A deliberately unrelated concept.",
+                "status": "canonical",
+            }
+            for index in range(200)
+        ],
+    }
+    calls = 0
+    from glossarize import reconcile as reconcile_module
+    real_match = reconcile_module._match_strength_from_tokens
+
+    def counted_match(*args):
+        nonlocal calls
+        calls += 1
+        return real_match(*args)
+
+    monkeypatch.setattr(
+        reconcile_module, "_match_strength_from_tokens", counted_match
+    )
+
+    validation = build_validation(build_evidence(tmp_path), glossary)
+
+    assert calls == 0
+    work = validation["coverage"]["work"]["structural_matches"]
+    assert work["total_items"] == 0
+    assert work["complete"] is True
+
+
+def test_structural_match_budget_reports_omitted_candidate_evaluations(
+    tmp_path, monkeypatch
+):
+    terms = ("Alpha", "Beta", "Gamma", "Delta", "Epsilon")
+    graph = {
+        "nodes": [{
+            "id": "all",
+            "label": "AlphaBetaGammaDeltaEpsilon",
+            "community": 0,
+        }],
+        "edges": [],
+    }
+    (tmp_path / "main.py").write_text("ordinary_name = 1\n")
+    gout = tmp_path / "graphify-out"
+    gout.mkdir()
+    gout.joinpath("graph.json").write_text(json.dumps(graph))
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": term.lower(), "term": term,
+                "definition": f"The {term} concept.", "status": "canonical",
+            }
+            for term in terms
+        ],
+    }
+    monkeypatch.setattr("glossarize.reconcile.STRUCTURAL_MATCH_BUDGET", 2)
+
+    validation = build_validation(build_evidence(tmp_path), glossary)
+    work = validation["coverage"]["work"]["structural_matches"]
+
+    assert work["total_items"] == 5
+    assert work["included_items"] == 2
+    assert work["dropped_items"] == 3
+    assert work["complete"] is False
+    assert validation["boundary_mismatch"]["coverage"][
+        "total_items_exact"
+    ] is False
+    assert validation["total_findings_complete"] is False
+
+
+def test_boundary_pair_total_is_counted_while_only_details_are_retained(
+    tmp_path,
+):
+    concept_count = 300
+    graph = {
+        "nodes": [{"id": "shared", "label": "Shared", "community": 0}],
+        "edges": [],
+    }
+    (tmp_path / "main.py").write_text("shared_value = 1\n")
+    gout = tmp_path / "graphify-out"
+    gout.mkdir()
+    gout.joinpath("graph.json").write_text(json.dumps(graph))
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": f"shared-{index}", "term": "Shared",
+                "definition": "One deliberately duplicated test concept.",
+                "status": "canonical",
+            }
+            for index in range(concept_count)
+        ],
+    }
+
+    boundary = build_validation(build_evidence(tmp_path), glossary)[
+        "boundary_mismatch"
+    ]
+    expected = concept_count * (concept_count - 1) // 2
+
+    assert len(boundary["items"]) == 10
+    assert boundary["coverage"]["total_items"] == expected
+    assert boundary["coverage"]["dropped_items"] == expected - 10
+    assert boundary["coverage"]["total_items_exact"] is True
 
 
 def test_validate_command_end_to_end(tmp_path, capsys):

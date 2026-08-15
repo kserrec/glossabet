@@ -139,8 +139,10 @@ Two invariants govern this structure and are the reason it can be trusted:
   `tests/test_evidence.py` pin this.
 - **Bounded work with logged truncation.** Nothing is unbounded. Every cap
   (top-N tokens, locations per term, candidate pairs, edge counts) is applied
-  deterministically and the artifact records what was dropped, so a truncated
-  output never reads as complete. Scanner work is additionally bounded per
+  deterministically. Bounded collections share the `coverage.py` ledger, which
+  separates a known evaluated total from whether that total is exhaustive and
+  records every known drop and reason, so a truncated output never reads as
+  complete. Scanner work is additionally bounded per
   repository at 10,000 included source files, 32 MB of included source, 100,000
   walked entries, and 10,000 entries in one directory. Exceeding any scanner
   ceiling sets `skipped.corpus_budget.complete` false and records exact source
@@ -251,7 +253,9 @@ The package is `glossarize/`. Grouped by role:
   production-scoped by default.
 - `importance.py` — `build_naming_candidates()` combines import fan-in/fan-out,
   file counts, and doc mentions into ranked "likely deserves a name"
-  nominations, each carrying its reasons in plain numbers.
+  nominations, each carrying its reasons in plain numbers. It screens the
+  complete bounded vocabulary in a streaming top-k pass, so candidates below
+  the old frequency pool still enter exact totals without an unbounded list.
 - `terminology.py` — `build_terminology()`: house-register statistics
   (naming-style and identifier-length distributions, common prefixes/suffixes),
   code-vs-doc vocabulary layers, and two nomination kinds — synonym candidates
@@ -260,14 +264,21 @@ The package is `glossarize/`. Grouped by role:
   contexts). Synonym nominations require low cross-term file overlap, at least
   two shared positional identifier patterns, and calibrated context similarity
   so sibling fields are not mistaken for replacements. All inputs are
-  production-scoped and all pairwise work is capped to the top-N vocabulary.
-- `matching.py` — the shared glossary-to-code occurrence rule. One-token terms
-  use the token index; compound terms require an ordered contiguous sequence
-  within one identifier. A capped identifier index can prove a hit but cannot
-  prove absence, so absence/low-use findings are suppressed when completeness
-  is unknown. Scope-aware token, identifier, and documentation occurrence
-  helpers filter bounded location evidence by literal path prefix and retain
-  explicit completeness metadata.
+  production-scoped and all pairwise work is capped to the top-N vocabulary;
+  overload dispersion also has an explicit per-term module ceiling. The full
+  eligible-token total and every detail/sample/work omission use the shared
+  coverage ledger rather than turning a bounded sample into an exhaustive
+  claim.
+- `coverage.py` — the common bounded-collection ledger. Known totals, retained
+  details, known drops, total exactness, completeness, and reasons have one
+  shape across evidence, candidates, terminology, Graphify, drift, and
+  validation.
+- `matching.py` — the shared glossary-to-code occurrence rule and downstream
+  `EvidenceIndex`. One-token, symbol, file, module, and doc lookups are indexed;
+  all requested compound terms share one bounded trie pass over identifier
+  positions. A capped identifier index or exhausted work budget can prove a
+  hit but cannot prove absence, so absence/low-use findings are suppressed.
+  Scope-aware occurrence helpers retain explicit completeness metadata.
 
 **The optional structural source (evidence source #2)**
 - `graphify.py` — `build_structural_groups()` reads `graphify-out/graph.json`
@@ -282,8 +293,10 @@ The package is `glossarize/`. Grouped by role:
   does not authenticate graph content.
   Unrecognized or group-less data degrades to lexical-only with a warning,
   never an error. Glossary-provenance nodes are discounted so vocabulary
-  cannot echo back as fake structural support. Graphify's artifacts are read,
-  never written.
+  cannot echo back as fake structural support; provenance uses exact normalized
+  path components, basenames, and type values. Each group retains a six-label
+  display sample plus the complete token set of every accepted member for
+  matching. Graphify's artifacts are read, never written.
 
 **Persistence and the health checks**
 - `installer.py` — safe installation of the canonical agent skill. Hatch maps
@@ -316,7 +329,8 @@ The package is `glossarize/`. Grouped by role:
   use, canonical terms fading from code, and canonical terms living in disjoint
   contexts. Rule-proven occurrences carry `certainty: observed`; heuristics
   carry `signal_strength`, never uncalibrated confidence. Section caps retain
-  `dropped_items`, and `total_findings` includes displayed and dropped items.
+  legacy `dropped_items` plus the shared coverage ledger, and
+  `total_findings` includes displayed and dropped items.
   Every term occurrence, parallel-vocabulary association, fading check, and
   overload check is restricted to its concept's scope and reports that scope.
 - `reconcile.py` — `build_validation()`: two-directional coverage plus the
@@ -328,7 +342,9 @@ The package is `glossarize/`. Grouped by role:
   fragmentation are scope-aware. Normalized Graphify groups currently lack
   repository paths, so scoped structural coverage is marked partial and
   potentially false unnamed-structure conclusions are skipped. It shares
-  drift's signal/certainty and total-count contracts.
+  drift's signal/certainty and total-count contracts. Structural matching
+  reaches concepts through an inverted token index under an explicit work
+  budget; boundary pairs are counted without materializing the full pair set.
 
 **Evaluation and calibration**
 - `evaluation/corpus.json` — pinned source revisions, SPDX licenses,

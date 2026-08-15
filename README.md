@@ -105,11 +105,11 @@ in [`evaluation/results.json`](evaluation/results.json).
 
 **Status: 0.1.0 source alpha under post-audit hardening; not yet published to
 PyPI and not yet a trusted-alpha release.** Packaging, the current CI matrix,
-and local smoke tests exist, but downstream completeness work, release-workflow
-coupling, installed-agent evaluation, name/distribution clearance, and outside
-alpha evidence remain on the authoritative roadmap. Do not describe the
-current stopping point as release-ready. See [`PLAN.md`](PLAN.md) for the
-closure sequence and [`RELEASING.md`](RELEASING.md) for external actions.
+and local smoke tests exist, but release-workflow coupling, installed-agent
+evaluation, name/distribution clearance, and outside alpha evidence remain on
+the authoritative roadmap. Do not describe the current stopping point as
+release-ready. See [`PLAN.md`](PLAN.md) for the closure sequence and
+[`RELEASING.md`](RELEASING.md) for external actions.
 
 From a source checkout, install the CLI and its canonical skill for Codex:
 
@@ -273,8 +273,11 @@ be drawn from it.
 - A compound glossary term occurs in code only when its normalized words are
   contiguous inside one identifier, such as `PaymentRequest` or
   `create_payment_request`. Independent word hits elsewhere do not establish
-  the compound. A Graphify structural group is the separate, explicitly
-  defined local context used for structural matching.
+  the compound. Drift and validation build one requested-term trie and scan
+  the bounded identifier index once; an explicit work ledger records any
+  identifier positions or overlong compound terms omitted by its budgets. A
+  Graphify structural group is the separate, explicitly defined local context
+  used for structural matching.
 - One NFKC-casefolded canonical term or alias may belong to only one concept
   in overlapping scopes. Ambiguous aliases are rejected before the glossary
   is saved or consumed. Every glossary object rejects unknown fields, and
@@ -285,13 +288,20 @@ be drawn from it.
   or `weak`), not “confidence.” Directly proven lexical or binding facts use
   `certainty: observed`. Probabilistic confidence labels remain reserved for
   future measured calibration.
-- `total_findings` counts every finding produced by the evaluated evidence,
-  including findings omitted from displayed `items` by a section cap; each
-  section separately records `dropped_items`. `total_findings_complete` is
-  false when an upstream corpus, vocabulary, scope, or Graphify group cap
-  means unevaluated input could contain additional findings. Reports then say
-  “evaluated findings” and identify the partial coverage instead of presenting
-  the count as exhaustive.
+- Every bounded vocabulary, candidate, terminology, structure, drift, and
+  validation collection carries the same `coverage` ledger:
+  `total_items`, `included_items`, `dropped_items`, `total_items_exact`,
+  `complete`, and `reasons`. `total_items` is the known evaluated count;
+  `total_items_exact: false` marks it as a lower bound when upstream work was
+  omitted. `total_findings` includes known findings omitted from displayed
+  `items`; `total_findings_complete` says whether that total is exhaustive.
+  Reports then say “evaluated findings” and identify the partial coverage
+  instead of presenting a lower bound as exhaustive.
+- Graphify groups keep a six-label `members_sample` only for display, while
+  reconciliation matches against the complete normalized `member_tokens` set
+  from every accepted non-glossary member. Structural concept lookup uses an
+  inverted token index; boundary-pair totals are counted arithmetically while
+  only the bounded detail prefix is generated.
 - Repository-controlled text is terminal data, never terminal instructions.
   The CLI renders control and bidirectional-format characters as visible
   escape spellings; glossary identity fields reject them outright.

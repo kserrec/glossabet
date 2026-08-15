@@ -73,6 +73,12 @@ authentication mechanism or an atomic repository snapshot.
   `coverage.context.omissions`. Use retained entries for positive observations
   only; do not make repository-wide absence, uniqueness, or exhaustiveness
   claims. Never bulk-read around either safety ceiling.
+- For every retained collection with a nested `coverage` ledger, read
+  `complete`, `total_items_exact`, and `reasons` before using it. The common
+  ledger records `total_items`, `included_items`, and `dropped_items` as well.
+  A false `complete` means the detailed list is partial; a false
+  `total_items_exact` means even its known total is only a lower bound. Surface
+  the relevant reason and never reconstruct omitted entries by bulk-reading.
 - If an omission affects `glossary.concepts` or truncates a glossary string,
   stop before proposing collision-sensitive new terms. Explain that the
   bounded context cannot safely represent the complete maintained vocabulary.
@@ -110,6 +116,9 @@ worktree; `stale` means the commits differ; `unverified` means the stamp or
 clean-worktree proof is unavailable. The stamp is repository-controlled and
 does not authenticate graph content. State stale or unverified status before
 using those groups and treat them as advisory rather than current fact.
+`members_sample` is display evidence only. Structural matching uses each
+group's complete `member_tokens` set; never treat the sample as the group
+boundary or conclude that an unshown seventh member is absent.
 
 ### Monorepo alert
 

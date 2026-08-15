@@ -12,9 +12,11 @@ automatic diagnosis.
 from __future__ import annotations
 
 import sys
-from itertools import combinations
+from collections import defaultdict
+from itertools import combinations, islice
 
 from glossarize.artifacts import repo_root, write_artifact
+from glossarize.coverage import coverage_ledger, coverage_reasons
 from glossarize.display import escape_terminal_text
 from glossarize.drift import build_drift
 from glossarize.evidence import build_evidence, write_evidence
@@ -25,6 +27,7 @@ from glossarize.glossary import (
     scope_evidence,
 )
 from glossarize.matching import (
+    EvidenceIndex,
     code_identifier_occurrence,
     code_term_occurrence,
     production_corpus_complete,
@@ -32,12 +35,13 @@ from glossarize.matching import (
 )
 from glossarize.tokenize import tokenize_term
 
-VALIDATION_SCHEMA_VERSION = 5
+VALIDATION_SCHEMA_VERSION = 6
 VALIDATION_FILE = "validation.json"
 
 FINDINGS_CAP = 10
 FRAGMENTATION_MIN_MODULES = 5
 OVERLOADED_MIN_CONCEPTS = 3
+STRUCTURAL_MATCH_BUDGET = 50_000
 
 # Match strengths: 0 none, 1 weak (some token overlap), 2 strong (the
 # concept's full term vocabulary appears in the group), 3 label (the group is
@@ -61,10 +65,30 @@ def _concept_vocab(concept: dict) -> tuple[set[str], set[str]]:
 def _match_strength(group: dict, term_tokens: set[str],
                     binding_tokens: set[str]) -> int:
     label_tokens = _tokens(group["label"])
-    member_tokens: set[str] = set()
-    for member in group["members_sample"]:
-        member_tokens |= _tokens(member)
-    combined = label_tokens | member_tokens
+    raw_member_tokens = group.get("member_tokens")
+    if isinstance(raw_member_tokens, list):
+        member_tokens = {
+            token for token in raw_member_tokens if isinstance(token, str)
+        }
+    else:
+        # Compatibility for evidence produced before RepositoryEvidence v7.
+        # Validation marks this fallback partial; it never treats the display
+        # sample as complete structural coverage.
+        member_tokens = set()
+        for member in group.get("members_sample", []):
+            member_tokens |= _tokens(member)
+    return _match_strength_from_tokens(
+        label_tokens, label_tokens | member_tokens,
+        term_tokens, binding_tokens,
+    )
+
+
+def _match_strength_from_tokens(
+    label_tokens: set[str],
+    combined: set[str],
+    term_tokens: set[str],
+    binding_tokens: set[str],
+) -> int:
     if term_tokens and term_tokens <= label_tokens:
         return 3
     if term_tokens and term_tokens <= combined:
@@ -74,19 +98,22 @@ def _match_strength(group: dict, term_tokens: set[str],
     return 0
 
 
-def _resolve_bindings(concept: dict, evidence: dict) -> list[dict]:
+def _resolve_bindings(
+    concept: dict, evidence: dict, matcher: EvidenceIndex
+) -> list[dict]:
     inventory_complete = repository_corpus_complete(evidence)
-    file_paths = {f["path"] for f in evidence["files"]["code"]}
-    file_paths |= {f["path"] for f in evidence["files"]["docs"]}
-    module_paths = {m["path"] for m in evidence["modules"]}
     scope = concept_scope(concept)
 
     results = []
     for binding in concept.get("bindings", []):
         kind, _, value = binding["ref"].partition(":")
         if kind == "symbol":
-            scoped = code_identifier_occurrence(evidence, value, scope)
-            global_occurrence = code_identifier_occurrence(evidence, value)
+            scoped = code_identifier_occurrence(
+                evidence, value, scope, index=matcher
+            )
+            global_occurrence = code_identifier_occurrence(
+                evidence, value, index=matcher
+            )
             if scoped["count"]:
                 status = "resolved"
             elif not scoped["count_complete"]:
@@ -96,18 +123,18 @@ def _resolve_bindings(concept: dict, evidence: dict) -> list[dict]:
             else:
                 status = "unresolved"
         elif kind == "file":
-            if value in file_paths and path_in_scope(value, scope):
+            if value in matcher.file_paths and path_in_scope(value, scope):
                 status = "resolved"
-            elif value in file_paths:
+            elif value in matcher.file_paths:
                 status = "out-of-scope"
             elif not inventory_complete:
                 status = "uncertain"
             else:
                 status = "unresolved"
         else:  # module
-            if value in module_paths and path_in_scope(value, scope):
+            if value in matcher.module_paths and path_in_scope(value, scope):
                 status = "resolved"
-            elif value in module_paths:
+            elif value in matcher.module_paths:
                 status = "out-of-scope"
             elif not inventory_complete:
                 status = "uncertain"
@@ -121,22 +148,100 @@ def _resolve_bindings(concept: dict, evidence: dict) -> list[dict]:
     return results
 
 
-def _structure_findings(structural: dict, canonical: list[dict],
-                        vocab: dict) -> tuple[list, list, list]:
+def _covered_section(
+    items: list[dict],
+    total_items: int,
+    name: str,
+    *,
+    total_items_exact: bool,
+    incomplete_reasons: list[str],
+) -> dict:
+    kept = items[:FINDINGS_CAP]
+    reasons = list(incomplete_reasons)
+    if total_items > len(kept):
+        reasons.append(
+            f"{name} finding detail cap is {FINDINGS_CAP} items"
+        )
+    coverage = coverage_ledger(
+        total_items,
+        len(kept),
+        total_items_exact=total_items_exact,
+        reasons=reasons,
+    )
+    return {
+        "items": kept,
+        "dropped_items": coverage["dropped_items"],
+        "coverage": coverage,
+    }
+
+
+def _structure_findings(
+    structural: dict,
+    canonical: list[dict],
+    vocab: dict,
+    upstream_reasons: list[str],
+) -> tuple[dict, dict, dict, dict]:
     """Direction A: structure -> glossary.
 
-    Returns (unnamed structure, boundary mismatches, overloaded regions).
+    Canonical concepts are reached through an inverted token index. Boundary
+    totals use n*(n-1)/2 and only the report prefix is streamed, so a group
+    matching many concepts never materializes every pair.
     """
-    unnamed, boundary, overloaded = [], [], []
+    token_index: dict[str, set[str]] = defaultdict(set)
+    for concept in canonical:
+        term_tokens, binding_tokens = vocab[concept["id"]]
+        for token in term_tokens | binding_tokens:
+            token_index[token].add(concept["id"])
+
+    contexts = []
+    missing_member_tokens = 0
     for group in structural["groups"]:
+        label_tokens = _tokens(group["label"])
+        raw_member_tokens = group.get("member_tokens")
+        if isinstance(raw_member_tokens, list):
+            member_tokens = {
+                token for token in raw_member_tokens if isinstance(token, str)
+            }
+        else:
+            missing_member_tokens += 1
+            member_tokens = set()
+            for member in group.get("members_sample", []):
+                member_tokens |= _tokens(member)
+        combined = label_tokens | member_tokens
+        candidate_ids = sorted({
+            concept_id
+            for token in combined
+            for concept_id in token_index.get(token, ())
+        })
+        contexts.append((group, label_tokens, combined, candidate_ids))
+    contexts.sort(key=lambda item: (item[0]["label"], item[0]["id"]))
+
+    total_match_work = sum(len(item[3]) for item in contexts)
+    processed_match_work = 0
+    unnamed: list[dict] = []
+    boundary: list[dict] = []
+    overloaded: list[dict] = []
+    boundary_total = 0
+    partial_group_matches = False
+
+    for group, label_tokens, combined, candidate_ids in contexts:
+        remaining = max(0, STRUCTURAL_MATCH_BUDGET - processed_match_work)
+        evaluated_ids = candidate_ids[:remaining]
+        processed_match_work += len(evaluated_ids)
+        group_complete = len(evaluated_ids) == len(candidate_ids)
+        partial_group_matches |= not group_complete
         strengths = {
-            c["id"]: _match_strength(group, *vocab[c["id"]])
-            for c in canonical
+            concept_id: _match_strength_from_tokens(
+                label_tokens, combined, *vocab[concept_id]
+            )
+            for concept_id in evaluated_ids
         }
         strong = sorted(
-            cid for cid, s in strengths.items() if s >= 2
+            concept_id
+            for concept_id, strength in strengths.items()
+            if strength >= 2
         )
-        if max(strengths.values(), default=0) == 0:
+        if group_complete and max(strengths.values(), default=0) == 0:
             unnamed.append({
                 "kind": "unnamed-structure",
                 "signal_strength": "strong" if group["size"] >= 5 else "moderate",
@@ -150,7 +255,10 @@ def _structure_findings(structural: dict, canonical: list[dict],
                     f"({group['size']} nodes) matches no canonical concept"
                 ),
             })
-        for a, b in combinations(strong, 2):
+        group_pair_total = len(strong) * (len(strong) - 1) // 2
+        boundary_total += group_pair_total
+        detail_slots = max(0, FINDINGS_CAP - len(boundary))
+        for a, b in islice(combinations(strong, 2), detail_slots):
             boundary.append({
                 "kind": "boundary-mismatch",
                 "signal_strength": "moderate",
@@ -175,13 +283,51 @@ def _structure_findings(structural: dict, canonical: list[dict],
                 ),
             })
     unnamed.sort(key=lambda f: (-f["evidence"]["size"], f["group"]))
-    boundary.sort(key=lambda f: (f["group"], f["concepts"]))
     overloaded.sort(key=lambda f: f["group"])
-    return unnamed, boundary, overloaded
+
+    reasons = list(upstream_reasons)
+    if missing_member_tokens:
+        reasons.append(
+            f"{missing_member_tokens} structural group(s) lack complete "
+            "member_tokens and fell back to the display sample"
+        )
+    if partial_group_matches:
+        reasons.append(
+            "structural concept matching reached its "
+            f"{STRUCTURAL_MATCH_BUDGET}-candidate evaluation budget"
+        )
+    exact = not reasons
+    work_reasons = []
+    if processed_match_work < total_match_work:
+        work_reasons.append(
+            "structural concept matching reached its "
+            f"{STRUCTURAL_MATCH_BUDGET}-candidate evaluation budget"
+        )
+    work_coverage = coverage_ledger(
+        total_match_work,
+        processed_match_work,
+        reasons=work_reasons,
+    )
+    return (
+        _covered_section(
+            unnamed, len(unnamed), "unnamed structure",
+            total_items_exact=exact, incomplete_reasons=reasons,
+        ),
+        _covered_section(
+            boundary, boundary_total, "boundary mismatch",
+            total_items_exact=exact, incomplete_reasons=reasons,
+        ),
+        _covered_section(
+            overloaded, len(overloaded), "overloaded structural region",
+            total_items_exact=exact, incomplete_reasons=reasons,
+        ),
+        work_coverage,
+    )
 
 
 def _concept_findings(canonical: list[dict], vocab: dict,
-                      evidence: dict) -> tuple[list, list, list]:
+                      evidence: dict,
+                      matcher: EvidenceIndex) -> tuple[list, list, list]:
     """Direction B: glossary -> evidence.
 
     Returns (orphaned concepts, unresolved bindings, fragmentation).
@@ -190,8 +336,10 @@ def _concept_findings(canonical: list[dict], vocab: dict,
     for concept in canonical:
         scope = concept_scope(concept)
         term_tokens, _ = vocab[concept["id"]]
-        occurrence = code_term_occurrence(evidence, concept["term"], scope)
-        bindings = _resolve_bindings(concept, evidence)
+        occurrence = code_term_occurrence(
+            evidence, concept["term"], scope, index=matcher
+        )
+        bindings = _resolve_bindings(concept, evidence, matcher)
         resolved = [b for b in bindings if b["status"] == "resolved"]
         uncertain = [b for b in bindings if b["status"] == "uncertain"]
         for binding in bindings:
@@ -272,10 +420,28 @@ def _concept_findings(canonical: list[dict], vocab: dict,
     return orphaned, unresolved, fragmented
 
 
-def _capped(items: list) -> dict:
+def _capped(items: list, name: str, incomplete_reasons: list[str]) -> dict:
+    return _covered_section(
+        items,
+        len(items),
+        name,
+        total_items_exact=not incomplete_reasons,
+        incomplete_reasons=incomplete_reasons,
+    )
+
+
+def _mark_incomplete(section: dict, reason: str) -> dict:
+    ledger = section["coverage"]
+    coverage = coverage_ledger(
+        ledger["total_items"],
+        ledger["included_items"],
+        total_items_exact=False,
+        reasons=[*ledger["reasons"], reason],
+    )
     return {
-        "items": items[:FINDINGS_CAP],
-        "dropped_items": max(0, len(items) - FINDINGS_CAP),
+        **section,
+        "dropped_items": coverage["dropped_items"],
+        "coverage": coverage,
     }
 
 
@@ -301,14 +467,15 @@ def build_validation(evidence: dict, glossary: dict) -> dict:
     else:
         skip_reason = "Graphify graph absent; structural checks require it"
 
-    unnamed, boundary, overloaded = (
-        _structure_findings(structural, global_canonical, vocab)
-        if graph_ok else ([], [], [])
-    )
-    orphaned, unresolved, fragmented = _concept_findings(
-        canonical, vocab, evidence
-    )
-    drift = build_drift(evidence, glossary)
+    matching_terms = [
+        term
+        for concept in glossary["concepts"]
+        for term in (
+            concept["term"],
+            *(alias["term"] for alias in concept.get("aliases", [])),
+        )
+    ]
+    matcher = EvidenceIndex(evidence, matching_terms)
 
     scoped_structure_reason = (
         "path-scoped concepts omitted because normalized Graphify groups do "
@@ -319,62 +486,128 @@ def build_validation(evidence: dict, glossary: dict) -> dict:
         "group cap"
         if groups_dropped else None
     )
-    structural_partial_reasons = [
-        reason for reason in (
-            scoped_structure_reason if scoped_canonical and graph_ok else None,
-            group_cap_reason if graph_ok else None,
-        )
-        if reason is not None
+    structural_source_reasons = [
+        reason for reason in (group_cap_reason,) if reason is not None
     ]
-    structural_partial_reason = (
-        "; ".join(structural_partial_reasons)
-        if structural_partial_reasons else None
-    )
+    if graph_ok:
+        unnamed, boundary, overloaded, structural_work = _structure_findings(
+            structural, global_canonical, vocab, structural_source_reasons
+        )
+    else:
+        skipped_coverage = coverage_ledger(
+            0, 0, reasons=[skip_reason]
+        )
+        unnamed = boundary = overloaded = {
+            "items": [],
+            "dropped_items": 0,
+            "coverage": skipped_coverage,
+        }
+        structural_work = coverage_ledger(0, 0)
+
     unnamed_scope_limited = bool(scoped_canonical) and graph_ok
     if unnamed_scope_limited:
-        unnamed = []
+        coverage = coverage_ledger(
+            0,
+            0,
+            total_items_exact=False,
+            reasons=[scoped_structure_reason],
+        )
+        unnamed = {
+            "items": [], "dropped_items": 0, "coverage": coverage
+        }
+    if scoped_canonical and graph_ok:
+        boundary = _mark_incomplete(boundary, scoped_structure_reason)
+        overloaded = _mark_incomplete(overloaded, scoped_structure_reason)
+
+    orphaned, unresolved, fragmented = _concept_findings(
+        canonical, vocab, evidence, matcher
+    )
+    drift = build_drift(evidence, glossary, matcher=matcher)
+
+    production_complete = production_corpus_complete(evidence)
+    inventory_complete = repository_corpus_complete(evidence)
+    production_reasons = [] if production_complete else [
+        "production corpus budget omitted accepted source evidence"
+    ]
+    inventory_reasons = [] if inventory_complete else [
+        "repository corpus budget omitted accepted inventory evidence"
+    ]
+    code_vocabulary_reasons = [
+        f"vocabulary.{name} omitted entries needed for exact matching"
+        for name in ("tokens", "identifiers")
+        if evidence["vocabulary"][name].get("truncated") is not None
+    ]
+    identifier_reasons = [
+        "vocabulary.identifiers omitted entries needed for binding resolution"
+    ] if evidence["vocabulary"]["identifiers"].get("truncated") is not None else []
+    matching_reasons = [
+        reason
+        for name, ledger in matcher.coverage.items()
+        for reason in coverage_reasons(ledger, f"matching.{name}")
+    ]
+
+    def structural_partial(section: dict) -> tuple[bool, str | None]:
+        ledger = section["coverage"]
+        partial = graph_ok and not ledger["total_items_exact"]
+        return (
+            partial,
+            "; ".join(ledger["reasons"]) if partial else None,
+        )
+
+    unnamed_partial, unnamed_partial_reason = structural_partial(unnamed)
+    boundary_partial, boundary_partial_reason = structural_partial(boundary)
+    overloaded_partial, overloaded_partial_reason = structural_partial(overloaded)
+
     sections = {
         "unnamed_structure": {
-            **_capped(unnamed),
+            **unnamed,
             "skipped": not graph_ok or unnamed_scope_limited,
             "skip_reason": (
                 scoped_structure_reason if unnamed_scope_limited else skip_reason
             ),
-            "partial": bool(group_cap_reason) and graph_ok,
-            "partial_reason": group_cap_reason if graph_ok else None,
+            "partial": unnamed_partial,
+            "partial_reason": unnamed_partial_reason,
         },
         "boundary_mismatch": {
-            **_capped(boundary),
+            **boundary,
             "skipped": not graph_ok,
             "skip_reason": skip_reason,
-            "partial": bool(structural_partial_reasons) and graph_ok,
-            "partial_reason": structural_partial_reason,
+            "partial": boundary_partial,
+            "partial_reason": boundary_partial_reason,
         },
         "overloaded_structural_region": {
-            **_capped(overloaded),
+            **overloaded,
             "skipped": not graph_ok,
             "skip_reason": skip_reason,
-            "partial": bool(structural_partial_reasons) and graph_ok,
-            "partial_reason": structural_partial_reason,
+            "partial": overloaded_partial,
+            "partial_reason": overloaded_partial_reason,
         },
-        "orphaned_concepts": _capped(orphaned),
-        "unresolved_bindings": _capped(unresolved),
-        "fragmentation": _capped(fragmented),
+        "orphaned_concepts": _capped(
+            orphaned,
+            "orphaned concept",
+            production_reasons + code_vocabulary_reasons + matching_reasons,
+        ),
+        "unresolved_bindings": _capped(
+            unresolved,
+            "unresolved binding",
+            inventory_reasons + identifier_reasons,
+        ),
+        "fragmentation": _capped(
+            fragmented,
+            "fragmentation",
+            production_reasons + code_vocabulary_reasons + matching_reasons,
+        ),
         "vocabulary_drift": drift["parallel_terms"],
         "concept_collision": drift["canonical_overloaded"],
     }
     total = sum(
-        len(section["items"]) + section["dropped_items"]
+        section["coverage"]["total_items"]
         for section in sections.values()
     )
-    production_complete = production_corpus_complete(evidence)
-    inventory_complete = repository_corpus_complete(evidence)
-    vocabulary_complete = all(
-        evidence["vocabulary"][name].get("truncated") is None
-        for name in ("tokens", "identifiers", "doc_terms")
-    )
-    structural_complete = not (
-        graph_ok and (groups_dropped or scoped_canonical)
+    total_complete = all(
+        section["coverage"]["total_items_exact"]
+        for section in sections.values()
+        if not section.get("skipped")
     )
     return {
         "schema_version": VALIDATION_SCHEMA_VERSION,
@@ -387,6 +620,13 @@ def build_validation(evidence: dict, glossary: dict) -> dict:
         "coverage": {
             "production_corpus_complete": production_complete,
             "repository_corpus_complete": inventory_complete,
+            "collections": {
+                name: section["coverage"] for name, section in sections.items()
+            },
+            "work": {
+                "matching": matcher.coverage,
+                "structural_matches": structural_work,
+            },
         },
         "graph": {
             "present": structural.get("present"),
@@ -395,18 +635,13 @@ def build_validation(evidence: dict, glossary: dict) -> dict:
             "warnings": list(structural.get("warnings", [])),
             "groups_dropped": groups_dropped,
             "groups_complete": groups_complete,
+            "coverage": structural.get("coverage", {}).get("groups"),
         },
         # Backward-compatible convenience flag; `graph` carries the complete
         # state and distinguishes absent, unusable, stale, and unverified.
         "graph_available": graph_ok,
         "total_findings": total,
-        "total_findings_complete": (
-            production_complete
-            and inventory_complete
-            and vocabulary_complete
-            and drift.get("total_findings_complete", True)
-            and structural_complete
-        ),
+        "total_findings_complete": total_complete,
         **sections,
     }
 
@@ -459,6 +694,19 @@ def _print_report(validation: dict) -> None:
             "corpus coverage: partial — absence and low-use findings were "
             "suppressed where the evidence cannot prove them"
         )
+    collection_coverage = coverage.get("collections", {})
+    limitations = list(dict.fromkeys(
+        reason
+        for key, ledger in collection_coverage.items()
+        if (
+            isinstance(ledger, dict)
+            and not ledger.get("total_items_exact", True)
+            and not validation.get(key, {}).get("skipped")
+        )
+        for reason in ledger.get("reasons", [])
+    ))
+    for reason in limitations:
+        print(f"coverage limitation: {escape_terminal_text(reason)}")
     scopes = validation["scope_summary"]
     if scopes["path_scoped"]:
         structural_state = "partial" if graph["usable"] else "unavailable"

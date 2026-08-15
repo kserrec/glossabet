@@ -20,6 +20,7 @@ from glossarize import __version__
 from glossarize.artifacts import OUT_DIR, repo_root, write_artifact
 from glossarize.cache import entry_if_valid, load_cache, save_cache
 from glossarize.config import load_config
+from glossarize.coverage import coverage_ledger
 from glossarize.display import escape_terminal_text
 from glossarize.graphify import (
     build_structural_groups,
@@ -29,7 +30,10 @@ from glossarize.graphify import (
 from glossarize.imports import build_imports_section, extract_imports, module_of
 from glossarize.importance import build_naming_candidates
 from glossarize.scanner import detect_monorepo, walk_repository
-from glossarize.terminology import build_terminology
+from glossarize.terminology import (
+    MODULE_CONTEXT_ANALYSIS_CAP,
+    build_terminology,
+)
 from glossarize.tokenize import (
     doc_words,
     iter_identifiers,
@@ -37,7 +41,7 @@ from glossarize.tokenize import (
     tokenize_identifier,
 )
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 EVIDENCE_FILE = "evidence.json"
 
@@ -103,12 +107,18 @@ def _capped(counter: Counter, cap: int, entry) -> dict:
     """Top-`cap` entries by (-count, key), with the remainder logged."""
     ranked = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
     kept, dropped = ranked[:cap], ranked[cap:]
+    reasons = []
+    if dropped:
+        reasons.append(f"evidence detail cap is {cap} items")
     return {
         "items": [entry(term, count) for term, count in kept],
         "truncated": None if not dropped else {
             "dropped_terms": len(dropped),
             "dropped_occurrences": sum(c for _, c in dropped),
         },
+        "coverage": coverage_ledger(
+            len(ranked), len(kept), reasons=reasons
+        ),
     }
 
 
@@ -168,6 +178,7 @@ class _Vocabulary:
         self.module_neighbor_sets: dict[str, dict[str, set]] = defaultdict(
             lambda: defaultdict(set)
         )
+        self.module_neighbor_truncated: set[tuple[str, str]] = set()
         self.identifier_counts: Counter = Counter()
         self.identifier_files: dict[str, Counter] = defaultdict(Counter)
 
@@ -191,8 +202,13 @@ class _Vocabulary:
                 self.neighbors[b][a] += count
             for token in uniq:
                 seen = self.module_neighbor_sets[token][module]
-                if len(seen) < 30:  # bounded context sample per (term, module)
-                    seen.update(t for t in uniq if t != token)
+                for neighbor in uniq:
+                    if neighbor == token or neighbor in seen:
+                        continue
+                    if len(seen) < MODULE_CONTEXT_ANALYSIS_CAP:
+                        seen.add(neighbor)
+                    else:
+                        self.module_neighbor_truncated.add((token, module))
 
 
 def build_evidence(root: Path, limits: Limits = Limits(),
@@ -360,7 +376,9 @@ def build_evidence(root: Path, limits: Limits = Limits(),
         imports_section, production_modules_list, vocabulary.token_counts,
         vocabulary.token_files, vocabulary.token_modules, doc_term_counts,
     )
-    naming.update(structure_candidates(structural))
+    structural_naming = structure_candidates(structural)
+    naming["coverage"].update(structural_naming.pop("coverage"))
+    naming.update(structural_naming)
 
     return {
         "schema_version": SCHEMA_VERSION,
@@ -407,6 +425,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
                 vocabulary.token_files, vocabulary.token_modules,
                 vocabulary.token_patterns, vocabulary.neighbors,
                 vocabulary.module_neighbor_sets, doc_term_counts,
+                vocabulary.module_neighbor_truncated,
             ),
             "scope": {
                 "roles": ["production"],
@@ -440,6 +459,17 @@ def _print_terminology_report(evidence: dict) -> None:
         f"tokens analyzed from {term['scope']['code_files']} production "
         f"code file(s)) =="
     )
+    token_coverage = term.get("coverage", {}).get("eligible_tokens")
+    if isinstance(token_coverage, dict) and not token_coverage.get("complete", True):
+        print(
+            "terminology coverage: partial — "
+            f"{token_coverage['included_items']} of "
+            f"{token_coverage['total_items']} eligible token(s) analyzed; "
+            + "; ".join(
+                escape_terminal_text(reason)
+                for reason in token_coverage.get("reasons", [])
+            )
+        )
     styles = ", ".join(f"{k} {v}%" for k, v in reg["identifier_styles_pct"].items())
     print(f"styles: {styles or 'n/a'}")
     dist = ", ".join(
