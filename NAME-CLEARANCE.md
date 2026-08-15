@@ -17,12 +17,15 @@ directory, cache namespace, and documentation now use `glossabet`. Old
 pre-rename local artifacts cannot contaminate a new scan; they are not read,
 migrated, or deleted.
 
-This source repository's configured Git remote is still
-`git@github.com:kserrec/glossarize.git`, and Kyle's separate user installation
-at `~/.local/bin/glossarize` still reports version 0.0.1. Both are external,
-user-owned state and were deliberately left unchanged. Renaming the hosted
-GitHub repository and publishing any package or plugin remain separate,
-explicitly authorized actions.
+At the Phase 21 checkpoint, this source repository's configured Git remote was
+still `git@github.com:kserrec/glossarize.git`, and Kyle's separate user
+installation at `~/.local/bin/glossarize` still reported version 0.0.1. Both
+were deliberately left unchanged during that phase. Later on 2026-08-15, with
+Kyle's explicit authorization, the public GitHub repository was renamed to
+`kserrec/glossabet`, the configured remote was updated to
+`git@github.com:kserrec/glossabet.git`, and the local checkout directory was
+renamed to `glossabet`. The separate legacy installation remains untouched;
+no package or plugin was published.
 
 ## Exact-name results
 
@@ -65,6 +68,7 @@ describes a federal database search as one part of a broader
 
 No package name, domain, hosted repository name, trademark, Git tag, GitHub
 Release, or plugin-directory entry was created or reserved by these checks.
-Before publication, rerun the exact package, repository, plugin-directory,
-domain, and trademark probes from the release candidate and obtain any legal
-review appropriate to the risk Kyle chooses to take.
+The later hosted-repository rename was separately authorized and was not part
+of these clearance checks. Before publication, rerun the exact package,
+plugin-directory, domain, and trademark probes from the release candidate and
+obtain any legal review appropriate to the risk Kyle chooses to take.

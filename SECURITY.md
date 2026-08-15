@@ -359,9 +359,9 @@ The source repository is public, but version 0.1.0 is not yet published to
 PyPI. Do not put vulnerability details in a public issue.
 
 The prepared private route is GitHub's **Report a vulnerability** form at
-<https://github.com/kserrec/glossarize/security/advisories/new>. Repository
+<https://github.com/kserrec/glossabet/security/advisories/new>. Repository
 private vulnerability reporting is currently disabled (verified
-2026-08-14), so that form is not yet available. `RELEASING.md` makes enabling
+2026-08-15), so that form is not yet available. `RELEASING.md` makes enabling
 the setting and its notifications a hard precondition for package
 publication. Until that account-level action is explicitly authorized and
 completed, this project does not claim to offer a working private reporting

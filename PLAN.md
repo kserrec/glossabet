@@ -1,9 +1,10 @@
 # Glossabet — Plan
 
-Status: **phases 0–22 complete; trusted-alpha gate next** as of 2026-08-15.
-Phases 18–23 are the complete post-audit route from the current local package
-to a defensible trusted alpha. Public release remains a separate, explicit
-authorization gate after those phases.
+Status: **phases 0–22 complete; owner self-testing pause active before the
+trusted-alpha gate** as of 2026-08-15. Phases 18–23 are the complete
+post-audit route from the current local package to a defensible trusted alpha.
+Public release remains a separate, explicit authorization gate after those
+phases.
 This document is the authoritative roadmap. Provenance: merged from the working
 sessions of 2026-08-14 — Claude's loop/reconciliation analysis, ChatGPT's
 "Robust Repository Vocabulary System" spec and repo-transition notes, and the
@@ -536,6 +537,33 @@ version preflight, including one of two unchanged attempts against the final
 wheel bytes. The committed artifact is the successful exact-bundle run, not a
 zero-flake claim.
 
+### Repository identity update — completed 2026-08-15
+
+With Kyle's explicit authorization, the public GitHub repository was renamed
+from `kserrec/glossarize` to `kserrec/glossabet`, the configured `origin` was
+changed to `git@github.com:kserrec/glossabet.git`, and the local checkout was
+moved from `/home/serrecchia/Projects/glossarize` to
+`/home/serrecchia/Projects/glossabet`. GitHub's old repository path was
+verified to resolve to the renamed repository, and the old local directory no
+longer exists. The package project URLs, distribution assertion, and embedded
+plugin wheel deliberately retain the verified redirecting
+`kserrec/glossarize` URL during owner self-testing so the exact Phase 22 wheel
+and installed-agent evidence remain valid. Before any outside alpha, switch
+those URLs to `kserrec/glossabet`, rebuild the plugin, and rerun the
+authenticated installed-agent evaluation against the resulting exact bytes.
+The rename did not push commits, change the repository's public visibility,
+publish a package or plugin, create a tag or release, or contact outside
+maintainers.
+
+### Owner self-testing pause — active, not an implementation phase
+
+Kyle is keeping the current build to himself while he runs it and performs
+additional checks. While this pause is active, do not invite maintainers,
+collect outside alpha evidence, begin Phase 23, or perform publication setup.
+Only Kyle's explicit instruction to resume outside testing ends the pause. The
+deferred package-URL, plugin-wheel, and exact-agent-evidence refresh is the
+first required action after that instruction and before invitations.
+
 ### Trusted-alpha gate — external evidence, not an implementation phase
 
 Before Phase 23, invite at least two consenting maintainers to use the exact
@@ -568,14 +596,14 @@ claim.
 
 ### External publication gate — explicit authorization required
 
-The hosted GitHub repository rename, GitHub private vulnerability reporting,
-Dependabot security updates, package registration/upload, Git tags/releases,
-and plugin-directory publication are account or public-state changes. They are
-covered work, but are performed only after Phase 23 and only with Kyle's
-explicit authorization. Any steps Kyle must perform are presented one at a
-time with the account affected, public or irreversible consequence, exact
-click/type action, and observable completion state. Publication is not done
-merely because local gates pass.
+The hosted GitHub repository rename is complete. GitHub private vulnerability
+reporting, Dependabot security updates, package registration/upload, Git
+tags/releases, and plugin-directory publication remain account or public-state
+changes. They are covered work, but are performed only after Phase 23 and only
+with Kyle's explicit authorization. Any steps Kyle must perform are presented
+one at a time with the account affected, public or irreversible consequence,
+exact click/type action, and observable completion state. Publication is not
+done merely because local gates pass.
 
 ## Post-audit issue closure map
 

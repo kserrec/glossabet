@@ -2,19 +2,24 @@
 
 Glossabet 0.1.0 is locally packageable and its current local verification
 gates pass, but it is **not release-ready and is not published to PyPI**. The
-installed-agent and controlled structural evaluation is complete; outside
-trusted-alpha evidence is the next gate, followed by the exact-artifact Phase
-23 gate. Phase 21 records the Glossabet decision and a working local Codex
-plugin lifecycle in `NAME-CLEARANCE.md` and `DISTRIBUTION.md`. The source
-repository is currently public at
-<https://github.com/kserrec/glossarize>; its configured remote has not been
-renamed. As reverified on 2026-08-15, PyPI's `glossabet` JSON endpoint returns
-404. That does not reserve the name and must be checked again immediately
-before publication.
+installed-agent and controlled structural evaluation is complete. Kyle has
+paused before outside trusted-alpha evidence while he runs the current build
+and performs additional checks himself; the exact-artifact Phase 23 gate comes
+after that outside evidence. Phase 21 records the Glossabet decision and a
+working local Codex plugin lifecycle in `NAME-CLEARANCE.md` and
+`DISTRIBUTION.md`. The source repository remains public and was renamed with
+explicit authorization to <https://github.com/kserrec/glossabet>; its
+configured remote now matches. Package metadata temporarily retains the old
+GitHub URL, which was verified to redirect to the renamed repository, so the
+exact Phase 22 plugin wheel and installed-agent evidence remain unchanged
+during owner self-testing. As reverified on 2026-08-15, PyPI's `glossabet` JSON
+endpoint returns 404. That does not reserve the name and must be checked again
+immediately before publication.
 
 No PyPI account, pending publisher, GitHub `pypi` environment, Git tag, GitHub
 Release, package upload, or private vulnerability-reporting setting was
-created or changed while preparing this release. Those actions use Kyle's
+created or changed while preparing this release. The separately authorized
+GitHub repository rename is complete. The remaining actions use Kyle's
 accounts and create public or security-sensitive external state, so they
 require his explicit authorization.
 
@@ -90,17 +95,27 @@ Before a real release, replace `Unreleased` beside `0.1.0` in `CHANGELOG.md`
 with the publication date, commit that change, and rerun the gate from the
 exact commit to be tagged.
 
+## Hosted repository identity — completed
+
+On 2026-08-15, with Kyle's explicit authorization, the public GitHub
+repository was renamed to `kserrec/glossabet`, the configured Git remote was
+updated to `git@github.com:kserrec/glossabet.git`, and the old GitHub path was
+directly verified to resolve to the renamed repository. No commits were pushed
+by the rename.
+
+## Deferred exact-artifact URL refresh
+
+During owner self-testing, `pyproject.toml`, the distribution assertion, and
+the embedded plugin wheel retain the verified redirecting
+`kserrec/glossarize` URL. Changing that metadata changes the wheel hash and
+would make the exact Phase 22 installed-agent evidence stale. After Kyle
+explicitly ends the pause, switch those URLs to `kserrec/glossabet`, rebuild
+the plugin wheel, and run the authenticated installed-agent evaluation before
+any outside alpha invitation. That evaluation consumes Codex usage and
+temporarily installs and then removes its uniquely named user-level Codex
+marketplace and plugin state.
+
 ## External setup still requiring Kyle
-
-### Hosted repository identity
-
-The repository's visible product and package are Glossabet, but the hosted
-repository slug and configured Git remote still say `glossarize`. Renaming the
-GitHub repository changes a public URL under Kyle's GitHub account and may
-affect clones, integrations, and links. It must be explicitly authorized and
-verified before release metadata is switched to the new URL. GitHub normally
-redirects old repository URLs, but that external behavior must be checked at
-the time of the rename rather than assumed here.
 
 ### Private security reports
 
@@ -145,10 +160,11 @@ trigger the workflow from that exact tag with:
 gh workflow run release.yml --repo kserrec/glossabet --ref v0.1.0 -f confirmation=publish-glossabet-to-pypi
 ```
 
-That command is valid only after the hosted repository has been explicitly
-renamed to `glossabet`. It is the publication action: once the external
-configuration is in place and the workflow passes its guards, it uploads the
-package to public PyPI. Merely merging the workflow never uploads anything.
+The hosted repository rename prerequisite is complete, but the command remains
+unauthorized while owner self-testing and all later gates are incomplete. It
+is the publication action: once the external configuration is in place and the
+workflow passes its guards, it uploads the package to public PyPI. Merely
+merging the workflow never uploads anything.
 GitHub documents
 manual workflow dispatch through the command line in [Manually running a
 workflow](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow#running-a-workflow-using-github-cli).

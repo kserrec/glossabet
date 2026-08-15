@@ -1,7 +1,7 @@
 # Session handoff — 2026-08-15
 
-This handoff becomes stale when trusted-alpha evidence collection begins.
-`PLAN.md` remains the authoritative durable roadmap.
+This handoff becomes stale when Kyle ends the owner self-testing pause or new
+project work begins. `PLAN.md` remains the authoritative durable roadmap.
 
 **Project:** Glossabet is a Python CLI, canonical agent skill, and local Codex
 plugin prototype for making a codebase's vocabulary explicit, canonical,
@@ -23,6 +23,15 @@ inspectable, and maintainable.
   canary detection, write snapshots, and exact plugin cleanup.
 - Added offline agent/reviewer verifiers to the reusable quality and release
   workflows, source-distribution contents, and regression suite.
+- With Kyle's explicit authorization, renamed the public GitHub repository to
+  `kserrec/glossabet`, changed `origin` to
+  `git@github.com:kserrec/glossabet.git`, moved the local checkout to
+  `/home/serrecchia/Projects/glossabet`, and verified the old GitHub path's
+  redirect. No commit was pushed as part of the rename.
+- Refreshed the ignored repository-local `.venv` from `uv.lock` because its
+  generated launchers contained the old absolute checkout path. The stale
+  editable `glossarize` installation was removed, `glossabet` 0.1.0 was
+  installed, and `.venv/bin/pytest` now points to the renamed checkout.
 
 **Verified state**
 
@@ -53,21 +62,33 @@ inspectable, and maintainable.
 - No temporary Glossabet plugin or marketplace remains installed. The only
   configured marketplace is the pre-existing `openai-curated` entry.
 
-**External state preserved**
+**External and local identity state**
 
-- No package, plugin, tag, release, domain, repository rename, security setting,
-  or other public/account state was created or changed.
-- The configured Git remote remains `git@github.com:kserrec/glossarize.git`.
-  Kyle's separate legacy `~/.local/bin/glossarize` 0.0.1 installation remains
-  untouched.
+- GitHub now hosts the still-public repository at
+  `https://github.com/kserrec/glossabet`; the old GitHub path was verified to
+  resolve to it. The configured Git remote is
+  `git@github.com:kserrec/glossabet.git`.
+- The checkout now lives at `/home/serrecchia/Projects/glossabet`; the old
+  `/home/serrecchia/Projects/glossarize` directory no longer exists.
+- Package project URLs and the embedded plugin wheel still use GitHub's
+  verified redirecting `kserrec/glossarize` URL. This preserves the exact
+  Phase 22 wheel bytes and installed-agent evidence during owner self-testing.
+- No package or plugin was published; no Codex plugin, tag, release, domain,
+  security setting, visibility setting, invitation, or outreach was created or
+  changed. Kyle's separate legacy `~/.local/bin/glossarize` 0.0.1 installation
+  remains untouched.
 
-**Next gate**
+**Current stopping point**
 
-- Phase 23 must not start yet. The trusted-alpha gate first requires at least
-  two consenting maintainers to try the exact installed build on enough
-  additional varied repositories to bring the measured total to at least five.
-  Record opt-in scope, repository traits, failures, false alarms, usefulness,
-  and exact build identity without copying private repository content here.
-- The first manual action is to identify one consenting maintainer willing to
-  run the private/local alpha. Do not publish the package or plugin as part of
-  that invitation.
+- The owner self-testing pause is active. Kyle will run the current build and
+  perform additional checks himself. Do not invite anyone, collect outside
+  alpha evidence, begin Phase 23, or perform publication setup until Kyle
+  explicitly ends this pause.
+- After that explicit instruction, first switch the package URLs to
+  `kserrec/glossabet`, rebuild the embedded plugin wheel, and rerun the
+  authenticated installed-agent evaluation against those exact bytes. Then the
+  trusted-alpha gate requires at least two consenting maintainers to try that
+  exact installed build on enough additional varied repositories to bring the
+  measured total to at least five. Record opt-in scope, repository traits,
+  failures, false alarms, usefulness, and exact build identity without copying
+  private repository content here.
