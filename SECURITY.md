@@ -125,6 +125,17 @@ sequences or reorder the displayed result.
   plugin and marketplace in a `finally` block, and removes only the exact
   marketplace cache parent after proving it is empty. It never recursively
   deletes a user directory or touches another marketplace.
+- **Installed-agent evidence tests the delivered boundary.**
+  `scripts/agent_eval.py` uses a second unique temporary marketplace, proves
+  Codex read the exact installed plugin skill and version-checked its bundled
+  engine, then runs 10 plugin scenarios and one standalone missing-CLI
+  scenario. Command/event/output storage is capped. Repository snapshots treat
+  dotenv names as opaque and never read their contents; a separate unreadable
+  sensitive file carries a synthetic canary that must not appear in raw JSONL
+  or the agent response. Only the normal `inspect` evidence refresh is allowed;
+  every other write fails the scenario. Cleanup is the same exact-path,
+  re-queried lifecycle above. The committed evidence covers Codex CLI 0.147.0
+  on Linux only.
 
 ### Agent context and terminal output
 
@@ -272,6 +283,15 @@ pinned in `evaluation/corpus.json` into a temporary directory. It disables
 prompts and global/system Git configuration, uses no shell, and neither imports
 nor executes target-project code. The checked-out source is still untrusted
 input to the same scanner boundaries.
+
+The developer-only second-reviewer runner is also separate from the CLI. It
+uses an authenticated Codex session in a fresh temporary directory containing
+only a usefulness prompt, response schema, and label-blinded finding packet.
+The model sandbox is read-only; the harness rejects tool types or commands
+outside the packet, caps the JSONL trace, removes the host-written final
+response, and proves the two inputs remain byte-identical. This establishes a
+second recorded judgment, not isolation from the Codex service or an outside
+human review.
 
 The `/glossabet` skill is a separate agent-mediated interface. It receives the
 bounded JSON emitted by `glossabet inspect .` and may then read context-named

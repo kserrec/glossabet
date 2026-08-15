@@ -123,6 +123,8 @@ def validate_workflow_texts(workflows: dict[str, str]) -> list[str]:
         [
             "python scripts/check_workflows.py",
             "python evaluation/run.py --verify-results evaluation/results.json",
+            "python scripts/agent_eval.py --verify-results evaluation/agent-results.json",
+            "python evaluation/review.py --verify-results evaluation/reviewer-results.json",
             "uv build --no-sources --clear",
             "python scripts/build_plugin.py dist",
             "git diff --exit-code -- plugins/glossabet",
@@ -169,6 +171,8 @@ def validate_workflow_texts(workflows: dict[str, str]) -> list[str]:
         [
             "python scripts/check_workflows.py",
             "python evaluation/run.py --verify-results evaluation/results.json",
+            "python scripts/agent_eval.py --verify-results evaluation/agent-results.json",
+            "python evaluation/review.py --verify-results evaluation/reviewer-results.json",
             "uv build --no-sources --clear",
             "python scripts/build_plugin.py dist",
             "git diff --exit-code -- plugins/glossabet",

@@ -1,4 +1,4 @@
-"""The Phase 15/16 corpus and Phase 20 evidence remain reproducible."""
+"""The lexical, drift, and structural evidence remains reproducible."""
 
 import json
 import subprocess
@@ -18,14 +18,16 @@ def test_manifest_pins_licensed_varied_sources():
     manifest = json.loads(MANIFEST.read_text())
     sources = manifest["sources"]
 
-    assert manifest["schema_version"] == 2
-    assert len(sources) == 5
+    assert manifest["schema_version"] == 3
+    assert len(sources) == 7
     assert len({source["id"] for source in sources}) == len(sources)
     assert {source["primary_language"] for source in sources} == {
         "Python",
         "Go",
         "JavaScript/TypeScript declarations",
         "Python and Clojure multilingual fixture",
+        "Python with Graphify fixture",
+        "Python with capped Graphify fixture",
     }
     for source in sources:
         assert source["license_spdx"] in {"Apache-2.0", "MIT"}
@@ -97,6 +99,64 @@ def test_language_semantics_case_pins_lexical_and_scope_contracts(tmp_path):
     assert result["aggregate"]["quality"]["lexical_contract_rate"] == 1.0
 
 
+def test_structural_cases_pin_findings_provenance_and_truncation(tmp_path):
+    output = tmp_path / "results.json"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "evaluation" / "run.py"),
+            "--case", "structural-complete-fixture",
+            "--case", "structural-truncation-fixture",
+            "--runs", "1",
+            "--output", str(output),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    result = json.loads(output.read_text())
+    complete, truncated = result["cases"]
+    assert result["method"]["graphify_cases"] == 2
+    assert complete["structural"]["actual"] == [
+        "boundary-mismatch:Identity Boundary:authentication:authorization",
+        "boundary-mismatch:Mixed Region:payment:run",
+        "boundary-mismatch:Mixed Region:payment:tenant",
+        "boundary-mismatch:Mixed Region:run:tenant",
+        "fragmentation:tenant",
+        "orphaned-concept:workspace",
+        "overloaded-structural-region:Mixed Region",
+        "unnamed-structure:Lease Boundary",
+    ]
+    assert complete["structural"]["false_positive"] == []
+    assert complete["structural"]["false_negative"] == []
+    assert complete["structural"]["contracts"] == {
+        "checks": 17,
+        "passed_checks": 17,
+        "passed": True,
+        "failures": [],
+    }
+    assert truncated["structural"]["actual"] == []
+    assert truncated["structural"]["coverage"]["groups"] == {
+        "complete": False,
+        "dropped_items": 1,
+        "included_items": 50,
+        "reasons": ["structural group detail cap is 50 items"],
+        "total_items": 51,
+        "total_items_exact": True,
+    }
+    assert truncated["structural"]["coverage"]["validation_complete"] is False
+    assert truncated["structural"]["contracts"]["passed"] is True
+    assert result["aggregate"]["quality"]["structural_precision"] == 1.0
+    assert (
+        result["aggregate"]["quality"]["structural_recall_where_complete"]
+        == 1.0
+    )
+    assert result["aggregate"]["quality"]["structural_contract_rate"] == 1.0
+
+
 def test_committed_results_match_current_engine_manifest_and_local_corpora():
     assert verify_results(RESULTS, MANIFEST) == []
 
@@ -119,6 +179,12 @@ def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path):
     def sample_weakened(result):
         result["method"]["runtime_runs_per_case"] = 1
 
+    def graphify_weakened(result):
+        result["method"]["graphify_cases"] = 0
+
+    def structural_stale(result):
+        result["cases"][-2]["structural"]["contracts"]["passed"] = False
+
     def thresholds_weakened(result):
         result["release_thresholds"]["passed"] = False
 
@@ -128,6 +194,8 @@ def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path):
         (corpus_stale, "local corpus digest is stale"),
         (external_corpus_stale, "corpus digest does not match manifest"),
         (sample_weakened, "required five-run sample"),
+        (graphify_weakened, "Graphify case count is stale"),
+        (structural_stale, "local structural evidence is stale"),
         (thresholds_weakened, "thresholds are not configured and passing"),
     ]
     for index, (mutate, expected) in enumerate(mutations):

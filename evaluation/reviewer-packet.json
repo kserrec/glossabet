@@ -1,0 +1,705 @@
+{
+  "engine": {
+    "drift_schema_version": 5,
+    "evaluation_schema_version": 4,
+    "evidence_schema_version": 7,
+    "name": "glossabet",
+    "source_sha256": "fd6b09d0f9b2405b2ee13a61c01e4d45e6e85676f3848d917556ce2d69ab9224",
+    "validation_schema_version": 6,
+    "version": "0.1.0"
+  },
+  "evaluation_manifest_sha256": "ed1ffb0f99665649ed5111cabe62e6eba4fa90245653c1d9c82b1dfa9c36b0bd",
+  "findings": [
+    {
+      "evidence": {
+        "coverage": {
+          "modules": {
+            "complete": true,
+            "dropped_items": 0,
+            "included_items": 3,
+            "reasons": [],
+            "total_items": 3,
+            "total_items_exact": true
+          }
+        },
+        "dispersion": 1.0,
+        "modules": [
+          {
+            "contexts": [
+              "cookie",
+              "login"
+            ],
+            "coverage": {
+              "contexts": {
+                "complete": true,
+                "dropped_items": 0,
+                "included_items": 2,
+                "reasons": [],
+                "total_items": 2,
+                "total_items_exact": true
+              }
+            },
+            "path": "auth"
+          },
+          {
+            "contexts": [
+              "commit",
+              "transaction"
+            ],
+            "coverage": {
+              "contexts": {
+                "complete": true,
+                "dropped_items": 0,
+                "included_items": 2,
+                "reasons": [],
+                "total_items": 2,
+                "total_items_exact": true
+              }
+            },
+            "path": "db"
+          },
+          {
+            "contexts": [
+              "inference",
+              "model"
+            ],
+            "coverage": {
+              "contexts": {
+                "complete": true,
+                "dropped_items": 0,
+                "included_items": 2,
+                "reasons": [],
+                "total_items": 2,
+                "total_items_exact": true
+              }
+            },
+            "path": "ml"
+          }
+        ],
+        "term": "session"
+      },
+      "finding_key": "overload:session",
+      "kind": "overload-candidate",
+      "review_key": "calibration-fixture|terminology|overload:session",
+      "source_id": "calibration-fixture",
+      "summary": "'session' may carry unrelated meanings",
+      "surface": "terminology"
+    },
+    {
+      "evidence": {
+        "a": "execution",
+        "b": "run",
+        "coverage": {
+          "shared_contexts": {
+            "complete": true,
+            "dropped_items": 0,
+            "included_items": 4,
+            "reasons": [],
+            "total_items": 4,
+            "total_items_exact": true
+          },
+          "shared_patterns": {
+            "complete": true,
+            "dropped_items": 0,
+            "included_items": 4,
+            "reasons": [],
+            "total_items": 4,
+            "total_items_exact": true
+          }
+        },
+        "file_overlap_rate": 0.0,
+        "shared_contexts": [
+          "record",
+          "id",
+          "scheduler",
+          "start"
+        ],
+        "shared_patterns": [
+          "*_record",
+          "*_record_id",
+          "*_scheduler",
+          "start_*"
+        ],
+        "similarity": 1.0
+      },
+      "finding_key": "synonym:execution:run",
+      "kind": "synonym-candidate",
+      "review_key": "calibration-fixture|terminology|synonym:execution:run",
+      "source_id": "calibration-fixture",
+      "summary": "'execution' and 'run' may be parallel terms",
+      "surface": "terminology"
+    },
+    {
+      "evidence": {
+        "count": 0,
+        "count_complete": true,
+        "doc_mentions": 1,
+        "files": 0,
+        "files_complete": true,
+        "lexical_occurrences": 0,
+        "locations": [],
+        "locations_truncated": false,
+        "match_kind": "token",
+        "modules": 0,
+        "scope": {
+          "kind": "repository"
+        },
+        "term_tokens": [
+          "workspace"
+        ],
+        "token_counts": {
+          "workspace": 0
+        }
+      },
+      "finding_key": "canonical-fading:workspace",
+      "kind": "canonical-fading",
+      "review_key": "calibration-fixture|drift|canonical-fading:workspace",
+      "source_id": "calibration-fixture",
+      "summary": "canonical 'Workspace' is absent from code",
+      "surface": "drift"
+    },
+    {
+      "evidence": {
+        "dispersion": 1.0,
+        "modules": [
+          {
+            "contexts": [
+              "cookie",
+              "login"
+            ],
+            "coverage": {
+              "contexts": {
+                "complete": true,
+                "dropped_items": 0,
+                "included_items": 2,
+                "reasons": [],
+                "total_items": 2,
+                "total_items_exact": true
+              }
+            },
+            "path": "auth"
+          },
+          {
+            "contexts": [
+              "commit",
+              "transaction"
+            ],
+            "coverage": {
+              "contexts": {
+                "complete": true,
+                "dropped_items": 0,
+                "included_items": 2,
+                "reasons": [],
+                "total_items": 2,
+                "total_items_exact": true
+              }
+            },
+            "path": "db"
+          },
+          {
+            "contexts": [
+              "inference",
+              "model"
+            ],
+            "coverage": {
+              "contexts": {
+                "complete": true,
+                "dropped_items": 0,
+                "included_items": 2,
+                "reasons": [],
+                "total_items": 2,
+                "total_items_exact": true
+              }
+            },
+            "path": "ml"
+          }
+        ],
+        "modules_coverage": {
+          "complete": true,
+          "dropped_items": 0,
+          "included_items": 3,
+          "reasons": [],
+          "total_items": 3,
+          "total_items_exact": true
+        }
+      },
+      "finding_key": "canonical-overloaded:session",
+      "kind": "canonical-overloaded",
+      "review_key": "calibration-fixture|drift|canonical-overloaded:session",
+      "source_id": "calibration-fixture",
+      "summary": "canonical 'Session' used in disjoint contexts across 3 module(s)",
+      "surface": "drift"
+    },
+    {
+      "evidence": {
+        "canonical_occurrence": {
+          "count": 4,
+          "count_complete": true,
+          "files": 1,
+          "files_complete": true,
+          "locations": [
+            {
+              "count": 4,
+              "path": "runs.py"
+            }
+          ],
+          "locations_truncated": false,
+          "match_kind": "token",
+          "modules": 1,
+          "scope": {
+            "kind": "repository"
+          },
+          "term_tokens": [
+            "run"
+          ]
+        },
+        "new_occurrence": {
+          "count": 4,
+          "count_complete": true,
+          "files": 1,
+          "files_complete": true,
+          "locations": [
+            {
+              "count": 4,
+              "path": "executions.py"
+            }
+          ],
+          "locations_truncated": false,
+          "match_kind": "token",
+          "modules": 1,
+          "scope": {
+            "kind": "repository"
+          },
+          "term_tokens": [
+            "execution"
+          ]
+        },
+        "shared_contexts": [
+          "record",
+          "id",
+          "scheduler",
+          "start"
+        ],
+        "similarity": 1.0
+      },
+      "finding_key": "parallel-term:run:execution",
+      "kind": "parallel-term",
+      "review_key": "calibration-fixture|drift|parallel-term:run:execution",
+      "source_id": "calibration-fixture",
+      "summary": "new term 'execution' parallels canonical 'Run' (similarity 1.0)",
+      "surface": "drift"
+    },
+    {
+      "evidence": {
+        "count": 2,
+        "count_complete": true,
+        "files": 1,
+        "files_complete": true,
+        "locations": [
+          {
+            "count": 2,
+            "path": "gateway.py"
+          }
+        ],
+        "locations_truncated": false,
+        "match_kind": "token",
+        "modules": 1,
+        "scope": {
+          "kind": "repository"
+        },
+        "term_tokens": [
+          "charge"
+        ]
+      },
+      "finding_key": "watched-term-in-use:gateway:charge",
+      "kind": "watched-term-in-use",
+      "review_key": "calibration-fixture|drift|watched-term-in-use:gateway:charge",
+      "source_id": "calibration-fixture",
+      "summary": "discouraged term 'Charge' still in use: 2 lexical occurrence(s)",
+      "surface": "drift"
+    },
+    {
+      "evidence": {
+        "count": 0,
+        "count_complete": true,
+        "doc_mentions": 6,
+        "files": 0,
+        "files_complete": true,
+        "lexical_occurrences": 0,
+        "locations": [],
+        "locations_truncated": false,
+        "match_kind": "token",
+        "modules": 0,
+        "scope": {
+          "kind": "repository"
+        },
+        "term_tokens": [
+          "prefetch"
+        ],
+        "token_counts": {
+          "prefetch": 0
+        }
+      },
+      "finding_key": "canonical-fading:prefetch",
+      "kind": "canonical-fading",
+      "review_key": "requests|drift|canonical-fading:prefetch",
+      "source_id": "requests",
+      "summary": "canonical 'Prefetch' is absent from code",
+      "surface": "drift"
+    },
+    {
+      "evidence": {
+        "count": 6,
+        "count_complete": false,
+        "files": 1,
+        "files_complete": false,
+        "locations": [
+          {
+            "count": 6,
+            "path": "src/requests/adapters.py"
+          }
+        ],
+        "locations_truncated": false,
+        "match_kind": "lexical-unit",
+        "modules": 1,
+        "scope": {
+          "kind": "repository"
+        },
+        "term_tokens": [
+          "get",
+          "connection"
+        ]
+      },
+      "finding_key": "watched-term-in-use:connection-api:get connection",
+      "kind": "watched-term-in-use",
+      "review_key": "requests|drift|watched-term-in-use:connection-api:get connection",
+      "source_id": "requests",
+      "summary": "deprecated term 'Get Connection' still in use: at least 6 lexical occurrence(s)",
+      "surface": "drift"
+    },
+    {
+      "evidence": {
+        "count": 2,
+        "count_complete": false,
+        "files": 1,
+        "files_complete": false,
+        "locations": [
+          {
+            "count": 2,
+            "path": "src/requests/utils.py"
+          }
+        ],
+        "locations_truncated": false,
+        "match_kind": "lexical-unit",
+        "modules": 1,
+        "scope": {
+          "kind": "repository"
+        },
+        "term_tokens": [
+          "get",
+          "encodings",
+          "content"
+        ]
+      },
+      "finding_key": "watched-term-in-use:encoding-discovery:get encodings from content",
+      "kind": "watched-term-in-use",
+      "review_key": "requests|drift|watched-term-in-use:encoding-discovery:get encodings from content",
+      "source_id": "requests",
+      "summary": "deprecated term 'Get Encodings From Content' still in use: at least 2 lexical occurrence(s)",
+      "surface": "drift"
+    },
+    {
+      "evidence": {
+        "count": 2,
+        "count_complete": false,
+        "files": 1,
+        "files_complete": false,
+        "locations": [
+          {
+            "count": 2,
+            "path": "src/requests/utils.py"
+          }
+        ],
+        "locations_truncated": false,
+        "match_kind": "lexical-unit",
+        "modules": 1,
+        "scope": {
+          "kind": "repository"
+        },
+        "term_tokens": [
+          "get",
+          "unicode",
+          "response"
+        ]
+      },
+      "finding_key": "watched-term-in-use:unicode-decoding:get unicode from response",
+      "kind": "watched-term-in-use",
+      "review_key": "requests|drift|watched-term-in-use:unicode-decoding:get unicode from response",
+      "source_id": "requests",
+      "summary": "deprecated term 'Get Unicode From Response' still in use: at least 2 lexical occurrence(s)",
+      "surface": "drift"
+    },
+    {
+      "evidence": {
+        "count": 0,
+        "count_complete": true,
+        "doc_mentions": null,
+        "files": 0,
+        "files_complete": true,
+        "lexical_occurrences": 0,
+        "locations": [],
+        "locations_truncated": false,
+        "match_kind": "lexical-unit",
+        "modules": 0,
+        "scope": {
+          "kind": "repository"
+        },
+        "term_tokens": [
+          "pause",
+          "queue"
+        ]
+      },
+      "finding_key": "canonical-fading:pause-queue",
+      "kind": "canonical-fading",
+      "review_key": "p-limit|drift|canonical-fading:pause-queue",
+      "source_id": "p-limit",
+      "summary": "canonical 'Pause Queue' is absent from code",
+      "surface": "drift"
+    },
+    {
+      "evidence": {
+        "count": 0,
+        "count_complete": true,
+        "doc_mentions": 0,
+        "files": 0,
+        "files_complete": true,
+        "lexical_occurrences": 0,
+        "locations": [],
+        "locations_truncated": false,
+        "match_kind": "token",
+        "modules": 0,
+        "scope": {
+          "kind": "repository"
+        },
+        "term_tokens": [
+          "workspace"
+        ],
+        "token_counts": {
+          "workspace": 0
+        }
+      },
+      "finding_key": "canonical-fading:workspace",
+      "kind": "canonical-fading",
+      "review_key": "structural-complete-fixture|drift|canonical-fading:workspace",
+      "source_id": "structural-complete-fixture",
+      "summary": "canonical 'Workspace' is absent from code",
+      "surface": "drift"
+    },
+    {
+      "evidence": {
+        "members_sample": [
+          "AuthenticationFlow",
+          "AuthorizationPolicy"
+        ]
+      },
+      "finding_key": "boundary-mismatch:Identity Boundary:authentication:authorization",
+      "kind": "boundary-mismatch",
+      "review_key": "structural-complete-fixture|structural|boundary-mismatch:Identity Boundary:authentication:authorization",
+      "source_id": "structural-complete-fixture",
+      "summary": "'authentication' and 'authorization' are distinct in the glossary but both strongly match group 'Identity Boundary'",
+      "surface": "structural"
+    },
+    {
+      "evidence": {
+        "members_sample": [
+          "PaymentFlow",
+          "RunLoop",
+          "TenantMap"
+        ]
+      },
+      "finding_key": "boundary-mismatch:Mixed Region:payment:run",
+      "kind": "boundary-mismatch",
+      "review_key": "structural-complete-fixture|structural|boundary-mismatch:Mixed Region:payment:run",
+      "source_id": "structural-complete-fixture",
+      "summary": "'payment' and 'run' are distinct in the glossary but both strongly match group 'Mixed Region'",
+      "surface": "structural"
+    },
+    {
+      "evidence": {
+        "members_sample": [
+          "PaymentFlow",
+          "RunLoop",
+          "TenantMap"
+        ]
+      },
+      "finding_key": "boundary-mismatch:Mixed Region:payment:tenant",
+      "kind": "boundary-mismatch",
+      "review_key": "structural-complete-fixture|structural|boundary-mismatch:Mixed Region:payment:tenant",
+      "source_id": "structural-complete-fixture",
+      "summary": "'payment' and 'tenant' are distinct in the glossary but both strongly match group 'Mixed Region'",
+      "surface": "structural"
+    },
+    {
+      "evidence": {
+        "members_sample": [
+          "PaymentFlow",
+          "RunLoop",
+          "TenantMap"
+        ]
+      },
+      "finding_key": "boundary-mismatch:Mixed Region:run:tenant",
+      "kind": "boundary-mismatch",
+      "review_key": "structural-complete-fixture|structural|boundary-mismatch:Mixed Region:run:tenant",
+      "source_id": "structural-complete-fixture",
+      "summary": "'run' and 'tenant' are distinct in the glossary but both strongly match group 'Mixed Region'",
+      "surface": "structural"
+    },
+    {
+      "evidence": {
+        "module_spread": 5
+      },
+      "finding_key": "fragmentation:tenant",
+      "kind": "fragmentation",
+      "review_key": "structural-complete-fixture|structural|fragmentation:tenant",
+      "source_id": "structural-complete-fixture",
+      "summary": "'Tenant' spans 5 modules \u2014 may be legitimately cross-cutting or problematically scattered",
+      "surface": "structural"
+    },
+    {
+      "evidence": {
+        "bindings_resolved": 0,
+        "bindings_total": 0,
+        "count": 0,
+        "count_complete": true,
+        "files": 0,
+        "files_complete": true,
+        "lexical_occurrences": 0,
+        "locations": [],
+        "locations_truncated": false,
+        "match_kind": "token",
+        "modules": 0,
+        "scope": {
+          "kind": "repository"
+        },
+        "term_tokens": [
+          "workspace"
+        ],
+        "token_counts": {
+          "workspace": 0
+        }
+      },
+      "finding_key": "orphaned-concept:workspace",
+      "kind": "orphaned-concept",
+      "review_key": "structural-complete-fixture|structural|orphaned-concept:workspace",
+      "source_id": "structural-complete-fixture",
+      "summary": "canonical 'Workspace' has weak implementation evidence (stale term, aspiration, or deliberately diffuse?)",
+      "surface": "structural"
+    },
+    {
+      "evidence": {
+        "members_sample": [
+          "PaymentFlow",
+          "RunLoop",
+          "TenantMap"
+        ]
+      },
+      "finding_key": "overloaded-structural-region:Mixed Region",
+      "kind": "overloaded-structural-region",
+      "review_key": "structural-complete-fixture|structural|overloaded-structural-region:Mixed Region",
+      "source_id": "structural-complete-fixture",
+      "summary": "group 'Mixed Region' matches 3 distinct canonical concepts",
+      "surface": "structural"
+    },
+    {
+      "evidence": {
+        "members_sample": [
+          "AllocationTable",
+          "LeaseManager",
+          "LeaseTimer",
+          "ReaperWorker",
+          "SlotClaim"
+        ],
+        "size": 5
+      },
+      "finding_key": "unnamed-structure:Lease Boundary",
+      "kind": "unnamed-structure",
+      "review_key": "structural-complete-fixture|structural|unnamed-structure:Lease Boundary",
+      "source_id": "structural-complete-fixture",
+      "summary": "structural group 'Lease Boundary' (5 nodes) matches no canonical concept",
+      "surface": "structural"
+    }
+  ],
+  "question": "Would showing this finding to a regular maintainer help a focused vocabulary review? Correct-but-actionless noise is not useful.",
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "calibration-fixture",
+      "kind": "local",
+      "license_spdx": "Apache-2.0",
+      "license_url": "../LICENSE",
+      "path": "evaluation/fixtures/calibration",
+      "primary_language": "Python",
+      "provenance": "Original Glossabet fixture; no third-party source."
+    },
+    {
+      "id": "language-semantics-fixture",
+      "kind": "local",
+      "license_spdx": "Apache-2.0",
+      "license_url": "../LICENSE",
+      "path": "evaluation/fixtures/language-semantics",
+      "primary_language": "Python and Clojure multilingual fixture",
+      "provenance": "Original Glossabet fixture; no third-party source."
+    },
+    {
+      "checkout_dir": "requests",
+      "commit": "8068356288978c4f54661ae6f95afe0e0831885e",
+      "id": "requests",
+      "kind": "external-git",
+      "license_spdx": "Apache-2.0",
+      "license_url": "https://github.com/psf/requests/blob/8068356288978c4f54661ae6f95afe0e0831885e/LICENSE",
+      "primary_language": "Python",
+      "provenance": "Pinned public repository; source is fetched for evaluation and is not vendored here.",
+      "url": "https://github.com/psf/requests.git"
+    },
+    {
+      "checkout_dir": "hey",
+      "commit": "5626f79b8698df6daf9b25799c9805c6acc96740",
+      "id": "hey",
+      "kind": "external-git",
+      "license_spdx": "Apache-2.0",
+      "license_url": "https://github.com/rakyll/hey/blob/5626f79b8698df6daf9b25799c9805c6acc96740/LICENSE",
+      "primary_language": "Go",
+      "provenance": "Pinned public repository; source is fetched for evaluation and is not vendored here.",
+      "url": "https://github.com/rakyll/hey.git"
+    },
+    {
+      "checkout_dir": "p-limit",
+      "commit": "df476048d023ff868cd45b35ee47f5fb0ca2b25a",
+      "id": "p-limit",
+      "kind": "external-git",
+      "license_spdx": "MIT",
+      "license_url": "https://github.com/sindresorhus/p-limit/blob/df476048d023ff868cd45b35ee47f5fb0ca2b25a/license",
+      "primary_language": "JavaScript/TypeScript declarations",
+      "provenance": "Pinned public repository; source is fetched for evaluation and is not vendored here.",
+      "url": "https://github.com/sindresorhus/p-limit.git"
+    },
+    {
+      "id": "structural-complete-fixture",
+      "kind": "local",
+      "license_spdx": "Apache-2.0",
+      "license_url": "../LICENSE",
+      "path": "evaluation/fixtures/structural-complete",
+      "primary_language": "Python with Graphify fixture",
+      "provenance": "Original Glossabet fixture; no third-party source."
+    },
+    {
+      "id": "structural-truncation-fixture",
+      "kind": "local",
+      "license_spdx": "Apache-2.0",
+      "license_url": "../LICENSE",
+      "path": "evaluation/fixtures/structural-truncation",
+      "primary_language": "Python with capped Graphify fixture",
+      "provenance": "Original Glossabet fixture; no third-party source."
+    }
+  ]
+}

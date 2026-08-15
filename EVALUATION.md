@@ -1,15 +1,17 @@
 # Evaluation
 
 This document records Glossabet's Phase 15 calibration, Phase 16 lexical/scope
-extension, and Phase 20 replay on the current engine. The machine-readable
-corpus, labels, raw per-run timings, findings, truncation markers, provenance
-digests, and threshold checks live in
+extension, Phase 20 replay, and Phase 22 structural, installed-agent, and
+second-reviewer evidence. The machine-readable corpus, labels, raw per-run
+timings, findings, truncation markers, provenance digests, and threshold checks
+live in
 [`evaluation/corpus.json`](evaluation/corpus.json) and
-[`evaluation/results.json`](evaluation/results.json).
+[`evaluation/results.json`](evaluation/results.json). Installed-agent and
+second-reviewer evidence live in the adjacent `agent-*` and `reviewer-*` files.
 
 ## What was evaluated
 
-The corpus fixes five cases, including three repositories at immutable
+The corpus fixes seven cases, including three repositories at immutable
 revisions:
 
 | Case | Language | Revision | License | Production code files |
@@ -19,35 +21,44 @@ revisions:
 | [Requests](https://github.com/psf/requests/tree/8068356288978c4f54661ae6f95afe0e0831885e) | Python | `8068356288978c4f54661ae6f95afe0e0831885e` | [Apache-2.0](https://github.com/psf/requests/blob/8068356288978c4f54661ae6f95afe0e0831885e/LICENSE) | 22 |
 | [hey](https://github.com/rakyll/hey/tree/5626f79b8698df6daf9b25799c9805c6acc96740) | Go | `5626f79b8698df6daf9b25799c9805c6acc96740` | [Apache-2.0](https://github.com/rakyll/hey/blob/5626f79b8698df6daf9b25799c9805c6acc96740/LICENSE) | 6 |
 | [p-limit](https://github.com/sindresorhus/p-limit/tree/df476048d023ff868cd45b35ee47f5fb0ca2b25a) | JavaScript and TypeScript declarations | `df476048d023ff868cd45b35ee47f5fb0ca2b25a` | [MIT](https://github.com/sindresorhus/p-limit/blob/df476048d023ff868cd45b35ee47f5fb0ca2b25a/license) | 6 |
+| Structural-completeness fixture | Python plus a hand-authored Graphify export | repository-local original source | Apache-2.0 | 6 |
+| Structural-truncation fixture | Python plus a capped hand-authored Graphify export | repository-local original source | Apache-2.0 | 1 |
 
-Together they contain 90 included source/documentation files, 45 production
-code files, 659,883 budgeted source bytes, and 190 walked entries. Third-party
+Together they contain 99 included source/documentation files, 52 production
+code files, 661,164 budgeted source bytes, and 204 walked entries. Third-party
 source is fetched into a temporary directory for a run and is not vendored in
-this repository. The local fixture is original Apache-2.0 material designed to
-pin a true parallel rename, a discouraged term still in use, a stale canonical
-term, and a genuinely overloaded term. The Phase 16 fixture pins two legitimate
-`Session` concepts in disjoint path scopes plus 15 explicit normalization
-checks covering Unicode scripts, accented Latin, acronyms with digit
-suffixes, and Clojure kebab-case identifiers.
+this repository. The calibration fixture pins a true parallel rename, a
+discouraged term still in use, a stale canonical term, and a genuinely
+overloaded term. The Phase 16 fixture pins two legitimate `Session` concepts
+in disjoint path scopes plus 15 explicit normalization checks covering Unicode
+scripts, accented Latin, acronyms with digit suffixes, and Clojure kebab-case
+identifiers. The Phase 22 fixtures pin all five structural-finding families,
+the seventh group member beyond the display sample, exact near-match
+provenance, and the 51st group beyond the adapter detail cap.
 
 ## Labelling method
 
-One reviewer read each pinned repository's source and primary documentation,
-then wrote a small evaluation glossary and labelled the emitted terminology
-and drift findings as correct and useful or as false alarms. A finding is
+The primary reviewer read each pinned repository's source and primary
+documentation, then wrote a small evaluation glossary and labelled emitted
+terminology, drift, and structural findings as correct and useful or as false
+alarms. A finding is
 "useful" only when the reviewer judged that showing it to a maintainer would
 help a vocabulary review; correctness alone is not enough.
 
 Precision treats every emitted but unlabelled finding as a false alarm. Recall
 is reported only where a complete expected set is practical: all detectors in
-the controlled fixture, and the finite watched-term/canonical-fading checks in
-the real repositories. The evaluation does **not** claim recall over every
-possible real-repository synonym or overloaded meaning.
+the controlled terminology and structural fixtures, and the finite
+watched-term/canonical-fading checks in the real repositories. The evaluation
+does **not** claim recall over every possible real-repository synonym,
+overloaded meaning, or structural problem.
 
 The glossaries are evaluation instruments, not vocabularies endorsed by the
-upstream maintainers. The reviewer also authored the corpus labels and the
-calibration, so reviewer-usefulness is not independent or blinded. Those facts
-make this a regression and release gate, not a user study.
+upstream maintainers. The primary reviewer also authored the corpus labels and
+the calibration. Phase 22 therefore adds a second, separate Codex session that
+received only a blinded packet of the 20 emitted findings, their evidence, and
+the usefulness question. It did not receive the source repository, manifest,
+evaluation results, or primary labels. This is an independent second judgment,
+but it is neither an outside maintainer nor a user study.
 
 The language-semantics labels are exact rather than subjective: required token
 spellings, forbidden lossy spellings, and complete identifier-to-token
@@ -70,25 +81,31 @@ Phase 15 made three conservative changes to the existing synonym heuristic:
    as `*_queue` and `run_*`; and
 3. context similarity must be at least 0.55 instead of 0.40.
 
-The current Phase 20 five-run replay emitted 11 scored findings, all labelled
-correct and useful, with no labelled finding missed where recall was complete:
+The current Phase 22 five-run replay emitted 20 scored findings, all labelled
+correct and useful by the primary reviewer, with no labelled finding missed
+where recall was complete:
 
 | Metric | Result | Release threshold |
 |---|---:|---:|
 | Terminology precision | 100% | ≥80% |
 | Drift precision | 100% | ≥90% |
-| Recall where labels are complete | 100% | ≥90% |
-| Reviewer usefulness | 100% | ≥80% |
+| Drift recall where complete | 100% | ≥90% |
+| Structural precision | 100% | ≥90% |
+| Structural recall where complete | 100% | ≥90% |
+| Primary-reviewer usefulness | 100% | ≥80% |
+| Blinded second-reviewer usefulness | 17/20 (85%) | ≥80% |
 | False alarms / 1,000 production code files | 0 | ≤50 |
 | Corpus-budget truncations | 0 | 0 |
 | Minimum warm-cache reuse | 100% | 100% |
 | Phase 16 lexical contract | 15/15 (100%) | 100% |
+| Phase 22 structural contract | 26/26 (100%) | 100% |
 
-All internal release thresholds pass. This does **not** establish 100%
-real-world accuracy: eleven positive findings and three small external
-repositories are far too little evidence for that claim. It establishes that
-the pinned counterexamples and curated real-project checks pass and that future
-changes have a reproducible gate.
+All deterministic release thresholds and the separate second-reviewer
+threshold pass. This does **not** establish 100% real-world accuracy: 20
+positive findings, two controlled structural fixtures, and three small
+external repositories are far too little evidence for that claim. It
+establishes that the pinned counterexamples and curated real-project checks
+pass and that future changes have a reproducible gate.
 
 ## Phase 16 lexical and scope result
 
@@ -110,10 +127,35 @@ Graphify groups currently lack source paths, so structural reconciliation
 marks scoped coverage partial or skips conclusions that could otherwise be
 false. It does not infer scope from a group label.
 
+## Phase 22 structural and reviewer result
+
+The complete structural fixture emits the eight expected structural findings:
+one unnamed boundary, four pairwise boundary mismatches, one overloaded region,
+one orphaned concept, and one fragmented concept. Structural precision and
+recall are both 100% where the fixture's labels are declared complete. Seventeen
+additional contracts prove that full group tokens include the seventh member
+even though `members_sample` does not, and that provenance uses exact accepted
+paths rather than suffix or substring matches.
+
+The truncation fixture supplies 51 groups. The adapter retains 50, reports one
+drop with an exact total, marks the affected validation sections partial, and
+does not emit an absence-based structural finding from incomplete evidence.
+All nine truncation contracts pass. These are controlled adapter fixtures, not
+evidence about structural accuracy on arbitrary Graphify-generated repositories.
+
+The blinded second reviewer judged 17 of 20 findings useful and agreed with the
+primary reviewer on 17. Its three disagreements are retained in
+[`evaluation/reviewer-results.json`](evaluation/reviewer-results.json): it
+rejected the p-limit `Pause Queue` fading alert as action-poor, considered
+authentication and authorization a reasonable pair inside one Identity
+Boundary, and found the tenant-fragmentation count insufficient without module
+or context detail. The deterministic correctness labels were not changed to
+manufacture agreement.
+
 ## Runtime and truncation
 
 On the recorded 8-core Linux host with CPython 3.12.3, the sum of per-case
-five-run medians was 0.399 seconds cold and 0.358 seconds warm—4.43 and 3.97
+five-run medians was 0.520 seconds cold and 0.525 seconds warm—5.248 and 5.298
 seconds per thousand included source files. Every warm run reused 100% of
 eligible extraction entries and produced evidence byte-identical to its cold
 run. The corpus is too small for the measured warm/cold difference to establish
@@ -122,13 +164,14 @@ still run on warm scans.
 
 Requests hit existing output caps: 1,072 identifier entries, 981 documentation
 terms, and 15 external-import entries were omitted from their displayed
-sections and reported by truncation markers. No repository hit the new corpus
-budget. Exact absence checks already suppress conclusions when their required
-index is truncated.
+sections and reported by truncation markers. The structural-truncation fixture
+also hit the 50-group detail cap as intended. No repository hit the corpus
+budget. Exact absence checks suppress conclusions when their required index is
+truncated.
 
 ## Aggregate safety limits
 
-The measured corpus took about 4.43 cold seconds per thousand source files.
+The measured corpus took 5.248 cold seconds per thousand source files.
 The scanner now applies immutable per-repository ceilings of:
 
 - 10,000 included code/documentation files;
@@ -136,9 +179,9 @@ The scanner now applies immutable per-repository ceilings of:
 - 100,000 processed directory entries; and
 - 10,000 entries in any one directory.
 
-Relative to the whole evaluation corpus, these retain about 111× file, 48×
-byte, and 526× walk-entry headroom. At the observed file-normalized rate, the
-file ceiling corresponds to roughly 44 seconds; repository composition and
+Relative to the whole evaluation corpus, these retain about 101× file, 48×
+byte, and 490× walk-entry headroom. At the observed file-normalized rate, the
+file ceiling corresponds to roughly 52 seconds; repository composition and
 hardware can change that substantially, so it is a safety bound rather than a
 runtime guarantee.
 
@@ -166,17 +209,69 @@ code. Fetch time is excluded from runtime measurements. Timings will vary by
 machine; quality labels and finding keys should remain stable at the pinned
 commits.
 
-The result identifies engine version 0.1.0, the evidence/drift/evaluator schema
-versions, a SHA-256 digest over the evaluator and every engine Python source
-file, the exact manifest digest, and a framed path/content digest over every
-accepted corpus file. The manifest pins that digest and accepted-file count for
-all five cases; local fixtures are additionally recomputed without network,
-while external cases retain their immutable commit identity. The reusable
-release gate rejects stale engine/manifest/corpus metadata, missing or reordered
-cases, malformed digests, fewer than five runs, or non-passing thresholds:
+The result identifies engine version 0.1.0, the evidence, drift, validation,
+and evaluator schema versions, a SHA-256 digest over the evaluator and every
+engine Python source file, the exact manifest digest, and a framed path/content
+digest over every accepted corpus file. The manifest pins that digest and
+accepted-file count for all seven cases; local fixtures and their structural
+scores are additionally recomputed without network, while external cases
+retain their immutable commit identity. The reusable release gate also
+recomputes aggregate metrics and thresholds, and rejects stale inputs, missing
+or reordered cases, fewer than five runs, weakened Graphify coverage, or
+non-passing thresholds:
 
 ```bash
 uv run python evaluation/run.py --verify-results evaluation/results.json
+```
+
+The second-reviewer lane can be regenerated only with an authenticated Codex
+CLI. It creates an isolated temporary working directory, runs one ephemeral
+read-only session, rejects commands outside the blinded packet, and writes the
+packet and summarized judgments to the repository:
+
+```bash
+uv run python evaluation/review.py --run-reviewer
+uv run python evaluation/review.py --verify-results evaluation/reviewer-results.json
+```
+
+The committed result records Codex CLI 0.147.0, one bounded packet-only
+command, and the configured-default model because the CLI did not report a
+model identifier.
+
+## Installed-agent boundary result
+
+[`scripts/agent_eval.py`](scripts/agent_eval.py) temporarily installed the
+repository's actual Codex plugin and exercised the canonical skill through
+Codex CLI 0.147.0 on Linux. All 11 scenarios passed: current, stale, and absent
+Graphify state; malformed, oversized, and symlinked glossaries; partial agent
+projection; monorepo scope choice; resumed glossary state; excluded sensitive
+files; and a standalone installed skill with no `glossabet` command on `PATH`.
+
+The bounded traces prove that Codex read the skill from the temporary plugin,
+version-checked that plugin's exact engine, and used one attributable `inspect`
+command per plugin scenario. The sensitive canary appeared in neither tool
+output nor the final response, no command directly named an excluded path, and
+no repository path changed except the documented `glossabet-out/evidence.json`
+refresh permitted to `inspect`. The missing-CLI scenario stopped after the
+failed version check and never invoked `inspect`. The temporary plugin,
+marketplace, and exact empty cache parent were removed and re-queried after the
+run.
+
+This agent-mediated gate is not deterministic. Across the five full plugin
+batches performed while building Phase 22, four satisfied the required single
+version preflight. For the final wheel bytes specifically, the first of two
+unchanged batches stopped before scenario scoring because Codex did not produce
+exactly one successful version check; the unchanged repeat passed. The
+committed JSON is that successful exact-bundle run. It proves one complete
+boundary execution, not a zero-flake rate for future model invocations.
+
+The authenticated regeneration command temporarily changes user-level Codex
+plugin/marketplace state and then removes only its uniquely named state. The
+offline verifier makes no Codex or network call:
+
+```bash
+uv run python scripts/agent_eval.py --run
+uv run python scripts/agent_eval.py --verify-results evaluation/agent-results.json
 ```
 
 ## Parsing-adapter decision
@@ -213,9 +308,16 @@ and compare its accuracy against this recorded standard-library baseline.
 ## What remains unknown
 
 - The corpus is small and biased toward compact open-source libraries.
-- There is no independent maintainer or multi-reviewer usefulness study.
+- There is no independent maintainer or user study. The second reviewer is a
+  separate blinded Codex session, not outside adopter evidence.
 - Real-repository heuristic recall is not exhaustively labelled.
-- Graphify-assisted structural findings are not evaluated here.
+- Structural recall is labelled only in controlled hand-authored Graphify
+  fixtures, not on varied third-party Graphify exports.
+- Installed-agent evidence covers Codex CLI 0.147.0 on one Linux host. Other
+  Codex versions and operating systems, ChatGPT, and Claude Code are unverified.
+- The installed-agent preflight passed four of five observed full plugin
+  batches, including one of two unchanged attempts against the final wheel;
+  reliability beyond that small observed sample is unknown.
 - The multilingual fixture covers representative Python and Clojure forms,
   not every identifier grammar among the 30 recognized languages.
 - Lexical extraction still sees identifier-like words in comments and string

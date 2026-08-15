@@ -72,8 +72,9 @@ understand. Relevant studies include:
 
 This research supports the need for deliberate, repository-specific vocabulary
 work. It does **not** by itself prove that Glossabet saves time or produces
-better naming decisions. Glossabet's own small Phase 15 evaluation is reported
-separately below and does not turn those studies into a product-efficacy claim.
+better naming decisions. Glossabet's own small controlled evaluation is
+reported separately below and does not turn those studies into a
+product-efficacy claim.
 
 ## Evaluation status
 
@@ -81,23 +82,24 @@ Phase 15 pins three permissively licensed public repositories—
 [Requests](https://github.com/psf/requests/tree/8068356288978c4f54661ae6f95afe0e0831885e),
 [hey](https://github.com/rakyll/hey/tree/5626f79b8698df6daf9b25799c9805c6acc96740),
 and [p-limit](https://github.com/sindresorhus/p-limit/tree/df476048d023ff868cd45b35ee47f5fb0ca2b25a)—plus
-one original terminology fixture. Phase 16 adds an original scoped-vocabulary
-and multilingual lexical fixture. The five-run corpus now contains 90 included
-source files and 45 production code files. It emitted 11 labelled terminology
-and drift findings with 100% precision, 100% recall where the expected set was
-complete, zero false alarms, and 100% reviewer usefulness under the recorded
-single-reviewer labels. All 15 explicit Unicode, digit/acronym, and Clojure
-kebab-case lexical checks also passed, and the controlled scoped glossary
-emitted no false drift.
+four original fixtures for terminology, multilingual scoped vocabulary, and
+Graphify structure/truncation. The five-run corpus now contains 99 included
+source files and 52 production code files. It emitted 20 labelled terminology,
+drift, and structural findings with 100% precision, 100% recall where the
+expected set was complete, and zero false alarms. All 15 lexical contracts and
+all 26 structural contracts passed. The primary reviewer marked 20/20 findings
+useful; a separate Codex session, blinded to those labels and isolated from the
+repository, marked 17/20 useful and recorded three disagreements.
 
 Those percentages are a regression-gate result, **not evidence of broad
 efficacy**: the corpus and positive-finding count are small, the evaluation
 glossaries are curator-authored rather than endorsed by upstream maintainers,
-real-repository heuristic recall is not exhaustive, and usefulness was not
-independently or blindly reviewed. The pre-calibration engine produced 53 false
-alarms among 64 findings on the same labels; the corpus drove narrower
-file-separation, identifier-pattern, and similarity gates for synonym
-nominations.
+real-repository heuristic recall is not exhaustive, and the second reviewer is
+a Codex session rather than an outside maintainer study. Structural recall is
+labelled only in controlled Graphify fixtures. The pre-calibration engine
+produced 53 false alarms among 64 findings on the earlier labels; the corpus
+drove narrower file-separation, identifier-pattern, and similarity gates for
+synonym nominations.
 
 The complete methodology, licenses, baseline, thresholds, limitations, and
 reproduction command are in [`EVALUATION.md`](EVALUATION.md); raw results are
@@ -106,9 +108,10 @@ in [`evaluation/results.json`](evaluation/results.json).
 **Status: 0.1.0 source alpha under post-audit hardening; not yet published to
 PyPI or a plugin directory and not yet a trusted-alpha release.** The
 Glossabet name decision and local Codex plugin lifecycle are recorded and
-tested, but installed-agent evaluation and outside alpha evidence remain on
-the authoritative roadmap. Do not describe the current stopping point as
-release-ready. See [`NAME-CLEARANCE.md`](NAME-CLEARANCE.md) for the
+tested. Phase 22 also passes 11/11 installed-skill scenarios on Codex CLI
+0.147.0/Linux. Outside maintainer alpha evidence is the next gate; do not
+describe the current stopping point as release-ready. See
+[`NAME-CLEARANCE.md`](NAME-CLEARANCE.md) for the
 point-in-time name checks, [`DISTRIBUTION.md`](DISTRIBUTION.md) for exact
 installation ownership, [`PLAN.md`](PLAN.md) for the closure sequence, and
 [`RELEASING.md`](RELEASING.md) for external actions.
@@ -343,6 +346,8 @@ Build and verify the distributions without publishing them:
 ```bash
 uv run python scripts/check_workflows.py
 uv run python evaluation/run.py --verify-results evaluation/results.json
+uv run python scripts/agent_eval.py --verify-results evaluation/agent-results.json
+uv run python evaluation/review.py --verify-results evaluation/reviewer-results.json
 uv build --no-sources
 uv run python scripts/build_plugin.py dist
 git diff --exit-code -- plugins/glossabet

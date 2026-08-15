@@ -8,9 +8,10 @@ route for people who want a normal shell command.
 
 No Glossabet package or plugin marketplace entry is public yet. The repository
 contains a locally validated plugin prototype at `plugins/glossabet/`; its
-actual Codex lifecycle was probed on Linux with `codex-cli 0.147.0`. ChatGPT,
-Codex on other operating systems, and Claude Code have not received an
-equivalent installed-host probe and are not called supported.
+actual Codex lifecycle and 10 plugin-delivered agent scenarios were probed on
+Linux with `codex-cli 0.147.0`. ChatGPT, Codex on other operating systems, and
+Claude Code have not received an equivalent installed-host probe and are not
+called supported.
 
 | Installed state | Codex plugin route | Standalone wheel route |
 | --- | --- | --- |
@@ -56,6 +57,17 @@ executes `inspect` through the installed bundle, builds and installs a
 synthetic next patch version, verifies the old cached version disappeared,
 then removes the plugin, marketplace, and any exact empty cache parent it
 created. It publishes nothing and leaves no marketplace entry installed.
+
+`scripts/agent_eval.py --run` separately verifies the user-facing delivery
+boundary. It proves Codex read the exact temporarily installed skill and
+version-checked the matching bundled engine, then exercises current/stale/absent
+Graphify state, hostile glossaries, partial context, monorepo scope, resumed
+state, and excluded sensitive content. A second ephemeral run installs only the
+standalone skill in a temporary repository and proves a missing `glossabet`
+command stops before inspection. The harness permits only `inspect`'s normal
+evidence refresh, rejects every other repository write, and removes/re-queries
+its uniquely named plugin and marketplace state in all outcomes. Its committed
+result is host/version evidence, not a support claim for untested Codex hosts.
 
 ## Standalone wheel fallback
 

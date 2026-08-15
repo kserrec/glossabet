@@ -16,6 +16,9 @@ This first alpha is prepared but has not been published to PyPI.
   drift checks, scoped concepts, stable bindings, and reconciliation reports.
 - Unicode-aware lexical normalization and a reproducible calibration corpus
   with documented limitations and release thresholds.
+- Labelled Graphify structural and truncation fixtures, a blinded
+  second-reviewer lane, and an 11-scenario installed-Codex boundary harness
+  with bounded traces and exact temporary-plugin cleanup.
 - The canonical agent skill and `glossabet install` for current Codex and
   Claude Code personal skill locations.
 - A version-coupled Codex plugin prototype carrying the canonical skill and a
@@ -41,7 +44,9 @@ This first alpha is prepared but has not been published to PyPI.
 - CI and manual publication now share one full supported-platform quality gate;
   policy mutation tests prevent matrix or dependency-chain weakening.
 - Evaluation results now identify the current engine and every corpus by
-  digest, and release checks reject stale or weakened evidence.
+  digest; release checks recompute local structural evidence, aggregates, and
+  thresholds and reject stale or weakened deterministic, installed-agent, or
+  second-reviewer evidence.
 - Hatchling is constrained to the reviewed 1.32.x build-only line; pytest
   remains the sole development dependency and the wheel remains dependency-free.
 

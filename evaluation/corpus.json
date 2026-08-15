@@ -1,16 +1,19 @@
 {
-  "schema_version": 2,
-  "reviewed_on": "2026-08-14",
+  "schema_version": 3,
+  "reviewed_on": "2026-08-15",
   "release_thresholds": {
     "terminology_precision_min": 0.8,
     "drift_precision_min": 0.9,
     "drift_recall_min": 0.9,
+    "structural_precision_min": 0.9,
+    "structural_recall_min": 0.9,
     "reviewer_usefulness_min": 0.8,
     "false_alarms_per_1000_max": 50.0,
     "cold_seconds_per_1000_source_files_max": 10.0,
     "corpus_budget_truncations_max": 0,
     "minimum_cache_reuse_min": 1.0,
-    "lexical_contract_min": 1.0
+    "lexical_contract_min": 1.0,
+    "structural_contract_min": 1.0
   },
   "sources": [
     {
@@ -477,6 +480,230 @@
               "note": "The README explicitly contrasts p-limit with p-queue's pause capability."
             }
           ]
+        }
+      }
+    },
+    {
+      "id": "structural-complete-fixture",
+      "kind": "local",
+      "path": "evaluation/fixtures/structural-complete",
+      "primary_language": "Python with Graphify fixture",
+      "license_spdx": "Apache-2.0",
+      "license_url": "../LICENSE",
+      "license_path": "LICENSE",
+      "license_base": "project",
+      "provenance": "Original Glossabet fixture; no third-party source.",
+      "corpus_sha256": "c5a73623886adf5d90b7bf72e6920b449c78cb092d15c21cc2ad8d16707d4188",
+      "corpus_files": 8,
+      "glossary": {
+        "schema_version": 1,
+        "concepts": [
+          {
+            "id": "authentication",
+            "term": "Authentication",
+            "definition": "Proving an actor's identity.",
+            "status": "canonical"
+          },
+          {
+            "id": "authorization",
+            "term": "Authorization",
+            "definition": "Deciding what an actor may do.",
+            "status": "canonical"
+          },
+          {
+            "id": "payment",
+            "term": "Payment",
+            "definition": "One attempt to collect money.",
+            "status": "canonical"
+          },
+          {
+            "id": "run",
+            "term": "Run",
+            "definition": "One pipeline invocation.",
+            "status": "canonical"
+          },
+          {
+            "id": "tenant",
+            "term": "Tenant",
+            "definition": "One isolated customer boundary.",
+            "status": "canonical"
+          },
+          {
+            "id": "portal",
+            "term": "Portal",
+            "definition": "The external entry boundary.",
+            "status": "canonical"
+          },
+          {
+            "id": "near-provenance",
+            "term": "Near Provenance",
+            "definition": "The exact-path provenance calibration group.",
+            "status": "canonical"
+          },
+          {
+            "id": "workspace",
+            "term": "Workspace",
+            "definition": "A deliberately absent retired concept.",
+            "status": "canonical"
+          }
+        ]
+      },
+      "expectations": {
+        "terminology": {
+          "recall_complete": false,
+          "correct": []
+        },
+        "drift": {
+          "recall_kinds": [
+            "parallel-term",
+            "watched-term-in-use",
+            "canonical-fading",
+            "canonical-overloaded"
+          ],
+          "correct": [
+            {
+              "key": "canonical-fading:workspace",
+              "useful": true,
+              "note": "Workspace is intentionally absent from the fixture implementation."
+            }
+          ]
+        },
+        "structural": {
+          "recall_complete": true,
+          "correct": [
+            {
+              "key": "unnamed-structure:Lease Boundary",
+              "useful": true,
+              "note": "The five-node lease boundary matches no maintained concept."
+            },
+            {
+              "key": "boundary-mismatch:Identity Boundary:authentication:authorization",
+              "useful": true,
+              "note": "One group mixes two deliberately distinct identity concepts."
+            },
+            {
+              "key": "boundary-mismatch:Mixed Region:payment:run",
+              "useful": true,
+              "note": "The mixed region puts Payment and Run in one structural boundary."
+            },
+            {
+              "key": "boundary-mismatch:Mixed Region:payment:tenant",
+              "useful": true,
+              "note": "The mixed region puts Payment and Tenant in one structural boundary."
+            },
+            {
+              "key": "boundary-mismatch:Mixed Region:run:tenant",
+              "useful": true,
+              "note": "The mixed region puts Run and Tenant in one structural boundary."
+            },
+            {
+              "key": "overloaded-structural-region:Mixed Region",
+              "useful": true,
+              "note": "The region strongly matches three distinct canonical concepts."
+            },
+            {
+              "key": "orphaned-concept:workspace",
+              "useful": true,
+              "note": "The retired Workspace concept has no implementation evidence."
+            },
+            {
+              "key": "fragmentation:tenant",
+              "useful": true,
+              "note": "Tenant is deliberately spread across five modules."
+            }
+          ],
+          "contracts": {
+            "groups": [
+              {
+                "label": "Seventh Member",
+                "size": 7,
+                "provenance": {"code": 7, "doc": 0, "glossary": 0},
+                "required_member_tokens": ["portal"],
+                "excluded_members_sample": ["PortalGateway"]
+              },
+              {
+                "label": "Near Provenance",
+                "size": 3,
+                "provenance": {"code": 2, "doc": 1, "glossary": 1},
+                "required_members_sample": [
+                  "EscapedOutput",
+                  "NearGlossary",
+                  "NearOutput"
+                ]
+              }
+            ],
+            "group_coverage": {
+              "complete": true,
+              "dropped_items": 0,
+              "included_items": 5,
+              "total_items": 5,
+              "total_items_exact": true
+            },
+            "validation_total_findings_complete": true,
+            "partial_sections": []
+          }
+        }
+      }
+    },
+    {
+      "id": "structural-truncation-fixture",
+      "kind": "local",
+      "path": "evaluation/fixtures/structural-truncation",
+      "primary_language": "Python with capped Graphify fixture",
+      "license_spdx": "Apache-2.0",
+      "license_url": "../LICENSE",
+      "license_path": "LICENSE",
+      "license_base": "project",
+      "provenance": "Original Glossabet fixture; no third-party source.",
+      "corpus_sha256": "21be64875cb1c24743522db3993b9b4580314673bc0956ac50385798e7bc05db",
+      "corpus_files": 3,
+      "glossary": {
+        "schema_version": 1,
+        "concepts": [
+          {
+            "id": "registry",
+            "term": "Registry",
+            "definition": "One implementation unit in the truncation fixture.",
+            "status": "canonical",
+            "bindings": [
+              {"ref": "symbol:registry_table"}
+            ]
+          }
+        ]
+      },
+      "expectations": {
+        "terminology": {
+          "recall_complete": false,
+          "correct": []
+        },
+        "drift": {
+          "recall_kinds": [
+            "parallel-term",
+            "watched-term-in-use",
+            "canonical-fading",
+            "canonical-overloaded"
+          ],
+          "correct": []
+        },
+        "structural": {
+          "recall_complete": false,
+          "correct": [],
+          "contracts": {
+            "groups": [],
+            "group_coverage": {
+              "complete": false,
+              "dropped_items": 1,
+              "included_items": 50,
+              "total_items": 51,
+              "total_items_exact": true
+            },
+            "validation_total_findings_complete": false,
+            "partial_sections": [
+              "unnamed_structure",
+              "boundary_mismatch",
+              "overloaded_structural_region"
+            ]
+          }
         }
       }
     }

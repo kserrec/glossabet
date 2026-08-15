@@ -352,20 +352,32 @@ The package is `glossabet/`. Grouped by role:
 
 **Evaluation and calibration**
 - `evaluation/corpus.json` — pinned source revisions, SPDX licenses,
-  evaluation glossaries, hand-labelled terminology/drift expectations, and
-  release thresholds. External source is referenced, not vendored.
+  evaluation glossaries, hand-labelled terminology/drift/structural
+  expectations, exact Graphify contracts, and release thresholds. External
+  source is referenced, not vendored.
 - `evaluation/run.py` — developer-only, standard-library evaluation harness.
   It can fetch pinned checkouts into a temporary directory, performs cold and
-  warm scans without importing or executing target code, scores findings,
-  records truncation/runtime/cache behavior, and checks release thresholds.
-  Its verification mode rejects results whose engine source, schemas, manifest,
-  local corpora, pinned source metadata, run count, or thresholds are stale.
-- `evaluation/results.json` — the current five-run Phase 20 replay of the Phase
-  15/16 corpus, including every actual/expected finding key, per-case timing,
-  structured engine/version metadata, an engine-source digest, the manifest
-  digest, and one accepted-corpus digest per case. `EVALUATION.md` documents
-  methodology, calibration history, dependency decisions, limitations, and
-  reproduction.
+  warm scans without importing or executing target code, scores lexical,
+  terminology, drift, and structural findings, records
+  truncation/runtime/cache behavior, and checks release thresholds. Its
+  verification mode recomputes local structural results, aggregates, and
+  thresholds and rejects stale engine source, schemas, manifest, corpora,
+  source metadata, run count, or Graphify case coverage.
+- `evaluation/results.json` — the current seven-case, five-run Phase 22 replay,
+  including every actual/expected finding key, per-case timing, structured
+  engine/version metadata, and digests for the engine, manifest, and each
+  accepted corpus.
+- `evaluation/review.py`, `reviewer-packet.json`, and `reviewer-results.json` —
+  build a label-blinded packet, run one separate Codex reviewer in an isolated
+  read-only temporary directory, retain bounded packet-only trace evidence,
+  and record disagreements separately from deterministic correctness.
+- `scripts/agent_eval.py` and `evaluation/agent-results.json` — temporarily
+  install the actual plugin, run 10 plugin scenarios plus one standalone
+  missing-CLI scenario through ephemeral Codex sessions, independently check
+  contexts/writes/sensitive canaries, and prove exact plugin cleanup. The
+  recorded host is Codex CLI 0.147.0 on Linux.
+  `EVALUATION.md` documents methodology, calibration history, dependency
+  decisions, limitations, and reproduction.
 
 **Distribution and first use**
 - `plugins/glossabet/` — the local Codex plugin prototype. Its manifest,
@@ -535,6 +547,6 @@ structural validation is partial until an adapter supplies trustworthy paths.
 
 ## Where things stand
 
-`PLAN.md` is the authoritative roadmap. Phases 0–20 are complete. Phases
-21–23, trusted-alpha evidence, and explicit external authorization remain
-before public package or plugin publication.
+`PLAN.md` is the authoritative roadmap. Phases 0–22 are complete. The
+trusted-alpha evidence gate, Phase 23, and explicit external authorization
+remain before public package or plugin publication.

@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "trace_limits": {
+    "jsonl_bytes": 16000000,
+    "events": 200,
+    "commands_per_scenario": 12,
+    "stored_command_characters": 1200,
+    "stored_output_characters": 600
+  },
+  "scenarios": [
+    {
+      "id": "fresh",
+      "delivery": "plugin",
+      "expected_status": "grounded",
+      "description": "A clean repository with a current ignored Graphify graph."
+    },
+    {
+      "id": "stale",
+      "delivery": "plugin",
+      "expected_status": "grounded-with-warning",
+      "description": "A clean repository whose ignored Graphify graph names another commit."
+    },
+    {
+      "id": "absent",
+      "delivery": "plugin",
+      "expected_status": "grounded",
+      "description": "A repository with neither a Graphify graph nor a glossary."
+    },
+    {
+      "id": "malformed",
+      "delivery": "plugin",
+      "expected_status": "stopped",
+      "description": "A malformed glossary that the engine must reject before scanning."
+    },
+    {
+      "id": "oversized",
+      "delivery": "plugin",
+      "expected_status": "stopped",
+      "description": "A sparse glossary one byte beyond the direct-JSON limit."
+    },
+    {
+      "id": "symlinked",
+      "delivery": "plugin",
+      "expected_status": "stopped",
+      "description": "A glossary symlink that the confined engine path must reject."
+    },
+    {
+      "id": "partial",
+      "delivery": "plugin",
+      "expected_status": "grounded-partial",
+      "description": "A complete corpus whose agent projection omits identifier details."
+    },
+    {
+      "id": "monorepo",
+      "delivery": "plugin",
+      "expected_status": "choice-required",
+      "description": "A root workspace manifest that requires the skill to pause for scope."
+    },
+    {
+      "id": "resumed-glossary",
+      "delivery": "plugin",
+      "expected_status": "resumed",
+      "description": "A valid glossary with one canonical and one proposed concept."
+    },
+    {
+      "id": "sensitive-file",
+      "delivery": "plugin",
+      "expected_status": "grounded",
+      "accepted_statuses": ["grounded", "grounded-with-warning"],
+      "description": "Unreadable excluded sensitive paths plus ordinary production code."
+    },
+    {
+      "id": "missing-cli",
+      "delivery": "standalone-skill",
+      "expected_status": "stopped",
+      "description": "The canonical standalone skill is installed but glossabet is absent from PATH."
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # Glossabet — Plan
 
-Status: **phases 0–21 complete; Phase 22 next** as of 2026-08-15.
+Status: **phases 0–22 complete; trusted-alpha gate next** as of 2026-08-15.
 Phases 18–23 are the complete post-audit route from the current local package
 to a defensible trusted alpha. Public release remains a separate, explicit
 authorization gate after those phases.
@@ -492,7 +492,7 @@ hosted GitHub slug and Kyle's separate legacy `glossarize 0.0.1` installation
 were observed but left unchanged; no package, plugin, domain, tag, release, or
 other public state was created.
 
-### Phase 22 — Installed-agent and structural evaluation
+### Phase 22 — Installed-agent and structural evaluation ✅ 2026-08-15
 
 **Goal:** test the product through the interface a real user invokes and add
 the missing deterministic evidence for Graphify-backed structural claims.
@@ -513,6 +513,28 @@ the missing deterministic evidence for Graphify-backed structural claims.
 the installed skill/CLI boundary passes every hostile and lifecycle scenario;
 reviewer usefulness is supported by at least two independent reviewers, with
 no claim broader than the tested corpus.
+
+**Completion evidence:** the seven-case, five-run evaluation covers 99 source
+files and 52 production-code files. It records 100% structural precision and
+recall where complete, all 17 complete-fixture and 9 truncation contracts, 15/15
+lexical contracts, zero false alarms, and passing release thresholds. A second
+ephemeral Codex session reviewed all 20 findings from a blinded packet in an
+isolated read-only directory: it marked 17 useful, agreed with the primary
+reviewer on 17, and preserved three explicit disagreements. Codex CLI 0.147.0
+on Linux read the exact temporarily installed plugin skill, version-checked its
+bundled engine, and passed all 11 fresh/stale/absent/hostile/lifecycle scenarios;
+the standalone missing-CLI case stopped before `inspect`. Sensitive content
+never entered the bounded trace or response, the only permitted repository
+change was `inspect`'s documented evidence refresh, and every temporary
+plugin/marketplace/cache entry was removed. Offline verifiers bind these
+artifacts to their evaluator, prompt, schema, engine, bundle, manifest, and
+local corpora. The full suite passes 303 tests. No production engine, CLI, or
+skill behavior changed in this phase. This remains controlled/local evidence,
+not outside maintainer adoption or broad efficacy evidence. Agent execution is
+stochastic: four of five observed full plugin batches satisfied the required
+version preflight, including one of two unchanged attempts against the final
+wheel bytes. The committed artifact is the successful exact-bundle run, not a
+zero-flake claim.
 
 ### Trusted-alpha gate — external evidence, not an implementation phase
 
@@ -571,7 +593,7 @@ merely because local gates pass.
 | Workflow tests protect labels more than gate semantics | Phase 20.1 |
 | Actual installed-agent behavior is not end-to-end tested | Phase 22.2 |
 | Structural findings lack a labelled evaluation set | Phase 22.1 |
-| Current corpus/reviewer/adopter evidence is too small for broad claims | Phase 22.3 plus trusted-alpha gate |
+| Outside adopter evidence is too small for broad claims | Trusted-alpha gate |
 | Product/package/plugin name needs clearance before publication | Phase 21.1 |
 | Preferred Codex plugin distribution and version coupling are unproven | Phase 21.2–21.3 |
 | Build backend is unconstrained | Phase 20.2 |
@@ -645,5 +667,6 @@ merely because local gates pass.
     legal/availability limits. The Codex plugin is the preferred future Codex
     route and owns its skill plus bundled wheel as one cache entry. The
     standalone wheel owns the normal CLI environment and keeps its separately
-    copied skill lifecycle explicit. Only Codex CLI 0.147.0 on Linux has a
-    direct plugin lifecycle probe; other hosts remain unverified.
+    copied skill lifecycle explicit. Only Codex CLI 0.147.0 on Linux has direct
+    plugin lifecycle and 11-scenario installed-skill probes; other hosts remain
+    unverified.

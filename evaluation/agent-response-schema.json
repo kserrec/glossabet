@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["scenarios"],
+  "properties": {
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "facts", "next_action"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "status": {
+            "type": "string",
+            "enum": [
+              "grounded",
+              "grounded-with-warning",
+              "grounded-partial",
+              "choice-required",
+              "resumed",
+              "stopped"
+            ]
+          },
+          "facts": {
+            "type": "array",
+            "maxItems": 12,
+            "items": {"type": "string", "maxLength": 500}
+          },
+          "next_action": {"type": "string", "minLength": 1, "maxLength": 1000}
+        }
+      }
+    }
+  }
+}

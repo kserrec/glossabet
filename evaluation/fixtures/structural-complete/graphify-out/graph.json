@@ -1,0 +1,82 @@
+{
+  "nodes": [
+    {"id": "authn", "label": "AuthenticationFlow", "source_file": "core.py"},
+    {"id": "authz", "label": "AuthorizationPolicy", "source_file": "core.py"},
+    {"id": "lease", "label": "LeaseManager", "source_file": "lease.py"},
+    {"id": "slot", "label": "SlotClaim", "source_file": "lease.py"},
+    {"id": "reaper", "label": "ReaperWorker", "source_file": "lease.py"},
+    {"id": "allocation", "label": "AllocationTable", "source_file": "lease.py"},
+    {"id": "timer", "label": "LeaseTimer", "source_file": "lease.py"},
+    {"id": "payment", "label": "PaymentFlow", "source_file": "core.py"},
+    {"id": "tenant", "label": "TenantMap", "source_file": "tenant_a/code.py"},
+    {"id": "run", "label": "RunLoop", "source_file": "core.py"},
+    {"id": "alpha-0", "label": "Alpha0", "source_file": "core.py"},
+    {"id": "alpha-1", "label": "Alpha1", "source_file": "core.py"},
+    {"id": "alpha-2", "label": "Alpha2", "source_file": "core.py"},
+    {"id": "alpha-3", "label": "Alpha3", "source_file": "core.py"},
+    {"id": "alpha-4", "label": "Alpha4", "source_file": "core.py"},
+    {"id": "alpha-5", "label": "Alpha5", "source_file": "core.py"},
+    {"id": "portal", "label": "PortalGateway", "source_file": "core.py"},
+    {
+      "id": "near-output",
+      "label": "NearOutput",
+      "source_file": "src/glossabet-output.py"
+    },
+    {
+      "id": "near-glossary",
+      "label": "NearGlossary",
+      "source_file": "docs/NOT_GLOSSARY.md"
+    },
+    {
+      "id": "normalized-away",
+      "label": "EscapedOutput",
+      "source_file": "glossabet-out/../src/value.py"
+    },
+    {
+      "id": "real-glossary",
+      "label": "RealGlossary",
+      "source_file": "GLOSSARY.md"
+    }
+  ],
+  "links": [],
+  "communities": [
+    {
+      "id": "identity",
+      "label": "Identity Boundary",
+      "nodes": ["authn", "authz"]
+    },
+    {
+      "id": "lease",
+      "label": "Lease Boundary",
+      "nodes": ["lease", "slot", "reaper", "allocation", "timer"]
+    },
+    {
+      "id": "mixed",
+      "label": "Mixed Region",
+      "nodes": ["payment", "tenant", "run"]
+    },
+    {
+      "id": "seventh",
+      "label": "Seventh Member",
+      "nodes": [
+        "alpha-0",
+        "alpha-1",
+        "alpha-2",
+        "alpha-3",
+        "alpha-4",
+        "alpha-5",
+        "portal"
+      ]
+    },
+    {
+      "id": "near-provenance",
+      "label": "Near Provenance",
+      "nodes": [
+        "near-output",
+        "near-glossary",
+        "normalized-away",
+        "real-glossary"
+      ]
+    }
+  ]
+}

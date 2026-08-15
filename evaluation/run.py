@@ -35,8 +35,13 @@ from glossabet.evidence import (  # noqa: E402
     build_evidence,
 )
 from glossabet.glossary import validate_glossary  # noqa: E402
+from glossabet.graphify import GRAPH_PATH  # noqa: E402
+from glossabet.reconcile import (  # noqa: E402
+    VALIDATION_SCHEMA_VERSION,
+    build_validation,
+)
 
-EVALUATION_SCHEMA_VERSION = 3
+EVALUATION_SCHEMA_VERSION = 4
 DEFAULT_MANIFEST = PROJECT_ROOT / "evaluation" / "corpus.json"
 DEFAULT_RESULTS = PROJECT_ROOT / "evaluation" / "results.json"
 RELEASE_RUNTIME_RUNS = 5
@@ -57,6 +62,13 @@ SOURCE_METADATA_KEYS = (
     "license_spdx",
     "license_url",
     "provenance",
+)
+STRUCTURAL_SECTIONS = (
+    "unnamed_structure",
+    "boundary_mismatch",
+    "overloaded_structural_region",
+    "orphaned_concepts",
+    "fragmentation",
 )
 
 
@@ -119,11 +131,12 @@ def _engine_metadata() -> dict:
         "source_sha256": _digest_paths(PROJECT_ROOT, source_paths),
         "evidence_schema_version": EVIDENCE_SCHEMA_VERSION,
         "drift_schema_version": DRIFT_SCHEMA_VERSION,
+        "validation_schema_version": VALIDATION_SCHEMA_VERSION,
         "evaluation_schema_version": EVALUATION_SCHEMA_VERSION,
     }
 
 
-def _corpus_identity(root: Path, evidence: dict) -> dict:
+def _corpus_identity(root: Path, evidence: dict, *, graphify: bool = False) -> dict:
     paths = [
         item["path"]
         for kind in ("code", "docs")
@@ -131,6 +144,8 @@ def _corpus_identity(root: Path, evidence: dict) -> dict:
     ]
     if evidence.get("configuration", {}).get("present"):
         paths.append("glossabet.json")
+    if graphify and (root / GRAPH_PATH).is_file():
+        paths.append(GRAPH_PATH)
     return {
         "sha256": _digest_paths(root, paths),
         "files_hashed": len(set(paths)),
@@ -143,7 +158,7 @@ def _read_manifest(path: Path) -> tuple[dict, str]:
         manifest = json.loads(raw)
     except (ValueError, RecursionError) as exc:
         raise EvaluationError(f"{path}: unreadable JSON ({exc})") from exc
-    if not isinstance(manifest, dict) or manifest.get("schema_version") != 2:
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != 3:
         raise EvaluationError(f"{path}: unsupported evaluation manifest")
     sources = manifest.get("sources")
     if not isinstance(sources, list) or not sources:
@@ -243,14 +258,16 @@ def _cache_at(path: Path):
             os.environ[CACHE_ROOT_ENV] = previous
 
 
-def _timed_build(root: Path, *, cache: bool) -> tuple[dict, float, dict]:
+def _timed_build(
+    root: Path, *, cache: bool, graphify: bool = False
+) -> tuple[dict, float, dict]:
     stats: dict = {}
     started = time.perf_counter()
     evidence = build_evidence(
         root,
         cache=cache,
         stats=stats,
-        graphify=False,
+        graphify=graphify,
     )
     elapsed = time.perf_counter() - started
     return evidence, elapsed, stats
@@ -267,6 +284,17 @@ def _terminology_keys(evidence: dict) -> set[str]:
         for item in terminology["overload_candidates"]["items"]
     )
     return keys
+
+
+def _terminology_items(evidence: dict) -> dict[str, tuple[str, dict]]:
+    terminology = evidence["terminology"]
+    items: dict[str, tuple[str, dict]] = {}
+    for item in terminology["synonym_candidates"]["items"]:
+        key = "synonym:" + ":".join(sorted((item["a"], item["b"])))
+        items[key] = ("synonym-candidate", item)
+    for item in terminology["overload_candidates"]["items"]:
+        items[f"overload:{item['term']}"] = ("overload-candidate", item)
+    return items
 
 
 def _drift_key(section: str, finding: dict) -> tuple[str, str]:
@@ -296,6 +324,88 @@ def _drift_keys(drift: dict) -> dict[str, str]:
         for finding in drift[section]["items"]
         for kind, key in [_drift_key(section, finding)]
     }
+
+
+def _drift_items(drift: dict) -> dict[str, tuple[str, dict]]:
+    return {
+        key: (kind, finding)
+        for section in DRIFT_SECTIONS
+        for finding in drift[section]["items"]
+        for kind, key in [_drift_key(section, finding)]
+    }
+
+
+def _structural_key(section: str, finding: dict) -> str:
+    if section == "unnamed_structure":
+        return f"unnamed-structure:{finding['group']}"
+    if section == "boundary_mismatch":
+        a, b = sorted(finding["concepts"])
+        return f"boundary-mismatch:{finding['group']}:{a}:{b}"
+    if section == "overloaded_structural_region":
+        return f"overloaded-structural-region:{finding['group']}"
+    if section == "orphaned_concepts":
+        return f"orphaned-concept:{finding['concept_id']}"
+    return f"fragmentation:{finding['concept_id']}"
+
+
+def _structural_keys(validation: dict) -> dict[str, tuple[str, dict]]:
+    return {
+        _structural_key(section, finding): (section, finding)
+        for section in STRUCTURAL_SECTIONS
+        for finding in validation[section]["items"]
+    }
+
+
+def _review_items(
+    source_id: str,
+    evidence: dict,
+    drift: dict,
+    validation: dict | None,
+) -> list[dict]:
+    items: list[dict] = []
+
+    for key, (kind, finding) in sorted(_terminology_items(evidence).items()):
+        if kind == "synonym-candidate":
+            summary = (
+                f"'{finding['a']}' and '{finding['b']}' may be parallel terms"
+            )
+        else:
+            summary = f"'{finding['term']}' may carry unrelated meanings"
+        items.append({
+            "review_key": f"{source_id}|terminology|{key}",
+            "source_id": source_id,
+            "surface": "terminology",
+            "finding_key": key,
+            "kind": kind,
+            "summary": summary,
+            "evidence": finding,
+        })
+
+    for key, (kind, finding) in sorted(_drift_items(drift).items()):
+        items.append({
+            "review_key": f"{source_id}|drift|{key}",
+            "source_id": source_id,
+            "surface": "drift",
+            "finding_key": key,
+            "kind": kind,
+            "summary": finding["summary"],
+            "evidence": finding.get("evidence", {}),
+        })
+
+    if validation is not None:
+        for key, (section, finding) in sorted(
+            _structural_keys(validation).items()
+        ):
+            items.append({
+                "review_key": f"{source_id}|structural|{key}",
+                "source_id": source_id,
+                "surface": "structural",
+                "finding_key": key,
+                "kind": finding["kind"],
+                "summary": finding["summary"],
+                "evidence": finding.get("evidence", {}),
+            })
+    return items
 
 
 def _label_map(entries: list[dict]) -> dict[str, dict]:
@@ -388,6 +498,166 @@ def _lexical_score(evidence: dict, expectation: object) -> dict:
     }
 
 
+def _structural_contract_score(
+    evidence: dict,
+    validation: dict,
+    expectation: dict,
+) -> dict:
+    contracts = expectation.get("contracts", {})
+    if not isinstance(contracts, dict):
+        raise EvaluationError("structural contracts must be an object")
+    checks: list[dict] = []
+
+    def check(name: str, actual: object, expected: object) -> None:
+        checks.append({
+            "name": name,
+            "actual": actual,
+            "expected": expected,
+            "passed": actual == expected,
+        })
+
+    groups = evidence["structural_groups"].get("groups", [])
+    group_by_label = {
+        group.get("label"): group
+        for group in groups
+        if isinstance(group, dict) and isinstance(group.get("label"), str)
+    }
+    group_contracts = contracts.get("groups", [])
+    if (
+        not isinstance(group_contracts, list)
+        or not all(isinstance(item, dict) for item in group_contracts)
+    ):
+        raise EvaluationError("structural contract groups must be a list of objects")
+    for expected_group in group_contracts:
+        label = expected_group.get("label")
+        if not isinstance(label, str) or not label:
+            raise EvaluationError("each structural group contract needs a label")
+        group = group_by_label.get(label)
+        check(f"group:{label}:present", group is not None, True)
+        if group is None:
+            continue
+        if "size" in expected_group:
+            check(f"group:{label}:size", group.get("size"), expected_group["size"])
+        if "provenance" in expected_group:
+            check(
+                f"group:{label}:provenance",
+                group.get("provenance"),
+                expected_group["provenance"],
+            )
+        required_tokens = expected_group.get("required_member_tokens", [])
+        if not isinstance(required_tokens, list):
+            raise EvaluationError("required_member_tokens must be a list")
+        member_tokens = set(group.get("member_tokens", []))
+        for token in required_tokens:
+            check(
+                f"group:{label}:member-token:{token}",
+                token in member_tokens,
+                True,
+            )
+        excluded_sample = expected_group.get("excluded_members_sample", [])
+        if not isinstance(excluded_sample, list):
+            raise EvaluationError("excluded_members_sample must be a list")
+        members_sample = set(group.get("members_sample", []))
+        required_sample = expected_group.get("required_members_sample", [])
+        if not isinstance(required_sample, list):
+            raise EvaluationError("required_members_sample must be a list")
+        for member in required_sample:
+            check(
+                f"group:{label}:sample-includes:{member}",
+                member in members_sample,
+                True,
+            )
+        for member in excluded_sample:
+            check(
+                f"group:{label}:sample-excludes:{member}",
+                member not in members_sample,
+                True,
+            )
+
+    coverage_contract = contracts.get("group_coverage", {})
+    if not isinstance(coverage_contract, dict):
+        raise EvaluationError("structural group_coverage contract must be an object")
+    group_coverage = evidence["structural_groups"].get("coverage", {}).get(
+        "groups", {}
+    )
+    for name, expected in sorted(coverage_contract.items()):
+        check(f"group-coverage:{name}", group_coverage.get(name), expected)
+
+    if "validation_total_findings_complete" in contracts:
+        check(
+            "validation:total-findings-complete",
+            validation.get("total_findings_complete"),
+            contracts["validation_total_findings_complete"],
+        )
+    partial_sections = contracts.get("partial_sections", [])
+    if not isinstance(partial_sections, list):
+        raise EvaluationError("structural partial_sections must be a list")
+    for section in partial_sections:
+        if section not in STRUCTURAL_SECTIONS:
+            raise EvaluationError(f"unknown structural partial section: {section}")
+        check(
+            f"validation:{section}:complete",
+            validation[section]["coverage"].get("complete"),
+            False,
+        )
+
+    passed = sum(item["passed"] for item in checks)
+    return {
+        "checks": len(checks),
+        "passed_checks": passed,
+        "passed": passed == len(checks),
+        "failures": [item for item in checks if not item["passed"]],
+    }
+
+
+def _structural_score(
+    evidence: dict,
+    glossary: dict,
+    expectation: object,
+) -> tuple[dict, dict | None]:
+    if expectation is None:
+        return ({
+            "configured": False,
+            "recall_complete": False,
+            "actual": [],
+            "true_positive": [],
+            "false_positive": [],
+            "false_negative": [],
+            "useful": [],
+            "contracts": {
+                "checks": 0,
+                "passed_checks": 0,
+                "passed": None,
+                "failures": [],
+            },
+        }, None)
+    if not isinstance(expectation, dict):
+        raise EvaluationError("structural expectations must be an object")
+    recall_complete = expectation.get("recall_complete")
+    if not isinstance(recall_complete, bool):
+        raise EvaluationError("structural recall_complete must be boolean")
+    labels = _label_map(expectation.get("correct", []))
+    validation = build_validation(evidence, glossary)
+    actual = _structural_keys(validation)
+    score = _score(
+        set(actual),
+        labels,
+        set(labels) if recall_complete else set(),
+    )
+    return ({
+        "configured": True,
+        "recall_complete": recall_complete,
+        **score,
+        "contracts": _structural_contract_score(
+            evidence, validation, expectation
+        ),
+        "coverage": {
+            "groups": evidence["structural_groups"]["coverage"]["groups"],
+            "validation_complete": validation["total_findings_complete"],
+        },
+    }, validation)
+
+
 def _truncations(evidence: dict) -> list[dict]:
     events = []
     for name in ("tokens", "identifiers", "doc_terms"):
@@ -405,6 +675,13 @@ def _truncations(evidence: dict) -> list[dict]:
     budget = evidence.get("skipped", {}).get("corpus_budget")
     if budget and not budget.get("complete", True):
         events.append({"surface": "corpus_budget", **budget})
+    structural = evidence.get("structural_groups", {})
+    group_coverage = structural.get("coverage", {}).get("groups")
+    if group_coverage and not group_coverage.get("complete", True):
+        events.append({
+            "surface": "structural_groups.groups",
+            **group_coverage,
+        })
     return events
 
 
@@ -431,22 +708,30 @@ def _evaluate_source(source: dict, root: Path, runs: int,
     if errors:
         raise EvaluationError(f"{source['id']}: invalid glossary: {'; '.join(errors)}")
     _check_license(source, root)
+    structural_expectation = source["expectations"].get("structural")
+    graphify = structural_expectation is not None
 
     cold_times = []
     cold_evidence = None
     for _ in range(runs):
-        cold_evidence, elapsed, _ = _timed_build(root, cache=False)
+        cold_evidence, elapsed, _ = _timed_build(
+            root, cache=False, graphify=graphify
+        )
         cold_times.append(elapsed)
     assert cold_evidence is not None
 
     with _cache_at(cache_root / source["id"]):
-        _timed_build(root, cache=True)  # populate outside the timed warm sample
+        _timed_build(
+            root, cache=True, graphify=graphify
+        )  # populate outside the timed warm sample
         warm_times = []
         warm_stats = []
         warm_match = True
         cold_blob = json.dumps(cold_evidence, sort_keys=True)
         for _ in range(runs):
-            warm, elapsed, stats = _timed_build(root, cache=True)
+            warm, elapsed, stats = _timed_build(
+                root, cache=True, graphify=graphify
+            )
             warm_times.append(elapsed)
             warm_stats.append(stats)
             warm_match = warm_match and json.dumps(warm, sort_keys=True) == cold_blob
@@ -471,13 +756,18 @@ def _evaluate_source(source: dict, root: Path, runs: int,
     lexical_score = _lexical_score(
         cold_evidence, source["expectations"].get("lexical")
     )
+    structural_score, validation = _structural_score(
+        cold_evidence,
+        source["glossary"],
+        structural_expectation,
+    )
 
     totals = cold_evidence["totals"]
     corpus_budget = cold_evidence["skipped"]["corpus_budget"]
     source_files = totals["code_files"] + totals["doc_files"]
     warm_reused = sum(item["reused"] for item in warm_stats)
     warm_processed = warm_reused + sum(item["extracted"] for item in warm_stats)
-    corpus = _corpus_identity(root, cold_evidence)
+    corpus = _corpus_identity(root, cold_evidence, graphify=graphify)
     if corpus != _manifest_corpus_identity(source):
         raise EvaluationError(
             f"{source['id']}: accepted corpus digest/count does not match manifest"
@@ -510,6 +800,10 @@ def _evaluate_source(source: dict, root: Path, runs: int,
         "lexical": lexical_score,
         "terminology": terminology_score,
         "drift": drift_score,
+        "structural": structural_score,
+        "review_items": _review_items(
+            source["id"], cold_evidence, drift, validation
+        ),
     }
 
 
@@ -525,12 +819,26 @@ def _aggregate(cases: list[dict]) -> dict:
     drift_true = combine("drift", "true_positive")
     drift_false = combine("drift", "false_positive")
     drift_missed = combine("drift", "false_negative")
-    total_actual = term_actual + drift_actual
-    total_true = term_true + drift_true
-    total_false = term_false + drift_false
-    total_useful = combine("terminology", "useful") + combine("drift", "useful")
+    structural_actual = combine("structural", "actual")
+    structural_true = combine("structural", "true_positive")
+    structural_false = combine("structural", "false_positive")
+    structural_missed = combine("structural", "false_negative")
+    total_actual = term_actual + drift_actual + structural_actual
+    total_true = term_true + drift_true + structural_true
+    total_false = term_false + drift_false + structural_false
+    total_useful = (
+        combine("terminology", "useful")
+        + combine("drift", "useful")
+        + combine("structural", "useful")
+    )
     lexical_checks = sum(case["lexical"]["checks"] for case in cases)
     lexical_passed = sum(case["lexical"]["passed_checks"] for case in cases)
+    structural_contract_checks = sum(
+        case["structural"]["contracts"]["checks"] for case in cases
+    )
+    structural_contract_passed = sum(
+        case["structural"]["contracts"]["passed_checks"] for case in cases
+    )
     production_files = sum(case["files"]["production_code"] for case in cases)
     source_files = sum(case["files"]["source"] for case in cases)
     source_bytes = sum(case["bytes"]["source_budgeted"] for case in cases)
@@ -559,9 +867,18 @@ def _aggregate(cases: list[dict]) -> dict:
             "drift_recall_where_complete": _ratio(
                 drift_true, drift_true + drift_missed
             ),
+            "structural_precision": _ratio(
+                structural_true, structural_actual
+            ),
+            "structural_recall_where_complete": _ratio(
+                structural_true, structural_true + structural_missed
+            ),
             "overall_precision": _ratio(total_true, total_actual),
             "reviewer_usefulness": _ratio(total_useful, total_actual),
             "lexical_contract_rate": _ratio(lexical_passed, lexical_checks),
+            "structural_contract_rate": _ratio(
+                structural_contract_passed, structural_contract_checks
+            ),
             "false_alarms": total_false,
             "false_alarms_per_1000_production_code_files": (
                 round(total_false * 1000 / production_files, 2)
@@ -602,6 +919,10 @@ def _thresholds(aggregate: dict, thresholds: dict | None) -> dict:
         "terminology_precision_min": aggregate["quality"]["terminology_precision"],
         "drift_precision_min": aggregate["quality"]["drift_precision"],
         "drift_recall_min": aggregate["quality"]["drift_recall_where_complete"],
+        "structural_precision_min": aggregate["quality"]["structural_precision"],
+        "structural_recall_min": aggregate["quality"][
+            "structural_recall_where_complete"
+        ],
         "reviewer_usefulness_min": aggregate["quality"]["reviewer_usefulness"],
         "false_alarms_per_1000_max": aggregate["quality"][
             "false_alarms_per_1000_production_code_files"
@@ -614,6 +935,9 @@ def _thresholds(aggregate: dict, thresholds: dict | None) -> dict:
         ],
         "minimum_cache_reuse_min": aggregate["cache"]["minimum_reuse_rate"],
         "lexical_contract_min": aggregate["quality"]["lexical_contract_rate"],
+        "structural_contract_min": aggregate["quality"][
+            "structural_contract_rate"
+        ],
     }
     checks = []
     for name, target in thresholds.items():
@@ -706,22 +1030,66 @@ def verify_results(
             errors.append(f"{source['id']}: corpus digest does not match manifest")
         if source.get("kind") == "local":
             root = _source_root(source, None, False)
+            graphify = source.get("expectations", {}).get("structural") is not None
+            current_evidence = build_evidence(
+                root, cache=False, graphify=graphify
+            )
             current = _corpus_identity(
-                root, build_evidence(root, cache=False, graphify=False)
+                root,
+                current_evidence,
+                graphify=graphify,
             )
             if corpus != current:
                 errors.append(f"{source['id']}: local corpus digest is stale")
+            expected_structural, _ = _structural_score(
+                current_evidence,
+                source["glossary"],
+                source.get("expectations", {}).get("structural"),
+            )
+            if case.get("structural") != expected_structural:
+                errors.append(
+                    f"{source['id']}: local structural evidence is stale"
+                )
 
     method = results.get("method", {})
     if method.get("runtime_runs_per_case") != RELEASE_RUNTIME_RUNS:
         errors.append(
             "evaluation results do not contain the required five-run sample"
         )
-    thresholds = results.get("release_thresholds", {})
+    expected_graphify_cases = sum(
+        source.get("expectations", {}).get("structural") is not None
+        for source in manifest["sources"]
+    )
+    if method.get("graphify_cases") != expected_graphify_cases:
+        errors.append("evaluation Graphify case count is stale")
     if (
-        thresholds.get("configured") is not True
-        or thresholds.get("passed") is not True
+        method.get("graphify") != "per-case"
+        or method.get("external_source_vendored") is not False
     ):
+        errors.append("evaluation source method is weakened or stale")
+
+    aggregate = results.get("aggregate")
+    expected_aggregate = None
+    try:
+        if cases:
+            expected_aggregate = _aggregate(cases)
+    except (KeyError, TypeError, ValueError):
+        errors.append("evaluation case metrics are malformed")
+    if expected_aggregate is not None and aggregate != expected_aggregate:
+        errors.append("evaluation aggregate is stale or internally inconsistent")
+
+    thresholds = results.get("release_thresholds", {})
+    expected_thresholds = None
+    try:
+        if isinstance(aggregate, dict):
+            expected_thresholds = _thresholds(
+                aggregate, manifest.get("release_thresholds")
+            )
+    except (KeyError, TypeError, ValueError):
+        errors.append("evaluation release metrics are malformed")
+    if expected_thresholds is not None and thresholds != expected_thresholds:
+        errors.append("evaluation release thresholds are stale")
+    if thresholds.get("configured") is not True or thresholds.get("passed") is not True:
         errors.append("evaluation release thresholds are not configured and passing")
     return errors
 
@@ -771,7 +1139,11 @@ def run(manifest_path: Path, output_path: Path, repositories_root: Path | None,
         },
         "method": {
             "runtime_runs_per_case": runs,
-            "graphify": False,
+            "graphify": "per-case",
+            "graphify_cases": sum(
+                source.get("expectations", {}).get("structural") is not None
+                for source in sources
+            ),
             "external_source_vendored": False,
         },
         "cases": cases,

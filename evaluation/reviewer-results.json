@@ -1,0 +1,304 @@
+{
+  "comparison": {
+    "agreement_count": 17,
+    "agreement_rate": 0.85,
+    "comparisons": [
+      {
+        "agrees": true,
+        "primary_useful": true,
+        "review_key": "calibration-fixture|terminology|overload:session",
+        "secondary_useful": true
+      },
+      {
+        "agrees": true,
+        "primary_useful": true,
+        "review_key": "calibration-fixture|terminology|synonym:execution:run",
+        "secondary_useful": true
+      },
+      {
+        "agrees": true,
+        "primary_useful": true,
+        "review_key": "calibration-fixture|drift|canonical-fading:workspace",
+        "secondary_useful": true
+      },
+      {
+        "agrees": true,
+        "primary_useful": true,
+        "review_key": "calibration-fixture|drift|canonical-overloaded:session",
+        "secondary_useful": true
+      },
+      {
+        "agrees": true,
+        "primary_useful": true,
+        "review_key": "calibration-fixture|drift|parallel-term:run:execution",
+        "secondary_useful": true
+      },
+      {
+        "agrees": true,
+        "primary_useful": true,
+        "review_key": "calibration-fixture|drift|watched-term-in-use:gateway:charge",
+        "secondary_useful": true
+      },
+      {
+        "agrees": true,
+        "primary_useful": true,
+        "review_key": "requests|drift|canonical-fading:prefetch",
+        "secondary_useful": true
+      },
+      {
+        "agrees": true,
+        "primary_useful": true,
+        "review_key": "requests|drift|watched-term-in-use:connection-api:get connection",
+        "secondary_useful": true
+      },
+      {
+        "agrees": true,
+        "primary_useful": true,
+        "review_key": "requests|drift|watched-term-in-use:encoding-discovery:get encodings from content",
+        "secondary_useful": true
+      },
+      {
+        "agrees": true,
+        "primary_useful": true,
+        "review_key": "requests|drift|watched-term-in-use:unicode-decoding:get unicode from response",
+        "secondary_useful": true
+      },
+      {
+        "agrees": false,
+        "primary_useful": true,
+        "review_key": "p-limit|drift|canonical-fading:pause-queue",
+        "secondary_useful": false
+      },
+      {
+        "agrees": true,
+        "primary_useful": true,
+        "review_key": "structural-complete-fixture|drift|canonical-fading:workspace",
+        "secondary_useful": true
+      },
+      {
+        "agrees": false,
+        "primary_useful": true,
+        "review_key": "structural-complete-fixture|structural|boundary-mismatch:Identity Boundary:authentication:authorization",
+        "secondary_useful": false
+      },
+      {
+        "agrees": true,
+        "primary_useful": true,
+        "review_key": "structural-complete-fixture|structural|boundary-mismatch:Mixed Region:payment:run",
+        "secondary_useful": true
+      },
+      {
+        "agrees": true,
+        "primary_useful": true,
+        "review_key": "structural-complete-fixture|structural|boundary-mismatch:Mixed Region:payment:tenant",
+        "secondary_useful": true
+      },
+      {
+        "agrees": true,
+        "primary_useful": true,
+        "review_key": "structural-complete-fixture|structural|boundary-mismatch:Mixed Region:run:tenant",
+        "secondary_useful": true
+      },
+      {
+        "agrees": false,
+        "primary_useful": true,
+        "review_key": "structural-complete-fixture|structural|fragmentation:tenant",
+        "secondary_useful": false
+      },
+      {
+        "agrees": true,
+        "primary_useful": true,
+        "review_key": "structural-complete-fixture|structural|orphaned-concept:workspace",
+        "secondary_useful": true
+      },
+      {
+        "agrees": true,
+        "primary_useful": true,
+        "review_key": "structural-complete-fixture|structural|overloaded-structural-region:Mixed Region",
+        "secondary_useful": true
+      },
+      {
+        "agrees": true,
+        "primary_useful": true,
+        "review_key": "structural-complete-fixture|structural|unnamed-structure:Lease Boundary",
+        "secondary_useful": true
+      }
+    ],
+    "disagreements": [
+      {
+        "agrees": false,
+        "primary_useful": true,
+        "review_key": "p-limit|drift|canonical-fading:pause-queue",
+        "secondary_reason": "Absence of the exact lexical phrase alone does not show that the concept is absent or stale, and documentation coverage is unknown. With no implementation binding, location, or replacement term, this gives a maintainer little to act on.",
+        "secondary_useful": false
+      },
+      {
+        "agrees": false,
+        "primary_useful": true,
+        "review_key": "structural-complete-fixture|structural|boundary-mismatch:Identity Boundary:authentication:authorization",
+        "secondary_reason": "Authentication and authorization are distinct concepts that can naturally coexist under an Identity Boundary. The two member names show no vocabulary collision or conflation, so shared structural grouping alone is not an actionable mismatch.",
+        "secondary_useful": false
+      },
+      {
+        "agrees": false,
+        "primary_useful": true,
+        "review_key": "structural-complete-fixture|structural|fragmentation:tenant",
+        "secondary_reason": "A spread count of five alone supplies no module names, contexts, or evidence of inconsistent terminology. Tenant concerns are often legitimately cross-cutting, so this does not identify an actionable vocabulary problem.",
+        "secondary_useful": false
+      }
+    ],
+    "findings_reviewed": 20,
+    "secondary_useful": 17,
+    "secondary_usefulness_passed": true,
+    "secondary_usefulness_rate": 0.85,
+    "secondary_usefulness_threshold": 0.8
+  },
+  "evaluation_results_sha256": "b4c82ab732b737c4ea4a690835f8e323beb8779b4c7d896ce5ad7a7481b072b6",
+  "judgments": [
+    {
+      "reason": "The complete evidence places \u201csession\u201d in three clearly disjoint domains\u2014authentication, database transactions, and machine-learning inference\u2014giving maintainers a concrete reason to review whether more specific names are needed.",
+      "review_key": "calibration-fixture|terminology|overload:session",
+      "useful": true
+    },
+    {
+      "reason": "The terms share four complete contexts and four naming patterns with perfect similarity. Their zero file overlap makes the apparent parallel vocabulary especially worth checking for an intentional distinction or inconsistent naming.",
+      "review_key": "calibration-fixture|terminology|synonym:execution:run",
+      "useful": true
+    },
+    {
+      "reason": "A canonical term with zero code occurrences but one documentation mention presents a concrete glossary-versus-implementation drift question: retain it as documentation vocabulary, reclassify it, or retire it.",
+      "review_key": "calibration-fixture|drift|canonical-fading:workspace",
+      "useful": true
+    },
+    {
+      "reason": "The canonical term appears across authentication, database, and machine-learning contexts, with complete coverage. Those domains imply genuinely different meanings and make the overload worth reviewing.",
+      "review_key": "calibration-fixture|drift|canonical-overloaded:session",
+      "useful": true
+    },
+    {
+      "reason": "Each term occurs four times in a distinct, named file while sharing the same four contexts at similarity 1.0. This is specific evidence of a possible vocabulary split that maintainers can investigate directly.",
+      "review_key": "calibration-fixture|drift|parallel-term:run:execution",
+      "useful": true
+    },
+    {
+      "reason": "The finding identifies an explicitly discouraged term, its exact count, and the sole file containing it. That is enough to review whether the two uses should be renamed or deliberately exempted.",
+      "review_key": "calibration-fixture|drift|watched-term-in-use:gateway:charge",
+      "useful": true
+    },
+    {
+      "reason": "\u201cPrefetch\u201d has six documentation mentions but no code occurrence. That concrete asymmetry can help maintainers decide whether it remains a legitimate documentation-only concept or has become stale canonical vocabulary.",
+      "review_key": "requests|drift|canonical-fading:prefetch",
+      "useful": true
+    },
+    {
+      "reason": "At least six occurrences of a deprecated term are localized to adapters.py. The evidence supports a focused check for current internal uses versus deliberately retained compatibility API references.",
+      "review_key": "requests|drift|watched-term-in-use:connection-api:get connection",
+      "useful": true
+    },
+    {
+      "reason": "The deprecated phrase has at least two concrete occurrences in utils.py. A maintainer can narrowly determine whether they are necessary compatibility references or vocabulary that should no longer be used internally.",
+      "review_key": "requests|drift|watched-term-in-use:encoding-discovery:get encodings from content",
+      "useful": true
+    },
+    {
+      "reason": "The evidence localizes at least two uses of the deprecated phrase to utils.py, enabling a focused review of whether those uses are intentional legacy API surface or removable current vocabulary.",
+      "review_key": "requests|drift|watched-term-in-use:unicode-decoding:get unicode from response",
+      "useful": true
+    },
+    {
+      "reason": "Absence of the exact lexical phrase alone does not show that the concept is absent or stale, and documentation coverage is unknown. With no implementation binding, location, or replacement term, this gives a maintainer little to act on.",
+      "review_key": "p-limit|drift|canonical-fading:pause-queue",
+      "useful": false
+    },
+    {
+      "reason": "The canonical token is completely absent from both code and documentation. That is concrete evidence for reviewing whether \u201cWorkspace\u201d is a stale or purely aspirational glossary entry.",
+      "review_key": "structural-complete-fixture|drift|canonical-fading:workspace",
+      "useful": true
+    },
+    {
+      "reason": "Authentication and authorization are distinct concepts that can naturally coexist under an Identity Boundary. The two member names show no vocabulary collision or conflation, so shared structural grouping alone is not an actionable mismatch.",
+      "review_key": "structural-complete-fixture|structural|boundary-mismatch:Identity Boundary:authentication:authorization",
+      "useful": false
+    },
+    {
+      "reason": "PaymentFlow and RunLoop represent visibly unrelated canonical domains inside one structural group. That concrete mismatch merits checking whether the region or its vocabulary obscures separate boundaries.",
+      "review_key": "structural-complete-fixture|structural|boundary-mismatch:Mixed Region:payment:run",
+      "useful": true
+    },
+    {
+      "reason": "PaymentFlow and TenantMap place two apparently unrelated canonical concepts in the same region. This is specific enough to prompt a review of the region\u2019s boundary and naming coherence.",
+      "review_key": "structural-complete-fixture|structural|boundary-mismatch:Mixed Region:payment:tenant",
+      "useful": true
+    },
+    {
+      "reason": "RunLoop and TenantMap strongly associate one structural region with two unrelated canonical concepts, providing a concrete boundary inconsistency for maintainers to inspect.",
+      "review_key": "structural-complete-fixture|structural|boundary-mismatch:Mixed Region:run:tenant",
+      "useful": true
+    },
+    {
+      "reason": "A spread count of five alone supplies no module names, contexts, or evidence of inconsistent terminology. Tenant concerns are often legitimately cross-cutting, so this does not identify an actionable vocabulary problem.",
+      "review_key": "structural-complete-fixture|structural|fragmentation:tenant",
+      "useful": false
+    },
+    {
+      "reason": "The canonical concept has no bindings and no lexical implementation evidence under complete coverage. This directly supports reviewing whether it is stale, aspirational, or intentionally represented under another name.",
+      "review_key": "structural-complete-fixture|structural|orphaned-concept:workspace",
+      "useful": true
+    },
+    {
+      "reason": "The sample concretely shows one region spanning payment, execution, and tenancy\u2014three unrelated canonical concepts. That makes its boundary or umbrella vocabulary a focused, actionable review target.",
+      "review_key": "structural-complete-fixture|structural|overloaded-structural-region:Mixed Region",
+      "useful": true
+    },
+    {
+      "reason": "Five coherently lease-related members form a named structural cluster with no matching canonical concept. This is strong, concrete evidence of a vocabulary gap that maintainers can name or explicitly classify.",
+      "review_key": "structural-complete-fixture|structural|unnamed-structure:Lease Boundary",
+      "useful": true
+    }
+  ],
+  "packet_sha256": "5bb014d8c28f54845444f0372b63eece17a5b8c6fee5b9e9552ed008f18f5725",
+  "reviewer": {
+    "blinded_to_primary_labels": true,
+    "codex_version": "0.147.0",
+    "execution": {
+      "approval_policy": "never",
+      "ephemeral": true,
+      "repository_available": false,
+      "sandbox": "read-only",
+      "trace_limits": {
+        "commands": 3,
+        "events": 100,
+        "jsonl_bytes": 4000000,
+        "stored_command_characters": 1000,
+        "stored_output_characters": 1000
+      }
+    },
+    "independence": "separate ephemeral Codex session in an isolated temporary working directory, explicitly supplied only the review prompt, response schema, and blinded packet",
+    "input_identity": {
+      "evaluator_sha256": "07c6eb14bea4c06de7bdc862912043fbe0ac69abca89fd02b6a843a1aed1e746",
+      "prompt_sha256": "cb0f60c0ba944519ad90da2ca9b4c67c9af4f25cc30d69b80ec989f471c05462",
+      "response_schema_sha256": "e097b9763a8967530dfffb25c51f0e4a1a69ecc2b65269312f000e853483dd37"
+    },
+    "kind": "codex-exec",
+    "model": "configured default; Codex CLI JSONL did not report it",
+    "trace": [
+      {
+        "command": "/usr/bin/zsh -lc 'cat reviewer-packet.json'",
+        "cwd": null,
+        "exit_code": 0,
+        "output_characters": 21430,
+        "output_preview": "{\n  \"engine\": {\n    \"drift_schema_version\": 5,\n    \"evaluation_schema_version\": 4,\n    \"evidence_schema_version\": 7,\n    \"name\": \"glossabet\",\n    \"source_sha256\": \"fd6b09d0f9b2405b2ee13a61c01e4d45e6e85676f3848d917556ce2d69ab9224\",\n    \"validation_schema_version\": 6,\n    \"version\": \"0.1.0\"\n  },\n  \"evaluation_manifest_sha256\": \"ed1ffb0f99665649ed5111cabe62e6eba4fa90245653c1d9c82b1dfa9c36b0bd\",\n  \"findings\": [\n    {\n      \"evidence\": {\n        \"coverage\": {\n          \"modules\": {\n            \"complete\": true,\n            \"dropped_items\": 0,\n            \"included_items\": 3,\n            \"reasons\": [],\n            \"total_items\": 3,\n            \"total_items_exact\": true\n          }\n        },\n        \"dispersion\": 1.0,\n        \"modules\": [\n          {\n            \"contexts\": [\n              \"cookie\",\n              \"login\"\n            ],\n            \"coverage\": {\n              \"contexts\": {\n                \"complete\": true,\n                \"dropped_items\": 0,\n                \"included_items\": \u2026",
+        "output_sha256": "5bb014d8c28f54845444f0372b63eece17a5b8c6fee5b9e9552ed008f18f5725",
+        "status": "completed"
+      }
+    ],
+    "usage": {
+      "cache_write_input_tokens": 0,
+      "cached_input_tokens": 18176,
+      "input_tokens": 42744,
+      "output_tokens": 5061,
+      "reasoning_output_tokens": 3642
+    }
+  },
+  "schema_version": 2
+}

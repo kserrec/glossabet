@@ -2,10 +2,11 @@
 
 Glossabet 0.1.0 is locally packageable and its current local verification
 gates pass, but it is **not release-ready and is not published to PyPI**. The
-remaining roadmap includes installed-agent and structural evaluation plus
-outside trusted-alpha evidence. Phase 21 records the Glossabet decision and a
-working local Codex plugin lifecycle in `NAME-CLEARANCE.md` and
-`DISTRIBUTION.md`. The source repository is currently public at
+installed-agent and controlled structural evaluation is complete; outside
+trusted-alpha evidence is the next gate, followed by the exact-artifact Phase
+23 gate. Phase 21 records the Glossabet decision and a working local Codex
+plugin lifecycle in `NAME-CLEARANCE.md` and `DISTRIBUTION.md`. The source
+repository is currently public at
 <https://github.com/kserrec/glossarize>; its configured remote has not been
 renamed. As reverified on 2026-08-15, PyPI's `glossabet` JSON endpoint returns
 404. That does not reserve the name and must be checked again immediately
@@ -26,10 +27,17 @@ require his explicit authorization.
   dependency-free wheel behind a version-checking skill-local runner. The
   local Codex 0.147.0 Linux probe installed 0.1.0, updated to a synthetic
   0.1.1, exercised `inspect`, and removed its plugin and marketplace state.
+- The Phase 22 installed-agent harness passed 11/11 bounded scenarios through
+  Codex CLI 0.147.0 on Linux, including hostile direct inputs, truncation,
+  monorepo/resume behavior, excluded sensitive content, and missing CLI. The
+  temporary plugin state was removed. The deterministic seven-case evaluation
+  and a separate blinded Codex reviewer also pass their recorded thresholds;
+  this remains local/controlled evidence, not outside adopter validation.
 - `.github/workflows/quality.yml` is the one reusable gate: it runs the
   complete suite on CPython 3.10–3.14 on Linux, macOS, and Windows, verifies
-  workflow policy and evaluation provenance, then builds and smoke-tests both
-  distributions. Ordinary CI and publication both call this same workflow.
+  workflow policy plus deterministic, installed-agent, and second-reviewer
+  evidence provenance, then builds and smoke-tests both distributions.
+  Ordinary CI and publication both call this same workflow.
 - `.github/workflows/release.yml` is manual-only. Its publish job requires the
   reusable quality gate and can run only from a `v*` tag with the exact text
   `publish-glossabet-to-pypi`, and it expects a protected GitHub environment
@@ -68,6 +76,8 @@ uv sync --locked
 uv run pytest -q
 uv run python scripts/check_workflows.py
 uv run python evaluation/run.py --verify-results evaluation/results.json
+uv run python scripts/agent_eval.py --verify-results evaluation/agent-results.json
+uv run python evaluation/review.py --verify-results evaluation/reviewer-results.json
 uv build --no-sources --out-dir "$release_dir"
 uv run python scripts/build_plugin.py "$release_dir"
 git diff --exit-code -- plugins/glossabet

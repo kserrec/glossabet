@@ -77,6 +77,8 @@ uv build --no-sources            # build wheel + source distribution, do not pub
 uv run python scripts/build_plugin.py dist
 uv run python scripts/check_workflows.py
 uv run python evaluation/run.py --verify-results evaluation/results.json
+uv run python scripts/agent_eval.py --verify-results evaluation/agent-results.json
+uv run python evaluation/review.py --verify-results evaluation/reviewer-results.json
 uv run python scripts/check_distribution.py dist --tag v0.1.0
 uv run python scripts/wheel_smoke.py dist
 uv run python scripts/plugin_smoke.py dist # temporary local Codex lifecycle probe
