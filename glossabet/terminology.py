@@ -42,6 +42,12 @@ MODULE_CONTEXT_SAMPLE = 5
 MODULE_CONTEXT_ANALYSIS_CAP = 30
 REGISTER_AFFIX_CAP = 8
 LAYER_CAP = 10
+REGISTER_STYLED_IDENTIFIERS = frozenset({
+    "snake_case",
+    "camelCase",
+    "PascalCase",
+    "UPPER_SNAKE",
+})
 
 
 def _classify_style(name: str) -> str:
@@ -57,25 +63,77 @@ def _classify_style(name: str) -> str:
     return "flat"
 
 
-def _register(identifier_counts: Counter) -> dict:
+def _register(
+    identifier_counts: Counter,
+    doc_term_counts: Counter,
+    token_origins: dict[str, str],
+) -> dict:
     styles: Counter = Counter()
     token_counts_dist: Counter = Counter()
     suffixes: Counter = Counter()
     prefixes: Counter = Counter()
-    total = 0
-    for name in identifier_counts:
-        tokens = tokenize_identifier(name)
-        if not tokens:
-            continue
-        total += 1
-        styles[_classify_style(name)] += 1
-        bucket = str(len(tokens)) if len(tokens) <= 3 else "4+"
-        token_counts_dist[bucket] += 1
+    used_by_reason = Counter({
+        "structurally_styled": 0,
+        "corroborated_flat": 0,
+    })
+    excluded_by_reason = Counter({
+        "no_lexical_tokens": 0,
+        "language_tagged_flat": 0,
+        "prose_dominated_flat": 0,
+    })
+
+    def count_affixes(tokens: list[str]) -> None:
         if len(tokens) >= 2:
             suffixes[tokens[-1]] += 1
             prefixes[tokens[0]] += 1
 
-    def pct(counter: Counter) -> dict:
+    for name, code_presence in identifier_counts.items():
+        tokens = tokenize_identifier(name)
+        if not tokens:
+            excluded_by_reason["no_lexical_tokens"] += 1
+            continue
+
+        style = _classify_style(name)
+        if style in REGISTER_STYLED_IDENTIFIERS and len(tokens) >= 2:
+            # These spellings carry code structure in the spelling itself;
+            # a multi-token snake/camel/Pascal spelling cannot be ordinary
+            # prose. A one-token capitalized or uppercase word remains flat
+            # and must pass the corroboration gates below.
+            used_by_reason["structurally_styled"] += 1
+            styles[style] += 1
+            bucket = str(len(tokens)) if len(tokens) <= 3 else "4+"
+            token_counts_dist[bucket] += 1
+            count_affixes(tokens)
+            continue
+
+        if any(
+            token_origins.get(token, TOKEN_ORIGIN_DOMAIN)
+            == TOKEN_ORIGIN_LANGUAGE
+            for token in tokens
+        ):
+            excluded_by_reason["language_tagged_flat"] += 1
+            continue
+
+        # Flat spellings carry no structural evidence that they are code.
+        # A multi-token flat form (for example a language-specific hyphenated
+        # name) uses the strongest constituent document count rather than the
+        # sum, so one prose occurrence is not multiplied by token count.
+        doc_presence = max(
+            (doc_term_counts.get(token, 0) for token in set(tokens)),
+            default=0,
+        )
+        if doc_presence > code_presence:
+            excluded_by_reason["prose_dominated_flat"] += 1
+            continue
+
+        used_by_reason["corroborated_flat"] += 1
+        count_affixes(tokens)
+
+    headline_total = used_by_reason["structurally_styled"]
+    used_total = sum(used_by_reason.values())
+    excluded_total = sum(excluded_by_reason.values())
+
+    def pct(counter: Counter, total: int) -> dict:
         return {
             k: round(100.0 * v / total, 1)
             for k, v in sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
@@ -101,9 +159,20 @@ def _register(identifier_counts: Counter) -> dict:
     prefix_items, prefix_coverage = top_affixes(prefixes)
 
     return {
-        "unique_identifiers": total,
-        "identifier_styles_pct": pct(styles),
-        "token_count_distribution_pct": pct(token_counts_dist),
+        # Kept for consumers of the pre-v9 field; it now means the spellings
+        # admitted into the register, not every lexical scanner match.
+        "unique_identifiers": used_total,
+        "composition": {
+            "total_spellings": len(identifier_counts),
+            "used_spellings": used_total,
+            "excluded_spellings": excluded_total,
+            "used_by_reason": dict(used_by_reason),
+            "excluded_by_reason": dict(excluded_by_reason),
+        },
+        "identifier_styles_pct": pct(styles, headline_total),
+        "token_count_distribution_pct": pct(
+            token_counts_dist, headline_total
+        ),
         "common_suffix_tokens": suffix_items,
         "common_prefix_tokens": prefix_items,
         "coverage": {
@@ -403,7 +472,9 @@ def build_terminology(identifier_counts: Counter, token_counts: Counter,
         "domain_vocabulary_size": len(token_counts) - language_tokens_excluded,
         "language_vocabulary_size": language_tokens_excluded,
         "coverage": {"eligible_tokens": token_coverage},
-        "register": _register(identifier_counts),
+        "register": _register(
+            identifier_counts, doc_term_counts, token_origins
+        ),
         "layers": _layers(token_counts, doc_term_counts),
         "synonym_candidates": _synonym_candidates(
             top_tokens, token_counts, token_files, token_patterns, neighbors,

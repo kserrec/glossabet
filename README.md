@@ -92,7 +92,10 @@ Graphify structure/truncation. The five-run corpus now contains 99 included
 source files and 52 production code files. It emitted 20 labelled terminology,
 drift, and structural findings with 100% precision, 100% recall where the
 expected set was complete, and zero false alarms. All 15 lexical contracts and
-all 26 structural contracts passed. The primary reviewer marked 20/20 findings
+all 26 structural contracts passed. Phase 25 also adds 16/16 passing register
+labels across the seven cases and this repository, covering dominant style and
+whether structurally styled names are predominantly multi-word. The primary
+reviewer marked 20/20 findings
 useful; a separate Codex session, blinded to those labels and isolated from the
 repository, marked 17/20 useful and recorded three disagreements.
 
@@ -112,13 +115,13 @@ in [`evaluation/results.json`](evaluation/results.json).
 
 **Status: 0.1.0 source alpha under an owner self-testing pause; not yet
 published to PyPI or a plugin directory and not yet a trusted-alpha release.**
-Phases 0–22 and Phase 24 are complete; Phase 25 is next. The earlier work
+Phases 0–22 and Phases 24–25 are complete; Phase 26 is next. The earlier work
 includes 11/11 installed-skill scenarios on Codex CLI 0.147.0/Linux. Owner-run
-testing and Phases 25–28 remain before any outside maintainer invitation.
+testing and Phases 26–28 remain before any outside maintainer invitation.
 Package metadata, the embedded plugin wheel, and installed-agent evidence are
-bound to the renamed GitHub repository. The source engine now includes Phase
-24; the checked-in plugin wheel remains the last exact Phase 22
-installed-agent-proven bundle and is not yet a Phase 24 delivery artifact. It
+bound to the renamed GitHub repository. The source engine now includes Phases
+24–25; the checked-in plugin wheel remains the last exact Phase 22
+installed-agent-proven bundle and carries neither phase yet. It
 must be refreshed with the installed-skill scenarios no later than Phase 27.
 The trusted-alpha evidence gate and Phase 23 remain later work; do not describe
 the current stopping point as release-ready. See
@@ -309,6 +312,13 @@ be drawn from it.
   builtins are tagged rather than deleted, domain use wins for mixed-origin
   spellings, and language-token exclusions from terminology/naming budgets are
   explicit in coverage rather than silently shrinking the input.
+- House-register headline style and length percentages use only multi-token
+  snake/camel/Pascal spellings whose structure is direct code evidence. Flat
+  spellings and one-token case variants must be domain-origin and must appear
+  at least as often among identifier-shaped code-file matches as in docs before
+  they are admitted. The report accounts for every used and excluded spelling
+  by reason and states that the headline denominator is the structurally styled
+  subset.
 - A compound glossary term occurs in code only when its normalized words are
   contiguous inside one identifier, such as `PaymentRequest` or
   `create_payment_request`. Independent word hits elsewhere do not establish

@@ -1,4 +1,4 @@
-"""The lexical, drift, and structural evidence remains reproducible."""
+"""Lexical, register, drift, and structural evidence stays reproducible."""
 
 import json
 import subprocess
@@ -18,7 +18,7 @@ def test_manifest_pins_licensed_varied_sources():
     manifest = json.loads(MANIFEST.read_text())
     sources = manifest["sources"]
 
-    assert manifest["schema_version"] == 3
+    assert manifest["schema_version"] == 4
     assert len(sources) == 7
     assert len({source["id"] for source in sources}) == len(sources)
     assert {source["primary_language"] for source in sources} == {
@@ -34,9 +34,20 @@ def test_manifest_pins_licensed_varied_sources():
         assert source["license_url"]
         assert len(source["corpus_sha256"]) == 64
         assert source["corpus_files"] > 0
+        assert source["expectations"]["register"]["dominant_style"] in {
+            "snake_case", "camelCase", "PascalCase", "UPPER_SNAKE"
+        }
+        assert isinstance(
+            source["expectations"]["register"]["predominantly_multi_word"],
+            bool,
+        )
         if source["kind"] == "external-git":
             assert len(source["commit"]) == 40
             assert source["url"].startswith("https://github.com/")
+    assert manifest["self_register"] == {
+        "dominant_style": "snake_case",
+        "predominantly_multi_word": True,
+    }
 
 
 def test_local_calibration_case_runs_without_network(tmp_path):
@@ -67,6 +78,14 @@ def test_local_calibration_case_runs_without_network(tmp_path):
     assert result["cases"][0]["corpus_budget"]["complete"] is True
     assert result["aggregate"]["quality"]["terminology_recall_where_complete"] == 1.0
     assert result["aggregate"]["quality"]["drift_recall_where_complete"] == 1.0
+    assert result["cases"][0]["register"]["passed"] is True
+    assert result["self_register"]["expected"] == {
+        "dominant_style": "snake_case",
+        "predominantly_multi_word": True,
+    }
+    assert result["self_register"]["actual"]["dominant_style"] == "snake_case"
+    assert result["self_register"]["actual"]["predominantly_multi_word"] is True
+    assert result["aggregate"]["quality"]["register_accuracy"] == 1.0
     assert result["release_thresholds"] == {
         "configured": False,
         "passed": None,
@@ -97,6 +116,7 @@ def test_language_semantics_case_pins_lexical_and_scope_contracts(tmp_path):
     assert case["lexical"]["checks"] == 15
     assert case["drift"]["actual"] == []
     assert result["aggregate"]["quality"]["lexical_contract_rate"] == 1.0
+    assert case["register"]["passed"] is True
 
 
 def test_structural_cases_pin_findings_provenance_and_truncation(tmp_path):
@@ -188,6 +208,9 @@ def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path):
     def thresholds_weakened(result):
         result["release_thresholds"]["passed"] = False
 
+    def register_stale(result):
+        result["self_register"]["actual"]["dominant_style"] = "camelCase"
+
     mutations = [
         (engine_stale, "engine version, schema, or source digest is stale"),
         (manifest_stale, "evaluation manifest digest is stale"),
@@ -196,6 +219,7 @@ def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path):
         (sample_weakened, "required five-run sample"),
         (graphify_weakened, "Graphify case count is stale"),
         (structural_stale, "local structural evidence is stale"),
+        (register_stale, "self register evidence is stale"),
         (thresholds_weakened, "thresholds are not configured and passing"),
     ]
     for index, (mutate, expected) in enumerate(mutations):

@@ -40,8 +40,11 @@ from glossabet.reconcile import (  # noqa: E402
     VALIDATION_SCHEMA_VERSION,
     build_validation,
 )
+from glossabet.terminology import (  # noqa: E402
+    REGISTER_STYLED_IDENTIFIERS,
+)
 
-EVALUATION_SCHEMA_VERSION = 4
+EVALUATION_SCHEMA_VERSION = 5
 DEFAULT_MANIFEST = PROJECT_ROOT / "evaluation" / "corpus.json"
 DEFAULT_RESULTS = PROJECT_ROOT / "evaluation" / "results.json"
 RELEASE_RUNTIME_RUNS = 5
@@ -158,7 +161,7 @@ def _read_manifest(path: Path) -> tuple[dict, str]:
         manifest = json.loads(raw)
     except (ValueError, RecursionError) as exc:
         raise EvaluationError(f"{path}: unreadable JSON ({exc})") from exc
-    if not isinstance(manifest, dict) or manifest.get("schema_version") != 3:
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != 4:
         raise EvaluationError(f"{path}: unsupported evaluation manifest")
     sources = manifest.get("sources")
     if not isinstance(sources, list) or not sources:
@@ -178,6 +181,12 @@ def _read_manifest(path: Path) -> tuple[dict, str]:
             raise EvaluationError(
                 f"{path}: {source['id']} needs a valid corpus digest/count"
             )
+        if not isinstance(source.get("expectations", {}).get("register"), dict):
+            raise EvaluationError(
+                f"{path}: {source['id']} needs a register expectation"
+            )
+    if not isinstance(manifest.get("self_register"), dict):
+        raise EvaluationError(f"{path}: self_register must be an object")
     return manifest, hashlib.sha256(raw).hexdigest()
 
 
@@ -498,6 +507,76 @@ def _lexical_score(evidence: dict, expectation: object) -> dict:
     }
 
 
+def _register_score(evidence: dict, expectation: object) -> dict:
+    if not isinstance(expectation, dict):
+        raise EvaluationError("register expectations must be an object")
+    expected_style = expectation.get("dominant_style")
+    expected_multi_word = expectation.get("predominantly_multi_word")
+    if expected_style not in REGISTER_STYLED_IDENTIFIERS:
+        raise EvaluationError(
+            "register dominant_style must name a structurally styled form"
+        )
+    if not isinstance(expected_multi_word, bool):
+        raise EvaluationError(
+            "register predominantly_multi_word must be boolean"
+        )
+
+    register = evidence["terminology"]["register"]
+    styles = register["identifier_styles_pct"]
+    lengths = register["token_count_distribution_pct"]
+    ranked_styles = sorted(
+        styles.items(), key=lambda item: (-item[1], item[0])
+    )
+    dominant_style = ranked_styles[0][0] if ranked_styles else None
+    multi_word_pct = (
+        round(100.0 - lengths.get("1", 0.0), 1) if lengths else None
+    )
+    predominantly_multi_word = (
+        multi_word_pct > 50.0 if multi_word_pct is not None else None
+    )
+    checks = [
+        {
+            "name": "dominant_style",
+            "expected": expected_style,
+            "actual": dominant_style,
+            "passed": dominant_style == expected_style,
+        },
+        {
+            "name": "predominantly_multi_word",
+            "expected": expected_multi_word,
+            "actual": predominantly_multi_word,
+            "passed": predominantly_multi_word == expected_multi_word,
+        },
+    ]
+    passed = sum(check["passed"] for check in checks)
+    return {
+        "configured": True,
+        "expected": {
+            "dominant_style": expected_style,
+            "predominantly_multi_word": expected_multi_word,
+        },
+        "actual": {
+            "dominant_style": dominant_style,
+            "predominantly_multi_word": predominantly_multi_word,
+            "multi_word_pct": multi_word_pct,
+            "composition": register["composition"],
+        },
+        "checks": len(checks),
+        "passed_checks": passed,
+        "passed": passed == len(checks),
+        "failures": [check for check in checks if not check["passed"]],
+    }
+
+
+def _evaluate_self_register(expectation: object) -> dict:
+    evidence = build_evidence(PROJECT_ROOT, cache=False, graphify=False)
+    return {
+        "id": "glossabet",
+        "source": {"kind": "local", "path": "."},
+        **_register_score(evidence, expectation),
+    }
+
+
 def _structural_contract_score(
     evidence: dict,
     validation: dict,
@@ -756,6 +835,9 @@ def _evaluate_source(source: dict, root: Path, runs: int,
     lexical_score = _lexical_score(
         cold_evidence, source["expectations"].get("lexical")
     )
+    register_score = _register_score(
+        cold_evidence, source["expectations"]["register"]
+    )
     structural_score, validation = _structural_score(
         cold_evidence,
         source["glossary"],
@@ -798,6 +880,7 @@ def _evaluate_source(source: dict, root: Path, runs: int,
         },
         "truncations": _truncations(cold_evidence),
         "lexical": lexical_score,
+        "register": register_score,
         "terminology": terminology_score,
         "drift": drift_score,
         "structural": structural_score,
@@ -807,7 +890,7 @@ def _evaluate_source(source: dict, root: Path, runs: int,
     }
 
 
-def _aggregate(cases: list[dict]) -> dict:
+def _aggregate(cases: list[dict], self_register: dict) -> dict:
     def combine(surface: str, key: str) -> int:
         return sum(len(case[surface][key]) for case in cases)
 
@@ -833,6 +916,14 @@ def _aggregate(cases: list[dict]) -> dict:
     )
     lexical_checks = sum(case["lexical"]["checks"] for case in cases)
     lexical_passed = sum(case["lexical"]["passed_checks"] for case in cases)
+    register_checks = (
+        sum(case["register"]["checks"] for case in cases)
+        + self_register["checks"]
+    )
+    register_passed = (
+        sum(case["register"]["passed_checks"] for case in cases)
+        + self_register["passed_checks"]
+    )
     structural_contract_checks = sum(
         case["structural"]["contracts"]["checks"] for case in cases
     )
@@ -876,6 +967,7 @@ def _aggregate(cases: list[dict]) -> dict:
             "overall_precision": _ratio(total_true, total_actual),
             "reviewer_usefulness": _ratio(total_useful, total_actual),
             "lexical_contract_rate": _ratio(lexical_passed, lexical_checks),
+            "register_accuracy": _ratio(register_passed, register_checks),
             "structural_contract_rate": _ratio(
                 structural_contract_passed, structural_contract_checks
             ),
@@ -935,6 +1027,7 @@ def _thresholds(aggregate: dict, thresholds: dict | None) -> dict:
         ],
         "minimum_cache_reuse_min": aggregate["cache"]["minimum_reuse_rate"],
         "lexical_contract_min": aggregate["quality"]["lexical_contract_rate"],
+        "register_accuracy_min": aggregate["quality"]["register_accuracy"],
         "structural_contract_min": aggregate["quality"][
             "structural_contract_rate"
         ],
@@ -1050,6 +1143,21 @@ def verify_results(
                 errors.append(
                     f"{source['id']}: local structural evidence is stale"
                 )
+            expected_register = _register_score(
+                current_evidence,
+                source["expectations"]["register"],
+            )
+            if case.get("register") != expected_register:
+                errors.append(
+                    f"{source['id']}: local register evidence is stale"
+                )
+
+    expected_self_register = _evaluate_self_register(
+        manifest["self_register"]
+    )
+    self_register = results.get("self_register")
+    if self_register != expected_self_register:
+        errors.append("self register evidence is stale")
 
     method = results.get("method", {})
     if method.get("runtime_runs_per_case") != RELEASE_RUNTIME_RUNS:
@@ -1072,7 +1180,7 @@ def verify_results(
     expected_aggregate = None
     try:
         if cases:
-            expected_aggregate = _aggregate(cases)
+            expected_aggregate = _aggregate(cases, self_register)
     except (KeyError, TypeError, ValueError):
         errors.append("evaluation case metrics are malformed")
     if expected_aggregate is not None and aggregate != expected_aggregate:
@@ -1122,7 +1230,8 @@ def run(manifest_path: Path, output_path: Path, repositories_root: Path | None,
         import shutil
         shutil.rmtree(cache_root, ignore_errors=True)
 
-    aggregate = _aggregate(cases)
+    self_register = _evaluate_self_register(manifest["self_register"])
+    aggregate = _aggregate(cases, self_register)
     thresholds = _thresholds(
         aggregate,
         manifest.get("release_thresholds") if not selected else None,
@@ -1147,6 +1256,7 @@ def run(manifest_path: Path, output_path: Path, repositories_root: Path | None,
             "external_source_vendored": False,
         },
         "cases": cases,
+        "self_register": self_register,
         "aggregate": aggregate,
         "release_thresholds": thresholds,
     }

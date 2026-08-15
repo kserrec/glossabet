@@ -1,6 +1,6 @@
 # Glossabet — Plan
 
-Status: **phases 0–22 and Phase 24 complete; Phase 25 is the next
+Status: **phases 0–22 and Phases 24–25 complete; Phase 26 is the next
 implementation work; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-15. Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -631,7 +631,7 @@ evidence remain the last exact Phase 22 bundle rather than being silently
 relabelled as Phase 24 evidence; they must be rebuilt and rerun no later than
 Phase 27's installed-skill acceptance check.
 
-### Phase 25 — Register integrity
+### Phase 25 — Register integrity ✅ 2026-08-15
 
 **Goal:** the reported house register must describe names the repository
 coined — not comment prose or language builtins — and any filtered statistic
@@ -657,6 +657,18 @@ lexical; this phase changes only the statistics layer.)
 **Acceptance:** this repository's reported register reflects its snake_case
 multi-word reality; register output names its own composition and
 exclusions; a labelled register check exists in the evaluation and passes.
+
+**Completion evidence:** RepositoryEvidence v9 classifies multi-token
+`snake_case`, `camelCase`, `PascalCase`, and `UPPER_SNAKE` spellings as the
+structurally styled headline population. Flat and one-token case variants are
+admitted only when domain-origin and not document-dominated; every spelling is
+accounted for under an exact used/excluded reason. Glossabet now reports
+`snake_case` as its dominant styled register and a predominantly multi-word
+identifier distribution. Evaluation manifest v4 and result schema v5 add two
+labels for each of the seven pinned cases and this repository; all 16 register
+checks and the new 1.0 release threshold pass. The finding payloads remain a
+separate evaluation surface, so register labels do not manufacture terminology
+or drift correctness.
 
 ### Phase 26 — Nomination distinctiveness
 

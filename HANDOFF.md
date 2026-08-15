@@ -1,6 +1,6 @@
 # Session handoff — 2026-08-15
 
-This handoff was refreshed after Phase 24 and becomes stale when the next phase
+This handoff was refreshed after Phase 25 and becomes stale when the next phase
 begins. `PLAN.md` remains the authoritative durable roadmap.
 
 **Project:** Glossabet is a Python CLI, canonical agent skill, and local Codex
@@ -9,8 +9,15 @@ inspectable, and maintainable.
 
 **Completed this session**
 
+- Completed Phase 25's register-integrity pass. RepositoryEvidence v9 computes
+  headline style and identifier-length percentages only from structurally
+  styled multi-token spellings, admits ambiguous flat spellings only with
+  domain/code corroboration, and accounts for every used or excluded spelling
+  by reason. Evaluation manifest v4 and result schema v5 add dominant-style and
+  predominantly-multi-word labels for all seven pinned cases plus Glossabet.
 - Completed Phase 24's language/domain vocabulary partition. RepositoryEvidence
-  v8 retains every token with a `language` or `domain` origin, excludes only
+  v8 introduced a `language` or `domain` origin for every retained token and
+  excludes only
   domain-ineligible tokens from terminology/naming budgets, and records every
   exclusion in coverage. The current conservative table covers the verified
   Python builtins; unlisted languages and ambiguous words remain domain.
@@ -58,19 +65,19 @@ inspectable, and maintainable.
 
 **Verified state**
 
-- `uv run pytest -q`: 310 passed.
+- `uv run pytest -q`: 311 passed.
 - Deterministic evaluation: 7 cases, 99 source files, 52 production-code files,
   overall/structural precision 1.0, recall 1.0 where complete, 15/15 lexical
-  contracts, 26/26 structural contracts, zero false alarms, and all release
-  thresholds passing.
+  contracts, 16/16 register labels, 26/26 structural contracts, zero false
+  alarms, and all release thresholds passing.
 - Second reviewer: 20/20 findings reviewed, 17 useful (0.85), 17 agreements
   (0.85), and three preserved disagreements: p-limit `Pause Queue` fading,
   the authentication/authorization Identity Boundary, and tenant fragmentation.
   This reviewer was Codex, not an outside maintainer.
-- Phase 24 changed only the blinded packet's engine identity: its question,
-  sources, and all 20 finding payloads compared exactly equal. The existing
-  judgments were retained with explicit reuse provenance; this is not a new
-  independent reviewer run.
+- Phases 24–25 changed only the blinded packet's engine/manifest identities:
+  its question, sources, and all 20 finding payloads compared exactly equal.
+  The existing judgments were retained with explicit reuse provenance; this
+  is not a new independent reviewer run.
 - Installed-agent evaluation: 11/11 scenarios passed on Codex CLI 0.147.0,
   CPython 3.12.3, and Linux. Codex read the exact temporary plugin skill,
   version-checked its bundled 0.1.0 engine, never exposed the sensitive canary,
@@ -86,10 +93,10 @@ inspectable, and maintainable.
   `uv run python scripts/agent_eval.py --verify-results
   evaluation/agent-results.json`, and `uv run python evaluation/review.py
   --verify-results evaluation/reviewer-results.json` all pass.
-- A fresh standalone Phase 24 wheel passed `scripts/wheel_smoke.py`. The
+- A fresh standalone Phase 25 wheel passed `scripts/wheel_smoke.py`. The
   release distribution check correctly rejects it against the checked-in
   plugin wheel, which remains the last exact Phase 22 installed-agent-proven
-  bundle. Do not describe that plugin as carrying Phase 24; rebuild it and
+  bundle. Do not describe that plugin as carrying Phases 24–25; rebuild it and
   rerun the installed-skill scenarios no later than Phase 27.
 - Public-main CI for commit `2be99b6` passed all 15 CPython 3.10–3.14 jobs on
   Linux, macOS, and Windows plus the separate evidence, build, and
@@ -120,8 +127,8 @@ inspectable, and maintainable.
   perform additional checks himself. Do not invite anyone, collect outside
   alpha evidence, begin Phase 23, or perform publication setup until Kyle
   explicitly ends this pause.
-- Phase 25 (register integrity) is the next implementation pass, followed by
-  Phase 26, Phase 27, and Phase 28.1–28.3. All must finish before the
+- Phase 26 (nomination distinctiveness) is the next implementation pass,
+  followed by Phase 27 and Phase 28.1–28.3. All must finish before the
   trusted-alpha gate.
 - After those phases and an explicit end to the pause, the trusted-alpha gate
   requires at least two consenting maintainers to try the exact installed build

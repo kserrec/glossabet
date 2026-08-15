@@ -25,11 +25,59 @@ def test_register_statistics(tmp_path):
     )
     reg = build_evidence(tmp_path)["terminology"]["register"]
     assert reg["unique_identifiers"] == 5
+    assert reg["composition"] == {
+        "total_spellings": 5,
+        "used_spellings": 5,
+        "excluded_spellings": 0,
+        "used_by_reason": {
+            "structurally_styled": 5,
+            "corroborated_flat": 0,
+        },
+        "excluded_by_reason": {
+            "no_lexical_tokens": 0,
+            "language_tagged_flat": 0,
+            "prose_dominated_flat": 0,
+        },
+    }
     styles = reg["identifier_styles_pct"]
     assert styles["PascalCase"] == 60.0 and styles["snake_case"] == 40.0
     assert reg["token_count_distribution_pct"]["2"] == 100.0
     suffixes = {a["token"]: a["identifiers"] for a in reg["common_suffix_tokens"]}
     assert suffixes["service"] == 3 and suffixes["total"] == 2
+
+
+def test_register_filters_ambiguous_flat_prose_and_language_spellings(tmp_path):
+    (tmp_path / "app.py").write_text(
+        "# the Project\n"
+        "service_layer = 1\n"
+        "dict_factory = 1\n"
+        "dict = 1\n"
+        "ledger = ledger + ledger\n"
+        "balance = 1\n"
+        "project = 1\n"
+    )
+    (tmp_path / "README.md").write_text(
+        "Project project project. The ledger balance records project activity.\n"
+    )
+
+    register = build_evidence(tmp_path)["terminology"]["register"]
+
+    assert register["composition"] == {
+        "total_spellings": 8,
+        "used_spellings": 4,
+        "excluded_spellings": 4,
+        "used_by_reason": {
+            "structurally_styled": 2,
+            "corroborated_flat": 2,
+        },
+        "excluded_by_reason": {
+            "no_lexical_tokens": 1,
+            "language_tagged_flat": 1,
+            "prose_dominated_flat": 2,
+        },
+    }
+    assert register["identifier_styles_pct"] == {"snake_case": 100.0}
+    assert register["token_count_distribution_pct"] == {"2": 100.0}
 
 
 def test_synonym_nomination_finds_parallel_vocabulary(tmp_path):
@@ -262,6 +310,8 @@ def test_analyze_command_end_to_end(tmp_path, capsys):
     assert main(["analyze", str(tmp_path)]) == 0
     out = capsys.readouterr().out
     assert "house register" in out
+    assert "register composition" in out
+    assert "structurally styled spellings" in out
     assert "vocabulary overlaps" in out
     assert "nominations" in out  # the not-verdicts reminder
     assert (tmp_path / "glossabet-out" / "evidence.json").is_file()

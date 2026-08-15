@@ -43,7 +43,7 @@ from glossabet.tokenize import (
     tokenize_identifier,
 )
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 EVIDENCE_FILE = "evidence.json"
 
@@ -492,12 +492,30 @@ def _print_terminology_report(evidence: dict) -> None:
                 for reason in token_coverage.get("reasons", [])
             )
         )
+    composition = reg.get("composition", {})
+    used_by_reason = composition.get("used_by_reason", {})
+    excluded_by_reason = composition.get("excluded_by_reason", {})
+    print(
+        "register composition: "
+        f"{composition.get('used_spellings', reg['unique_identifiers'])} of "
+        f"{composition.get('total_spellings', reg['unique_identifiers'])} "
+        "spelling(s) used — "
+        f"{used_by_reason.get('structurally_styled', 0)} structurally styled "
+        "for headline statistics, "
+        f"{used_by_reason.get('corroborated_flat', 0)} corroborated flat; "
+        f"{composition.get('excluded_spellings', 0)} excluded — "
+        f"{excluded_by_reason.get('language_tagged_flat', 0)} "
+        "language-tagged flat, "
+        f"{excluded_by_reason.get('prose_dominated_flat', 0)} "
+        "prose-dominated flat, "
+        f"{excluded_by_reason.get('no_lexical_tokens', 0)} without lexical tokens"
+    )
     styles = ", ".join(f"{k} {v}%" for k, v in reg["identifier_styles_pct"].items())
-    print(f"styles: {styles or 'n/a'}")
+    print(f"styles (structurally styled spellings): {styles or 'n/a'}")
     dist = ", ".join(
         f"{k} words {v}%" for k, v in reg["token_count_distribution_pct"].items()
     )
-    print(f"identifier length: {dist or 'n/a'}")
+    print(f"identifier length (structurally styled spellings): {dist or 'n/a'}")
     for label, key in (("suffixes", "common_suffix_tokens"),
                        ("prefixes", "common_prefix_tokens")):
         affixes = ", ".join(

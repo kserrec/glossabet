@@ -1,8 +1,9 @@
 # Evaluation
 
 This document records Glossabet's Phase 15 calibration, Phase 16 lexical/scope
-extension, Phase 20 replay, and Phase 22 structural, installed-agent, and
-second-reviewer evidence. The machine-readable corpus, labels, raw per-run
+extension, Phase 20 replay, Phase 22 structural/installed-agent/second-reviewer
+evidence, and Phase 25 register evaluation. The machine-readable corpus,
+labels, raw per-run
 timings, findings, truncation markers, provenance digests, and threshold checks
 live in
 [`evaluation/corpus.json`](evaluation/corpus.json) and
@@ -35,6 +36,9 @@ scripts, accented Latin, acronyms with digit suffixes, and Clojure kebab-case
 identifiers. The Phase 22 fixtures pin all five structural-finding families,
 the seventh group member beyond the display sample, exact near-match
 provenance, and the 51st group beyond the adapter detail cap.
+Phase 25 adds two register labels for each case and for Glossabet itself:
+the dominant structurally styled identifier form and whether that partition is
+predominantly multi-word.
 
 ## Labelling method
 
@@ -65,6 +69,15 @@ spellings, forbidden lossy spellings, and complete identifier-to-token
 mappings. Its glossary is validated by the same production schema, and an
 empty drift set is a complete expectation for that controlled fixture.
 
+Register labels record the pinned source conventions: `snake_case` for the
+three Python fixtures, the multilingual fixture, Requests, and Glossabet;
+`camelCase` for hey's unexported Go names and p-limit's JavaScript/TypeScript
+names. Every labelled register is predominantly multi-word. Each case
+contributes one exact style check and one exact multi-word check; the release
+metric is the fraction of those 16 checks that pass. These are naming-register
+labels, not additional labels for synonym, overload, drift, or structural
+usefulness.
+
 ## Calibration result
 
 The Phase 14 baseline emitted 64 scored findings. Eleven matched the labels and
@@ -81,7 +94,7 @@ Phase 15 made three conservative changes to the existing synonym heuristic:
    as `*_queue` and `run_*`; and
 3. context similarity must be at least 0.55 instead of 0.40.
 
-The current Phase 24 five-run replay emitted 20 scored findings, all labelled
+The current Phase 25 five-run replay emitted 20 scored findings, all labelled
 correct and useful by the primary reviewer, with no labelled finding missed
 where recall was complete:
 
@@ -98,6 +111,7 @@ where recall was complete:
 | Corpus-budget truncations | 0 | 0 |
 | Minimum warm-cache reuse | 100% | 100% |
 | Phase 16 lexical contract | 15/15 (100%) | 100% |
+| Phase 25 register accuracy | 16/16 (100%) | 100% |
 | Phase 22 structural contract | 26/26 (100%) | 100% |
 
 All deterministic release thresholds and the separate second-reviewer
@@ -127,6 +141,25 @@ Graphify groups currently lack source paths, so structural reconciliation
 marks scoped coverage partial or skips conclusions that could otherwise be
 false. It does not infer scope from a group label.
 
+## Phase 25 register result
+
+RepositoryEvidence v9 no longer computes its headline register from every
+regex-shaped word found in source text. Multi-token `snake_case`, `camelCase`,
+`PascalCase`, and `UPPER_SNAKE` spellings form the structurally styled
+headline population. Flat and one-token case variants are admitted to the
+broader register only when their tokens are domain-origin and their strongest
+document-term count does not exceed their identifier-shaped code-file match
+count. The report gives exact used and excluded totals for structural
+admission, flat corroboration, language tagging, document dominance, and empty
+lexical normalization.
+
+All seven pinned cases and the self-check match their dominant-style and
+predominantly-multi-word labels, for 16/16 checks. On Glossabet, `snake_case`
+is the dominant headline style and the structurally styled partition is
+predominantly multi-word. Because the scanner remains lexical, this result is
+an evaluated statistics-layer correction, not a claim that comments and
+strings are parsed away.
+
 ## Phase 22 structural and reviewer result
 
 The complete structural fixture emits the eight expected structural findings:
@@ -152,25 +185,26 @@ Boundary, and found the tenant-fragmentation count insufficient without module
 or context detail. The deterministic correctness labels were not changed to
 manufacture agreement.
 
-Phase 24 changed the engine identity and vocabulary-origin metadata but did not
-change any of the 20 blinded review payloads. Before carrying the existing
-judgments forward, the refresh compared the old and new packets after removing
-only the engine identity and required exact equality of the question, sources,
-and every finding. `reviewer-results.json` records that reuse explicitly. This
-is refreshed provenance for unchanged judgments, not a new reviewer run or new
-independent evidence.
+Phase 24 changed the engine identity and vocabulary-origin metadata; Phase 25
+changes the engine and manifest identities for register labels. Neither phase
+changes any of the 20 blinded finding payloads. Before carrying the existing
+judgments forward, each refresh compared the old and new packets after removing
+only the changed identity fields and required exact equality of the question,
+sources, and every finding. `reviewer-results.json` records the latest reuse
+explicitly. This is refreshed provenance for unchanged judgments, not a new
+reviewer run or new independent evidence.
 
 ## Runtime and truncation
 
 On the recorded 9-core Linux host with CPython 3.12.13, the sum of per-case
-five-run medians was 0.384 seconds cold and 0.401 seconds warm—3.879 and 4.048
+five-run medians was 0.335 seconds cold and 0.310 seconds warm—3.381 and 3.133
 seconds per thousand included source files. Every warm run reused 100% of
 eligible extraction entries and produced evidence byte-identical to its cold
 run. The corpus is too small for the measured warm/cold difference to establish
 a general cache speedup; content hashing, Git checks, cache I/O, and aggregation
 still run on warm scans.
 
-Requests hit existing output caps: 1,072 identifier entries, 981 documentation
+Requests hit existing output caps: 1,077 identifier entries, 981 documentation
 terms, and 15 external-import entries were omitted from their displayed
 sections and reported by truncation markers. The structural-truncation fixture
 also hit the 50-group detail cap as intended. No repository hit the corpus
@@ -179,7 +213,7 @@ truncated.
 
 ## Aggregate safety limits
 
-The measured corpus took 5.248 cold seconds per thousand source files.
+The measured corpus took 3.381 cold seconds per thousand source files.
 The scanner now applies immutable per-repository ceilings of:
 
 - 10,000 included code/documentation files;
@@ -189,7 +223,7 @@ The scanner now applies immutable per-repository ceilings of:
 
 Relative to the whole evaluation corpus, these retain about 101× file, 48×
 byte, and 490× walk-entry headroom. At the observed file-normalized rate, the
-file ceiling corresponds to roughly 52 seconds; repository composition and
+file ceiling corresponds to roughly 34 seconds; repository composition and
 hardware can change that substantially, so it is a safety bound rather than a
 runtime guarantee.
 
@@ -222,7 +256,8 @@ and evaluator schema versions, a SHA-256 digest over the evaluator and every
 engine Python source file, the exact manifest digest, and a framed path/content
 digest over every accepted corpus file. The manifest pins that digest and
 accepted-file count for all seven cases; local fixtures and their structural
-scores are additionally recomputed without network, while external cases
+and register scores plus Glossabet's self-register score are additionally
+recomputed without network, while external cases
 retain their immutable commit identity. The reusable release gate also
 recomputes aggregate metrics and thresholds, and rejects stale inputs, missing
 or reordered cases, fewer than five runs, weakened Graphify coverage, or
@@ -275,11 +310,12 @@ Phase 22 JSON at that time recorded that successful exact-bundle run. It proved
 one complete boundary execution, not a zero-flake rate for future model
 invocations.
 
-Phase 24 changed the source engine but deliberately did not relabel this older
-installed-agent evidence. The checked-in plugin wheel remains the exact Phase
-22 bundle described here; it does not yet deliver Phase 24. A fresh standalone
-Phase 24 wheel passes the isolated wheel smoke, while the release distribution
-check correctly reports that it differs from the checked-in plugin. The plugin
+Phases 24–25 changed the source engine but deliberately did not relabel this
+older installed-agent evidence. The checked-in plugin wheel remains the exact
+Phase 22 bundle described here; it delivers neither later phase. A fresh
+standalone Phase 25 wheel passes the isolated wheel smoke, while the release
+distribution check correctly reports that it differs from the checked-in
+plugin. The plugin
 and scenario evidence must be refreshed together no later than Phase 27.
 
 After the repository and documentation rename, Kyle separately authorized an

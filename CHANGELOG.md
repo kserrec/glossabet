@@ -22,6 +22,10 @@ This first alpha is prepared but has not been published to PyPI.
 - Conservative source-language builtin tagging (currently Python) that retains
   complete lexical evidence while reserving terminology and naming budgets for
   project-domain vocabulary.
+- Self-accounting house-register statistics that separate structurally styled
+  names from corroborated flat spellings, exclude language/prose noise with
+  explicit reasons, and carry a labelled dominant-style/multi-word evaluation
+  across the pinned corpus and Glossabet itself.
 - The canonical agent skill and `glossabet install` for current Codex and
   Claude Code personal skill locations.
 - A version-coupled Codex plugin prototype carrying the canonical skill and a

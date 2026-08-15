@@ -133,7 +133,7 @@ The skill does not read this artifact directly. Its top-level shape:
 | `structural_groups` | Graphify presence, usability, warnings, commit freshness, and normalized groups |
 | `files` | code/doc files with their production/test/fixture role |
 | `vocabulary` | normalization contract plus production-scoped, capped origin-tagged `tokens`, enriched `identifiers`, and `doc_terms` tables |
-| `terminology` | production scope, register stats, code-vs-doc layers, synonym and overload nominations |
+| `terminology` | production scope, self-accounting register stats, code-vs-doc layers, synonym and overload nominations |
 | `monorepo` | `{detected, reasons, sub_roots}` |
 | `skipped` | sensitive, oversized, escaping-symlink, configured, generated, vendored, and corpus-budget exclusions |
 
@@ -282,7 +282,13 @@ The package is `glossabet/`. Grouped by role:
   overload dispersion also has an explicit per-term module ceiling. The full
   eligible-token total and every detail/sample/work omission use the shared
   coverage ledger rather than turning a bounded sample into an exhaustive
-  claim.
+  claim. Register headline distributions use only multi-token spellings whose
+  snake/camel/Pascal structure is code evidence in its own right. Flat and
+  one-token case variants are admitted only when they are domain-origin and
+  document mentions do not outnumber identifier-shaped code-file matches. The
+  register's `composition` accounts for every spelling as structurally styled,
+  corroborated flat, language-tagged flat, prose-dominated flat, or without
+  lexical tokens; filtered percentages therefore state their denominator.
 - `coverage.py` — the common bounded-collection ledger. Known totals, retained
   details, known drops, total exactness, completeness, and reasons have one
   shape across evidence, candidates, terminology, Graphify, drift, and
@@ -557,13 +563,14 @@ structural validation is partial until an adapter supplies trustworthy paths.
 
 ## Where things stand
 
-`PLAN.md` is the authoritative roadmap. Phases 0–22 and Phase 24 are complete;
-Phase 25 is next, and the owner self-testing pause remains active. Phases 25–28
-finish before any outside maintainer invitation, and no Phase 23 work begins
+`PLAN.md` is the authoritative roadmap. Phases 0–22 and Phases 24–25 are
+complete; Phase 26 is next, and the owner self-testing pause remains active.
+Phases 26–28 finish before any outside maintainer invitation, and no Phase 23
+work begins
 until the trusted-alpha gate passes. Package metadata, the embedded plugin
 wheel, and installed-agent evidence remain bound to the renamed GitHub
 repository, but the checked-in plugin wheel is still the last exact Phase 22
-installed-agent-proven bundle; Phase 24 currently lives in source and the
+installed-agent-proven bundle; Phases 24–25 currently live in source and the
 standalone source build. The plugin must be refreshed and its installed-skill
 scenarios rerun no later than Phase 27. The trusted-alpha evidence gate, Phase
 23, and explicit external authorization remain before public package or plugin

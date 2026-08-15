@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "reviewed_on": "2026-08-15",
   "release_thresholds": {
     "terminology_precision_min": 0.8,
@@ -13,7 +13,12 @@
     "corpus_budget_truncations_max": 0,
     "minimum_cache_reuse_min": 1.0,
     "lexical_contract_min": 1.0,
+    "register_accuracy_min": 1.0,
     "structural_contract_min": 1.0
+  },
+  "self_register": {
+    "dominant_style": "snake_case",
+    "predominantly_multi_word": true
   },
   "sources": [
     {
@@ -65,6 +70,10 @@
         ]
       },
       "expectations": {
+        "register": {
+          "dominant_style": "snake_case",
+          "predominantly_multi_word": true
+        },
         "terminology": {
           "recall_complete": true,
           "correct": [
@@ -172,6 +181,10 @@
         ]
       },
       "expectations": {
+        "register": {
+          "dominant_style": "snake_case",
+          "predominantly_multi_word": true
+        },
         "lexical": {
           "required_tokens": [
             "http2", "json2", "pending", "résumé", "über", "данные",
@@ -295,6 +308,10 @@
         ]
       },
       "expectations": {
+        "register": {
+          "dominant_style": "snake_case",
+          "predominantly_multi_word": true
+        },
         "terminology": {
           "recall_complete": false,
           "correct": []
@@ -384,6 +401,10 @@
         ]
       },
       "expectations": {
+        "register": {
+          "dominant_style": "camelCase",
+          "predominantly_multi_word": true
+        },
         "terminology": {
           "recall_complete": false,
           "correct": []
@@ -464,6 +485,10 @@
         ]
       },
       "expectations": {
+        "register": {
+          "dominant_style": "camelCase",
+          "predominantly_multi_word": true
+        },
         "terminology": {
           "recall_complete": false,
           "correct": []
@@ -549,6 +574,10 @@
         ]
       },
       "expectations": {
+        "register": {
+          "dominant_style": "snake_case",
+          "predominantly_multi_word": true
+        },
         "terminology": {
           "recall_complete": false,
           "correct": []
@@ -672,6 +701,10 @@
         ]
       },
       "expectations": {
+        "register": {
+          "dominant_style": "snake_case",
+          "predominantly_multi_word": true
+        },
         "terminology": {
           "recall_complete": false,
           "correct": []
