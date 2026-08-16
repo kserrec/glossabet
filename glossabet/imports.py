@@ -104,36 +104,8 @@ class Resolver:
         language: str,
     ) -> tuple[str, str | None]:
         """Return ("internal", module) or ("external", top-level name)."""
-        if spec.startswith("."):  # relative (js/ts/python style)
-            base = module_of(importer_rel)
-            segments = base.split("/") if base != "." else []
-            if language == "python":
-                level = len(spec) - len(spec.lstrip("."))
-                for _ in range(max(0, level - 1)):
-                    segments = segments[:-1]
-                remainder = spec[level:]
-                if remainder:
-                    segments.extend(remainder.split("."))
-            else:
-                parts = spec.replace("\\", "/").split("/")
-                for part in parts:
-                    if part in ("", "."):
-                        continue
-                    if part == "..":
-                        segments = segments[:-1]
-                    else:
-                        segments.append(part)
-            joined = "/".join(segments)
-            for suffix in _JS_SUFFIXES:
-                candidate = joined + suffix
-                if candidate in self.paths or candidate.rsplit(".", 1)[0] in self.by_slug:
-                    hit = candidate if candidate in self.paths else self.by_slug[
-                        candidate.rsplit(".", 1)[0]
-                    ]
-                    return "internal", module_of(hit)
-            if joined in self.dirs:  # a package itself, not a file in one
-                return "internal", joined
-            return "internal", module_of(joined) if joined else None
+        if spec.startswith("."):
+            return self._resolve_relative(spec, importer_rel, language)
 
         # File-with-extension specs (C-family includes): by_name keys always
         # contain a dot, so bare module specs ("os", "lodash") can't match.
@@ -152,6 +124,43 @@ class Resolver:
         if first.lower() in self.top_level:
             return "internal", first.lower()
         return "external", first or None
+
+    def _resolve_relative(
+        self,
+        spec: str,
+        importer_rel: str,
+        language: str,
+    ) -> tuple[str, str | None]:
+        """Resolve a relative (js/ts/python style) spec against the importer."""
+        base = module_of(importer_rel)
+        segments = base.split("/") if base != "." else []
+        if language == "python":
+            level = len(spec) - len(spec.lstrip("."))
+            for _ in range(max(0, level - 1)):
+                segments = segments[:-1]
+            remainder = spec[level:]
+            if remainder:
+                segments.extend(remainder.split("."))
+        else:
+            parts = spec.replace("\\", "/").split("/")
+            for part in parts:
+                if part in ("", "."):
+                    continue
+                if part == "..":
+                    segments = segments[:-1]
+                else:
+                    segments.append(part)
+        joined = "/".join(segments)
+        for suffix in _JS_SUFFIXES:
+            candidate = joined + suffix
+            if candidate in self.paths or candidate.rsplit(".", 1)[0] in self.by_slug:
+                hit = candidate if candidate in self.paths else self.by_slug[
+                    candidate.rsplit(".", 1)[0]
+                ]
+                return "internal", module_of(hit)
+        if joined in self.dirs:  # a package itself, not a file in one
+            return "internal", joined
+        return "internal", module_of(joined) if joined else None
 
 
 def build_imports_section(file_imports: list[tuple[str, str, list[str]]],

@@ -256,40 +256,55 @@ def _extract_groups(
     nodes: dict[str, dict],
     warnings: list[str],
 ) -> dict[str, dict]:
-    groups: dict[str, dict] = {}
     communities = graph.get("communities")
     if isinstance(communities, list) and communities:
-        for index, community in enumerate(communities):
-            if not isinstance(community, dict):
-                continue
-            group_id_value = _first_value(community, ("id", "label", "name"))
-            # Zero is a valid Graphify community id, so only None falls back.
-            group_id = str(
-                index if group_id_value is None else group_id_value
-            )
-            raw_members = community.get("nodes")
-            if not isinstance(raw_members, list):
-                # Tolerate unknown community shapes; the caller reports when
-                # no usable structure remains after normalization.
-                continue
-            members = [
-                str(member)
-                for member in raw_members
-                if str(member) in nodes
-            ]
-            cohesion = community.get("cohesion")
-            groups[group_id] = {
-                "label": str(
-                    _first_value(community, ("label", "name"))
-                    or f"community {group_id}"
-                ),
-                "cohesion": (
-                    cohesion if isinstance(cohesion, (int, float)) else None
-                ),
-                "members": members,
-            }
-        return groups
+        return _groups_from_communities(communities, nodes)
+    return _groups_from_node_attributes(nodes, warnings)
 
+
+def _groups_from_communities(
+    communities: list, nodes: dict[str, dict]
+) -> dict[str, dict]:
+    """Explicit communities list: each entry names its own members."""
+    groups: dict[str, dict] = {}
+    for index, community in enumerate(communities):
+        if not isinstance(community, dict):
+            continue
+        group_id_value = _first_value(community, ("id", "label", "name"))
+        # Zero is a valid Graphify community id, so only None falls back.
+        group_id = str(
+            index if group_id_value is None else group_id_value
+        )
+        raw_members = community.get("nodes")
+        if not isinstance(raw_members, list):
+            # Tolerate unknown community shapes; the caller reports when
+            # no usable structure remains after normalization.
+            continue
+        members = [
+            str(member)
+            for member in raw_members
+            if str(member) in nodes
+        ]
+        cohesion = community.get("cohesion")
+        groups[group_id] = {
+            "label": str(
+                _first_value(community, ("label", "name"))
+                or f"community {group_id}"
+            ),
+            "cohesion": (
+                cohesion if isinstance(cohesion, (int, float)) else None
+            ),
+            "members": members,
+        }
+    return groups
+
+
+def _groups_from_node_attributes(
+    nodes: dict[str, dict], warnings: list[str]
+) -> dict[str, dict]:
+    """Fallback: fold per-node community attributes into groups."""
+    groups: dict[str, dict] = {}
+    label_counts: dict[str, Counter] = {}
     for node_id, node in sorted(nodes.items()):
         community = node["community"]
         if community is None:
@@ -301,14 +316,15 @@ def _extract_groups(
                 "label": f"community {group_id}",
                 "cohesion": None,
                 "members": [],
-                "label_counts": Counter(),
             },
         )
         group["members"].append(node_id)
         if node["community_name"]:
-            group["label_counts"][node["community_name"]] += 1
+            label_counts.setdefault(group_id, Counter())[
+                node["community_name"]
+            ] += 1
     for group_id, group in groups.items():
-        labels = group.pop("label_counts")
+        labels = label_counts.get(group_id)
         if not labels:
             continue
         group["label"] = sorted(

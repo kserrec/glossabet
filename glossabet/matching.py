@@ -35,6 +35,53 @@ def production_corpus_complete(evidence: dict) -> bool:
     return budget.get("production_complete", budget.get("complete")) is True
 
 
+def _match_compounds(
+    units: list[tuple[dict, list[str]]],
+    supported: set[tuple[str, ...]],
+    start_budget: int,
+) -> tuple[dict[tuple[str, ...], list[dict]], int, int]:
+    """One bounded trie pass mapping each supported compound to its entries.
+
+    Returns (matches, processed starts, total starts). A start is one
+    identifier position where a compound could begin; the budget caps how
+    many are examined across the whole index.
+    """
+    matches: dict[tuple[str, ...], list[dict]] = {
+        wanted: [] for wanted in supported
+    }
+    total_starts = sum(len(unit) for _, unit in units) if supported else 0
+    processed_starts = 0
+
+    trie: dict = {}
+    terminal = object()
+    for wanted in supported:
+        node = trie
+        for token in wanted:
+            node = node.setdefault(token, {})
+        node.setdefault(terminal, []).append(wanted)
+
+    exhausted = False
+    for entry, unit in (units if supported else []):
+        matched: set[tuple[str, ...]] = set()
+        for start in range(len(unit)):
+            if processed_starts >= start_budget:
+                exhausted = True
+                break
+            processed_starts += 1
+            node = trie
+            for token in unit[start:start + MAX_COMPOUND_TERM_TOKENS]:
+                child = node.get(token)
+                if child is None:
+                    break
+                node = child
+                matched.update(node.get(terminal, ()))
+        for wanted in matched:
+            matches[wanted].append(entry)
+        if exhausted:
+            break
+    return matches, processed_starts, total_starts
+
+
 def _matching_locations(entry: dict, scope: tuple[str, ...]) -> list[dict]:
     return [
         location for location in entry.get("locations", [])
@@ -110,9 +157,6 @@ class EvidenceIndex:
             if len(wanted) <= MAX_COMPOUND_TERM_TOKENS
         }
         self._unsupported_compounds = requested - supported
-        self._compound_matches: dict[tuple[str, ...], list[dict]] = {
-            wanted: [] for wanted in supported
-        }
 
         units = []
         for entry in self.identifier_section["items"]:
@@ -120,38 +164,9 @@ class EvidenceIndex:
             if not isinstance(unit, list):
                 unit = tokenize_identifier(entry["name"])
             units.append((entry, unit))
-        total_starts = sum(len(unit) for _, unit in units) if supported else 0
-        processed_starts = 0
-
-        trie: dict = {}
-        terminal = object()
-        for wanted in supported:
-            node = trie
-            for token in wanted:
-                node = node.setdefault(token, {})
-            node.setdefault(terminal, []).append(wanted)
-
-        exhausted = False
-        for entry, unit in (units if supported else []):
-            matched: set[tuple[str, ...]] = set()
-            for start in range(len(unit)):
-                if processed_starts >= compound_start_budget:
-                    exhausted = True
-                    break
-                processed_starts += 1
-                node = trie
-                for token in unit[
-                    start:start + MAX_COMPOUND_TERM_TOKENS
-                ]:
-                    child = node.get(token)
-                    if child is None:
-                        break
-                    node = child
-                    matched.update(node.get(terminal, ()))
-            for wanted in matched:
-                self._compound_matches[wanted].append(entry)
-            if exhausted:
-                break
+        self._compound_matches, processed_starts, total_starts = (
+            _match_compounds(units, supported, compound_start_budget)
+        )
 
         work_reasons = []
         if processed_starts < total_starts:
