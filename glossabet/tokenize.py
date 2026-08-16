@@ -244,3 +244,29 @@ def doc_words(text: str) -> list[str]:
         if len(word) >= MIN_DOC_WORD_LEN and word not in DOC_STOPWORDS:
             words.append(word)
     return words
+
+
+STRUCTURED_IDENTIFIER_STYLES = frozenset({
+    "snake_case",
+    "camelCase",
+    "PascalCase",
+    "UPPER_SNAKE",
+})
+
+
+def identifier_style(name: str) -> str:
+    """Classify one identifier spelling's casing convention.
+
+    Returns a style from ``STRUCTURED_IDENTIFIER_STYLES`` when the spelling
+    carries internal word structure, otherwise ``upper`` or ``flat``.
+    """
+    core = name.strip("_")
+    if "_" in core:
+        return "UPPER_SNAKE" if core.isupper() else "snake_case"
+    if core.isupper():
+        return "upper"
+    if core[:1].isupper():
+        return "PascalCase" if any(c.islower() for c in core) else "upper"
+    if any(c.isupper() for c in core):
+        return "camelCase"
+    return "flat"

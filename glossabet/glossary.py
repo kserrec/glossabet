@@ -24,7 +24,11 @@ from glossabet.artifacts import (
     repo_root,
     write_artifact,
 )
-from glossabet.display import contains_terminal_control, escape_terminal_text
+from glossabet.display import (
+    contains_terminal_control,
+    escape_terminal_text,
+    print_error,
+)
 
 GLOSSARY_SCHEMA_VERSION = 1
 GLOSSARY_FILE = "glossary.json"
@@ -572,10 +576,7 @@ def require_glossary(root: Path, missing: str) -> dict | None:
     try:
         glossary = load_glossary(root)
     except GlossaryError as exc:
-        print(
-            "glossabet: " + escape_terminal_text(str(exc)),
-            file=sys.stderr,
-        )
+        print_error(exc)
         return None
     if glossary is None:
         safe_missing = escape_terminal_text(missing)
@@ -595,10 +596,7 @@ def show_command(path_arg: str) -> int:
     try:
         glossary = load_glossary(root)
     except GlossaryError as exc:
-        print(
-            "glossabet: " + escape_terminal_text(str(exc)),
-            file=sys.stderr,
-        )
+        print_error(exc)
         return 1
     if glossary is None:
         print(
@@ -689,10 +687,7 @@ def save_command(path_arg: str) -> int:
     try:
         path = save_glossary(root, glossary)
     except (GlossaryError, ArtifactError) as exc:
-        print(
-            "glossabet: " + escape_terminal_text(str(exc)),
-            file=sys.stderr,
-        )
+        print_error(exc)
         return 1
     print("saved glossary: " + escape_terminal_text(str(path)))
     return 0

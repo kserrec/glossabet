@@ -19,7 +19,7 @@ from importlib import resources
 from pathlib import Path
 
 from glossabet.cli import EXIT_OK, EXIT_USER_ERROR
-from glossabet.display import escape_terminal_text
+from glossabet.display import escape_terminal_text, print_error
 
 _DESTINATIONS = {
     "codex": Path(".agents") / "skills" / "glossabet",
@@ -140,10 +140,7 @@ def install_command(
     try:
         path, outcome = install_skill(destination, force=force)
     except InstallError as exc:
-        print(
-            "glossabet: " + escape_terminal_text(str(exc)),
-            file=sys.stderr,
-        )
+        print_error(exc)
         return EXIT_USER_ERROR
 
     verbs = {

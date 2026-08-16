@@ -18,8 +18,10 @@ from glossabet.coverage import (
     coverage_reasons,
 )
 from glossabet.tokenize import (
+    STRUCTURED_IDENTIFIER_STYLES,
     TOKEN_ORIGIN_DOMAIN,
     TOKEN_ORIGIN_LANGUAGE,
+    identifier_style,
     tokenize_identifier,
 )
 
@@ -43,27 +45,6 @@ MODULE_CONTEXT_SAMPLE = 5
 MODULE_CONTEXT_ANALYSIS_CAP = 30
 REGISTER_AFFIX_CAP = 8
 LAYER_CAP = 10
-REGISTER_STYLED_IDENTIFIERS = frozenset({
-    "snake_case",
-    "camelCase",
-    "PascalCase",
-    "UPPER_SNAKE",
-})
-
-
-def _classify_style(name: str) -> str:
-    core = name.strip("_")
-    if "_" in core:
-        return "UPPER_SNAKE" if core.isupper() else "snake_case"
-    if core.isupper():
-        return "upper"
-    if core[:1].isupper():
-        return "PascalCase" if any(c.islower() for c in core) else "upper"
-    if any(c.isupper() for c in core):
-        return "camelCase"
-    return "flat"
-
-
 def _register(
     identifier_counts: Counter,
     doc_term_counts: Counter,
@@ -94,8 +75,8 @@ def _register(
             excluded_by_reason["no_lexical_tokens"] += 1
             continue
 
-        style = _classify_style(name)
-        if style in REGISTER_STYLED_IDENTIFIERS and len(tokens) >= 2:
+        style = identifier_style(name)
+        if style in STRUCTURED_IDENTIFIER_STYLES and len(tokens) >= 2:
             # These spellings carry code structure in the spelling itself;
             # a multi-token snake/camel/Pascal spelling cannot be ordinary
             # prose. A one-token capitalized or uppercase word remains flat

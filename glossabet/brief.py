@@ -7,7 +7,7 @@ import json
 import sys
 
 from glossabet.artifacts import ArtifactError, repo_root
-from glossabet.display import escape_terminal_text
+from glossabet.display import escape_terminal_text, print_error
 from glossabet.glossary import (
     GLOSSARY_SCHEMA_VERSION,
     GlossaryError,
@@ -241,7 +241,7 @@ def brief_command(path_arg: str) -> int:
     try:
         glossary = load_glossary(root)
     except GlossaryError as exc:
-        print("glossabet: " + escape_terminal_text(str(exc)), file=sys.stderr)
+        print_error(exc)
         return 1
     if glossary is None:
         return 0

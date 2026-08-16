@@ -19,7 +19,7 @@ from pathlib import Path
 
 from glossabet.artifacts import repo_root
 from glossabet.brief import build_managed_brief, glossary_sha256
-from glossabet.display import escape_terminal_text
+from glossabet.display import escape_terminal_text, print_error
 from glossabet.glossary import require_glossary
 
 
@@ -410,7 +410,7 @@ def sync_context_command(path_arg: str, agent: str, *, force: bool = False) -> i
     try:
         path, outcome = sync_context(root, glossary, agent, force=force)
     except ContextSyncError as exc:
-        print("glossabet: " + escape_terminal_text(str(exc)), file=sys.stderr)
+        print_error(exc)
         return 1
     verbs = {
         "created": "Created",

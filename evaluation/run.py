@@ -44,8 +44,8 @@ from glossabet.reconcile import (  # noqa: E402
     VALIDATION_SCHEMA_VERSION,
     build_validation,
 )
-from glossabet.terminology import (  # noqa: E402
-    REGISTER_STYLED_IDENTIFIERS,
+from glossabet.tokenize import (  # noqa: E402
+    STRUCTURED_IDENTIFIER_STYLES,
 )
 
 EVALUATION_SCHEMA_VERSION = 6
@@ -518,7 +518,7 @@ def _register_score(evidence: dict, expectation: object) -> dict:
         raise EvaluationError("register expectations must be an object")
     expected_style = expectation.get("dominant_style")
     expected_multi_word = expectation.get("predominantly_multi_word")
-    if expected_style not in REGISTER_STYLED_IDENTIFIERS:
+    if expected_style not in STRUCTURED_IDENTIFIER_STYLES:
         raise EvaluationError(
             "register dominant_style must name a structurally styled form"
         )
