@@ -479,3 +479,38 @@ def test_drift_without_glossary_is_user_error(tmp_path, capsys):
     (tmp_path / "a.py").write_text("x_y = 1\n")
     assert main(["drift", str(tmp_path)]) == 1
     assert "no glossary" in capsys.readouterr().err
+
+
+def test_scoped_zero_from_a_clipped_location_sample_is_confessed(tmp_path):
+    # Five lib/ files dominate the token's 5-location sample; six auth/ uses
+    # of the discouraged alias are invisible to the scoped count. The check
+    # must report itself suppressed, never complete-and-clean.
+    for index in range(5):
+        (tmp_path / f"lib{index}.py").write_text(
+            ("handle_widget = 1\n") * (100 - index)
+        )
+    auth = tmp_path / "auth"
+    auth.mkdir()
+    for index in range(6):
+        (auth / f"a{index}.py").write_text("handle_account = 1\n")
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": "auth-account",
+                "term": "Account",
+                "definition": "The authenticated principal.",
+                "status": "canonical",
+                "scope": {"path_prefixes": ["auth"]},
+                "aliases": [{"term": "handle", "status": "discouraged"}],
+            }
+        ],
+    }
+    evidence = build_evidence(tmp_path)
+    drift = build_drift(evidence, glossary)
+
+    section = drift["watched_terms_in_use"]
+    assert section["items"] == []
+    ledger = section["coverage"]
+    assert ledger["complete"] is False
+    assert any("location sample" in reason for reason in ledger["reasons"])

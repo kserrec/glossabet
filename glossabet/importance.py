@@ -178,11 +178,18 @@ def build_naming_candidates(imports_section: dict, modules: list[dict],
             f"{untagged_tokens_excluded} untagged vocabulary token(s) "
             "excluded from the domain-only term naming candidate pool"
         )
+    module_input_reasons = []
+    if imports_section.get("edges_truncated"):
+        module_input_reasons.append(
+            f"{imports_section['edges_truncated']} import edge(s) beyond the "
+            "edge cap were unavailable to module naming candidates"
+        )
     module_items, module_coverage = _ranked(
         _module_candidates(imports_section, modules, doc_term_counts),
         MODULE_CANDIDATE_CAP,
         key=lambda candidate: (-candidate["score"], candidate["path"]),
         label="module naming",
+        incomplete_reasons=module_input_reasons,
     )
     term_items, term_coverage = _ranked(
         _term_candidates(

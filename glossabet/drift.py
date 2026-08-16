@@ -83,10 +83,33 @@ def _known_in_scope(
     return any(scopes_overlap(scope, owner) for owner in known_scopes.get(token, []))
 
 
-def _parallel_terms(evidence: dict, canonical: dict,
-                    known_scopes: dict, matcher: EvidenceIndex) -> list[dict]:
+def _sampled_to_zero(occurrence: dict) -> bool:
+    """Whether a zero count reflects a clipped location sample, not absence.
+
+    Scoped counts are summed over an entry's retained location sample; when
+    that sample was truncated, zero proves nothing and the check must be
+    reported as suppressed rather than silently passing as complete.
+    """
+    return occurrence["count"] == 0 and occurrence.get(
+        "locations_truncated", False
+    )
+
+
+def _suppressed_reason(suppressed: int, name: str) -> list[str]:
+    if not suppressed:
+        return []
+    return [
+        f"{suppressed} {name} check(s) suppressed because scoped occurrence "
+        "evidence retains only a location sample"
+    ]
+
+
+def _parallel_terms(
+    evidence: dict, canonical: dict, known_scopes: dict, matcher: EvidenceIndex
+) -> tuple[list[dict], list[str]]:
     """New prominent terms that behave like an existing canonical term."""
     findings: list[dict] = []
+    suppressed = 0
     for item in evidence["terminology"]["synonym_candidates"]["items"]:
         a_canon = item["a"] in canonical
         b_canon = item["b"] in canonical
@@ -103,6 +126,10 @@ def _parallel_terms(evidence: dict, canonical: dict,
             )
             new_occurrence = matcher.code_term_occurrence(new_term, scope)
             if not canonical_occurrence["count"] or not new_occurrence["count"]:
+                if _sampled_to_zero(canonical_occurrence) or _sampled_to_zero(
+                    new_occurrence
+                ):
+                    suppressed += 1
                 continue
             similarity = item["similarity"]
             signal_strength = (
@@ -131,17 +158,20 @@ def _parallel_terms(evidence: dict, canonical: dict,
     findings.sort(key=lambda f: (
         -f["evidence"]["similarity"], f["new_term"], f["concept_id"]
     ))
-    return findings
+    return findings, _suppressed_reason(suppressed, "parallel-term")
 
 
 def _watched_in_use(
     watched: list[dict], matcher: EvidenceIndex
-) -> list[dict]:
+) -> tuple[list[dict], list[str]]:
     """Discouraged or deprecated terms still present in the code."""
     findings: list[dict] = []
+    suppressed = 0
     for entry in watched:
         occurrence = matcher.code_term_occurrence(entry["term"], entry["scope"])
         if occurrence["count"] == 0:
+            if _sampled_to_zero(occurrence):
+                suppressed += 1
             continue
         count = occurrence["count"]
         quantity = f"at least {count}" if not occurrence["count_complete"] else str(count)
@@ -159,7 +189,7 @@ def _watched_in_use(
             ),
         })
     findings.sort(key=lambda f: (-f["evidence"]["count"], f["term"]))
-    return findings
+    return findings, _suppressed_reason(suppressed, "watched-term")
 
 
 def _canonical_fading(
@@ -376,18 +406,24 @@ def build_drift(
         for reason in coverage_reasons(ledger, f"matching.{name}")
     ]
 
+    parallel_findings, parallel_suppressed = _parallel_terms(
+        evidence, canonical, known_scopes, matcher
+    )
+    watched_findings, watched_suppressed = _watched_in_use(watched, matcher)
     sections = {}
     for name, findings, reasons in (
         (
             "parallel_terms",
-            _parallel_terms(evidence, canonical, known_scopes, matcher),
+            parallel_findings,
             corpus_reasons
-            + _terminology_reasons(evidence, "synonym_candidates"),
+            + _terminology_reasons(evidence, "synonym_candidates")
+            + parallel_suppressed,
         ),
         (
             "watched_terms_in_use",
-            _watched_in_use(watched, matcher),
-            corpus_reasons + vocabulary_reasons + matching_reasons,
+            watched_findings,
+            corpus_reasons + vocabulary_reasons + matching_reasons
+            + watched_suppressed,
         ),
         (
             "canonical_fading",

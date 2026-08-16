@@ -478,3 +478,31 @@ def test_escaping_root_workspace_manifest_symlink_is_not_read(tmp_path):
     evidence = build_evidence(repo)
     assert evidence["monorepo"]["detected"] is False
     assert "Cargo.toml" in evidence["skipped"]["symlinks_escaping_repo"]
+
+
+def test_unreadable_and_binary_sources_are_confessed_not_silent(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "core.py").write_text("core_service = 1\n")
+    # ASCII text encoded UTF-16LE is full of NUL bytes: binary despite .md.
+    (tmp_path / "notes.md").write_bytes("utf sixteen words\n".encode("utf-16-le"))
+    (tmp_path / "broken.py").write_bytes(b"\0\0\0\0binary blob")
+
+    evidence = build_evidence(tmp_path)
+
+    budget = evidence["skipped"]["corpus_budget"]
+    assert budget["complete"] is False
+    assert budget["production_complete"] is False
+    reasons = {
+        item["path"]: item["reason"] for item in budget["skipped"]["sample"]
+    }
+    assert reasons == {
+        "broken.py": "binary-content",
+        "notes.md": "binary-content",
+    }
+    # Inventory stays consistent with totals on both sides.
+    assert evidence["totals"]["doc_files"] == len(evidence["files"]["docs"])
+    docs_by_path = {d["path"]: d for d in evidence["files"]["docs"]}
+    assert docs_by_path["notes.md"]["words"] == 0
+    # The unreadable code file contributed no identifiers.
+    names = {e["name"] for e in evidence["vocabulary"]["identifiers"]["items"]}
+    assert names == {"core_service"}

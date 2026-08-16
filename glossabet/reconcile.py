@@ -303,14 +303,19 @@ def _structure_findings(
     )
 
 
-def _concept_findings(canonical: list[dict], vocab: dict,
-                      evidence: dict,
-                      matcher: EvidenceIndex) -> tuple[list, list, list]:
+def _concept_findings(
+    canonical: list[dict],
+    vocab: dict,
+    evidence: dict,
+    matcher: EvidenceIndex,
+) -> tuple[list, list, list, list[str]]:
     """Direction B: glossary -> evidence.
 
-    Returns (orphaned concepts, unresolved bindings, fragmentation).
+    Returns (orphaned concepts, unresolved bindings, fragmentation,
+    fragmentation incompleteness reasons).
     """
     orphaned, unresolved, fragmented = [], [], []
+    fragmentation_suppressed = 0
     for concept in canonical:
         scope = concept_scope(concept)
         term_tokens, _ = vocab[concept["id"]]
@@ -376,6 +381,12 @@ def _concept_findings(canonical: list[dict], vocab: dict,
                     ),
                 })
         spread = occurrence["modules"]
+        # A scoped or compound occurrence counts modules over the retained
+        # location sample. An undercounted spread that still clears the
+        # threshold is a valid lower bound; one below it proves nothing.
+        modules_sampled = (
+            scope is not None or occurrence["match_kind"] == "lexical-unit"
+        ) and occurrence["locations_truncated"]
         if spread >= FRAGMENTATION_MIN_MODULES:
             fragmented.append({
                 "kind": "fragmentation",
@@ -388,12 +399,20 @@ def _concept_findings(canonical: list[dict], vocab: dict,
                     "legitimately cross-cutting or problematically scattered"
                 ),
             })
+        elif modules_sampled:
+            fragmentation_suppressed += 1
     orphaned.sort(key=lambda f: f["concept_id"])
     unresolved.sort(key=lambda f: (f["concept_id"], f["ref"]))
     fragmented.sort(
         key=lambda f: (-f["evidence"]["module_spread"], f["concept_id"])
     )
-    return orphaned, unresolved, fragmented
+    fragmentation_reasons = []
+    if fragmentation_suppressed:
+        fragmentation_reasons.append(
+            f"{fragmentation_suppressed} fragmentation check(s) suppressed "
+            "because scoped occurrence evidence retains only a location sample"
+        )
+    return orphaned, unresolved, fragmented, fragmentation_reasons
 
 
 def _capped(items: list, name: str, incomplete_reasons: list[str]) -> dict:
@@ -500,7 +519,7 @@ def build_validation(
         boundary = _mark_incomplete(boundary, scoped_structure_reason)
         overloaded = _mark_incomplete(overloaded, scoped_structure_reason)
 
-    orphaned, unresolved, fragmented = _concept_findings(
+    orphaned, unresolved, fragmented, fragmentation_reasons = _concept_findings(
         canonical, vocab, evidence, matcher
     )
     drift = build_drift(
@@ -581,7 +600,8 @@ def build_validation(
         "fragmentation": _capped(
             fragmented,
             "fragmentation",
-            production_reasons + code_vocabulary_reasons + matching_reasons,
+            production_reasons + code_vocabulary_reasons + matching_reasons
+            + fragmentation_reasons,
         ),
         "vocabulary_drift": drift["parallel_terms"],
         "concept_collision": drift["canonical_overloaded"],

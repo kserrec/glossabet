@@ -249,3 +249,28 @@ def test_same_repo_include_resolves_internal(tmp_path):
         (e["from"], e["to"]) for e in imports["internal_edges"]
     }
     assert "helpers" not in {e["name"] for e in imports["external_top"]}
+
+
+def test_module_naming_coverage_reports_truncated_import_edges():
+    from collections import Counter
+
+    from glossabet.importance import build_naming_candidates
+
+    imports_section = {
+        "internal_edges": [
+            {"from": "a", "to": "b", "count": 2},
+        ],
+        "edges_truncated": 3,
+    }
+    naming = build_naming_candidates(
+        imports_section,
+        [{"path": "a", "code_files": 1}, {"path": "b", "code_files": 1}],
+        Counter(),
+        {},
+        {},
+        Counter(),
+    )
+
+    ledger = naming["coverage"]["modules"]
+    assert ledger["complete"] is False
+    assert any("edge cap" in reason for reason in ledger["reasons"])

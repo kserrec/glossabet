@@ -338,6 +338,7 @@ def serialize_agent_context(context: dict) -> str:
         context,
         separators=(",", ":"),
         sort_keys=True,
+        allow_nan=False,
     ) + "\n"
     size = len(serialized.encode("utf-8"))
     if size > MAX_AGENT_CONTEXT_BYTES:

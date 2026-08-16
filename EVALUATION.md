@@ -329,7 +329,12 @@ Reviewer verification follows the same two-mode contract: the default checks
 the stored packet stays blinded and the recorded judgments, comparisons, and
 usefulness threshold are internally consistent; the release gate adds
 `--current` to require the packet and digests to match the current evaluation
-results, manifest, and reviewer inputs.
+results, manifest, and reviewer inputs. One boundary is inherent to the
+split: the primary labels inside the recorded comparisons come from the
+evaluation manifest, so genuine mode verifies the agreement arithmetic
+against the artifact's own recorded labels while only the release gate can
+verify those labels against the manifest itself. The usefulness threshold —
+the lane's release metric — is fully verified in both modes.
 
 The committed result records Codex CLI 0.147.0, one bounded packet-only
 command, and the configured-default model because the CLI did not report a

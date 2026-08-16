@@ -134,13 +134,14 @@ def _location_sample(per_file: Counter, cap: int) -> tuple[list[dict], bool]:
     )
 
 
-def _read_source(path: Path) -> tuple[bytes, str] | None:
+def _read_source(path: Path) -> tuple[bytes, str] | str:
+    """Content and digest, or the corpus-budget skip reason when unreadable."""
     try:
         content = path.read_bytes()
     except OSError:
-        return None
+        return "unreadable"
     if b"\0" in content[:1024]:  # binary despite its extension
-        return None
+        return "binary-content"
     return content, hashlib.sha256(content).hexdigest()
 
 
@@ -264,10 +265,20 @@ def build_evidence(root: Path, limits: Limits = Limits(),
     analyzed_production_doc_files = 0
     code_bytes = 0
 
-    def fetch_entry(rel: str, kind: str, extractor) -> dict | None:
+    def fetch_entry(rel: str, kind: str, role: str, extractor) -> dict | None:
         nonlocal reused, extracted
         source = _read_source(root / rel)
-        if source is None:
+        if isinstance(source, str):
+            # An inventoried file the build could not read is an omission
+            # the artifact must confess: silence here would let capped or
+            # broken evidence read as complete.
+            try:
+                size = os.path.getsize(root / rel)
+            except OSError:
+                size = 0
+            walk.corpus_budget.skip_source(
+                rel, size, source, production=role == "production"
+            )
             return None
         content, content_sha256 = source
         entry = entry_if_valid(cached, rel, kind, content_sha256)
@@ -287,7 +298,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
 
     for rel, language, role in walk.code_files:
         entry = fetch_entry(
-            rel, "code", lambda text: _extract_code_entry(text, language)
+            rel, "code", role, lambda text: _extract_code_entry(text, language)
         )
         if entry is None:
             continue
@@ -309,8 +320,11 @@ def build_evidence(root: Path, limits: Limits = Limits(),
     doc_entries = []
     doc_word_total = 0
     for rel, role in walk.doc_files:
-        entry = fetch_entry(rel, "doc", _extract_doc_entry)
+        entry = fetch_entry(rel, "doc", role, _extract_doc_entry)
         if entry is None:
+            # Keep the inventory consistent with totals: the file exists and
+            # is counted; the budget skip above names why no words were read.
+            doc_entries.append({"path": rel, "role": role, "words": 0})
             continue
         doc_word_total += entry["word_total"]
         if role == "production":

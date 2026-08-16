@@ -121,7 +121,12 @@ def replace_file_atomic(
 
 def write_json_atomic(path: Path, payload: dict, *, indent: int = 2) -> None:
     """Write deterministic JSON atomically, replacing ``path`` at commit."""
-    serialized = json.dumps(payload, indent=indent, sort_keys=True) + "\n"
+    # allow_nan=False fails closed: a NaN would otherwise serialize as the
+    # bare non-JSON token ``NaN`` and every strict consumer would reject
+    # the artifact.
+    serialized = json.dumps(
+        payload, indent=indent, sort_keys=True, allow_nan=False
+    ) + "\n"
     path.parent.mkdir(parents=True, exist_ok=True)
     replace_file_atomic(path, serialized.encode("utf-8"))
 

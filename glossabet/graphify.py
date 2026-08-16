@@ -11,6 +11,7 @@ support (PLAN principle 3). Graphify's artifacts are read, never written.
 from __future__ import annotations
 
 import json
+import math
 import unicodedata
 from collections import Counter
 from pathlib import Path, PurePosixPath
@@ -286,14 +287,20 @@ def _groups_from_communities(
             if str(member) in nodes
         ]
         cohesion = community.get("cohesion")
+        # json.loads accepts bare NaN/Infinity and bool passes isinstance
+        # (int); neither is a usable cohesion and NaN would poison scores
+        # and emit non-conformant JSON downstream.
+        usable_cohesion = (
+            isinstance(cohesion, (int, float))
+            and not isinstance(cohesion, bool)
+            and math.isfinite(cohesion)
+        )
         groups[group_id] = {
             "label": str(
                 _first_value(community, ("label", "name"))
                 or f"community {group_id}"
             ),
-            "cohesion": (
-                cohesion if isinstance(cohesion, (int, float)) else None
-            ),
+            "cohesion": cohesion if usable_cohesion else None,
             "members": members,
         }
     return groups
