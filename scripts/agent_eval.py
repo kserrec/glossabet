@@ -196,7 +196,6 @@ def _plugin_wheel() -> Path:
 
 
 def _artifact_snapshot() -> dict:
-    plugin_skill = PLUGIN / "skills" / "glossabet" / "SKILL.md"
     runner = (
         PLUGIN / "skills" / "glossabet" / "scripts" / "run_glossabet.py"
     )
@@ -1255,7 +1254,7 @@ def _evaluate_scenario(
             observed["error_sha256"] = hashlib.sha256(
                 command["output"].encode()
             ).hexdigest()
-        elif inspect_commands:
+        else:
             command = inspect_commands[0]
             if command.get("exit_code") != 0:
                 failures.append("valid scenario inspect failed")

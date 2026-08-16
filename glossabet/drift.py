@@ -28,12 +28,7 @@ from glossabet.glossary import (
     scope_evidence,
     scopes_overlap,
 )
-from glossabet.matching import (
-    EvidenceIndex,
-    code_term_occurrence,
-    doc_term_occurrence,
-    production_corpus_complete,
-)
+from glossabet.matching import EvidenceIndex, production_corpus_complete
 from glossabet.terminology import OVERLOAD_MIN_DISPERSION, OVERLOAD_MIN_MODULES
 from glossabet.tokenize import tokenize_term
 
@@ -103,12 +98,10 @@ def _parallel_terms(evidence: dict, canonical: dict,
             scope = concept_scope(concept)
             if _known_in_scope(new_term, scope, known_scopes):
                 continue
-            canonical_occurrence = code_term_occurrence(
-                evidence, concept["term"], scope, index=matcher
+            canonical_occurrence = matcher.code_term_occurrence(
+                concept["term"], scope
             )
-            new_occurrence = code_term_occurrence(
-                evidence, new_term, scope, index=matcher
-            )
+            new_occurrence = matcher.code_term_occurrence(new_term, scope)
             if not canonical_occurrence["count"] or not new_occurrence["count"]:
                 continue
             similarity = item["similarity"]
@@ -142,14 +135,12 @@ def _parallel_terms(evidence: dict, canonical: dict,
 
 
 def _watched_in_use(
-    watched: list[dict], evidence: dict, matcher: EvidenceIndex
+    watched: list[dict], matcher: EvidenceIndex
 ) -> list[dict]:
     """Discouraged or deprecated terms still present in the code."""
     findings: list[dict] = []
     for entry in watched:
-        occurrence = code_term_occurrence(
-            evidence, entry["term"], entry["scope"], index=matcher
-        )
+        occurrence = matcher.code_term_occurrence(entry["term"], entry["scope"])
         if occurrence["count"] == 0:
             continue
         count = occurrence["count"]
@@ -172,7 +163,7 @@ def _watched_in_use(
 
 
 def _canonical_fading(
-    glossary: dict, evidence: dict, matcher: EvidenceIndex
+    glossary: dict, matcher: EvidenceIndex
 ) -> list[dict]:
     """Canonical terms absent from code or barely hanging on."""
     findings: list[dict] = []
@@ -183,17 +174,13 @@ def _canonical_fading(
         if not tokens:
             continue
         scope = concept_scope(concept)
-        occurrence = code_term_occurrence(
-            evidence, concept["term"], scope, index=matcher
-        )
+        occurrence = matcher.code_term_occurrence(concept["term"], scope)
         if not occurrence["count_complete"]:
             continue  # capped evidence cannot prove absence or low use
         count = occurrence["count"]
         # The current document index proves only one-token mentions. Separate
         # prose words are not treated as a compound occurrence.
-        doc_occurrence = doc_term_occurrence(
-            evidence, concept["term"], scope, index=matcher
-        )
+        doc_occurrence = matcher.doc_term_occurrence(concept["term"], scope)
         doc_mentions = doc_occurrence["count"] if len(tokens) == 1 else None
         if count == 0:
             signal_strength, state = "strong", "absent from code"
@@ -225,6 +212,24 @@ def _canonical_fading(
     return findings
 
 
+def _overload_details_complete(item: dict) -> bool:
+    """Whether the retained module/context details cover the whole candidate.
+
+    A capped display cannot be reinterpreted as an exhaustive scoped sample;
+    the scoped-overload check and its omission report must agree on this.
+    """
+    module_coverage = item.get("coverage", {}).get("modules", {})
+    return (
+        module_coverage.get("complete", True)
+        and all(
+            module.get("coverage", {}).get("contexts", {}).get(
+                "complete", True
+            )
+            for module in item["modules"]
+        )
+    )
+
+
 def _canonical_overloaded(evidence: dict, canonical: dict) -> list[dict]:
     """Canonical terms used across contexts disjoint enough to collide."""
     findings: list[dict] = []
@@ -232,15 +237,7 @@ def _canonical_overloaded(evidence: dict, canonical: dict) -> list[dict]:
         if item["term"] not in canonical:
             continue
         module_coverage = item.get("coverage", {}).get("modules", {})
-        scope_details_complete = (
-            module_coverage.get("complete", True)
-            and all(
-                module.get("coverage", {}).get("contexts", {}).get(
-                    "complete", True
-                )
-                for module in item["modules"]
-            )
-        )
+        scope_details_complete = _overload_details_complete(item)
         for concept in canonical[item["term"]]:
             scope = concept_scope(concept)
             modules = [
@@ -339,17 +336,7 @@ def _terminology_reasons(evidence: dict, section: str) -> list[str]:
 def _scoped_overload_reasons(evidence: dict, canonical: dict) -> list[str]:
     omitted = 0
     for item in evidence["terminology"]["overload_candidates"]["items"]:
-        module_coverage = item.get("coverage", {}).get("modules", {})
-        details_complete = (
-            module_coverage.get("complete", True)
-            and all(
-                module.get("coverage", {}).get("contexts", {}).get(
-                    "complete", True
-                )
-                for module in item["modules"]
-            )
-        )
-        if details_complete:
+        if _overload_details_complete(item):
             continue
         omitted += sum(
             concept_scope(concept) is not None
@@ -399,12 +386,12 @@ def build_drift(
         ),
         (
             "watched_terms_in_use",
-            _watched_in_use(watched, evidence, matcher),
+            _watched_in_use(watched, matcher),
             corpus_reasons + vocabulary_reasons + matching_reasons,
         ),
         (
             "canonical_fading",
-            _canonical_fading(glossary, evidence, matcher),
+            _canonical_fading(glossary, matcher),
             corpus_reasons + vocabulary_reasons + matching_reasons,
         ),
         (

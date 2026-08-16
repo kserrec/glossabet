@@ -21,7 +21,6 @@ from pathlib import Path
 from glossabet.cli import EXIT_OK, EXIT_USER_ERROR
 from glossabet.display import escape_terminal_text
 
-AGENTS = ("codex", "claude")
 _DESTINATIONS = {
     "codex": Path(".agents") / "skills" / "glossabet",
     "claude": Path(".claude") / "skills" / "glossabet",

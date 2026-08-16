@@ -33,8 +33,6 @@ from glossabet.glossary import (
 )
 from glossabet.matching import (
     EvidenceIndex,
-    code_identifier_occurrence,
-    code_term_occurrence,
     production_corpus_complete,
     repository_corpus_complete,
 )
@@ -67,27 +65,6 @@ def _concept_vocab(concept: dict) -> tuple[set[str], set[str]]:
     return term_tokens, binding_tokens
 
 
-def _match_strength(group: dict, term_tokens: set[str],
-                    binding_tokens: set[str]) -> int:
-    label_tokens = _tokens(group["label"])
-    raw_member_tokens = group.get("member_tokens")
-    if isinstance(raw_member_tokens, list):
-        member_tokens = {
-            token for token in raw_member_tokens if isinstance(token, str)
-        }
-    else:
-        # Compatibility for evidence produced before RepositoryEvidence v7.
-        # Validation marks this fallback partial; it never treats the display
-        # sample as complete structural coverage.
-        member_tokens = set()
-        for member in group.get("members_sample", []):
-            member_tokens |= _tokens(member)
-    return _match_strength_from_tokens(
-        label_tokens, label_tokens | member_tokens,
-        term_tokens, binding_tokens,
-    )
-
-
 def _match_strength_from_tokens(
     label_tokens: set[str],
     combined: set[str],
@@ -113,12 +90,8 @@ def _resolve_bindings(
     for binding in concept.get("bindings", []):
         kind, _, value = binding["ref"].partition(":")
         if kind == "symbol":
-            scoped = code_identifier_occurrence(
-                evidence, value, scope, index=matcher
-            )
-            global_occurrence = code_identifier_occurrence(
-                evidence, value, index=matcher
-            )
+            scoped = matcher.code_identifier_occurrence(value, scope)
+            global_occurrence = matcher.code_identifier_occurrence(value)
             if scoped["count"]:
                 status = "resolved"
             elif not scoped["count_complete"]:
@@ -341,9 +314,7 @@ def _concept_findings(canonical: list[dict], vocab: dict,
     for concept in canonical:
         scope = concept_scope(concept)
         term_tokens, _ = vocab[concept["id"]]
-        occurrence = code_term_occurrence(
-            evidence, concept["term"], scope, index=matcher
-        )
+        occurrence = matcher.code_term_occurrence(concept["term"], scope)
         bindings = _resolve_bindings(concept, evidence, matcher)
         resolved = [b for b in bindings if b["status"] == "resolved"]
         uncertain = [b for b in bindings if b["status"] == "uncertain"]

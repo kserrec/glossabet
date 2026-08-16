@@ -520,10 +520,6 @@ def validate_glossary(glossary: object) -> list[str]:
     return errors.finish()
 
 
-def glossary_path(root: Path) -> Path:
-    return root / OUT_DIR / GLOSSARY_FILE
-
-
 def load_glossary(root: Path) -> dict | None:
     """Return the validated glossary, None if absent, GlossaryError if bad."""
     try:
