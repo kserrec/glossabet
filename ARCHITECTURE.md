@@ -401,22 +401,25 @@ The package is `glossabet/`. Grouped by role:
   and record disagreements separately from deterministic correctness.
 - `scripts/agent_eval.py`, `evaluation/agent-history.json`, and
   `evaluation/agent-results.json` — deterministically bind and smoke the current
-  canonical skill, plugin tree, skill-local runner, and checked-in wheel;
+  canonical skill, plugin tree, session-start hook, skill-local runner, and
+  checked-in wheel;
   retain every authenticated attempt without overwriting earlier raw output;
   and keep safety as a hard gate while reporting stochastic command compliance
-  separately. An authorized full run temporarily installs the actual plugin,
-  exercises 10 plugin scenarios plus one standalone missing-CLI scenario
-  through ephemeral Codex sessions, independently checks
-  contexts/writes/sensitive canaries, and proves exact plugin cleanup. The
-  recorded host is Codex CLI 0.147.0 on Linux.
+  separately. An authorized full run uses three ephemeral Codex sessions: one
+  fresh-session hook probe whose prompt does not name Glossabet, one batch of
+  10 plugin scenarios, and one standalone missing-CLI scenario. It
+  independently checks contexts, writes, sensitive canaries, exact hook bytes,
+  and plugin cleanup. The recorded host is Codex CLI 0.147.0 on Linux.
   `EVALUATION.md` documents methodology, calibration history, dependency
   decisions, limitations, and reproduction.
 
 **Distribution and first use**
-- `plugins/glossabet/` — the local Codex plugin prototype. Its manifest,
-  canonical skill copy, skill-local runner, and nested pure-Python wheel all
-  carry version 0.1.0. The runner imports that exact wheel from the plugin
-  cache and never installs a second command or environment.
+- `plugins/glossabet/` — the local Codex plugin prototype. Its manifest exposes
+  the canonical skill and `hooks/hooks.json`; the hook runs the skill-local
+  runner's bounded `brief .` command at each Codex session-start lifecycle
+  event. The manifest, canonical skill copy, skill-local runner, and nested
+  pure-Python wheel all carry version 0.1.0. The runner imports that exact wheel
+  from the plugin cache and never installs a second command or environment.
 - `scripts/build_plugin.py` — assembles the plugin from one already-built
   wheel and fails if source, manifest, runner, skill, wheel metadata, or
   embedded skill versions differ.
@@ -489,6 +492,16 @@ oversized, or symlinked glossary input exits `1`. Output is deterministic,
 plain text, and at most 4,096 UTF-8 bytes, with a semantic glossary SHA-256,
 Git `{head, dirty}` state, canonical terms, one-line definitions, scopes,
 alias statuses, and explicit projection coverage.
+
+**Plugin `SessionStart` delivery** (`plugins/glossabet/hooks/hooks.json` →
+skill-local `run_glossabet.py brief .`). Codex expands `PLUGIN_ROOT` to the
+installed plugin cache and runs the exact bundled engine at startup, resume,
+clear, and compaction. Plain stdout is additional developer context; the hook
+has no separate repository-write path, uses `-B` to suppress interpreter
+bytecode beside the plugin runner, and inherits `brief`'s 4,096-byte output
+ceiling and empty output when no glossary exists. Codex requires hook trust
+before execution; the authenticated evidence harness uses a one-invocation
+trust bypass only after digest-checking the temporary plugin bytes.
 
 **`save`** (`cli.py` → `glossary.save_command`). Accepts at most 64 MB from
 standard input (reading one additional byte only to detect overflow), parses
@@ -592,12 +605,12 @@ structural validation is partial until an adapter supplies trustworthy paths.
 
 ## Where things stand
 
-`PLAN.md` is the authoritative roadmap. Phases 0–22, Phases 24–27, and Phase
-28.1 are complete; Phase 28.2 is next, and the owner self-testing pause is
-active. Phases 28.2–28.3 finish before any outside maintainer invitation, and
-no Phase 23 work begins until the trusted-alpha gate passes. Package metadata,
-the embedded plugin wheel, source skill, and deterministic artifact record are
-bound together. The installed-agent history retains its procedural failures
-instead of presenting a selected green run. The trusted-alpha evidence gate,
-Phase 23, and explicit external authorization remain before public package or
-plugin publication.
+`PLAN.md` is the authoritative roadmap. Phases 0–22, Phases 24–27, and Phases
+28.1–28.2 are complete; Phase 28.3 is next, and the owner self-testing pause is
+active. Phase 28.3 finishes before any outside maintainer invitation, and no
+Phase 23 work begins until the trusted-alpha gate passes. Package metadata, the
+embedded plugin wheel, source skill, hook, and deterministic artifact record
+are bound together. The installed-agent history retains its procedural
+failures instead of presenting a selected green run. The trusted-alpha
+evidence gate, Phase 23, and explicit external authorization remain before
+public package or plugin publication.

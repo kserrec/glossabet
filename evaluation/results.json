@@ -30,10 +30,10 @@
       "terminology_recall_where_complete": 1.0
     },
     "runtime": {
-      "cold_median_seconds_total": 0.579426,
-      "cold_seconds_per_1000_source_files": 5.853,
-      "warm_median_seconds_total": 0.559351,
-      "warm_seconds_per_1000_source_files": 5.65
+      "cold_median_seconds_total": 0.523601,
+      "cold_seconds_per_1000_source_files": 5.289,
+      "warm_median_seconds_total": 0.537346,
+      "warm_seconds_per_1000_source_files": 5.428
     },
     "source_bytes": 661164,
     "source_files": 99,
@@ -465,21 +465,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.01069,
+        "cold_median": 0.010063,
         "cold_samples": [
-          0.01104,
-          0.009852,
-          0.010811,
-          0.009821,
-          0.01069
+          0.01102,
+          0.010063,
+          0.0099,
+          0.009884,
+          0.010093
         ],
-        "warm_median": 0.020747,
+        "warm_median": 0.019792,
         "warm_samples": [
-          0.024999,
-          0.020747,
-          0.014763,
-          0.018953,
-          0.046157
+          0.024774,
+          0.014283,
+          0.013926,
+          0.019792,
+          0.030181
         ]
       },
       "source": {
@@ -620,21 +620,21 @@
       },
       "review_items": [],
       "runtime_seconds": {
-        "cold_median": 0.028144,
+        "cold_median": 0.026251,
         "cold_samples": [
-          0.028144,
-          0.027552,
-          0.027953,
-          0.028749,
-          0.028711
+          0.02605,
+          0.026251,
+          0.026141,
+          0.027066,
+          0.026464
         ],
-        "warm_median": 0.036101,
+        "warm_median": 0.033514,
         "warm_samples": [
-          0.033938,
-          0.045498,
-          0.044204,
-          0.035462,
-          0.036101
+          0.031885,
+          0.043444,
+          0.037111,
+          0.031928,
+          0.033514
         ]
       },
       "source": {
@@ -903,21 +903,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.365185,
+        "cold_median": 0.324986,
         "cold_samples": [
-          0.402405,
-          0.382809,
-          0.365185,
-          0.353458,
-          0.33818
+          0.422888,
+          0.324986,
+          0.326403,
+          0.308966,
+          0.298122
         ],
-        "warm_median": 0.283566,
+        "warm_median": 0.288498,
         "warm_samples": [
-          0.261031,
-          0.297449,
-          0.283566,
-          0.256056,
-          0.289789
+          0.24737,
+          0.304485,
+          0.307239,
+          0.277247,
+          0.288498
         ]
       },
       "source": {
@@ -1066,21 +1066,21 @@
       },
       "review_items": [],
       "runtime_seconds": {
-        "cold_median": 0.073887,
+        "cold_median": 0.068047,
         "cold_samples": [
-          0.160252,
-          0.074296,
-          0.073887,
-          0.072396,
-          0.07155
+          0.159464,
+          0.06722,
+          0.067066,
+          0.068047,
+          0.071252
         ],
-        "warm_median": 0.076111,
+        "warm_median": 0.079749,
         "warm_samples": [
-          0.071537,
-          0.077601,
-          0.078343,
-          0.073353,
-          0.076111
+          0.079749,
+          0.077449,
+          0.080073,
+          0.080601,
+          0.070444
         ]
       },
       "source": {
@@ -1248,21 +1248,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.075584,
+        "cold_median": 0.070829,
         "cold_samples": [
-          0.169314,
-          0.078021,
-          0.073638,
-          0.075584,
-          0.074495
+          0.161063,
+          0.071054,
+          0.070829,
+          0.070562,
+          0.069969
         ],
-        "warm_median": 0.088602,
+        "warm_median": 0.077749,
         "warm_samples": [
-          0.074281,
-          0.100654,
-          0.112509,
-          0.080311,
-          0.088602
+          0.078153,
+          0.077749,
+          0.079412,
+          0.068906,
+          0.074609
         ]
       },
       "source": {
@@ -1565,21 +1565,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.012531,
+        "cold_median": 0.011272,
         "cold_samples": [
-          0.012123,
-          0.013471,
-          0.011791,
-          0.012531,
-          0.01377
+          0.011413,
+          0.011272,
+          0.011276,
+          0.011244,
+          0.010985
         ],
-        "warm_median": 0.018069,
+        "warm_median": 0.020755,
         "warm_samples": [
-          0.015886,
-          0.015334,
-          0.027835,
-          0.022794,
-          0.018069
+          0.020755,
+          0.024946,
+          0.016197,
+          0.0165,
+          0.022654
         ]
       },
       "source": {
@@ -1749,21 +1749,21 @@
       },
       "review_items": [],
       "runtime_seconds": {
-        "cold_median": 0.013405,
+        "cold_median": 0.012153,
         "cold_samples": [
-          0.012486,
-          0.013405,
-          0.013564,
-          0.012635,
-          0.013672
+          0.011665,
+          0.011954,
+          0.012153,
+          0.012354,
+          0.012196
         ],
-        "warm_median": 0.036155,
+        "warm_median": 0.017289,
         "warm_samples": [
-          0.02698,
-          0.031451,
-          0.036155,
-          0.038131,
-          0.048032
+          0.014543,
+          0.014921,
+          0.026233,
+          0.021721,
+          0.017289
         ]
       },
       "source": {
@@ -1891,7 +1891,7 @@
         "target": 50.0
       },
       {
-        "actual": 5.853,
+        "actual": 5.289,
         "name": "cold_seconds_per_1000_source_files_max",
         "passed": true,
         "target": 10.0
@@ -1950,7 +1950,7 @@
         "term": "cache"
       },
       {
-        "nomination_kind": "deserves a canonical name",
+        "nomination_kind": "deserves disambiguation",
         "term": "config"
       },
       {
@@ -2052,15 +2052,15 @@
         "excluded_by_reason": {
           "language_tagged_flat": 23,
           "no_lexical_tokens": 118,
-          "prose_dominated_flat": 1134
+          "prose_dominated_flat": 1147
         },
-        "excluded_spellings": 1275,
-        "total_spellings": 3740,
+        "excluded_spellings": 1288,
+        "total_spellings": 3816,
         "used_by_reason": {
-          "corroborated_flat": 1145,
-          "structurally_styled": 1320
+          "corroborated_flat": 1149,
+          "structurally_styled": 1379
         },
-        "used_spellings": 2465
+        "used_spellings": 2528
       },
       "dominant_style": "snake_case",
       "multi_word_pct": 100.0,

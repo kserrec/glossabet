@@ -17,7 +17,7 @@ This first alpha is prepared but has not been published to PyPI.
 - Unicode-aware lexical normalization and a reproducible calibration corpus
   with documented limitations and release thresholds.
 - Labelled Graphify structural and truncation fixtures, a blinded
-  second-reviewer lane, and an 11-scenario installed-Codex boundary harness
+  second-reviewer lane, and a 12-scenario installed-Codex boundary harness
   with bounded traces and exact temporary-plugin cleanup.
 - Conservative source-language builtin tagging (currently Python) that retains
   complete lexical evidence while reserving terminology and naming budgets for
@@ -43,6 +43,9 @@ This first alpha is prepared but has not been published to PyPI.
 - A version-coupled Codex plugin prototype carrying the canonical skill and a
   matching dependency-free CLI wheel, plus real install/update/remove smoke
   coverage on Codex CLI 0.147.0 for Linux.
+- A Codex `SessionStart` hook that runs the bundled bounded `brief .` command
+  at startup, resume, clear, and compaction, contributes nothing without a
+  glossary, and keeps all vocabulary changes behind the human-invoked skill.
 - A self-contained payment-service walkthrough, privacy/data-flow statement,
   multi-platform CI, distribution validation, and wheel install/uninstall
   smoke test.
@@ -65,7 +68,7 @@ This first alpha is prepared but has not been published to PyPI.
   strings, with focused regressions for both clean-checkout and cross-platform
   parity. Public-main CI for commit `2be99b6` passed all 15 Python/operating-
   system matrix jobs plus the evidence, build, and distribution-smoke job.
-- The checked-in plugin wheel and canonical skill carry the same Phase 28.1
+- The checked-in plugin wheel and canonical skill carry the same Phase 28.2
   engine as the standalone source tree. Installed-agent evidence now separates
   a deterministic current-artifact/safety gate from stochastic command-choice
   reliability. The append-only Phase 28.1 ledger retains all six authorized
@@ -74,6 +77,14 @@ This first alpha is prepared but has not been published to PyPI.
   aborts. Result schema v4 also derives the standalone-boundary summary from
   its scenario, correcting the unconditional legacy-v3 field without rewriting
   the retained historical result.
+- Installed-agent evidence now archives every new authenticated raw result
+  under a unique immutable path and treats `evaluation/agent-results.json` as
+  a current-result mirror accepted only when its SHA-256 matches retained
+  history and its complete input identity matches the current artifact.
+  Phase 28.2 adds a separate fresh-session hook probe before the existing
+  plugin and isolated missing-CLI host runs. Both authorized 12/12 batches
+  passed on Codex CLI 0.147.0/Linux; the replacement result binds the final
+  metadata-only rebuilt wheel, and both removed all temporary host state.
 
 - Bounded analysis collections now share exact coverage ledgers; terminology,
   naming, Graphify, drift, and validation propagate every known omission.

@@ -11,6 +11,7 @@
   "license": "Apache-2.0",
   "keywords": ["code-quality", "glossary", "terminology"],
   "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
   "interface": {
     "displayName": "Glossabet",
     "shortDescription": "Build a shared vocabulary for a codebase.",

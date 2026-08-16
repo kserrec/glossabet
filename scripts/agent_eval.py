@@ -27,11 +27,30 @@ DEFAULT_RESULTS = ROOT / "evaluation" / "agent-results.json"
 HISTORY_PATH = ROOT / "evaluation" / "agent-history.json"
 RUNS_PATH = ROOT / "evaluation" / "agent-runs"
 PLUGIN = ROOT / "plugins" / "glossabet"
+PLUGIN_HOOK = PLUGIN / "hooks" / "hooks.json"
 CANONICAL_SKILL = ROOT / "skill" / "SKILL.md"
-RESULT_SCHEMA_VERSION = 4
-SUPPORTED_RESULT_SCHEMA_VERSIONS = {3, RESULT_SCHEMA_VERSION}
+RESULT_SCHEMA_VERSION = 5
+SUPPORTED_RESULT_SCHEMA_VERSIONS = {3, 4, RESULT_SCHEMA_VERSION}
 HISTORY_SCHEMA_VERSION = 1
 SENSITIVE_CANARY = "GLOSSABET_SENSITIVE_CANARY_MUST_NOT_APPEAR"
+HOOK_SOURCE_CANARY = "AMBIENT_SOURCE_TEXT_MUST_NOT_REACH_SESSION_CONTEXT"
+HOOK_TERM = "Payment Service"
+HOOK_DEFINITION = "The boundary that owns payment attempts."
+HOOK_PROPOSED_TERM = "Gateway Route"
+SESSION_START_COMMAND = (
+    'python3 -B "$PLUGIN_ROOT/skills/glossabet/scripts/run_glossabet.py" brief .'
+)
+SESSION_START_COMMAND_WINDOWS = (
+    'py -3 -B "%PLUGIN_ROOT%\\skills\\glossabet\\scripts\\run_glossabet.py" brief .'
+)
+HOOK_PROMPT = """This is a bounded fresh-session context evaluation.
+Do not run commands, call tools, inspect files, or use outside knowledge. From
+developer context already supplied before this request, copy the repository's
+one settled term and its definition verbatim into `facts`. Return exactly one
+scenario with id `session-hook`. Use status `grounded` when that context exists
+and `stopped` when it does not. `next_action` must say only how to use the
+settled term; do not perform any action.
+"""
 
 sys.path.insert(0, str(ROOT))
 
@@ -48,6 +67,29 @@ class AgentEvaluationError(RuntimeError):
 
 def _fail(message: str) -> None:
     raise AgentEvaluationError(message)
+
+
+def _expected_hook_config() -> dict:
+    return {
+        "description": "Load the repository's settled vocabulary into each Codex session.",
+        "hooks": {
+            "SessionStart": [
+                {
+                    "matcher": "^(startup|resume|clear|compact)$",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": SESSION_START_COMMAND,
+                            "commandWindows": SESSION_START_COMMAND_WINDOWS,
+                            "timeout": 30,
+                            "statusMessage": "Loading settled repository vocabulary",
+                            "additionalContextLimit": 0,
+                        }
+                    ],
+                }
+            ]
+        },
+    }
 
 
 def _dotenv_part(name: str) -> bool:
@@ -125,6 +167,25 @@ def _write_history(value: dict) -> None:
             temporary.unlink()
 
 
+def _promote_current_result(path: Path) -> None:
+    if path.is_symlink() or not path.is_file():
+        _fail("completed agent result is missing or symlinked")
+    if DEFAULT_RESULTS.is_symlink():
+        _fail("current agent result is symlinked")
+    DEFAULT_RESULTS.parent.mkdir(parents=True, exist_ok=True)
+    temporary = DEFAULT_RESULTS.with_name(
+        f".{DEFAULT_RESULTS.name}.{uuid.uuid4().hex}.tmp"
+    )
+    try:
+        temporary.write_bytes(path.read_bytes())
+        if _sha256(temporary) != _sha256(path):
+            _fail("current agent result mirror differs from retained raw result")
+        os.replace(temporary, DEFAULT_RESULTS)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
 def _plugin_wheel() -> Path:
     wheels = sorted(
         (PLUGIN / "skills" / "glossabet" / "assets").glob("glossabet-*.whl")
@@ -143,6 +204,7 @@ def _artifact_snapshot() -> dict:
     return {
         "canonical_skill_sha256": _sha256(CANONICAL_SKILL),
         "engine_version": __version__,
+        "hook_sha256": _sha256(PLUGIN_HOOK),
         "plugin_sha256": _tree_sha256(PLUGIN),
         "pyproject_sha256": _sha256(ROOT / "pyproject.toml"),
         "readme_sha256": _sha256(ROOT / "README.md"),
@@ -203,6 +265,14 @@ def _artifact_errors(recorded: object) -> list[str]:
             or manifest.get("version") != __version__
         ):
             errors.append("checked-in plugin manifest name/version is stale")
+        if manifest.get("hooks") != "./hooks/hooks.json":
+            errors.append("checked-in plugin manifest does not expose its hook")
+        if PLUGIN_HOOK.is_symlink() or not PLUGIN_HOOK.is_file():
+            errors.append("checked-in plugin hook is missing or symlinked")
+        elif _read_json(PLUGIN_HOOK, "checked-in plugin hook") != (
+            _expected_hook_config()
+        ):
+            errors.append("checked-in plugin hook contract is stale")
         with zipfile.ZipFile(wheel) as archive:
             names = set(archive.namelist())
             source_files = _source_python_files()
@@ -506,6 +576,33 @@ def _make_scenario(root: Path, scenario_id: str) -> None:
     if scenario_id == "stale":
         _git_graph_repo(root, stale=True)
         return
+    if scenario_id == "session-hook":
+        root.mkdir(parents=True)
+        (root / "module.py").write_text(
+            f'ambient_source_canary = "{HOOK_SOURCE_CANARY}"\n',
+            encoding="utf-8",
+        )
+        _write_json(
+            _glossary_path(root),
+            {
+                "schema_version": 1,
+                "concepts": [
+                    {
+                        "id": "payment-service",
+                        "term": HOOK_TERM,
+                        "definition": HOOK_DEFINITION,
+                        "status": "canonical",
+                    },
+                    {
+                        "id": "gateway-route",
+                        "term": HOOK_PROPOSED_TERM,
+                        "definition": "A term that has not been settled.",
+                        "status": "proposed",
+                    },
+                ],
+            },
+        )
+        return
     _ordinary_repo(root)
     if scenario_id == "malformed":
         _glossary_path(root).write_text("{not-json", encoding="utf-8")
@@ -603,14 +700,20 @@ def _snapshot(root: Path) -> dict[str, tuple]:
 def _unexpected_writes(
     before: dict[str, tuple], after: dict[str, tuple]
 ) -> list[str]:
-    changed = sorted(
+    changed = _changed_paths(before, after)
+    return [
+        path for path in changed if path != "glossabet-out/evidence.json"
+    ]
+
+
+def _changed_paths(
+    before: dict[str, tuple], after: dict[str, tuple]
+) -> list[str]:
+    return sorted(
         path
         for path in set(before) | set(after)
         if before.get(path) != after.get(path)
     )
-    return [
-        path for path in changed if path != "glossabet-out/evidence.json"
-    ]
 
 
 def _codex_version(codex: str) -> str:
@@ -809,6 +912,7 @@ def _codex_exec_command(
     disabled_skills: tuple[Path, ...] = (),
     use_shell_profile: bool | None = None,
     allow_login_shell: bool | None = None,
+    bypass_hook_trust: bool = False,
 ) -> list[str]:
     command = [
         codex,
@@ -821,6 +925,8 @@ def _codex_exec_command(
         "-c",
         'approval_policy="never"',
     ]
+    if bypass_hook_trust:
+        command.append("--dangerously-bypass-hook-trust")
     skills_config = _disabled_skills_config(disabled_skills)
     if skills_config is not None:
         command.extend(["-c", skills_config])
@@ -857,6 +963,7 @@ def _run_codex(
     disabled_skills: tuple[Path, ...] = (),
     use_shell_profile: bool | None = None,
     allow_login_shell: bool | None = None,
+    bypass_hook_trust: bool = False,
 ) -> tuple[dict, list[dict], dict]:
     final_path = workspace / "agent-final.json"
     command = _codex_exec_command(
@@ -867,6 +974,7 @@ def _run_codex(
         disabled_skills=disabled_skills,
         use_shell_profile=use_shell_profile,
         allow_login_shell=allow_login_shell,
+        bypass_hook_trust=bypass_hook_trust,
     )
     print("$ codex exec --json --ephemeral --sandbox workspace-write ...", flush=True)
     result = subprocess.run(
@@ -1193,6 +1301,79 @@ def _evaluate_scenario(
     }
 
 
+def _evaluate_session_hook(
+    scenario: dict,
+    *,
+    root: Path,
+    commands: list[dict],
+    response: dict,
+    before: dict[str, tuple],
+    workspace: Path,
+    limits: dict,
+) -> dict:
+    failures: list[str] = []
+    if "glossabet" in HOOK_PROMPT.casefold():
+        failures.append("session-hook user prompt named Glossabet")
+    if commands:
+        failures.append("session-hook agent ran a command or tool")
+
+    accepted_statuses = scenario.get(
+        "accepted_statuses", [scenario["expected_status"]]
+    )
+    if response.get("status") not in accepted_statuses:
+        failures.append(
+            f"agent status {response.get('status')!r} did not match "
+            f"one of {accepted_statuses!r}"
+        )
+    facts = response.get("facts")
+    facts_text = "\n".join(facts) if isinstance(facts, list) and all(
+        isinstance(item, str) for item in facts
+    ) else ""
+    if not facts_text:
+        failures.append("session-hook agent returned no facts")
+    if HOOK_TERM not in facts_text:
+        failures.append("session-hook context lost the canonical term")
+    if HOOK_DEFINITION not in facts_text:
+        failures.append("session-hook context lost the canonical definition")
+    response_text = json.dumps(response, ensure_ascii=False)
+    if HOOK_PROPOSED_TERM in response_text:
+        failures.append("session-hook exposed a proposed term as settled context")
+    if HOOK_SOURCE_CANARY in response_text:
+        failures.append("session-hook exposed repository source text")
+    if not isinstance(response.get("next_action"), str) or not response[
+        "next_action"
+    ].strip():
+        failures.append("session-hook agent returned no next action")
+
+    after = _snapshot(root)
+    writes = _changed_paths(before, after)
+    if writes:
+        failures.append(f"session-hook wrote repository paths: {writes}")
+
+    return {
+        "id": scenario["id"],
+        "delivery": scenario["delivery"],
+        "passed": not failures,
+        "failures": failures,
+        "observed": {
+            "agent_command_count": len(commands),
+            "canonical_term_seen": HOOK_TERM in facts_text,
+            "canonical_definition_seen": HOOK_DEFINITION in facts_text,
+            "proposed_term_absent": HOOK_PROPOSED_TERM not in response_text,
+            "source_text_absent": HOOK_SOURCE_CANARY not in response_text,
+            "user_prompt_mentions_glossabet": (
+                "glossabet" in HOOK_PROMPT.casefold()
+            ),
+            "user_prompt_sha256": hashlib.sha256(HOOK_PROMPT.encode()).hexdigest(),
+        },
+        "agent_response": response,
+        "unexpected_writes": writes,
+        "trace": [
+            _trace_summary(command, workspace, limits) for command in commands
+        ],
+    }
+
+
 def _copy_ignore(_directory: str, names: list[str]) -> set[str]:
     return {name for name in names if _dotenv_part(name)}
 
@@ -1275,6 +1456,13 @@ def _install_plugin(
     runner = path / "skills" / "glossabet" / "scripts" / "run_glossabet.py"
     if not runner.is_file():
         _fail("installed plugin has no skill-local runner")
+    installed_hook = path / "hooks" / "hooks.json"
+    if (
+        installed_hook.is_symlink()
+        or not installed_hook.is_file()
+        or installed_hook.read_bytes() != PLUGIN_HOOK.read_bytes()
+    ):
+        _fail("installed plugin has no exact session-start hook")
     return plugin_id, path, expected_parent
 
 
@@ -1405,6 +1593,7 @@ def _validate_manifest(manifest: dict) -> tuple[list[dict], dict]:
         "monorepo",
         "resumed-glossary",
         "sensitive-file",
+        "session-hook",
         "missing-cli",
     ]
     if [item.get("id") for item in scenarios if isinstance(item, dict)] != expected_ids:
@@ -1430,6 +1619,15 @@ def _validate_manifest(manifest: dict) -> tuple[list[dict], dict]:
             or any(status not in status_vocabulary for status in accepted)
         ):
             _fail(f"agent scenario {scenario.get('id')} has invalid statuses")
+        expected_delivery = (
+            "plugin-hook"
+            if scenario.get("id") == "session-hook"
+            else "standalone-skill"
+            if scenario.get("id") == "missing-cli"
+            else "plugin"
+        )
+        if scenario.get("delivery") != expected_delivery:
+            _fail(f"agent scenario {scenario.get('id')} has invalid delivery")
     required_limits = {
         "jsonl_bytes",
         "events",
@@ -1530,6 +1728,9 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
     plugin_scenarios = [
         scenario for scenario in scenarios if scenario["delivery"] == "plugin"
     ]
+    hook_scenario = next(
+        scenario for scenario in scenarios if scenario["id"] == "session-hook"
+    )
     missing_scenario = next(
         scenario for scenario in scenarios if scenario["id"] == "missing-cli"
     )
@@ -1561,6 +1762,15 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
             "GLOSSABET_CACHE_DIR": str(batch / ".engine-cache"),
             "PYTHONDONTWRITEBYTECODE": "1",
         }
+        hook_root = work / "session-hook-run"
+        _make_scenario(hook_root, "session-hook")
+        hook_before = _snapshot(hook_root)
+        hook_environment = {
+            **os.environ,
+            "GLOSSABET_CACHE_DIR": str(work / ".hook-engine-cache"),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        }
+        hook_result: dict | None = None
 
         primary_error: Exception | None = None
         cleanup_verified = False
@@ -1568,6 +1778,29 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
             plugin_id, installed_path, cache_parent = _install_plugin(
                 codex, marketplace, marketplace_name
             )
+            hook_response, hook_commands, hook_usage = _run_codex(
+                codex,
+                workspace=hook_root,
+                prompt=HOOK_PROMPT,
+                environment=hook_environment,
+                limits=limits,
+                disabled_skills=disabled_skills,
+                bypass_hook_trust=True,
+            )
+            usages.append(hook_usage)
+            hook_response_items = _response_by_id(
+                hook_response, ["session-hook"]
+            )
+            hook_result = _evaluate_session_hook(
+                hook_scenario,
+                root=hook_root,
+                commands=hook_commands,
+                response=hook_response_items["session-hook"],
+                before=hook_before,
+                workspace=hook_root,
+                limits=limits,
+            )
+            results.append(hook_result)
             response, commands, usage = _run_codex(
                 codex,
                 workspace=batch,
@@ -1575,6 +1808,7 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
                 environment=environment,
                 limits=limits,
                 disabled_skills=disabled_skills,
+                bypass_hook_trust=True,
             )
             usages.append(usage)
             version_command = _installed_version_command(
@@ -1669,7 +1903,7 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
             "platform": platform.platform(),
         },
         "method": {
-            "host_runs": 2,
+            "host_runs": 3,
             "codex_exec_ephemeral": True,
             "sandbox": "workspace-write",
             "approval_policy": "never",
@@ -1679,12 +1913,26 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
             ),
             "missing_cli_shell_profile_disabled": True,
             "missing_cli_login_shell_disabled": True,
+            "plugin_hook_trust": (
+                "one-off bypass for the digest-bound temporary plugin artifact"
+            ),
             "trace_limits": limits,
             "model": "configured default; Codex CLI JSONL did not report it",
         },
         "delivery": {
             "installed_plugin_skill_read": True,
             "installed_plugin_engine_version_checked": True,
+            "installed_plugin_hook_sha256": _sha256(PLUGIN_HOOK),
+            "session_start_hook_context_seen": (
+                hook_result is not None
+                and hook_result.get("observed", {}).get("canonical_term_seen")
+                is True
+                and hook_result.get("observed", {}).get(
+                    "canonical_definition_seen"
+                )
+                is True
+            ),
+            "session_start_user_prompt_mentions_glossabet": False,
             "standalone_skill_boundary_observed": missing_result.get(
                 "observed", {}
             ).get("standalone_skill_boundary_observed")
@@ -2012,6 +2260,7 @@ def _history_errors(
         "scenario_manifest_sha256",
     }
     retained_results: set[Path] = set()
+    retained_result_digests: set[str] = set()
     for index, attempt in enumerate(attempts):
         label = f"agent attempt {index}"
         if not isinstance(attempt, dict):
@@ -2194,6 +2443,7 @@ def _history_errors(
                 errors.append(f"{label} raw result digest is stale")
                 continue
             retained_results.add(raw_path)
+            retained_result_digests.add(raw["sha256"])
             try:
                 raw_result = _read_json(raw_path, f"{label} raw result")
             except AgentEvaluationError as exc:
@@ -2219,11 +2469,27 @@ def _history_errors(
         for attempt in attempts
     ):
         errors.append("agent attempt history retains no bounded raw result")
-    if result_path is not None and (
-        result_path.is_symlink() or result_path.resolve() not in retained_results
-    ):
-        errors.append("agent result is not retained by the attempt history")
+    if result_path is not None:
+        result_is_retained = False
+        if not result_path.is_symlink() and result_path.is_file():
+            resolved_result = result_path.resolve()
+            result_is_retained = resolved_result in retained_results
+            if (
+                not result_is_retained
+                and resolved_result == DEFAULT_RESULTS.resolve()
+            ):
+                result_is_retained = (
+                    _sha256(result_path) in retained_result_digests
+                )
+        if not result_is_retained:
+            errors.append("agent result is not retained by the attempt history")
     return errors
+
+
+def _result_input_errors(result: dict) -> list[str]:
+    if result.get("inputs") != _input_identity():
+        return ["agent result input identity is stale"]
+    return []
 
 
 def verify_results(path: Path = DEFAULT_RESULTS) -> list[str]:
@@ -2231,12 +2497,13 @@ def verify_results(path: Path = DEFAULT_RESULTS) -> list[str]:
     manifest = _read_json(SCENARIOS_PATH, "agent scenario manifest")
     scenarios, limits = _validate_manifest(manifest)
     result = _read_json(path, "agent evaluation results")
+    errors.extend(_result_input_errors(result))
     result_schema_version = result.get("schema_version")
     if result_schema_version not in SUPPORTED_RESULT_SCHEMA_VERSIONS:
         errors.append("agent result schema is stale")
     method = result.get("method", {})
     if (
-        method.get("host_runs") != 2
+        method.get("host_runs") != 3
         or method.get("codex_exec_ephemeral") is not True
         or method.get("sandbox") != "workspace-write"
         or method.get("approval_policy") != "never"
@@ -2244,6 +2511,8 @@ def verify_results(path: Path = DEFAULT_RESULTS) -> list[str]:
         != "disable Glossabet's default standalone skill for each host run"
         or method.get("missing_cli_shell_profile_disabled") is not True
         or method.get("missing_cli_login_shell_disabled") is not True
+        or method.get("plugin_hook_trust")
+        != "one-off bypass for the digest-bound temporary plugin artifact"
         or method.get("trace_limits") != limits
     ):
         errors.append("agent evaluation method is weakened or stale")
@@ -2253,6 +2522,9 @@ def verify_results(path: Path = DEFAULT_RESULTS) -> list[str]:
         not isinstance(delivery, dict)
         or delivery.get("installed_plugin_skill_read") is not True
         or delivery.get("installed_plugin_engine_version_checked") is not True
+        or delivery.get("installed_plugin_hook_sha256") != _sha256(PLUGIN_HOOK)
+        or delivery.get("session_start_hook_context_seen") is not True
+        or delivery.get("session_start_user_prompt_mentions_glossabet") is not False
         or not isinstance(
             delivery.get("standalone_skill_boundary_observed"), bool
         )
@@ -2295,6 +2567,27 @@ def verify_results(path: Path = DEFAULT_RESULTS) -> list[str]:
         ) is True
         if delivery.get("standalone_skill_boundary_observed") != expected_boundary:
             errors.append("standalone delivery summary contradicts its scenario")
+        hook = next(
+            (
+                item
+                for item in items
+                if isinstance(item, dict) and item.get("id") == "session-hook"
+            ),
+            {},
+        )
+        hook_observed = hook.get("observed", {})
+        if (
+            hook.get("passed") is not True
+            or hook_observed.get("agent_command_count") != 0
+            or hook_observed.get("canonical_term_seen") is not True
+            or hook_observed.get("canonical_definition_seen") is not True
+            or hook_observed.get("proposed_term_absent") is not True
+            or hook_observed.get("source_text_absent") is not True
+            or hook_observed.get("user_prompt_mentions_glossabet") is not False
+            or hook_observed.get("user_prompt_sha256")
+            != hashlib.sha256(HOOK_PROMPT.encode()).hexdigest()
+        ):
+            errors.append("session-start hook evidence is missing or stale")
     for item in items:
         if not isinstance(item, dict):
             errors.append("agent scenario result is malformed")
@@ -2360,6 +2653,7 @@ def main(argv: list[str] | None = None) -> int:
                 _append_attempt(_attempt_from_error(attempt_id, exc))
                 raise
             _append_attempt(_attempt_from_result(attempt_id, result, output))
+            _promote_current_result(output)
             summary = result["summary"]
             print(
                 f"installed-agent evaluation: {summary['passed']}/"

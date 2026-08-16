@@ -15,6 +15,13 @@ from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
+HOOK_PATH = "./hooks/hooks.json"
+SESSION_START_COMMAND = (
+    'python3 -B "$PLUGIN_ROOT/skills/glossabet/scripts/run_glossabet.py" brief .'
+)
+SESSION_START_COMMAND_WINDOWS = (
+    'py -3 -B "%PLUGIN_ROOT%\\skills\\glossabet\\scripts\\run_glossabet.py" brief .'
+)
 
 
 def _fail(message: str) -> None:
@@ -107,6 +114,7 @@ def _check_wheel(wheel: Path, version: str, canonical_skill: bytes) -> None:
 def _check_plugin_bundle(
     *,
     manifest_bytes: bytes,
+    hooks_bytes: bytes,
     skill_bytes: bytes,
     runner_bytes: bytes,
     wheel_bytes: bytes,
@@ -122,6 +130,34 @@ def _check_plugin_bundle(
         _fail(f"{label} plugin manifest does not match package name/version")
     if manifest.get("skills") != "./skills/":
         _fail(f"{label} plugin manifest does not expose its skills directory")
+    if manifest.get("hooks") != HOOK_PATH:
+        _fail(f"{label} plugin manifest does not expose its hooks file")
+    try:
+        hooks = json.loads(hooks_bytes)
+    except (UnicodeError, ValueError, RecursionError) as exc:
+        _fail(f"{label} plugin hooks are invalid JSON: {exc}")
+    expected_handler = {
+        "type": "command",
+        "command": SESSION_START_COMMAND,
+        "commandWindows": SESSION_START_COMMAND_WINDOWS,
+        "timeout": 30,
+        "statusMessage": "Loading settled repository vocabulary",
+        "additionalContextLimit": 0,
+    }
+    try:
+        groups = hooks["hooks"]["SessionStart"]
+        matcher = groups[0]["matcher"]
+        handlers = groups[0]["hooks"]
+    except (KeyError, IndexError, TypeError):
+        _fail(f"{label} plugin has no usable SessionStart hook")
+    if (
+        set(hooks) != {"description", "hooks"}
+        or set(hooks["hooks"]) != {"SessionStart"}
+        or len(groups) != 1
+        or matcher != "^(startup|resume|clear|compact)$"
+        or handlers != [expected_handler]
+    ):
+        _fail(f"{label} plugin SessionStart hook is stale or unbounded")
     if skill_bytes != canonical_skill:
         _fail(f"{label} plugin skill differs from canonical skill/SKILL.md")
     expected_runner = f'EXPECTED_VERSION = "{version}"'.encode()
@@ -153,6 +189,7 @@ def _check_source_plugin(
     asset = skill / "assets" / f"glossabet-{version}-py3-none-any.whl"
     _check_plugin_bundle(
         manifest_bytes=(root / ".codex-plugin" / "plugin.json").read_bytes(),
+        hooks_bytes=(root / "hooks" / "hooks.json").read_bytes(),
         skill_bytes=(skill / "SKILL.md").read_bytes(),
         runner_bytes=(skill / "scripts" / "run_glossabet.py").read_bytes(),
         wheel_bytes=asset.read_bytes(),
@@ -214,6 +251,7 @@ def _check_sdist(
             "evaluation/run.py",
             "glossabet/installer.py",
             "plugins/glossabet/.codex-plugin/plugin.json",
+            "plugins/glossabet/hooks/hooks.json",
             f"plugins/glossabet/skills/glossabet/assets/glossabet-{version}-py3-none-any.whl",
             "plugins/glossabet/skills/glossabet/scripts/run_glossabet.py",
             "plugins/glossabet/skills/glossabet/SKILL.md",
@@ -258,6 +296,9 @@ def _check_sdist(
         _check_plugin_bundle(
             manifest_bytes=member_bytes(
                 "plugins/glossabet/.codex-plugin/plugin.json"
+            ),
+            hooks_bytes=member_bytes(
+                "plugins/glossabet/hooks/hooks.json"
             ),
             skill_bytes=member_bytes(
                 "plugins/glossabet/skills/glossabet/SKILL.md"

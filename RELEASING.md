@@ -2,10 +2,10 @@
 
 Glossabet 0.1.0 is locally packageable, but it is **not release-ready and is
 not published to PyPI**. The deterministic, blinded-reviewer, and Phase 28.1
-artifact/safety gates pass. Phase 28.2 session-start delivery, Phase 28.3
-explicit context sync, and Kyle's owner self-testing pause remain before
-outside trusted-alpha evidence; the exact-artifact Phase 23 gate comes after
-that evidence. Phase 21 records the Glossabet decision and a
+artifact/safety gates pass, and Phase 28.2 proves exact-artifact session-start
+delivery. Phase 28.3 explicit context sync and Kyle's owner self-testing pause
+remain before outside trusted-alpha evidence; the exact-artifact Phase 23 gate
+comes after that evidence. Phase 21 records the Glossabet decision and a
 working local Codex plugin lifecycle in `NAME-CLEARANCE.md` and
 `DISTRIBUTION.md`. The source repository remains public and was renamed with
 explicit authorization to <https://github.com/kserrec/glossabet>; its
@@ -31,22 +31,28 @@ require his explicit authorization.
   licensing, project links, and an exact wheel mapping for the canonical
   skill.
 - `plugins/glossabet/` carries the same canonical skill plus the matching
-  dependency-free wheel behind a version-checking skill-local runner. The
-  local Codex 0.147.0 Linux probe installed 0.1.0, updated to a synthetic
-  0.1.1, exercised `inspect`, and removed its plugin and marketplace state.
-- `evaluation/agent-history.json` retains all six authorized Phase 28.1 agent
-  attempts instead of selecting a green run: four procedural passes and two
-  failures overall, plugin preflight two of three, all ten plugin scenarios in
-  both completed full batches, and the missing-CLI boundary four of five. All
-  six safety records show no canary exposure, unexpected repository write, or
-  post-failure `inspect`, plus verified cleanup. One raw 10/11 result remains;
-  five entries are explicitly labelled as session records because the earlier
-  harness overwrote its single output path. The offline gate binds and smokes
-  the current exact plugin wheel deterministically, while agent-command
-  reliability remains a reported small sample. Future runs use unique raw
-  paths and append their outcomes. The deterministic seven-case evaluation and
-  separate blinded Codex reviewer also pass their recorded thresholds; all of
-  this remains local/controlled evidence, not outside adopter validation.
+  dependency-free wheel behind a version-checking skill-local runner. Its
+  `SessionStart` hook invokes that runner's bounded `brief .` boundary. The
+  local Codex 0.147.0 Linux probe installed 0.1.0, ran the configured hook and
+  `inspect`, updated to a synthetic 0.1.1, reran both boundaries, and removed
+  its plugin and marketplace state.
+- `evaluation/agent-history.json` retains all eight authorized Phase 28.1–28.2
+  attempts instead of selecting a green run: six procedural passes and two
+  failures overall, plugin preflight four of five, plugin scenarios in all four
+  applicable completed batches, and the missing-CLI boundary six of seven. All
+  eight safety records show no canary exposure, unexpected repository write,
+  or post-failure `inspect`, plus verified cleanup. Three raw results remain;
+  five older entries are explicitly labelled as weaker session records because
+  the earlier harness overwrote its single output path. Both Phase 28.2
+  12-scenario batches passed fresh-session hook delivery with no user mention
+  of Glossabet or agent command; the replacement result binds the final
+  metadata-only rebuilt wheel. The offline gate directly smokes those current
+  bytes and requires the selected result's complete input identity to match.
+  Agent-command reliability remains a reported small sample. Future runs use
+  unique raw paths and append their outcomes. The deterministic seven-case
+  evaluation and separate blinded Codex reviewer also pass their recorded
+  thresholds; all of this remains local/controlled evidence, not outside
+  adopter validation.
 - `.github/workflows/quality.yml` is the one reusable gate: it runs the
   complete suite on CPython 3.10–3.14 on Linux, macOS, and Windows, verifies
   workflow policy plus deterministic, installed-agent, and second-reviewer

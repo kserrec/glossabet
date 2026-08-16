@@ -120,6 +120,16 @@ sequences or reorder the displayed result.
   requires Python 3.10 or newer before importing it directly from the plugin
   cache. Build, unit, archive, and actual Codex lifecycle probes fail on a
   mismatch; the plugin never installs a second package or command on `PATH`.
+- **The plugin hook has the same confined read boundary.** The manifest exposes
+  one exact `SessionStart` handler for startup, resume, clear, and compaction.
+  It runs the skill-local runner as `brief .`, disables Python bytecode writes
+  beside that runner, times out after 30 seconds, and contributes the complete
+  output only because `brief` itself has a 4,096-byte ceiling. It does not scan
+  source or add a repository-write path, and an absent glossary emits nothing.
+  Build, archive, unit, and installed-plugin smoke checks bind the exact hook
+  bytes and command. Codex still requires the user to trust the hook; the
+  authenticated harness bypasses that prompt for one invocation only after
+  checking the temporary plugin against the current artifact digest.
 - **Plugin lifecycle cleanup is narrowly owned.** The host-level smoke uses a
   random marketplace name, records Codex's returned install path, removes the
   plugin and marketplace in a `finally` block, and removes only the exact
@@ -128,21 +138,28 @@ sequences or reorder the displayed result.
 - **Installed-agent evidence tests the delivered boundary.**
   `scripts/agent_eval.py` uses a second unique temporary marketplace, proves
   Codex read the exact installed plugin skill and version-checked its bundled
-  engine, then runs 10 plugin scenarios and one standalone missing-CLI
-  scenario. Command/event/output storage is capped. Repository snapshots treat
-  dotenv names as opaque and never read their contents; a separate unreadable
-  sensitive file carries a synthetic canary that must not appear in raw JSONL
-  or the agent response. Only the normal `inspect` evidence refresh is allowed;
-  every other write fails the scenario. Cleanup is the same exact-path,
-  re-queried lifecycle above. Each authorized attempt is appended with explicit
-  canary, write, post-failure-inspect, and cleanup outcomes; any failed safety
-  check fails the offline gate even when a later attempt passes. Full runs use
-  unique result paths and refuse overwrite. Separately, the offline gate hashes
-  and directly smokes the current canonical skill, plugin tree, skill-local
-  runner, and checked-in wheel, and rejects an ambiguous plugin-root runner.
+  engine. Its fresh-session probe additionally requires the canonical term and
+  definition to arrive from the exact installed hook without a product-naming
+  user prompt or agent tool call. It then runs 10 plugin scenarios and one
+  standalone missing-CLI scenario. Command/event/output storage is capped.
+  Repository snapshots treat dotenv names as opaque and never read their
+  contents; a separate unreadable sensitive file carries a synthetic canary
+  that must not appear in raw JSONL or the agent response. Only the normal
+  `inspect` evidence refresh is allowed; every other write fails the scenario.
+  Cleanup is the same exact-path, re-queried lifecycle above. Each authorized
+  attempt is appended with explicit canary, write, post-failure-inspect, and
+  cleanup outcomes; any failed safety check fails the offline gate even when a
+  later attempt passes. Full runs use unique immutable result paths and refuse
+  overwrite; the current-result mirror is accepted only when its digest matches
+  retained raw evidence and its complete input identity matches current bytes.
+  Separately, the offline gate hashes and directly smokes the current canonical
+  skill, plugin tree, hook, skill-local runner, and checked-in wheel, and
+  rejects an ambiguous plugin-root runner.
   Agent command-choice success is reported as reliability evidence rather than
   substituted for those deterministic checks. The committed evidence covers
-  Codex CLI 0.147.0 on Linux only.
+  two 12/12 Phase 28.2 batches on Codex CLI 0.147.0/Linux, including the
+  replacement on final metadata-only rebuilt bytes. Other hosts remain
+  unverified.
 
 ### Agent context and terminal output
 
@@ -180,6 +197,8 @@ sequences or reorder the displayed result.
   entries; an absent glossary emits nothing. Regressions in
   `tests/test_brief.py` cover determinism, source/secret non-contamination,
   symlink refusal, terminal-safe one-line prose, and the byte ceiling.
+  `tests/test_plugin.py` additionally executes the declared hook command with
+  and without a glossary and proves exact output plus zero repository changes.
 - **Terminal controls are data, not instructions.** CLI stdout/stderr pass
   through `display.py`. Repository/user-controlled C0/C1 controls, DEL, Unicode
   line separators, and bidirectional-format characters are rendered as visible

@@ -18,6 +18,10 @@ from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugins" / "glossabet"
+HOOK_TERM = "Payment Service"
+HOOK_DEFINITION = "The boundary that owns payment attempts."
+HOOK_PROPOSED_TERM = "Gateway Route"
+HOOK_SOURCE_CANARY = "PLUGIN_SMOKE_SOURCE_TEXT_MUST_NOT_REACH_CONTEXT"
 
 
 def _fail(message: str) -> None:
@@ -27,6 +31,7 @@ def _fail(message: str) -> None:
 def _run(
     command: list[str], *, cwd: Path, parse_json: bool = False,
     echo_stdout: bool = True,
+    timeout: int = 120,
 ) -> str | dict:
     print(f"$ {' '.join(command)}", flush=True)
     result = subprocess.run(
@@ -34,6 +39,7 @@ def _run(
         cwd=cwd,
         text=True,
         capture_output=True,
+        timeout=timeout,
     )
     if result.stdout and echo_stdout:
         print(result.stdout, end="", flush=True)
@@ -212,13 +218,49 @@ def _verify_install(
     if (skill_root / "SKILL.md").read_bytes() != canonical_skill:
         _fail("installed skill differs from canonical source")
     runner = skill_root / "scripts" / "run_glossabet.py"
+    installed_hook = installed / "hooks" / "hooks.json"
+    source_hook = PLUGIN / "hooks" / "hooks.json"
+    if (
+        installed_hook.is_symlink()
+        or not installed_hook.is_file()
+        or installed_hook.read_bytes() != source_hook.read_bytes()
+    ):
+        _fail("installed session-start hook differs from source")
     output = _run([sys.executable, str(runner), "--version"], cwd=ROOT)
     if output != f"glossabet {version}\n":
         _fail("installed plugin runner returned the wrong engine version")
 
     sample = probe_root / f"repository-probe-{version}"
     sample.mkdir(exist_ok=True)
-    (sample / "service.py").write_text("class PaymentService:\n    pass\n")
+    (sample / "service.py").write_text(
+        f'ambient_source_canary = "{HOOK_SOURCE_CANARY}"\n',
+        encoding="utf-8",
+    )
+    glossary = sample / "glossabet-out" / "glossary.json"
+    glossary.parent.mkdir()
+    glossary.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "concepts": [
+                    {
+                        "id": "payment-service",
+                        "term": HOOK_TERM,
+                        "definition": HOOK_DEFINITION,
+                        "status": "canonical",
+                    },
+                    {
+                        "id": "gateway-route",
+                        "term": HOOK_PROPOSED_TERM,
+                        "definition": "A term that has not been settled.",
+                        "status": "proposed",
+                    },
+                ],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     context_text = _run(
         [sys.executable, str(runner), "inspect", str(sample), "--no-graphify"],
         cwd=ROOT,
@@ -227,7 +269,51 @@ def _verify_install(
     context = json.loads(str(context_text))
     if context.get("generator") != {"name": "glossabet", "version": version}:
         _fail("installed plugin engine emitted mismatched generator metadata")
+    before = _snapshot_repository(sample)
+    hook_config = json.loads(installed_hook.read_text(encoding="utf-8"))
+    handler = hook_config["hooks"]["SessionStart"][0]["hooks"][0]
+    hook_command = handler["commandWindows" if os.name == "nt" else "command"]
+    hook_result = subprocess.run(
+        hook_command,
+        cwd=sample,
+        env={**os.environ, "PLUGIN_ROOT": str(installed)},
+        text=True,
+        capture_output=True,
+        shell=True,
+        timeout=30,
+    )
+    if (
+        hook_result.returncode != 0
+        or hook_result.stderr != ""
+        or "Glossabet vocabulary brief v1" not in hook_result.stdout
+        or HOOK_TERM not in hook_result.stdout
+        or HOOK_DEFINITION not in hook_result.stdout
+        or HOOK_PROPOSED_TERM in hook_result.stdout
+        or HOOK_SOURCE_CANARY in hook_result.stdout
+    ):
+        _fail("installed SessionStart command did not emit only canonical vocabulary")
+    if _snapshot_repository(sample) != before:
+        _fail("installed SessionStart hook changed the repository")
     return installed
+
+
+def _snapshot_repository(root: Path) -> dict[str, tuple[int, str]]:
+    snapshot: dict[str, tuple[int, str]] = {}
+    for current, directories, names in os.walk(root):
+        directories[:] = sorted(
+            name for name in directories if not _dotenv_part(name)
+        )
+        for name in sorted(names):
+            if _dotenv_part(name):
+                continue
+            path = Path(current) / name
+            if path.is_file() and not path.is_symlink():
+                content = path.read_bytes()
+                snapshot[path.relative_to(root).as_posix()] = (
+                    len(content),
+                    hashlib.sha256(content).hexdigest(),
+                )
+    return snapshot
 
 
 def _current_bundle_matches(wheel: Path, version: str) -> None:
@@ -382,7 +468,8 @@ def main() -> int:
 
     print(
         f"plugin smoke passed: Codex installed {version}, updated to "
-        f"{next_version}, ran the bundled CLI, and removed all test-owned state"
+        f"{next_version}, ran the SessionStart command and bundled CLI, "
+        "and removed all test-owned state"
     )
     return 0
 

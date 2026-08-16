@@ -384,28 +384,81 @@ characterize observed agent reliability. They are not a claim about a future
 rate and are not converted into a green release threshold.
 
 The current-artifact gate is now deterministic and offline. It binds the
-canonical skill, plugin tree, skill-local runner, and checked-in wheel by
-SHA-256; rejects an ambiguous plugin-root runner; verifies manifest/version and
-wheel-embedded-skill parity; and runs exact version plus bounded `brief` smokes
-through that wheel. The verifier separately requires every history entry's
-safety checks and cleanup to pass. A procedural miss stays in the ledger but
-does not invalidate the Phase 28.1 engine/CLI acceptance; Phase 28.2 owns the
-actual session-start host lifecycle.
+canonical skill, plugin tree, exact session-start hook, skill-local runner, and
+checked-in wheel by SHA-256; rejects an ambiguous plugin-root runner; verifies
+manifest/version, hook, and wheel-embedded-skill parity; and runs exact version
+plus bounded `brief` smokes through that wheel. The verifier separately
+requires every history entry's safety checks and cleanup to pass. A procedural
+miss stays in the ledger but does not invalidate the Phase 28.1 engine/CLI
+acceptance; Phase 28.2 separately records the actual session-start host
+lifecycle.
 
 The retained raw result uses schema v3. Its top-level
 `standalone_skill_boundary_observed` field is `true` because that generator
 filled the summary field unconditionally, while the authoritative
 `missing-cli` scenario correctly records the boundary as unobserved and the
 10/11 failure. The raw file remains byte-for-byte unchanged and digest-bound.
-Future schema-v4 runs derive the summary field from that scenario, and the
-verifier enforces their agreement.
+Schema-v4 and schema-v5 runs derive the summary field from that scenario, and
+the verifier enforces their agreement.
+
+Phase 28.2 adds a twelfth `session-hook` scenario and separates one full batch
+into three ephemeral host turns. The first starts in a generated repository
+with one canonical term, one proposed term, and a source-text canary. Its user
+prompt names neither Glossabet nor any expected term, forbids commands and
+tools, and asks only for the settled term already present in developer context.
+Passing requires the exact canonical term and definition, no proposed term or
+source canary, zero agent commands, and zero repository writes. The second turn
+runs the existing 10 plugin/skill scenarios. The third retains the isolated
+standalone missing-CLI boundary with profile loading and login-shell requests
+disabled. The first two turns use Codex's one-invocation hook-trust bypass only
+for the exact temporary plugin whose hook bytes and full tree digest passed
+preflight; normal users still review and trust installed hooks through Codex.
+
+Both explicitly authorized Phase 28.2 batches passed 12/12 on Codex CLI
+0.147.0/Linux. In both fresh sessions the agent returned the exact canonical
+term and definition with zero commands; the user prompt supplied neither the
+product name nor the expected vocabulary, and the response contained neither
+the proposed term nor the source canary. Both repositories remained unchanged.
+The other 10 plugin scenarios and isolated missing-CLI boundary passed in both
+batches, and each uniquely named plugin/marketplace was removed and verified
+absent. The first result bound the final executable members but preceded the
+README completion-status correction. That correction changed only wheel
+`METADATA` and `RECORD`. The separately authorized replacement binds the final
+plugin SHA-256
+`523af6f72874e4b9fb13a23b53d3f4025f51626ffd752045489725b566065dc3`
+and wheel SHA-256
+`3202b460dfcccc9dc4eb72cc6d6f58c1d143c343f0bdaa6ff6df40fcaa57a22e`;
+its immutable raw result is
+`evaluation/agent-runs/20260816T183508Z-full-a8775cdb.json`.
+
+The append-only ledger now contains eight authorized attempts: six procedural
+passes and two failures; plugin preflight four of five; plugin scenarios four
+of four applicable completed batches; and the missing-CLI boundary six of
+seven. All eight safety records pass. Three raw results remain digest-bound;
+the other five older records are explicitly weaker session records. These
+totals report observed command reliability and are not a future-rate claim.
+
+The Phase 28.1 raw result that previously occupied the current-result path was
+moved byte-for-byte, with its SHA-256 unchanged, to
+`evaluation/agent-runs/20260816-full-metadata-rebuild.json`. New full runs write
+an immutable unique file below `evaluation/agent-runs/`, append its path and
+digest to history, and only then mirror those exact bytes to
+`evaluation/agent-results.json`. Verification accepts that current mirror only
+when its digest matches retained raw evidence; an arbitrary copied result is
+rejected. It also compares the selected result's evaluator, scenario manifest,
+prompt, response schema, canonical skill, plugin, and engine identities to the
+current inputs. A stale result therefore cannot pass merely because its own
+history record and the current artifact record are separately valid.
 
 An authenticated `--run` temporarily changes user-level Codex
 plugin/marketplace state and then removes only its uniquely named state. It now
-writes a unique raw path under `evaluation/agent-runs/`, refuses overwrite, and
-appends the outcome even when preflight aborts. It still requires explicit
-authorization. `--refresh-artifact` and `--verify-results` are offline and make
-no Codex or network call:
+writes a unique raw path under `evaluation/agent-runs/`, refuses overwrite,
+appends the outcome even when preflight aborts, and refreshes the current-result
+mirror only after a completed result is retained. It still requires explicit
+authorization. One Phase 28.2 full batch invokes three authenticated Codex
+turns under the signed-in account; the CLI records token counts but does not
+expose an exact dollar price. `--refresh-artifact` and `--verify-results` are
+offline and make no Codex or network call:
 
 ```bash
 uv run python scripts/agent_eval.py --run
@@ -458,9 +511,11 @@ and compare its accuracy against this recorded standard-library baseline.
   full plugin batches across several artifact/evaluator states. The separate
   Phase 28.1 ledger records plugin preflight in two of three applicable full
   attempts, all ten plugin scenarios in both completed full batches, and the
-  missing-CLI boundary in four of five applicable attempts. Focused probes and
-  changed artifacts are not pooled into one success rate; reliability beyond
-  each small observed sample is unknown.
+  missing-CLI boundary in four of five applicable attempts. Both Phase 28.2
+  batches passed their hook, plugin, and missing-CLI checks, including the
+  replacement on final artifact bytes. Focused probes and changed artifacts
+  are not pooled into one success rate; reliability beyond each small observed
+  sample is unknown.
 - The multilingual fixture covers representative Python and Clojure forms,
   not every identifier grammar among the 30 recognized languages.
 - Language-origin classification currently has a curated Python builtin table;

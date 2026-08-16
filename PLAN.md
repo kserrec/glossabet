@@ -1,7 +1,7 @@
 # Glossabet — Plan
 
-Status: **phases 0–22, Phases 24–27, and Phase 28.1 complete; Phase 28.2 is
-next; owner self-testing pause active before the trusted-alpha gate** as of
+Status: **phases 0–22, Phases 24–27, and Phases 28.1–28.2 complete; Phase 28.3
+is next; owner self-testing pause active before the trusted-alpha gate** as of
 2026-08-16.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -832,7 +832,7 @@ paths and cannot overwrite earlier evidence. No additional authenticated retry
 was run for this protocol change. Phase 28.2 owns session-start delivery and
 its host-lifecycle evidence.
 
-#### Phase 28.2 — Session-start hook
+#### Phase 28.2 — Session-start hook ✅ 2026-08-16
 
 **Steps:**
 
@@ -846,6 +846,32 @@ its host-lifecycle evidence.
 canonical terms without any user mention of glossabet, proven on the probed
 hosts; hosts without lifecycle probes are documented as unverified rather
 than claimed.
+
+**Completion evidence (2026-08-16):** the plugin manifest exposes one exact
+`SessionStart` hook for startup, resume, clear, and compaction. It invokes the
+skill-local runner's `brief .` boundary with bytecode writes disabled; direct
+tests prove fresh bounded canonical output, no source/proposed-term
+contamination, no repository mutation, and empty output when no glossary
+exists. Build, source-archive, installed-plugin 0.1.0 → synthetic 0.1.1, and
+exact-byte checks bind the hook, runner, skill, and nested wheel.
+
+Two separately authorized Codex CLI 0.147.0/Linux batches passed 12/12. Each
+fresh-session prompt omitted Glossabet and every expected term; each agent
+returned the exact canonical term and definition from hook context with zero
+commands, no proposed term or source canary, and no write. The other ten plugin
+scenarios and the non-login, profile-disabled missing-CLI boundary also passed,
+and all temporary plugin/marketplace state was removed and re-queried. The
+first raw run remains at
+`evaluation/agent-runs/20260816T182412Z-full-abd5f2ee.json`. Correcting the
+README phase status changed only wheel `METADATA` and `RECORD`; the explicitly
+authorized replacement on those final bytes is retained at
+`evaluation/agent-runs/20260816T183508Z-full-a8775cdb.json` with SHA-256
+`05ca64fbb1896f1f6929c37b0c4be0d9d64221070e006414e2e19941be67933c`.
+The verifier now rejects a selected result whose evaluator, scenario, prompt,
+schema, skill, plugin, or engine identity differs from the current inputs, in
+addition to requiring an immutable history-retained digest. Codex on other
+operating systems/versions, ChatGPT, and Claude Code remain explicitly
+unverified.
 
 #### Phase 28.3 — Sync-context managed block
 
@@ -1016,5 +1042,5 @@ Each finding was verified against the engine's own output on this repository.
     route and owns its skill plus bundled wheel as one cache entry. The
     standalone wheel owns the normal CLI environment and keeps its separately
     copied skill lifecycle explicit. Only Codex CLI 0.147.0 on Linux has direct
-    plugin lifecycle and 11-scenario installed-skill probes; other hosts remain
+    plugin lifecycle and 12-scenario installed-host probes; other hosts remain
     unverified.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -20,6 +21,7 @@ SKILL = ROOT / "skill" / "SKILL.md"
 PLUGIN_SKILL = PLUGIN / "skills" / "glossabet" / "SKILL.md"
 RUNNER = PLUGIN / "skills" / "glossabet" / "scripts" / "run_glossabet.py"
 ASSETS = PLUGIN / "skills" / "glossabet" / "assets"
+HOOKS = PLUGIN / "hooks" / "hooks.json"
 
 
 def _manifest(plugin: Path = PLUGIN) -> dict:
@@ -41,6 +43,7 @@ def test_plugin_manifest_and_sources_are_version_coupled():
     assert manifest["name"] == "glossabet"
     assert manifest["version"] == __version__
     assert manifest["skills"] == "./skills/"
+    assert manifest["hooks"] == "./hooks/hooks.json"
     assert manifest["license"] == "Apache-2.0"
     assert manifest["author"]["name"] == "Kyle Serrecchia"
     assert PLUGIN_SKILL.read_bytes() == SKILL.read_bytes()
@@ -54,6 +57,116 @@ def test_plugin_manifest_and_sources_are_version_coupled():
         runner_text,
         re.MULTILINE,
     )
+
+
+def _session_start_handler() -> dict:
+    config = json.loads(HOOKS.read_text(encoding="utf-8"))
+    assert set(config) == {"description", "hooks"}
+    assert set(config["hooks"]) == {"SessionStart"}
+    groups = config["hooks"]["SessionStart"]
+    assert len(groups) == 1
+    assert groups[0]["matcher"] == "^(startup|resume|clear|compact)$"
+    assert len(groups[0]["hooks"]) == 1
+    return groups[0]["hooks"][0]
+
+
+def test_plugin_session_start_hook_is_bounded_and_version_coupled():
+    handler = _session_start_handler()
+
+    assert handler == {
+        "type": "command",
+        "command": (
+            'python3 -B "$PLUGIN_ROOT/skills/glossabet/scripts/'
+            'run_glossabet.py" brief .'
+        ),
+        "commandWindows": (
+            'py -3 -B "%PLUGIN_ROOT%\\skills\\glossabet\\scripts\\'
+            'run_glossabet.py" brief .'
+        ),
+        "timeout": 30,
+        "statusMessage": "Loading settled repository vocabulary",
+        "additionalContextLimit": 0,
+    }
+
+
+def _run_session_start_hook(repository: Path) -> subprocess.CompletedProcess[str]:
+    handler = _session_start_handler()
+    command = handler["commandWindows" if os.name == "nt" else "command"]
+    return subprocess.run(
+        command,
+        cwd=repository,
+        env={**os.environ, "PLUGIN_ROOT": str(PLUGIN)},
+        text=True,
+        capture_output=True,
+        shell=True,
+    )
+
+
+def _repository_files(root: Path) -> dict[Path, bytes]:
+    files: dict[Path, bytes] = {}
+    for current, directories, names in os.walk(root):
+        directories[:] = [
+            name
+            for name in directories
+            if name != ".env"
+            and not name.endswith(".env")
+            and not name.startswith(".env.")
+            and ".env." not in name
+        ]
+        for name in names:
+            if (
+                name == ".env"
+                or name.endswith(".env")
+                or name.startswith(".env.")
+                or ".env." in name
+            ):
+                continue
+            path = Path(current) / name
+            files[path.relative_to(root)] = path.read_bytes()
+    return files
+
+
+def test_plugin_session_start_hook_emits_fresh_brief_without_writing(tmp_path):
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": "payment-service",
+                "term": "Payment Service",
+                "definition": "The boundary that owns payment attempts.",
+                "status": "canonical",
+            }
+        ],
+    }
+    subprocess.run(
+        [sys.executable, str(RUNNER), "save", str(tmp_path)],
+        cwd=ROOT,
+        input=json.dumps(glossary),
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    before = _repository_files(tmp_path)
+
+    result = _run_session_start_hook(tmp_path)
+
+    after = _repository_files(tmp_path)
+    assert result.returncode == 0
+    assert result.stderr == ""
+    assert "Glossabet vocabulary brief v1" in result.stdout
+    assert "Payment Service — The boundary that owns payment attempts." in result.stdout
+    assert after == before
+
+
+def test_plugin_session_start_hook_without_glossary_contributes_nothing(tmp_path):
+    before = list(tmp_path.iterdir())
+
+    result = _run_session_start_hook(tmp_path)
+
+    assert result.returncode == 0
+    assert result.stdout == ""
+    assert result.stderr == ""
+    assert list(tmp_path.iterdir()) == before
 
 
 def test_plugin_wheel_matches_package_version_entry_point_and_skill():

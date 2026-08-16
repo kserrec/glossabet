@@ -9,16 +9,7 @@
     "temporary_plugin_state_removed": true,
     "trace": [
       {
-        "command": "/usr/bin/zsh -lc 'wc -l -c <INSTALLED_PLUGIN>/skills/glossabet/SKILL.md'",
-        "cwd": null,
-        "exit_code": 0,
-        "output_characters": 126,
-        "output_preview": "  395 20844 <INSTALLED_PLUGIN>/skills/glossabet/SKILL.md\n",
-        "output_sha256": "4bb3889ec2abb7b96f295cb65f2ad952fc18bc80e8b272ee5e54eb17d6a63cd4",
-        "status": "completed"
-      },
-      {
-        "command": "/usr/bin/zsh -lc \"sed -n '1,395p' <INSTALLED_PLUGIN>/skills/glossabet/SKILL.md\"",
+        "command": "/usr/bin/zsh -lc 'cat <INSTALLED_PLUGIN>/skills/glossabet/SKILL.md'",
         "cwd": null,
         "exit_code": 0,
         "output_characters": 20769,
@@ -45,8 +36,8 @@
   "inputs": {
     "canonical_skill_sha256": "a9a9060504d3bdba2602eff69453ef5b20c79be5bddf29b31de800e4eeb76eb7",
     "engine_version": "0.1.0",
-    "evaluator_sha256": "a07a11930a2d604439b8e88af630b5e5c3340f3b2815514897e110a20d38a11e",
-    "plugin_sha256": "523af6f72874e4b9fb13a23b53d3f4025f51626ffd752045489725b566065dc3",
+    "evaluator_sha256": "7b1217b444f957d2cfc5ae6d8b45841be8525903b346bcc2f98f766685b5326c",
+    "plugin_sha256": "92dbe70aff851e836817a8c93587040e3d8ad9dc419bee3c3605a0be06441c69",
     "prompt_sha256": "742436f5b54a5d936da50a39b7642a00d6e9a6d3d4509dbc3cc32c66e149b15b",
     "response_schema_sha256": "7c9231e4a6f6112e13c792e87d6187e8d300844d9d328e3e2eb2447d9dcb0a9d",
     "scenario_manifest_sha256": "6d81580fd4aab0b0af2d1e42894d558e1ebec2ec97a53a99389e0ba6ee9e6fce"
@@ -74,13 +65,12 @@
     {
       "agent_response": {
         "facts": [
-          "The single engine version check returned exactly glossabet 0.1.0.",
-          "Inspect returned a freshly generated context_schema_version 2 context with complete production corpus coverage: 1 Python file and 66 bytes.",
-          "The lean context only omits imports and rolled-up locations: 3 token locations and 2 identifier locations; retained collection ledgers have complete, exact totals.",
-          "Graphify is present and available, with one complete group and a current commit match; no glossary or monorepo was detected."
+          "The shared version gate printed exactly `glossabet 0.1.0`; inspect returned context schema 2 with freshness `current`.",
+          "Corpus and production coverage are complete. The routine lean context excludes `imports` and rolls up 3 token-location and 2 identifier-location entries.",
+          "Graphify is present, available, and current against clean HEAD `808b6dafea22f80e07d727be0bcd375a79c327c7`; no glossary or monorepo was detected."
         ],
         "id": "fresh",
-        "next_action": "Step 0 next requires proceeding to Step 1 with this fresh context and reading its named principal production files before making nominations.",
+        "next_action": "Step 0 permits Step 1 next: use the freshly generated context and read its named production file before proposing names; this was not performed.",
         "status": "grounded"
       },
       "delivery": "plugin",
@@ -108,7 +98,7 @@
           "exit_code": 0,
           "output_characters": 8600,
           "output_preview": "{\"configuration\":{\"file\":null,\"ignore_paths\":[],\"path_roles\":{},\"present\":false,\"schema_version\":1},\"context_schema_version\":2,\"coverage\":{\"context\":{\"affected_sections\":[\"imports\",\"vocabulary\"],\"complete\":false,\"limits\":{\"default_list_items\":50,\"list_items\":{\"files.code\":250,\"files.docs\":150,\"glossary.concepts\":200,\"modules\":150,\"structural_groups.groups\":100,\"vocabulary.doc_terms.items\":50,\"vocabulary.identifiers.items\":50,\"vocabulary.tokens.items\":100},\"omission_records\":100,\"register_exemplars\":24,\"routine_target_bytes\":80000,\"serialized_bytes\":1000000,\"string_characters\":512},\"omission_co\u2026",
-          "output_sha256": "61ccb847590107fca4e0cd3dadea440d0551f815ee98efb33a6fc03a13509571",
+          "output_sha256": "f983e700ed402a333ab6ea3aa791a56878231dd4755f80d367e78c72b2375ec8",
           "status": "completed"
         }
       ],
@@ -117,13 +107,12 @@
     {
       "agent_response": {
         "facts": [
-          "Inspect returned a fresh schema 2 context with complete production corpus coverage.",
-          "The lean context only omits imports and rolls up 3 token locations and 2 identifier locations.",
-          "Graphify is available, but its recorded commit 0000000000000000000000000000000000000000 differs from current HEAD 047062a0e36cbf3d603e3df572585e4dbc67a1b1.",
-          "The structural group is stale and may be used only as advisory evidence."
+          "Inspect returned a current schema-2 context with complete corpus and production coverage.",
+          "The routine lean context excludes `imports` and rolls up 3 token-location and 2 identifier-location entries.",
+          "Graphify is present and available, but its recorded commit `0000000000000000000000000000000000000000` differs from clean HEAD `808b6dafea22f80e07d727be0bcd375a79c327c7`; its group is advisory, not current fact."
         ],
         "id": "stale",
-        "next_action": "Step 0 next requires carrying the stale-Graphify warning into Step 1 and grounding claims in live production files.",
+        "next_action": "Step 0 permits Step 1 only with the stale Graphify warning carried forward and the structural group treated as advisory; this was not performed.",
         "status": "grounded-with-warning"
       },
       "delivery": "plugin",
@@ -150,7 +139,7 @@
           "exit_code": 0,
           "output_characters": 8606,
           "output_preview": "{\"configuration\":{\"file\":null,\"ignore_paths\":[],\"path_roles\":{},\"present\":false,\"schema_version\":1},\"context_schema_version\":2,\"coverage\":{\"context\":{\"affected_sections\":[\"imports\",\"vocabulary\"],\"complete\":false,\"limits\":{\"default_list_items\":50,\"list_items\":{\"files.code\":250,\"files.docs\":150,\"glossary.concepts\":200,\"modules\":150,\"structural_groups.groups\":100,\"vocabulary.doc_terms.items\":50,\"vocabulary.identifiers.items\":50,\"vocabulary.tokens.items\":100},\"omission_records\":100,\"register_exemplars\":24,\"routine_target_bytes\":80000,\"serialized_bytes\":1000000,\"string_characters\":512},\"omission_co\u2026",
-          "output_sha256": "461d8c7a1f1802402db6bb24e2f80c6fe364110837e72f7b131c1d5b9ad29c4c",
+          "output_sha256": "94bde30f42a37224ed70ad97383cc11b1c7d201f714f16c858def883dcafa037",
           "status": "completed"
         }
       ],
@@ -159,12 +148,12 @@
     {
       "agent_response": {
         "facts": [
-          "Inspect returned a fresh schema 2 context with complete production corpus coverage: 1 Python file and 66 bytes.",
-          "The lean context only omits imports and rolls up 3 token locations and 2 identifier locations; retained collection totals are complete and exact.",
-          "Graphify is neither present nor available, the glossary is absent, and no monorepo was detected."
+          "Inspect returned a current schema-2 context with complete corpus and production coverage.",
+          "The routine lean context excludes `imports` and rolls up 3 token-location and 2 identifier-location entries.",
+          "No Graphify artifact or glossary is present, structural coverage is unavailable, and no monorepo was detected."
         ],
         "id": "absent",
-        "next_action": "Step 0 next requires proceeding to Step 1 without structural groups or prior glossary state and reading the named production files.",
+        "next_action": "Step 0 permits Step 1 using the included production evidence without structural-group evidence; this was not performed.",
         "status": "grounded"
       },
       "delivery": "plugin",
@@ -201,18 +190,18 @@
     {
       "agent_response": {
         "facts": [
-          "The engine rejected glossabet-out/glossary.json as unreadable JSON: Expecting property name enclosed in double quotes at line 1 column 2.",
-          "No schema 2 context was returned, so the glossary cannot be treated as absent and fallback repository reading is prohibited."
+          "The engine returned no context because `glossabet-out/glossary.json` contained unreadable JSON: `Expecting property name enclosed in double quotes: line 1 column 2 (char 1)`.",
+          "The skill contract forbids treating this rejected glossary as absent or reading around the failed engine boundary."
         ],
         "id": "malformed",
-        "next_action": "Step 0 requires repairing the malformed glossary through the trusted Glossabet boundary and rerunning inspect before Step 1 can begin.",
+        "next_action": "Step 0 must remain stopped until the malformed glossary is repaired through a trusted repository workflow and `inspect` succeeds on a later run.",
         "status": "stopped"
       },
       "delivery": "plugin",
       "failures": [],
       "id": "malformed",
       "observed": {
-        "error_sha256": "1f0fa72a9cf1241c9fe8cda748ef9b2f9719ee73ef057ce2e40d30c63287b040",
+        "error_sha256": "5baf5691cfffcf71a6f1dac0b97b938a61ecbed0bc087b4480595b89e69227e9",
         "inspect_exit_code": 1
       },
       "passed": true,
@@ -223,7 +212,7 @@
           "exit_code": 1,
           "output_characters": 200,
           "output_preview": "glossabet: <WORKSPACE>/scenarios/malformed/glossabet-out/glossary.json: unreadable JSON (Expecting property name enclosed in double quotes: line 1 column 2 (char 1))\n",
-          "output_sha256": "1f0fa72a9cf1241c9fe8cda748ef9b2f9719ee73ef057ce2e40d30c63287b040",
+          "output_sha256": "5baf5691cfffcf71a6f1dac0b97b938a61ecbed0bc087b4480595b89e69227e9",
           "status": "failed"
         }
       ],
@@ -232,18 +221,18 @@
     {
       "agent_response": {
         "facts": [
-          "The engine refused to load glossabet-out/glossary.json because it is larger than 64000000 bytes.",
-          "No schema 2 context was returned, so Step 1 is blocked."
+          "The engine returned no context because the glossary exceeds the 64,000,000-byte direct-JSON limit and was refused before loading.",
+          "The skill contract forbids treating the rejected glossary as absent or bypassing the size boundary with direct artifact reading."
         ],
         "id": "oversized",
-        "next_action": "Step 0 requires replacing the oversized glossary with a valid bounded glossary through the trusted Glossabet boundary, then rerunning inspect.",
+        "next_action": "Step 0 must remain stopped until the glossary is reduced to at most 64,000,000 bytes and `inspect` succeeds on a later run.",
         "status": "stopped"
       },
       "delivery": "plugin",
       "failures": [],
       "id": "oversized",
       "observed": {
-        "error_sha256": "037d40bd66e6c8521619f167c5e41caa94c68af5f6da7ec8c6d1f8cb0aa7eaff",
+        "error_sha256": "f90df48ac93f40d7daff392a1f786169e77d841b6e78ac59168943ba9843f114",
         "inspect_exit_code": 1
       },
       "passed": true,
@@ -254,7 +243,7 @@
           "exit_code": 1,
           "output_characters": 152,
           "output_preview": "glossabet: <WORKSPACE>/scenarios/oversized/glossabet-out/glossary.json: larger than 64000000 bytes \u2014 refusing to load\n",
-          "output_sha256": "037d40bd66e6c8521619f167c5e41caa94c68af5f6da7ec8c6d1f8cb0aa7eaff",
+          "output_sha256": "f90df48ac93f40d7daff392a1f786169e77d841b6e78ac59168943ba9843f114",
           "status": "failed"
         }
       ],
@@ -263,11 +252,11 @@
     {
       "agent_response": {
         "facts": [
-          "The confined engine rejected glossabet-out/glossary.json because symlinked artifact paths are not trusted.",
-          "No schema 2 context was returned, and the rejected path must not be read directly."
+          "The engine returned no context because `glossabet-out/glossary.json` is symlinked, and symlinked artifact paths are not trusted.",
+          "The skill contract forbids direct artifact inspection or fallback repository reading after this boundary failure."
         ],
         "id": "symlinked",
-        "next_action": "Step 0 requires repairing the artifact path so the glossary is confined and non-symlinked, then rerunning inspect before Step 1.",
+        "next_action": "Step 0 must remain stopped until a trusted, confined regular glossary artifact replaces the symlink and `inspect` succeeds on a later run.",
         "status": "stopped"
       },
       "delivery": "plugin",
@@ -294,13 +283,12 @@
     {
       "agent_response": {
         "facts": [
-          "Inspect returned a fresh schema 2 context with complete corpus coverage: 1 production Python file and 9860 bytes.",
-          "The lean context omitted imports, rolled up 361 token locations and 360 identifier locations, and dropped 336 register exemplars, 261 token details, and 310 identifier details.",
-          "Register exemplars retain 24 of an exact 360; the code-only layer retains 10 of an exact 361 and reports its display-cap reason.",
-          "No glossary concepts were omitted, but retained evidence cannot support repository-wide absence, uniqueness, or exhaustiveness claims."
+          "Inspect returned a current schema-2 context with complete corpus and production coverage.",
+          "The lean context is incomplete: `imports` is excluded; 361 token locations and 360 identifier locations are rolled up; 336 register exemplars, 261 token items, and 310 identifier items are omitted.",
+          "The register exemplar ledger retains 24 of an exact 360 because of its display cap, and the code-only layer retains 10 of an exact 361. Retained entries support positive observations only."
         ],
         "id": "partial",
-        "next_action": "Step 0 permits Step 1 only with these partial-context limits surfaced and only positive observations drawn from retained evidence.",
+        "next_action": "Step 0 permits Step 1 only under partial-evidence rules: use retained entries without repository-wide absence, uniqueness, or exhaustiveness claims, and do not reconstruct omissions by bulk-reading.",
         "status": "grounded-partial"
       },
       "delivery": "plugin",
@@ -335,13 +323,12 @@
     {
       "agent_response": {
         "facts": [
-          "Inspect returned a fresh schema 2 context with complete corpus coverage across 4 production files.",
-          "Monorepo detection is true because package.json declares workspaces and 3 subprojects have their own package manifests.",
-          "The detected sub-roots are packages/alpha, packages/beta, and packages/gamma.",
-          "The lean context omits imports and rolls up 12 token locations and 8 identifier locations."
+          "Inspect returned a current schema-2 context with complete corpus and production coverage.",
+          "The routine lean context excludes `imports` and rolls up 12 token-location and 8 identifier-location entries.",
+          "Monorepo detection is true because `package.json` declares workspaces and three subprojects have manifests: `packages/alpha`, `packages/beta`, and `packages/gamma`."
         ],
         "id": "monorepo",
-        "next_action": "Step 0 requires a user choice between whole-repository naming and separate Glossabet runs for each subproject; nomination must remain paused.",
+        "next_action": "Step 0 requires a scope choice before continuing: name the whole repository or run Glossabet separately for the three subprojects; per-subproject vocabulary is the skill\u2019s recommendation.",
         "status": "choice-required"
       },
       "delivery": "plugin",
@@ -388,12 +375,12 @@
     {
       "agent_response": {
         "facts": [
-          "Inspect returned a fresh schema 2 context with complete production corpus coverage.",
-          "A valid schema 1 glossary is present with Payment Service marked canonical and Gateway Route marked proposed.",
-          "The lean context only omits imports and rolls up 3 token locations and 2 identifier locations; glossary concepts are complete."
+          "Inspect returned a current schema-2 context with complete corpus and production coverage.",
+          "The routine lean context excludes `imports` and rolls up 3 token-location and 2 identifier-location entries; the glossary concepts are fully represented.",
+          "The schema-1 glossary contains canonical `Payment Service` and proposed `Gateway Route`; the contract keeps the canonical concept and resumes from the proposed one."
         ],
         "id": "resumed-glossary",
-        "next_action": "Step 0 requires resuming from Gateway Route while keeping Payment Service canonical and limiting new nominations to uncovered concepts.",
+        "next_action": "Step 0 requires Step 1 to ground the open work in the named production file, then resume brainstorming at `Gateway Route` without re-nominating `Payment Service`; this was not performed.",
         "status": "resumed"
       },
       "delivery": "plugin",
@@ -433,13 +420,13 @@
     {
       "agent_response": {
         "facts": [
-          "Inspect returned a fresh schema 2 context with complete production corpus coverage for service.py: 1 file and 66 bytes.",
-          "The engine excluded .env and api-secret.txt as sensitive paths; they were not read lexically.",
-          "The lean context only omits imports and rolls up 3 token locations and 2 identifier locations; Graphify and the glossary are absent."
+          "Inspect returned a current schema-2 context with complete corpus and production coverage.",
+          "The engine reported `.env` and `api-secret.txt` as excluded sensitive paths; under the skill contract they were not read lexically, and they were not opened separately.",
+          "The routine lean context excludes `imports` and rolls up 3 token-location and 2 identifier-location entries; no glossary, Graphify artifact, or monorepo was detected."
         ],
         "id": "sensitive-file",
-        "next_action": "Step 0 next requires proceeding to Step 1 using only retained ordinary production evidence and never inspecting the excluded sensitive paths.",
-        "status": "grounded-with-warning"
+        "next_action": "Step 0 permits Step 1 using only the included production path while continuing to exclude both sensitive paths; this was not performed.",
+        "status": "grounded"
       },
       "delivery": "plugin",
       "failures": [],
@@ -502,12 +489,12 @@
     {
       "agent_response": {
         "facts": [
-          "No plugin-bundled engine exists, so Step 0 selected the standalone `glossabet` command.",
-          "`glossabet --version` exited 127: `zsh:1: command not found: glossabet`.",
-          "The required version check failed, so `inspect` was not invoked."
+          "The installed skill has no bundled scripts/run_glossabet.py, so Step 0 selected the standalone glossabet command.",
+          "`glossabet --version` failed with exit code 127: `zsh:1: command not found: glossabet`.",
+          "No inspect command ran, and no repository artifacts or production files were read or written."
         ],
         "id": "missing-cli",
-        "next_action": "Install or repair the standalone engine from the matching Glossabet 0.1.0 distribution, then rerun Step 0 and require `glossabet --version` to print exactly `glossabet 0.1.0` before inspection.",
+        "next_action": "Install or repair the engine from the same Glossabet distribution so `glossabet --version` prints exactly `glossabet 0.1.0`; Step 0 must then repeat the version check before running inspect.",
         "status": "stopped"
       },
       "delivery": "standalone-skill",
@@ -561,23 +548,23 @@
     {
       "cache_write_input_tokens": 0,
       "cached_input_tokens": 0,
-      "input_tokens": 18971,
-      "output_tokens": 191,
-      "reasoning_output_tokens": 133
+      "input_tokens": 18967,
+      "output_tokens": 185,
+      "reasoning_output_tokens": 127
     },
     {
       "cache_write_input_tokens": 0,
-      "cached_input_tokens": 400128,
-      "input_tokens": 508083,
-      "output_tokens": 9791,
-      "reasoning_output_tokens": 6640
+      "cached_input_tokens": 400384,
+      "input_tokens": 460019,
+      "output_tokens": 9289,
+      "reasoning_output_tokens": 6017
     },
     {
       "cache_write_input_tokens": 0,
-      "cached_input_tokens": 82176,
-      "input_tokens": 114891,
-      "output_tokens": 1794,
-      "reasoning_output_tokens": 1143
+      "cached_input_tokens": 81152,
+      "input_tokens": 112493,
+      "output_tokens": 1634,
+      "reasoning_output_tokens": 1078
     }
   ]
 }

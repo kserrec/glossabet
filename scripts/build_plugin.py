@@ -14,6 +14,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_ROOT = ROOT / "plugins" / "glossabet"
+HOOK_PATH = "./hooks/hooks.json"
+SESSION_START_COMMAND = (
+    'python3 -B "$PLUGIN_ROOT/skills/glossabet/scripts/run_glossabet.py" brief .'
+)
+SESSION_START_COMMAND_WINDOWS = (
+    'py -3 -B "%PLUGIN_ROOT%\\skills\\glossabet\\scripts\\run_glossabet.py" brief .'
+)
 
 
 def _fail(message: str) -> None:
@@ -57,6 +64,33 @@ def _check_sources(version: str) -> tuple[Path, Path, bytes]:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("name") != "glossabet" or manifest.get("version") != version:
         _fail("plugin manifest name/version does not match the source package")
+    if manifest.get("hooks") != HOOK_PATH:
+        _fail("plugin manifest does not expose the session-start hook")
+
+    hook_path = PLUGIN_ROOT / "hooks" / "hooks.json"
+    hooks = json.loads(hook_path.read_text(encoding="utf-8"))
+    expected_hooks = {
+        "description": "Load the repository's settled vocabulary into each Codex session.",
+        "hooks": {
+            "SessionStart": [
+                {
+                    "matcher": "^(startup|resume|clear|compact)$",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": SESSION_START_COMMAND,
+                            "commandWindows": SESSION_START_COMMAND_WINDOWS,
+                            "timeout": 30,
+                            "statusMessage": "Loading settled repository vocabulary",
+                            "additionalContextLimit": 0,
+                        }
+                    ],
+                }
+            ]
+        },
+    }
+    if hooks != expected_hooks:
+        _fail("plugin session-start hook does not match its bounded brief contract")
 
     runner = (
         PLUGIN_ROOT / "skills" / "glossabet" / "scripts" / "run_glossabet.py"

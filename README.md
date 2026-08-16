@@ -118,19 +118,17 @@ in [`evaluation/results.json`](evaluation/results.json).
 
 **Status: 0.1.0 source alpha under an owner self-testing pause; not yet
 published to PyPI or a plugin directory and not yet a trusted-alpha release.**
-Phases 0–22, Phases 24–27, and the read-only Phase 28.1 `brief` are complete.
-Phase 28.2 automatic session-start delivery and Phase 28.3 explicit
-sync-context remain. The installed-agent harness isolates a same-named
-user-level skill without modifying it, requires direct and unchanged `inspect`
-stdout, and applies both profile and login-shell isolation only to the
-missing-CLI host run. Its offline gate now checks the current plugin artifact
-and all recorded safety outcomes deterministically, while its append-only
-attempt history reports procedural agent misses instead of selecting a green
-retry. See [`EVALUATION.md`](EVALUATION.md) for the six observed Phase 28.1
-attempts and their provenance limits. Owner-run testing and the remaining
-Phase 28 gates stay before any outside maintainer invitation.
+Phases 0–22, Phases 24–27, and Phases 28.1–28.2 are complete. Phase 28.3
+explicit sync-context remains. The installed-agent harness separately probes
+fresh-session hook delivery, the installed skill, and the non-login,
+profile-disabled missing-CLI boundary. Its offline gate checks the current
+plugin artifact and all recorded safety outcomes deterministically, while its
+append-only attempt history reports procedural agent misses instead of
+selecting a green retry. See [`EVALUATION.md`](EVALUATION.md) for every observed
+attempt and its provenance limits. Owner-run testing and the remaining Phase
+28.3 gate stay before any outside maintainer invitation.
 Package metadata and the embedded plugin wheel are bound to the renamed GitHub
-repository; the checked-in wheel matches the Phase 28.1 executable source and
+repository; the checked-in wheel matches the Phase 28.2 executable source and
 canonical skill.
 The trusted-alpha evidence gate and Phase 23 remain later work; do not describe
 the current stopping point as release-ready. See
@@ -141,9 +139,13 @@ installation ownership, [`PLAN.md`](PLAN.md) for the closure sequence, and
 
 The preferred future Codex artifact is the version-coupled plugin prototype at
 `plugins/glossabet/`. It carries the canonical skill and a matching wheel that
-runs from the plugin cache without adding a command to `PATH`. No public
-marketplace entry exists yet. For local use from a source checkout, the
-standalone fallback installs the CLI and then makes a separate skill copy:
+runs from the plugin cache without adding a command to `PATH`. Its declared
+Codex `SessionStart` hook runs the bundled `brief .` boundary at startup,
+resume, clear, and compaction. Once the user trusts that installed hook, its
+bounded stdout becomes developer context for the session; an absent glossary
+contributes nothing. No public marketplace entry exists yet. For local use
+from a source checkout, the standalone fallback installs the CLI and then
+makes a separate skill copy:
 
 ```bash
 uv tool install . --reinstall
@@ -204,10 +206,11 @@ file. With no glossary it emits nothing. Otherwise it emits at most 4,096 UTF-8
 bytes of deterministic plain text: canonical terms with one-line definitions,
 scopes, alias statuses, a semantic glossary SHA-256, `{head, dirty}` Git state,
 and explicit coverage when entries or details do not fit. The text can be
-piped or pasted into an ordinary agent context before a host delivery channel
-exists. It is context for using settled words, never permission to nominate,
-coin, finalize, save, edit, or rename vocabulary; those changes still require
-a human `/glossabet` naming session.
+piped or pasted into an ordinary agent context, and the Codex plugin supplies
+it automatically through its trusted `SessionStart` hook. It is context for
+using settled words, never permission to nominate, coin, finalize, save, edit,
+or rename vocabulary; those changes still require a human `/glossabet` naming
+session.
 
 Artifacts live in `<repo>/glossabet-out/` (evidence, glossary, drift and
 validation reports). The incremental extraction cache is user-owned state,

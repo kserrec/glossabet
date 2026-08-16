@@ -1,0 +1,20 @@
+{
+  "description": "Load the repository's settled vocabulary into each Codex session.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "^(startup|resume|clear|compact)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -B \"$PLUGIN_ROOT/skills/glossabet/scripts/run_glossabet.py\" brief .",
+            "commandWindows": "py -3 -B \"%PLUGIN_ROOT%\\skills\\glossabet\\scripts\\run_glossabet.py\" brief .",
+            "timeout": 30,
+            "statusMessage": "Loading settled repository vocabulary",
+            "additionalContextLimit": 0
+          }
+        ]
+      }
+    ]
+  }
+}

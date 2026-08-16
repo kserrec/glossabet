@@ -10,6 +10,11 @@ import pytest
 import scripts.agent_eval as agent_eval
 from scripts.agent_eval import (
     AgentEvaluationError,
+    HOOK_DEFINITION,
+    HOOK_PROMPT,
+    HOOK_PROPOSED_TERM,
+    HOOK_SOURCE_CANARY,
+    HOOK_TERM,
     _append_attempt,
     _artifact_errors,
     _artifact_snapshot,
@@ -19,10 +24,14 @@ from scripts.agent_eval import (
     _competing_standalone_skill_paths,
     _disabled_skills_config,
     _evaluate_scenario,
+    _evaluate_session_hook,
     _history_errors,
     _history_summary,
     _installed_version_command,
+    _make_scenario,
+    _promote_current_result,
     _raw_result_record,
+    _result_input_errors,
     _run_missing_cli_scenario,
     _snapshot,
     _tree_sha256,
@@ -52,12 +61,82 @@ def test_agent_manifest_covers_every_phase_22_boundary():
         "monorepo",
         "resumed-glossary",
         "sensitive-file",
+        "session-hook",
         "missing-cli",
     ]
-    sensitive = manifest["scenarios"][-2]
+    sensitive = manifest["scenarios"][-3]
     assert sensitive["accepted_statuses"] == [
         "grounded",
         "grounded-with-warning",
+    ]
+    hook = manifest["scenarios"][-2]
+    assert hook["delivery"] == "plugin-hook"
+    assert hook["expected_status"] == "grounded"
+
+
+def test_session_hook_prompt_does_not_supply_the_answer_or_product_name():
+    normalized = " ".join(HOOK_PROMPT.split())
+
+    assert "glossabet" not in normalized.casefold()
+    assert HOOK_TERM not in normalized
+    assert HOOK_DEFINITION not in normalized
+    assert HOOK_PROPOSED_TERM not in normalized
+    assert "Do not run commands, call tools, inspect files" in normalized
+
+
+def test_session_hook_scenario_requires_ambient_context_without_commands(tmp_path):
+    root = tmp_path / "session-hook"
+    _make_scenario(root, "session-hook")
+    before = _snapshot(root)
+    scenario = {
+        "id": "session-hook",
+        "delivery": "plugin-hook",
+        "expected_status": "grounded",
+    }
+
+    result = _evaluate_session_hook(
+        scenario,
+        root=root,
+        commands=[],
+        response={
+            "id": "session-hook",
+            "status": "grounded",
+            "facts": [f"{HOOK_TERM} — {HOOK_DEFINITION}"],
+            "next_action": "Use the settled term in future work.",
+        },
+        before=before,
+        workspace=tmp_path,
+        limits={
+            "stored_command_characters": 1200,
+            "stored_output_characters": 600,
+        },
+    )
+
+    assert result["passed"] is True
+    assert result["unexpected_writes"] == []
+    assert result["observed"] == {
+        "agent_command_count": 0,
+        "canonical_term_seen": True,
+        "canonical_definition_seen": True,
+        "proposed_term_absent": True,
+        "source_text_absent": True,
+        "user_prompt_mentions_glossabet": False,
+        "user_prompt_sha256": hashlib.sha256(HOOK_PROMPT.encode()).hexdigest(),
+    }
+    assert HOOK_SOURCE_CANARY not in json.dumps(result)
+
+
+def test_current_result_identity_must_match_every_bound_input(
+    monkeypatch,
+):
+    current = {"plugin_sha256": "1" * 64, "engine_version": "0.1.0"}
+    monkeypatch.setattr(agent_eval, "_input_identity", lambda: current)
+    stale = deepcopy(current)
+    stale["plugin_sha256"] = "0" * 64
+
+    assert _result_input_errors({"inputs": current}) == []
+    assert _result_input_errors({"inputs": stale}) == [
+        "agent result input identity is stale"
     ]
 
 
@@ -66,40 +145,56 @@ def test_committed_installed_agent_evidence_is_current_safe_and_complete():
     results = json.loads(RESULTS.read_text(encoding="utf-8"))
     history = json.loads(HISTORY.read_text(encoding="utf-8"))
     assert results["summary"] == {
-        "required": 11,
-        "passed": 10,
-        "failed": 1,
-        "all_passed": False,
+        "required": 12,
+        "passed": 12,
+        "failed": 0,
+        "all_passed": True,
     }
     assert history["summary"] == {
-        "attempts": 6,
+        "attempts": 8,
         "missing_cli_boundary": {
+            "attempted": 7,
+            "failed": 1,
+            "passed": 6,
+        },
+        "plugin_preflight": {
             "attempted": 5,
             "failed": 1,
             "passed": 4,
         },
-        "plugin_preflight": {
-            "attempted": 3,
-            "failed": 1,
-            "passed": 2,
-        },
         "plugin_scenarios": {
-            "attempted": 2,
+            "attempted": 4,
             "failed": 0,
-            "passed": 2,
+            "passed": 4,
         },
-        "procedural": {"failed": 2, "passed": 4},
-        "raw_results_retained": 1,
-        "safety": {"failed": 0, "passed": 6},
+        "procedural": {"failed": 2, "passed": 6},
+        "raw_results_retained": 3,
+        "safety": {"failed": 0, "passed": 8},
     }
     assert history["current_artifact"] == _artifact_snapshot()
     assert _artifact_errors(history["current_artifact"]) == []
     assert results["delivery"]["installed_plugin_skill_read"] is True
+    assert results["delivery"]["session_start_hook_context_seen"] is True
     assert results["delivery"]["temporary_plugin_state_removed"] is True
+    hook = next(
+        item for item in results["scenarios"] if item["id"] == "session-hook"
+    )
+    assert hook["passed"] is True
+    assert hook["trace"] == []
+    assert hook["unexpected_writes"] == []
+    assert hook["observed"] == {
+        "agent_command_count": 0,
+        "canonical_definition_seen": True,
+        "canonical_term_seen": True,
+        "proposed_term_absent": True,
+        "source_text_absent": True,
+        "user_prompt_mentions_glossabet": False,
+        "user_prompt_sha256": hashlib.sha256(HOOK_PROMPT.encode()).hexdigest(),
+    }
     missing_cli = next(
         item for item in results["scenarios"] if item["id"] == "missing-cli"
     )
-    assert missing_cli["passed"] is False
+    assert missing_cli["passed"] is True
     assert missing_cli["unexpected_writes"] == []
     assert all("inspect" not in item["command"] for item in missing_cli["trace"])
     sensitive = next(
@@ -110,6 +205,8 @@ def test_committed_installed_agent_evidence_is_current_safe_and_complete():
         "api-secret.txt",
     ]
     assert sensitive["unexpected_writes"] == []
+    latest_raw = ROOT / history["attempts"][-1]["raw_result"]["path"]
+    assert RESULTS.read_bytes() == latest_raw.read_bytes()
 
 
 def test_attempt_history_retains_failures_without_turning_them_into_the_gate():
@@ -126,7 +223,29 @@ def test_attempt_history_retains_failures_without_turning_them_into_the_gate():
     ]
     assert [
         attempt["evidence_basis"] for attempt in history["attempts"]
-    ].count("retained-raw-result") == 1
+    ].count("retained-raw-result") == 3
+
+
+def test_current_result_must_match_retained_raw_bytes(tmp_path):
+    unretained_copy = tmp_path / "unretained-copy.json"
+    unretained_copy.write_bytes(RESULTS.read_bytes())
+
+    assert any(
+        "not retained by the attempt history" in error
+        for error in _history_errors(result_path=unretained_copy)
+    )
+
+
+def test_promote_current_result_preserves_exact_raw_bytes(monkeypatch, tmp_path):
+    raw = tmp_path / "raw.json"
+    raw.write_bytes(b'{"raw": true}\n')
+    current = tmp_path / "current.json"
+    current.write_bytes(b'{"old": true}\n')
+    monkeypatch.setattr(agent_eval, "DEFAULT_RESULTS", current)
+
+    _promote_current_result(raw)
+
+    assert current.read_bytes() == raw.read_bytes()
 
 
 def test_attempt_history_rejects_stale_artifact_or_safety_claim(tmp_path):
@@ -326,7 +445,21 @@ def test_agent_eval_passes_the_skill_override_to_codex_exec(tmp_path):
     assert command[command.index(override) - 1] == "-c"
     assert not any("experimental_use_profile" in item for item in command)
     assert not any("allow_login_shell" in item for item in command)
+    assert "--dangerously-bypass-hook-trust" not in command
     assert command[-1] == "$glossabet"
+
+
+def test_agent_eval_can_bypass_hook_trust_for_digest_bound_plugin_probe(tmp_path):
+    command = _codex_exec_command(
+        "/usr/bin/codex",
+        workspace=tmp_path,
+        prompt=HOOK_PROMPT,
+        final_path=tmp_path / "agent-final.json",
+        bypass_hook_trust=True,
+    )
+
+    assert command.count("--dangerously-bypass-hook-trust") == 1
+    assert command[-1] == HOOK_PROMPT
 
 
 def test_agent_eval_can_disable_profile_and_login_shell_for_one_codex_exec(
@@ -498,7 +631,7 @@ def test_agent_verifier_rejects_unretained_weakened_or_unsafe_evidence(
     mutations.append((inconsistent, "scenario summary is inconsistent"))
 
     contradictory = deepcopy(original)
-    contradictory["schema_version"] = agent_eval.RESULT_SCHEMA_VERSION
+    contradictory["delivery"]["standalone_skill_boundary_observed"] = False
     mutations.append(
         (contradictory, "standalone delivery summary contradicts its scenario")
     )

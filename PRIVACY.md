@@ -51,9 +51,14 @@ itself may contact the package index chosen by the user's package manager.
 The Codex plugin route keeps both components inside Codex's plugin cache. Its
 skill-local runner verifies and imports the bundled wheel directly; it does
 not install a Python package, add a command to `PATH`, or make a network
-request. Adding a remote marketplace could make Codex retrieve plugin files,
-but the Phase 21 lifecycle probe used only a temporary local marketplace.
-Codex's own plugin configuration/cache behavior remains part of the host,
+request. The plugin also declares a `SessionStart` hook. After the user trusts
+that hook, Codex runs `brief .` at startup, resume, clear, and compaction and
+adds its stdout to developer context. That text can therefore be sent to the
+configured model provider without a user mentioning Glossabet in that
+session. An absent glossary emits no text. Adding a remote marketplace could
+make Codex retrieve plugin files, but the local lifecycle probes use only
+temporary local marketplaces. Codex's own plugin configuration, cache, hook
+trust, model transmission, and retention behavior remain part of the host,
 outside Glossabet's production CLI.
 
 ## Agent-mediated skill
@@ -74,9 +79,11 @@ The agent host may send the CLI context and those selected files to its model
 provider or other configured tools according to that host's current privacy,
 retention, training, workspace, and connector settings. Glossabet does not
 operate or control those services and cannot enforce their policies.
-The same warning applies when a user pipes or pastes `glossabet brief` output
-into an agent session; Phase 28.1 adds the local digest, not an automatic host
-delivery channel.
+The same warning applies to `glossabet brief` output whether a user pipes or
+pastes it manually or the trusted Codex plugin hook supplies it automatically.
+The hook remains read-only, but read-only does not mean private from the model
+provider: the canonical terms, definitions, scopes, aliases, and Git state in
+the digest become session context.
 
 Before invoking the skill on confidential code:
 
@@ -110,8 +117,12 @@ The production CLI has no network path. Two developer/release activities do:
 - An explicitly authorized `scripts/agent_eval.py --run` invokes the locally
   authenticated Codex host on generated temporary scenarios, creates a unique
   local marketplace/plugin cache entry, and removes that exact state. Codex may
-  contact its configured model service under the account's policy. Each run
-  writes a unique bounded result and appends its outcome; the
+  contact its configured model service under the account's policy. Its three
+  host turns cover fresh-session hook delivery, the plugin skill scenarios,
+  and the isolated missing-CLI boundary. The harness uses a one-invocation
+  hook-trust bypass only for the exact checked temporary plugin. Each run
+  writes a unique bounded raw result, mirrors only digest-retained bytes as the
+  current result, and appends its outcome; the
   `--refresh-artifact` and `--verify-results` modes are local-only and do not
   invoke Codex or the network.
 

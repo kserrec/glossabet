@@ -70,6 +70,12 @@
       "description": "Unreadable excluded sensitive paths plus ordinary production code."
     },
     {
+      "id": "session-hook",
+      "delivery": "plugin-hook",
+      "expected_status": "grounded",
+      "description": "A fresh agent session whose user prompt does not name Glossabet and whose repository has settled vocabulary."
+    },
+    {
       "id": "missing-cli",
       "delivery": "standalone-skill",
       "expected_status": "stopped",
