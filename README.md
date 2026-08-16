@@ -118,17 +118,20 @@ in [`evaluation/results.json`](evaluation/results.json).
 
 **Status: 0.1.0 source alpha under an owner self-testing pause; not yet
 published to PyPI or a plugin directory and not yet a trusted-alpha release.**
-Phases 0–22 and Phases 24–27 are complete. The current authenticated
-installed-agent evidence passes 11/11 scenarios on Codex CLI 0.147.0/Linux.
-The harness isolates a same-named user-level skill without modifying it,
-requires direct and unchanged `inspect` stdout, and applies both profile and
-login-shell isolation only to the missing-CLI host run. That run now observes
-the absent command, invokes no `inspect`, and writes nothing to the scenario
-repository. Owner-run testing and Phases 28.1–28.3 remain before any outside
-maintainer invitation.
-Package metadata, the embedded plugin wheel, and installed-agent evidence are
-bound to the renamed GitHub repository, and the rebuilt plugin wheel matches
-the Phase 27 source and skill.
+Phases 0–22, Phases 24–27, and the read-only Phase 28.1 `brief` are complete.
+Phase 28.2 automatic session-start delivery and Phase 28.3 explicit
+sync-context remain. The installed-agent harness isolates a same-named
+user-level skill without modifying it, requires direct and unchanged `inspect`
+stdout, and applies both profile and login-shell isolation only to the
+missing-CLI host run. Its offline gate now checks the current plugin artifact
+and all recorded safety outcomes deterministically, while its append-only
+attempt history reports procedural agent misses instead of selecting a green
+retry. See [`EVALUATION.md`](EVALUATION.md) for the six observed Phase 28.1
+attempts and their provenance limits. Owner-run testing and the remaining
+Phase 28 gates stay before any outside maintainer invitation.
+Package metadata and the embedded plugin wheel are bound to the renamed GitHub
+repository; the checked-in wheel matches the Phase 28.1 executable source and
+canonical skill.
 The trusted-alpha evidence gate and Phase 23 remain later work; do not describe
 the current stopping point as release-ready. See
 [`NAME-CLEARANCE.md`](NAME-CLEARANCE.md) for the
@@ -171,6 +174,7 @@ glossabet scan <repo>       deterministic, git-stamped evidence (cached, increme
 glossabet analyze <repo>    scan + terminology report (register, overlaps, overloads)
 glossabet inspect <repo>    fresh, lean JSON context for the agent skill
 glossabet inspect <repo> --full  detailed diagnostic projection
+glossabet brief <repo>      bounded read-only canonical vocabulary digest
 glossabet save <repo>       validate/save glossary JSON from standard input
 glossabet show <repo>       display the current glossary
 glossabet drift <repo>      live vocabulary vs the canonical glossary
@@ -192,6 +196,18 @@ recursive reading when the CLI boundary fails. When the human settles terms,
 the skill sends the complete JSON document to `glossabet save .` on standard
 input; that command bounds, strictly validates, confines, and atomically
 persists `glossary.json` instead of letting the agent write it.
+
+`glossabet brief <repo>` is the read-only ambient vocabulary boundary. It
+loads only the confined, strictly validated glossary and the hardened live Git
+stamp; it does not scan source files, refresh evidence, or write any repository
+file. With no glossary it emits nothing. Otherwise it emits at most 4,096 UTF-8
+bytes of deterministic plain text: canonical terms with one-line definitions,
+scopes, alias statuses, a semantic glossary SHA-256, `{head, dirty}` Git state,
+and explicit coverage when entries or details do not fit. The text can be
+piped or pasted into an ordinary agent context before a host delivery channel
+exists. It is context for using settled words, never permission to nominate,
+coin, finalize, save, edit, or rename vocabulary; those changes still require
+a human `/glossabet` naming session.
 
 Artifacts live in `<repo>/glossabet-out/` (evidence, glossary, drift and
 validation reports). The incremental extraction cache is user-owned state,

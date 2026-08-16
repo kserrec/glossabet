@@ -19,6 +19,13 @@ For `scan`, `analyze`, `inspect`, `drift`, and `validate`, the CLI may read:
   evidence; and
 - local Git commit and worktree status through a constrained `git` subprocess.
 
+`brief` is narrower: it reads only `glossabet-out/glossary.json` through the
+same confined validator and the local Git commit/worktree stamp. It does not
+scan source or documentation and does not write a repository or cache file.
+Its output contains canonical terms, human-written definitions, scopes,
+aliases, and state fingerprints, so it remains confidential repository data
+even though it is small.
+
 Sensitive-file exclusion is path-based. Dotenv variants, common private-key
 and credential-store names, and paths containing `secret` or `credential` are
 excluded without reading their contents. Glossabet does **not** scan ordinary
@@ -67,6 +74,9 @@ The agent host may send the CLI context and those selected files to its model
 provider or other configured tools according to that host's current privacy,
 retention, training, workspace, and connector settings. Glossabet does not
 operate or control those services and cannot enforce their policies.
+The same warning applies when a user pipes or pastes `glossabet brief` output
+into an agent session; Phase 28.1 adds the local digest, not an automatic host
+delivery channel.
 
 Before invoking the skill on confidential code:
 
@@ -97,6 +107,13 @@ The production CLI has no network path. Two developer/release activities do:
   removes that exact test-owned state. It does not publish or contact a plugin
   directory; the host may still perform its own update checks under its normal
   configuration.
+- An explicitly authorized `scripts/agent_eval.py --run` invokes the locally
+  authenticated Codex host on generated temporary scenarios, creates a unique
+  local marketplace/plugin cache entry, and removes that exact state. Codex may
+  contact its configured model service under the account's policy. Each run
+  writes a unique bounded result and appends its outcome; the
+  `--refresh-artifact` and `--verify-results` modes are local-only and do not
+  invoke Codex or the network.
 
 There are no hidden analytics, crash-report uploads, update checks, or remote
 feature flags in Glossabet 0.1.0.

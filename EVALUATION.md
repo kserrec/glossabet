@@ -218,13 +218,14 @@ or context detail. The deterministic correctness labels were not changed to
 manufacture agreement.
 
 Phase 24 changed the engine identity and vocabulary-origin metadata; Phases 25
-and 26 change the engine and manifest identities for register and nomination
-labels. None changes any of the 20 blinded finding payloads. Before carrying the existing
-judgments forward, each refresh compared the old and new packets after removing
-only the changed identity fields and required exact equality of the question,
-sources, and every finding. `reviewer-results.json` records the latest reuse
-explicitly. This is refreshed provenance for unchanged judgments, not a new
-reviewer run or new independent evidence.
+and 26 changed engine and manifest identities for register and nomination
+labels; Phase 28.1 changed the engine source identity by adding the read-only
+brief projection. None changed any of the 20 blinded finding payloads. Before
+carrying the existing judgments forward, each refresh compared the old and new
+packets after removing only the changed identity fields and required exact
+equality of the question, sources, and every finding. `reviewer-results.json`
+records the latest reuse explicitly. This is refreshed provenance for
+unchanged judgments, not a new reviewer run or new independent evidence.
 
 ## Runtime and truncation
 
@@ -342,48 +343,73 @@ Phase 22 JSON at that time recorded that successful exact-bundle run. It proved
 one complete boundary execution, not a zero-flake rate for future model
 invocations.
 
-Phases 24–26 changed the source engine but deliberately did not relabel this
-older installed-agent evidence. The Phase 27 work branch rebuilds the
-standalone and checked-in plugin wheel from the same source and canonical
-skill; deterministic evaluation, blinded reviewer verification, wheel smoke,
-and the mechanical release-distribution check pass. The current managed
-environment cannot complete Codex's temporary plugin lifecycle because its
-user-state directory is protected read-only, so the committed agent result
-still binds the earlier proven bundle and is intentionally stale. Phase 27 is
-not complete until `scripts/agent_eval.py --run` succeeds on a writable Codex
-host and refreshes this evidence.
+Phases 24–26 changed the source engine, and Phase 27 rebuilt the standalone and
+checked-in plugin wheel from the same source and canonical skill. Phase 27 also
+hardened the missing-CLI host boundary and corrected plugin identity to ignore
+interpreter bytecode caches and sort canonical POSIX paths across operating
+systems. Public-main CI for commit `2be99b6` passed all 15 CPython 3.10–3.14
+Linux/macOS/Windows jobs plus the evidence, build, and distribution-smoke job.
 
-After the repository and documentation rename, Kyle separately authorized an
-exact local artifact refresh without ending the owner self-testing pause. The
-final rebuilt wheel differed from the Phase 22 wheel only in `METADATA` and
-`RECORD`; every executable package entry was byte-identical. The final wheel
-passed all 11 scenarios in its first full batch. The current committed JSON
-records that run and binds it to plugin tree SHA-256
-`b1a558baf1f6b4a32e9c9d5c0a9d87cda88f5b84607b02c1f4daad1a4cf132dd`.
-An earlier metadata-only refresh also passed before the final README status
-sync required the final rebuild. The first public-main CI run then proved that
-the evaluator's tree identity had also included an ignored local
-`__pycache__` file: local verification saw that file, while every clean CI
-checkout correctly did not. The identity function now excludes only Python's
-interpreter-generated cache directories. The replacement matrix passed on
-Linux and macOS but exposed a second issue on every Windows job: sorting native
-`Path` objects ordered mixed-case plugin paths differently by operating system.
-Identity now sorts canonical POSIX relative-path strings, with focused
-regressions for both failure modes, and the same final wheel passed all 11
-scenarios again against the final evaluator. Temporary plugin and marketplace
-state was removed and verified absent after every run. Public-main CI for
-commit `2be99b6` then passed all 15 CPython 3.10–3.14 jobs across Linux, macOS,
-and Windows plus the separate evidence, build, and distribution-smoke job. That
-makes the four post-Phase 22 batches four for four and the combined observation
-eight of nine complete batches; the sample remains too small to claim a stable
-future success rate.
+Phase 28.1 exposed a different issue with the evidence policy itself. Requiring
+the current agent to produce one green full batch confounded artifact behavior
+with stochastic command choice: one agent skipped both installed-boundary
+actions in the missing-CLI host, while another tried a plausible but
+nonexistent plugin-root runner before correcting to the documented skill-local
+runner. Neither result established an engine defect, and repeated retries
+would have made a selected green run look more reliable than the observed
+sample.
 
-The authenticated regeneration command temporarily changes user-level Codex
-plugin/marketplace state and then removes only its uniquely named state. The
-offline verifier makes no Codex or network call:
+[`evaluation/agent-history.json`](evaluation/agent-history.json) therefore
+retains every authorized Phase 28.1 attempt instead of replacing the previous
+result:
+
+| Attempt | Plugin preflight | Plugin scenarios | Missing-CLI boundary | Procedural result | Evidence basis |
+| --- | --- | --- | --- | --- | --- |
+| Initial full batch | passed | passed | passed | passed | session record |
+| Metadata-rebuild full batch | passed | passed | failed | failed | retained raw JSON |
+| Focused probe 1 | not run | not run | passed | passed | session record |
+| Focused probe 2 | not run | not run | passed | passed | session record |
+| Focused probe 3 | not run | not run | passed | passed | session record |
+| Current-artifact full batch | failed | not run | not run | failed | session record |
+
+That is four procedural passes in six attempts, including plugin preflight in
+two of three applicable full attempts, all ten plugin scenarios in both
+completed full batches, and the missing-CLI boundary in four of five applicable
+attempts. All six recorded safety checks passed: no sensitive canary exposure,
+unexpected repository write, or post-failure `inspect`, and temporary state was
+removed. Only the metadata-rebuild batch still has its raw trace because the
+earlier harness overwrote one result path; the other five entries are
+explicitly weaker, contemporaneous session records. These small samples
+characterize observed agent reliability. They are not a claim about a future
+rate and are not converted into a green release threshold.
+
+The current-artifact gate is now deterministic and offline. It binds the
+canonical skill, plugin tree, skill-local runner, and checked-in wheel by
+SHA-256; rejects an ambiguous plugin-root runner; verifies manifest/version and
+wheel-embedded-skill parity; and runs exact version plus bounded `brief` smokes
+through that wheel. The verifier separately requires every history entry's
+safety checks and cleanup to pass. A procedural miss stays in the ledger but
+does not invalidate the Phase 28.1 engine/CLI acceptance; Phase 28.2 owns the
+actual session-start host lifecycle.
+
+The retained raw result uses schema v3. Its top-level
+`standalone_skill_boundary_observed` field is `true` because that generator
+filled the summary field unconditionally, while the authoritative
+`missing-cli` scenario correctly records the boundary as unobserved and the
+10/11 failure. The raw file remains byte-for-byte unchanged and digest-bound.
+Future schema-v4 runs derive the summary field from that scenario, and the
+verifier enforces their agreement.
+
+An authenticated `--run` temporarily changes user-level Codex
+plugin/marketplace state and then removes only its uniquely named state. It now
+writes a unique raw path under `evaluation/agent-runs/`, refuses overwrite, and
+appends the outcome even when preflight aborts. It still requires explicit
+authorization. `--refresh-artifact` and `--verify-results` are offline and make
+no Codex or network call:
 
 ```bash
 uv run python scripts/agent_eval.py --run
+uv run python scripts/agent_eval.py --refresh-artifact
 uv run python scripts/agent_eval.py --verify-results evaluation/agent-results.json
 ```
 
@@ -428,11 +454,13 @@ and compare its accuracy against this recorded standard-library baseline.
   fixtures, not on varied third-party Graphify exports.
 - Installed-agent evidence covers Codex CLI 0.147.0 on one Linux host. Other
   Codex versions and operating systems, ChatGPT, and Claude Code are unverified.
-- The installed-agent preflight passed eight of nine observed full plugin
-  batches. Phase 22 passed four of five, including one of two unchanged
-  attempts against that exact wheel; all four post-Phase 22 batches passed,
-  including the final wheel's corrected clean-tree evidence run. Reliability
-  beyond that small observed sample is unknown.
+- Historical Phase 22 installed-agent preflight passed eight of nine observed
+  full plugin batches across several artifact/evaluator states. The separate
+  Phase 28.1 ledger records plugin preflight in two of three applicable full
+  attempts, all ten plugin scenarios in both completed full batches, and the
+  missing-CLI boundary in four of five applicable attempts. Focused probes and
+  changed artifacts are not pooled into one success rate; reliability beyond
+  each small observed sample is unknown.
 - The multilingual fixture covers representative Python and Clojure forms,
   not every identifier grammar among the 30 recognized languages.
 - Language-origin classification currently has a curated Python builtin table;

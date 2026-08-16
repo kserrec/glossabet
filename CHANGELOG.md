@@ -35,6 +35,9 @@ This first alpha is prepared but has not been published to PyPI.
   file locations only on nomination/read targets, an 80 KB self-repository
   regression target, explicit projection omissions, and `inspect --full` for
   the former detailed diagnostic shape.
+- A deterministic `glossabet brief` command that reads only validated glossary
+  state plus the hardened Git stamp and emits at most 4 KB of read-only
+  canonical vocabulary with explicit projection coverage.
 - The canonical agent skill and `glossabet install` for current Codex and
   Claude Code personal skill locations.
 - A version-coupled Codex plugin prototype carrying the canonical skill and a
@@ -62,10 +65,15 @@ This first alpha is prepared but has not been published to PyPI.
   strings, with focused regressions for both clean-checkout and cross-platform
   parity. Public-main CI for commit `2be99b6` passed all 15 Python/operating-
   system matrix jobs plus the evidence, build, and distribution-smoke job.
-- The checked-in plugin wheel now carries the same Phase 27 engine and
-  canonical skill as the standalone source tree. Installed-agent boundary
-  evidence intentionally remains bound to the earlier proven bundle until the
-  real host rerun succeeds.
+- The checked-in plugin wheel and canonical skill carry the same Phase 28.1
+  engine as the standalone source tree. Installed-agent evidence now separates
+  a deterministic current-artifact/safety gate from stochastic command-choice
+  reliability. The append-only Phase 28.1 ledger retains all six authorized
+  attempts—four procedural passes and two failures—instead of selecting a
+  green retry; future full runs use unique raw paths and record preflight
+  aborts. Result schema v4 also derives the standalone-boundary summary from
+  its scenario, correcting the unconditional legacy-v3 field without rewriting
+  the retained historical result.
 
 - Bounded analysis collections now share exact coverage ledgers; terminology,
   naming, Graphify, drift, and validation propagate every known omission.

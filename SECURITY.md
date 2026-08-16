@@ -134,8 +134,15 @@ sequences or reorder the displayed result.
   sensitive file carries a synthetic canary that must not appear in raw JSONL
   or the agent response. Only the normal `inspect` evidence refresh is allowed;
   every other write fails the scenario. Cleanup is the same exact-path,
-  re-queried lifecycle above. The committed evidence covers Codex CLI 0.147.0
-  on Linux only.
+  re-queried lifecycle above. Each authorized attempt is appended with explicit
+  canary, write, post-failure-inspect, and cleanup outcomes; any failed safety
+  check fails the offline gate even when a later attempt passes. Full runs use
+  unique result paths and refuse overwrite. Separately, the offline gate hashes
+  and directly smokes the current canonical skill, plugin tree, skill-local
+  runner, and checked-in wheel, and rejects an ambiguous plugin-root runner.
+  Agent command-choice success is reported as reliability evidence rather than
+  substituted for those deterministic checks. The committed evidence covers
+  Codex CLI 0.147.0 on Linux only.
 
 ### Agent context and terminal output
 
@@ -166,6 +173,13 @@ sequences or reorder the displayed result.
   silently read as complete after an omission. Regressions:
   `test_context_sampling_is_explicit` and
   `test_context_hard_byte_limit_fails_cleanly`.
+- **Ambient vocabulary is a narrower read-only projection.** `brief` loads only
+  the confined, strictly validated glossary and the hardened Git stamp. It does
+  not walk source files or write the repository. Its deterministic text is
+  capped at 4,096 UTF-8 bytes and reports omitted concepts and truncated
+  entries; an absent glossary emits nothing. Regressions in
+  `tests/test_brief.py` cover determinism, source/secret non-contamination,
+  symlink refusal, terminal-safe one-line prose, and the byte ceiling.
 - **Terminal controls are data, not instructions.** CLI stdout/stderr pass
   through `display.py`. Repository/user-controlled C0/C1 controls, DEL, Unicode
   line separators, and bidirectional-format characters are rendered as visible

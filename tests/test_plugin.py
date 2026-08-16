@@ -59,6 +59,7 @@ def test_plugin_manifest_and_sources_are_version_coupled():
 def test_plugin_wheel_matches_package_version_entry_point_and_skill():
     wheel = _wheel()
     with zipfile.ZipFile(wheel) as archive:
+        assert "glossabet/brief.py" in archive.namelist()
         metadata_path = f"glossabet-{__version__}.dist-info/METADATA"
         metadata = BytesParser(policy=policy.default).parsebytes(
             archive.read(metadata_path)
@@ -82,6 +83,40 @@ def test_plugin_runner_executes_bundled_cli():
         check=True,
     )
     assert result.stdout == f"glossabet {__version__}\n"
+    assert result.stderr == ""
+
+
+def test_plugin_runner_executes_bundled_brief(tmp_path):
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": "payment-service",
+                "term": "Payment Service",
+                "definition": "The boundary that owns payment attempts.",
+                "status": "canonical",
+            }
+        ],
+    }
+    saved = subprocess.run(
+        [sys.executable, str(RUNNER), "save", str(tmp_path)],
+        cwd=ROOT,
+        input=json.dumps(glossary),
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    result = subprocess.run(
+        [sys.executable, str(RUNNER), "brief", str(tmp_path)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "saved glossary" in saved.stdout
+    assert "Glossabet vocabulary brief v1" in result.stdout
+    assert "Payment Service — The boundary that owns payment attempts." in result.stdout
     assert result.stderr == ""
 
 

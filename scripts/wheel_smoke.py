@@ -132,6 +132,15 @@ def main() -> int:
             raise RuntimeError("wheel-installed inspect returned the wrong schema")
         if context.get("glossary", {}).get("concepts") != glossary["concepts"]:
             raise RuntimeError("wheel-installed inspect lost validated glossary state")
+        brief_text = _capture(
+            [str(cli), "brief", str(boundary_repo)],
+            cwd=work,
+            env=env,
+        )
+        if "Payment Service — The service that owns payment attempts." not in brief_text:
+            raise RuntimeError("wheel-installed brief lost canonical glossary state")
+        if len(brief_text.encode("utf-8")) > 4_096:
+            raise RuntimeError("wheel-installed brief exceeded its byte limit")
 
         _run(
             [str(python), str(ROOT / "scripts" / "run_walkthrough.py")],

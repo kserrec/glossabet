@@ -37,7 +37,7 @@ finalizes vocabulary and never renames code.
         │ runs `glossabet inspect .`; parses bounded JSON stdout
   ┌─────┴──────────────────────────────────────────────────────┐
   │ glossabet engine / CLI  (this Python package)              │
-  │ install · inspect · save · scan · analyze · show · drift · validate│
+  │ install · inspect · brief · save · scan · analyze · show · drift · validate│
   └─────┬───────────────────────────────────────────────────────┘
         │ normalizes every source into one intermediate representation
    ┌────┴─────────┐
@@ -259,6 +259,11 @@ The package is `glossabet/`. Grouped by role:
   It loads the optional glossary through the confined validator, builds fresh
   evidence, applies deterministic list/string/output limits, records all
   projection omissions, and prints JSON only.
+- `brief.py` — the read-only ambient vocabulary projection. It loads no source
+  files, reuses the confined glossary validator and hardened Git stamp, and
+  emits deterministic plain text capped at 4,096 UTF-8 bytes. The semantic
+  glossary SHA-256 names the exact validated state; coverage names every
+  omitted canonical concept or truncated entry.
 
 **Analysis over the evidence**
 - `imports.py` — best-effort, regex-level import extraction per language
@@ -394,10 +399,15 @@ The package is `glossabet/`. Grouped by role:
   build a label-blinded packet, run one separate Codex reviewer in an isolated
   read-only temporary directory, retain bounded packet-only trace evidence,
   and record disagreements separately from deterministic correctness.
-- `scripts/agent_eval.py` and `evaluation/agent-results.json` — temporarily
-  install the actual plugin, run 10 plugin scenarios plus one standalone
-  missing-CLI scenario through ephemeral Codex sessions, independently check
-  contexts/writes/sensitive canaries, and prove exact plugin cleanup. The
+- `scripts/agent_eval.py`, `evaluation/agent-history.json`, and
+  `evaluation/agent-results.json` — deterministically bind and smoke the current
+  canonical skill, plugin tree, skill-local runner, and checked-in wheel;
+  retain every authenticated attempt without overwriting earlier raw output;
+  and keep safety as a hard gate while reporting stochastic command compliance
+  separately. An authorized full run temporarily installs the actual plugin,
+  exercises 10 plugin scenarios plus one standalone missing-CLI scenario
+  through ephemeral Codex sessions, independently checks
+  contexts/writes/sensitive canaries, and proves exact plugin cleanup. The
   recorded host is Codex CLI 0.147.0 on Linux.
   `EVALUATION.md` documents methodology, calibration history, dependency
   decisions, limitations, and reproduction.
@@ -471,6 +481,15 @@ and a context that exceeds its hard byte ceiling exit `1` without a lower-trust
 fallback. The installed skill parses the routine output and reads only
 production paths it names.
 
+**`brief`** (`cli.py` → `brief.brief_command`). Loads only the strictly
+validated glossary plus the live filtered Git stamp and emits a read-only
+canonical-vocabulary digest. It never scans source, refreshes evidence, or
+writes the repository. An absent glossary produces no output; malformed,
+oversized, or symlinked glossary input exits `1`. Output is deterministic,
+plain text, and at most 4,096 UTF-8 bytes, with a semantic glossary SHA-256,
+Git `{head, dirty}` state, canonical terms, one-line definitions, scopes,
+alias statuses, and explicit projection coverage.
+
 **`save`** (`cli.py` → `glossary.save_command`). Accepts at most 64 MB from
 standard input (reading one additional byte only to detect overflow), parses
 exactly one JSON document, applies the strict glossary schema and semantic
@@ -506,9 +525,10 @@ disabled, and these scanned-root-relative pathspecs:
 :(exclude)glossabet-out/**
 ```
 
-The engine runs Git from the directory being scanned. The skill no longer runs
-Git itself: `inspect` creates its context from the live scan in the same
-invocation. The exclusions deliberately omit Git's `top`
+The engine runs Git from the selected repository directory. The skill no
+longer runs Git itself: `inspect` creates its context from the live scan in the
+same invocation, while `brief` reuses the same filtered stamp without scanning
+or writing. The exclusions deliberately omit Git's `top`
 modifier so a subproject scan inside a larger worktree excludes the
 subproject's output rather than an unrelated checkout-root path. They apply
 whether output is tracked or untracked. Disabling rename detection ensures a
@@ -572,14 +592,12 @@ structural validation is partial until an adapter supplies trustworthy paths.
 
 ## Where things stand
 
-`PLAN.md` is the authoritative roadmap. Phases 0–22 and Phases 24–26 are
-complete. Phase 27's source and distribution implementation are prepared, but
-its installed-agent acceptance rerun remains open; the owner self-testing pause
-is active. Phases 27–28.3 finish before any outside maintainer invitation, and no Phase 23
-work begins
-until the trusted-alpha gate passes. Package metadata, the embedded plugin
-wheel, and source skill are bound to the renamed GitHub repository and the same
-Phase 27 bytes. The committed installed-agent evidence still describes the
-earlier proven bundle and must be regenerated before Phase 27 completion. The
-trusted-alpha evidence gate, Phase 23, and explicit external authorization
-remain before public package or plugin publication.
+`PLAN.md` is the authoritative roadmap. Phases 0–22, Phases 24–27, and Phase
+28.1 are complete; Phase 28.2 is next, and the owner self-testing pause is
+active. Phases 28.2–28.3 finish before any outside maintainer invitation, and
+no Phase 23 work begins until the trusted-alpha gate passes. Package metadata,
+the embedded plugin wheel, source skill, and deterministic artifact record are
+bound together. The installed-agent history retains its procedural failures
+instead of presenting a selected green run. The trusted-alpha evidence gate,
+Phase 23, and explicit external authorization remain before public package or
+plugin publication.

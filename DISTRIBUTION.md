@@ -58,16 +58,24 @@ synthetic next patch version, verifies the old cached version disappeared,
 then removes the plugin, marketplace, and any exact empty cache parent it
 created. It publishes nothing and leaves no marketplace entry installed.
 
-`scripts/agent_eval.py --run` separately verifies the user-facing delivery
-boundary. It proves Codex read the exact temporarily installed skill and
-version-checked the matching bundled engine, then exercises current/stale/absent
-Graphify state, hostile glossaries, partial context, monorepo scope, resumed
-state, and excluded sensitive content. A second ephemeral run installs only the
-standalone skill in a temporary repository and proves a missing `glossabet`
-command stops before inspection. The harness permits only `inspect`'s normal
-evidence refresh, rejects every other repository write, and removes/re-queries
-its uniquely named plugin and marketplace state in all outcomes. Its committed
-result is host/version evidence, not a support claim for untested Codex hosts.
+An explicitly authorized `scripts/agent_eval.py --run` separately observes the
+user-facing delivery boundary. It asks Codex to read the exact temporarily
+installed skill and version-check the matching bundled engine, then exercises
+current/stale/absent Graphify state, hostile glossaries, partial context,
+monorepo scope, resumed state, and excluded sensitive content. A second
+ephemeral run installs only the standalone skill in a temporary repository and
+checks that a missing `glossabet` command stops before inspection. The harness
+permits only `inspect`'s normal evidence refresh, rejects every other
+repository write, and removes/re-queries its uniquely named plugin and
+marketplace state in all outcomes. Each full run has a unique raw path and its
+outcome is appended even when preflight aborts; procedural agent misses remain
+visible instead of being replaced by a later green run.
+
+The offline verifier separately hashes and directly smokes the current skill,
+plugin tree, runner, and wheel, and treats every recorded canary, write,
+post-failure-inspect, and cleanup outcome as a hard safety gate. The observed
+agent attempts are host/version reliability evidence, not a support claim for
+untested Codex hosts or a substitute for deterministic artifact checks.
 
 ## Standalone wheel fallback
 

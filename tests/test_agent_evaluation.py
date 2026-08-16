@@ -10,14 +10,24 @@ import pytest
 import scripts.agent_eval as agent_eval
 from scripts.agent_eval import (
     AgentEvaluationError,
+    _append_attempt,
+    _artifact_errors,
+    _artifact_snapshot,
+    _attempt_from_error,
+    _attempt_from_probe_error,
     _codex_exec_command,
     _competing_standalone_skill_paths,
     _disabled_skills_config,
     _evaluate_scenario,
+    _history_errors,
+    _history_summary,
     _installed_version_command,
+    _raw_result_record,
     _run_missing_cli_scenario,
     _snapshot,
     _tree_sha256,
+    _usage_totals,
+    _validated_run_output,
     verify_results,
 )
 
@@ -26,6 +36,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "evaluation" / "agent-scenarios.json"
 PROMPT = ROOT / "evaluation" / "agent-prompt.md"
 RESULTS = ROOT / "evaluation" / "agent-results.json"
+HISTORY = ROOT / "evaluation" / "agent-history.json"
 
 
 def test_agent_manifest_covers_every_phase_22_boundary():
@@ -50,17 +61,47 @@ def test_agent_manifest_covers_every_phase_22_boundary():
     ]
 
 
-def test_committed_installed_agent_evidence_is_current_and_complete():
+def test_committed_installed_agent_evidence_is_current_safe_and_complete():
     assert verify_results(RESULTS) == []
     results = json.loads(RESULTS.read_text(encoding="utf-8"))
+    history = json.loads(HISTORY.read_text(encoding="utf-8"))
     assert results["summary"] == {
         "required": 11,
-        "passed": 11,
-        "failed": 0,
-        "all_passed": True,
+        "passed": 10,
+        "failed": 1,
+        "all_passed": False,
     }
+    assert history["summary"] == {
+        "attempts": 6,
+        "missing_cli_boundary": {
+            "attempted": 5,
+            "failed": 1,
+            "passed": 4,
+        },
+        "plugin_preflight": {
+            "attempted": 3,
+            "failed": 1,
+            "passed": 2,
+        },
+        "plugin_scenarios": {
+            "attempted": 2,
+            "failed": 0,
+            "passed": 2,
+        },
+        "procedural": {"failed": 2, "passed": 4},
+        "raw_results_retained": 1,
+        "safety": {"failed": 0, "passed": 6},
+    }
+    assert history["current_artifact"] == _artifact_snapshot()
+    assert _artifact_errors(history["current_artifact"]) == []
     assert results["delivery"]["installed_plugin_skill_read"] is True
     assert results["delivery"]["temporary_plugin_state_removed"] is True
+    missing_cli = next(
+        item for item in results["scenarios"] if item["id"] == "missing-cli"
+    )
+    assert missing_cli["passed"] is False
+    assert missing_cli["unexpected_writes"] == []
+    assert all("inspect" not in item["command"] for item in missing_cli["trace"])
     sensitive = next(
         item for item in results["scenarios"] if item["id"] == "sensitive-file"
     )
@@ -69,6 +110,126 @@ def test_committed_installed_agent_evidence_is_current_and_complete():
         "api-secret.txt",
     ]
     assert sensitive["unexpected_writes"] == []
+
+
+def test_attempt_history_retains_failures_without_turning_them_into_the_gate():
+    history = json.loads(HISTORY.read_text(encoding="utf-8"))
+
+    assert _history_errors(result_path=RESULTS) == []
+    assert [
+        attempt["id"]
+        for attempt in history["attempts"]
+        if not attempt["procedural_pass"]
+    ] == [
+        "20260816-full-metadata-rebuild",
+        "20260816-full-current-artifact-preflight",
+    ]
+    assert [
+        attempt["evidence_basis"] for attempt in history["attempts"]
+    ].count("retained-raw-result") == 1
+
+
+def test_attempt_history_rejects_stale_artifact_or_safety_claim(tmp_path):
+    original = json.loads(HISTORY.read_text(encoding="utf-8"))
+
+    stale_artifact = deepcopy(original)
+    stale_artifact["current_artifact"]["wheel_sha256"] = "0" * 64
+    stale_path = tmp_path / "stale-artifact.json"
+    stale_path.write_text(json.dumps(stale_artifact), encoding="utf-8")
+    assert "current deterministic plugin artifact identity is stale" in (
+        _history_errors(stale_path)
+    )
+
+    unsafe = deepcopy(original)
+    unsafe["attempts"][0]["safety_pass"] = False
+    unsafe["summary"] = _history_summary(unsafe["attempts"])
+    unsafe_path = tmp_path / "unsafe.json"
+    unsafe_path.write_text(json.dumps(unsafe), encoding="utf-8")
+    assert any(
+        "records a safety failure" in error
+        for error in _history_errors(unsafe_path)
+    )
+
+
+def test_attempt_history_rejects_rewritten_raw_evidence(tmp_path):
+    history = json.loads(HISTORY.read_text(encoding="utf-8"))
+    retained = next(
+        attempt for attempt in history["attempts"] if attempt["raw_result"]
+    )
+    retained["raw_result"]["sha256"] = "0" * 64
+    path = tmp_path / "rewritten-raw.json"
+    path.write_text(json.dumps(history), encoding="utf-8")
+
+    assert any(
+        "raw result digest is stale" in error
+        for error in _history_errors(path)
+    )
+
+
+def test_append_attempt_preserves_every_prior_record(monkeypatch, tmp_path):
+    history = json.loads(HISTORY.read_text(encoding="utf-8"))
+    path = tmp_path / "agent-history.json"
+    path.write_text(json.dumps(history), encoding="utf-8")
+    monkeypatch.setattr(agent_eval, "HISTORY_PATH", path)
+    before = deepcopy(history["attempts"])
+    appended = deepcopy(before[-1])
+    appended["id"] = "later-distinct-attempt"
+
+    _append_attempt(appended)
+
+    updated = json.loads(path.read_text(encoding="utf-8"))
+    assert updated["attempts"][:-1] == before
+    assert updated["attempts"][-1] == appended
+    assert updated["summary"] == _history_summary(updated["attempts"])
+
+
+def test_agent_run_output_is_unique_and_repository_retained(tmp_path):
+    accepted = ROOT / "evaluation" / "agent-runs" / "new-run.json"
+    assert _validated_run_output(accepted) == accepted
+
+    with pytest.raises(AgentEvaluationError, match="evaluation/agent-runs"):
+        _validated_run_output(tmp_path / "escaped.json")
+
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(AgentEvaluationError, match="outside the repository"):
+        _raw_result_record(outside)
+
+
+def test_missing_usage_is_recorded_as_unknown_not_zero():
+    assert _usage_totals([]) is None
+
+
+def test_pre_lifecycle_abort_records_no_cleanup_debt():
+    attempt = _attempt_from_error(
+        "pre-lifecycle-abort", AgentEvaluationError("codex is not installed")
+    )
+
+    assert attempt["cleanup_verified"] is True
+    assert attempt["safety_checks"]["temporary_state_removed"] is True
+    assert attempt["safety_pass"] is True
+    assert attempt["usage"] is None
+
+    cleanup_failure = AgentEvaluationError("plugin cleanup failed")
+    cleanup_failure.cleanup_verified = False
+    unsafe = _attempt_from_error("cleanup-failure", cleanup_failure)
+    assert unsafe["cleanup_verified"] is False
+    assert unsafe["safety_pass"] is False
+
+
+def test_focused_probe_abort_stays_in_the_focused_reliability_series():
+    attempt = _attempt_from_probe_error(
+        "focused-abort", AgentEvaluationError("agent response was malformed")
+    )
+
+    assert attempt["kind"] == "missing-cli-only"
+    assert attempt["inputs"]["plugin_sha256"] is None
+    assert attempt["checks"] == {
+        "plugin_preflight": "not_run",
+        "plugin_scenarios": "not_run",
+        "missing_cli_boundary": "failed",
+    }
+    assert attempt["procedural_pass"] is False
 
 
 def test_plugin_identity_ignores_interpreter_bytecode_cache(tmp_path):
@@ -307,14 +468,18 @@ def test_missing_cli_accepts_the_exact_skill_boundary_without_a_shell_read(
     }
 
 
-def test_agent_verifier_rejects_stale_weakened_or_failing_evidence(tmp_path):
+def test_agent_verifier_rejects_unretained_weakened_or_unsafe_evidence(
+    tmp_path,
+):
     original = json.loads(RESULTS.read_text(encoding="utf-8"))
 
-    mutations = []
+    copied = tmp_path / "unretained-copy.json"
+    copied.write_text(json.dumps(original), encoding="utf-8")
+    assert "agent result is not retained by the attempt history" in (
+        verify_results(copied)
+    )
 
-    stale = deepcopy(original)
-    stale["inputs"]["evaluator_sha256"] = "0" * 64
-    mutations.append((stale, "inputs are stale"))
+    mutations = []
 
     weakened = deepcopy(original)
     weakened["method"]["host_runs"] = 1
@@ -324,9 +489,19 @@ def test_agent_verifier_rejects_stale_weakened_or_failing_evidence(tmp_path):
     delivery_missing["delivery"]["installed_plugin_skill_read"] = False
     mutations.append((delivery_missing, "delivery evidence is missing or stale"))
 
-    scenario_failed = deepcopy(original)
-    scenario_failed["scenarios"][0]["passed"] = False
-    mutations.append((scenario_failed, "scenario does not pass"))
+    unsafe = deepcopy(original)
+    unsafe["scenarios"][0]["unexpected_writes"] = ["README.md"]
+    mutations.append((unsafe, "unexpected writes are recorded"))
+
+    inconsistent = deepcopy(original)
+    inconsistent["summary"]["passed"] = 11
+    mutations.append((inconsistent, "scenario summary is inconsistent"))
+
+    contradictory = deepcopy(original)
+    contradictory["schema_version"] = agent_eval.RESULT_SCHEMA_VERSION
+    mutations.append(
+        (contradictory, "standalone delivery summary contradicts its scenario")
+    )
 
     for index, (value, expected) in enumerate(mutations):
         path = tmp_path / f"agent-results-{index}.json"

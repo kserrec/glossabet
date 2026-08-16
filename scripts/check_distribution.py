@@ -59,6 +59,7 @@ def _check_wheel(wheel: Path, version: str, canonical_skill: bytes) -> None:
         _check_names(names, "wheel")
         required = {
             "glossabet/__main__.py",
+            "glossabet/brief.py",
             "glossabet/cli.py",
             "glossabet/installer.py",
             "glossabet/_skill/SKILL.md",
@@ -188,6 +189,7 @@ def _check_sdist(
             "docs/WALKTHROUGH.md",
             "examples/payment-service/glossabet-out/glossary.json",
             "examples/payment-service/src/payment_service.py",
+            "evaluation/agent-history.json",
             "evaluation/agent-prompt.md",
             "evaluation/agent-response-schema.json",
             "evaluation/agent-results.json",

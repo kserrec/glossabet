@@ -39,6 +39,17 @@ def test_skill_requires_the_engine_boundary_without_artifact_fallback():
     assert "Never write, patch, or open `glossabet-out/glossary.json` yourself" in normalized
 
 
+def test_skill_keeps_ambient_vocabulary_read_only_and_human_gated():
+    text = SKILL.read_text()
+    normalized = " ".join(text.split())
+
+    assert "`glossabet brief .`" in normalized
+    assert "read-only canonical vocabulary" in normalized
+    assert "It is not permission to nominate, coin, finalize, save, edit, or rename anything" in normalized
+    assert "requires the user to enter a `/glossabet` naming session" in normalized
+    assert "the brief is not a substitute for Step 0" in normalized
+
+
 def test_skill_glossary_protocol_matches_engine():
     from glossabet.glossary import SCOPE_PATHS_KEY, STATUSES
 

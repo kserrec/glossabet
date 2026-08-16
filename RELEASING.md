@@ -1,17 +1,17 @@
 # Release preparation and publication
 
 Glossabet 0.1.0 is locally packageable, but it is **not release-ready and is
-not published to PyPI**. The deterministic, blinded-reviewer, and current
-Phase 27 installed-agent gates pass. Kyle has paused before outside
-trusted-alpha evidence while he runs the current build and performs additional
-checks himself; the exact-artifact Phase 23 gate comes after that outside
-evidence. Phase 21 records the Glossabet decision and a
+not published to PyPI**. The deterministic, blinded-reviewer, and Phase 28.1
+artifact/safety gates pass. Phase 28.2 session-start delivery, Phase 28.3
+explicit context sync, and Kyle's owner self-testing pause remain before
+outside trusted-alpha evidence; the exact-artifact Phase 23 gate comes after
+that evidence. Phase 21 records the Glossabet decision and a
 working local Codex plugin lifecycle in `NAME-CLEARANCE.md` and
 `DISTRIBUTION.md`. The source repository remains public and was renamed with
 explicit authorization to <https://github.com/kserrec/glossabet>; its
 configured remote now matches. With separate explicit authorization, package
 metadata and distribution assertions now use that renamed URL, the embedded
-plugin wheel was rebuilt, and its installed-agent evidence was regenerated.
+plugin wheel was rebuilt, and its installed-agent evidence was recorded.
 Only the wheel's `METADATA` and `RECORD` entries changed; its executable
 package entries remained byte-identical. Kyle's owner self-testing pause
 remains active. As reverified on 2026-08-15, PyPI's `glossabet` JSON endpoint
@@ -34,16 +34,19 @@ require his explicit authorization.
   dependency-free wheel behind a version-checking skill-local runner. The
   local Codex 0.147.0 Linux probe installed 0.1.0, updated to a synthetic
   0.1.1, exercised `inspect`, and removed its plugin and marketplace state.
-- The current Phase 27 installed-agent harness passes 11/11 bounded scenarios
-  through Codex CLI 0.147.0 on Linux, including hostile direct inputs,
-  truncation, monorepo/resume behavior, excluded sensitive content, and missing
-  CLI. All ten plugin scenarios preserve direct engine stdout. The missing-CLI
-  host run disables both profile loading and login-shell requests, observes the
-  absent engine, invokes no `inspect`, and writes nothing. Temporary plugin and
-  marketplace state was removed, and the same-named user skill remained
-  byte-identical. The deterministic seven-case evaluation and a separate
-  blinded Codex reviewer pass their recorded thresholds; this remains
-  local/controlled evidence, not outside adopter validation.
+- `evaluation/agent-history.json` retains all six authorized Phase 28.1 agent
+  attempts instead of selecting a green run: four procedural passes and two
+  failures overall, plugin preflight two of three, all ten plugin scenarios in
+  both completed full batches, and the missing-CLI boundary four of five. All
+  six safety records show no canary exposure, unexpected repository write, or
+  post-failure `inspect`, plus verified cleanup. One raw 10/11 result remains;
+  five entries are explicitly labelled as session records because the earlier
+  harness overwrote its single output path. The offline gate binds and smokes
+  the current exact plugin wheel deterministically, while agent-command
+  reliability remains a reported small sample. Future runs use unique raw
+  paths and append their outcomes. The deterministic seven-case evaluation and
+  separate blinded Codex reviewer also pass their recorded thresholds; all of
+  this remains local/controlled evidence, not outside adopter validation.
 - `.github/workflows/quality.yml` is the one reusable gate: it runs the
   complete suite on CPython 3.10–3.14 on Linux, macOS, and Windows, verifies
   workflow policy plus deterministic, installed-agent, and second-reviewer

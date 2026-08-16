@@ -36,6 +36,20 @@ accessibility to outsiders.
 - *One thing, one name.* The goal is that everyone uses the same word for the
   same thing. Distinctness matters more than cleverness.
 
+## Ambient vocabulary is read-only
+
+An agent host may place freshly generated `glossabet brief .` output into an
+ordinary session before this skill is invoked. Treat that bounded digest only
+as read-only canonical vocabulary: use its terms within their stated scopes
+and respect every alias status. It is not permission to nominate, coin,
+finalize, save, edit, or rename anything. Changing the vocabulary still
+requires the user to enter a `/glossabet` naming session and make the decisions
+described below.
+
+If the brief reports incomplete coverage, do not infer or reconstruct omitted
+terms. When this skill is explicitly invoked, the brief is not a substitute for
+Step 0: run `inspect` and follow the complete naming protocol.
+
 ## Step 0 — Ground through the engine boundary
 
 The matching Glossabet 0.1.0 engine is required for this skill. Resolve the

@@ -1,7 +1,8 @@
 # Glossabet — Plan
 
-Status: **phases 0–22 and Phases 24–27 complete; Phase 28.1 is next; owner
-self-testing pause active before the trusted-alpha gate** as of 2026-08-16.
+Status: **phases 0–22, Phases 24–27, and Phase 28.1 complete; Phase 28.2 is
+next; owner self-testing pause active before the trusted-alpha gate** as of
+2026-08-16.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
 Phases 24–28 were added 2026-08-15 from Kyle's self-testing findings and run
@@ -161,6 +162,7 @@ the reconciliation phase, which is their first real consumer.
 glossabet scan .        build/refresh RepositoryEvidence          (Phase 2)
 glossabet analyze .     terminology + register analysis           (Phase 4)
 glossabet inspect .     emit fresh bounded agent context          (Phase 18)
+glossabet brief .       emit bounded read-only vocabulary         (Phase 28.1)
 glossabet save .        validate/save glossary JSON from stdin    (Phase 18)
 glossabet show          display current glossary                  (Phase 6)
 glossabet drift .       compare live vocabulary vs canonical      (Phase 7)
@@ -772,7 +774,7 @@ carries its own hostile-scenario review. 28.2 and 28.3 both depend on 28.1
 and are independent of each other, so a blocked hook host cannot strand the
 digest or the sync command.
 
-#### Phase 28.1 — Brief digest
+#### Phase 28.1 — Brief digest ✅ 2026-08-16
 
 **Steps:**
 
@@ -790,6 +792,45 @@ digest or the sync command.
 **Acceptance:** brief output is deterministic, bounded, stamped, and covered
 by the safety tests; it is usable by hand (piped or pasted into context)
 before any delivery channel exists.
+
+**Completion evidence (2026-08-16):** `glossabet brief` reads only the confined,
+validated glossary plus the hardened Git stamp and never scans source or
+writes repository state. It emits canonical terms with one-line definitions,
+sorted scopes and alias statuses, a semantic glossary SHA-256, live Git
+`{head, dirty}` state, and exact coverage within a 4,096-byte UTF-8 ceiling;
+an absent glossary contributes no output. Tests cover deterministic output,
+source and sensitive-file non-contamination, malformed and symlinked input,
+terminal-safe prose, the byte ceiling, the human-gated skill contract, and
+wheel/plugin parity. A direct run against the payment-service example produces
+a complete three-term digest.
+
+The phase closes against that written engine/CLI acceptance, not against a
+selected green agent invocation. `evaluation/agent-history.json` retains all
+six authorized Phase 28.1 agent attempts in order: one 11/11 full pass, one
+10/11 full result whose missing-CLI agent skipped the installed boundary,
+three passing focused missing-CLI probes, and one full run that stopped at the
+single-version-preflight check after trying both a nonexistent plugin-root
+runner and the actual skill-local runner. Only the 10/11 raw JSON survived the
+earlier overwrite behavior; the other five entries are explicitly labelled
+as contemporaneous session records rather than raw traces. The observed
+procedural totals are four passes and two failures overall, plugin preflight
+two of three, plugin scenarios two of two applicable completed batches, and
+missing-CLI boundary four of five. These are small-sample reliability
+measurements, not a release pass/fail threshold or a claimed future success
+rate.
+
+The offline gate now separates what can be proved deterministically from that
+stochastic behavior. It binds the current canonical skill, plugin tree,
+skill-local runner, and checked-in wheel by SHA-256; rejects an ambiguous
+plugin-root runner; checks manifest/version and embedded-skill parity; and runs
+exact version and bounded `brief` smokes through the bundled wheel. Safety is
+still absolute: every retained attempt must record successful cleanup and no
+sensitive exposure, unexpected repository write, or post-failure `inspect`.
+Any safety failure fails verification; procedural agent misses remain visible
+in the append-only attempt ledger. Future authenticated runs use unique raw
+paths and cannot overwrite earlier evidence. No additional authenticated retry
+was run for this protocol change. Phase 28.2 owns session-start delivery and
+its host-lifecycle evidence.
 
 #### Phase 28.2 — Session-start hook
 

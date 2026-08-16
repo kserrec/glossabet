@@ -76,6 +76,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="emit the detailed pre-lean agent projection",
     )
 
+    brief = sub.add_parser(
+        "brief",
+        help="emit a bounded read-only digest of canonical vocabulary",
+    )
+    _add_repository_path(brief)
+
     show = sub.add_parser("show", help="display the current glossary")
     _add_repository_path(show)
 
@@ -147,6 +153,11 @@ def _run(argv: list[str] | None) -> int:
             graphify=not args.no_graphify,
             full=args.full,
         )
+
+    if args.command == "brief":
+        from glossabet.brief import brief_command
+
+        return brief_command(args.path)
 
     if args.command == "show":
         from glossabet.glossary import show_command
