@@ -54,6 +54,8 @@ def test_skill_glossary_protocol_matches_engine():
 
 def test_skill_referenced_fields_exist_in_agent_context(tmp_path):
     (tmp_path / "a.py").write_text("payment_service = 1\n")
+    (tmp_path / "billing").mkdir()
+    (tmp_path / "billing" / "b.py").write_text("payment_worker = 1\n")
     evidence = build_evidence(tmp_path)
     context = build_agent_context(evidence, None)
     text = SKILL.read_text()
@@ -80,8 +82,14 @@ def test_skill_referenced_fields_exist_in_agent_context(tmp_path):
     assert "`files[*].role`" in text
     assert context["coverage"]["corpus"]["complete"] is True
     assert "`coverage.corpus.complete`" in text
-    assert context["coverage"]["context"]["complete"] is True
+    assert context["coverage"]["context"]["complete"] is False
+    assert context["coverage"]["context"]["projection"] == "lean"
     assert "`coverage.context.complete`" in text
+    assert "module_counts" in text
+    assert "module_counts_truncated" in text
+    assert context["terminology"]["register"]["exemplars"]["items"]
+    assert "`terminology.register.exemplars`" in text
+    assert context["naming_candidates"]["terms"][0]["locations"]
     assert "`walk_remainder.exact`" in text
     structural = context["structural_groups"]
     assert {"present", "available", "warnings"} <= structural.keys()

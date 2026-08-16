@@ -69,7 +69,7 @@ Do not replace a failed command with recursive repository reading.
 
 If the engine is missing or mismatched, exits nonzero, produces
 malformed/truncated JSON, or returns a `context_schema_version` other than
-`1`, stop before Step 1. Tell the user the exact failure and that the engine
+`2`, stop before Step 1. Tell the user the exact failure and that the engine
 from the same Glossabet distribution as this skill must be installed or
 repaired. Do not install a package, guess at half-read output, or silently
 enter a lower-trust mode.
@@ -99,20 +99,28 @@ authentication mechanism or an atomic repository snapshot.
   stop before proposing collision-sensitive new terms. Explain that the
   bounded context cannot safely represent the complete maintained vocabulary.
 
+The routine projection intentionally replaces repeated vocabulary file paths
+with `module_counts`; a true `module_counts_truncated` means that rollup came
+from a bounded file sample. It also omits the raw import graph. Those standard
+omissions are named in `coverage.context` and do not license reconstructing the
+missing detail. `glossabet inspect --full .` exists for diagnostics, but never
+use it to work around a routine-context omission during a naming session.
+
 **How the context feeds the later steps:** `configuration`, per-role `totals`,
 `languages`, `modules`, role-labelled `files`, and `coverage.corpus` seed Step
 1's map and its coverage. `terminology.scope` states the production-only
-lexical boundary. `vocabulary.normalization` states the
-Unicode/acronym/digit lexical contract; `vocabulary.identifiers` (real
-production identifier spellings, normalized tokens, counts, and bounded
-locations) is raw material for Step 2's house-register inference;
-`vocabulary.tokens` plus `modules` ranks material for Step 3's nominations;
-`vocabulary.doc_terms` shows what production-scoped documentation discusses.
-Test and fixture files stay visible for orientation but do not drive those
-vocabulary signals; generated, vendored, sensitive, configured-out, and
-escaping-symlink paths are reported under `skipped` and were not read
-lexically. A repository can override path roles or add literal ignored
-prefixes in root `glossabet.json`.
+lexical boundary. `vocabulary.normalization` states the Unicode/acronym/digit
+lexical contract. The `vocabulary.identifiers`, `vocabulary.tokens`, and
+`vocabulary.doc_terms` samples carry counts and compact module rollups;
+`terminology.register.exemplars` retains the real production identifier
+spellings and bounded file locations used for Step 2's house-register
+inference. `naming_candidates` ranks Step 3's nominations and retains the
+file-level locations the agent may inspect; documentation rollups show what
+production-scoped prose discusses. Test and fixture files stay visible for
+orientation but do not drive those vocabulary signals; generated, vendored,
+sensitive, configured-out, and escaping-symlink paths are reported under
+`skipped` and were not read lexically. A repository can override path roles or
+add literal ignored prefixes in root `glossabet.json`.
 
 Context *guides*—it never replaces judgment. Read the key production files
 named in the context before proposing; never nominate a part from counts alone
@@ -166,11 +174,12 @@ maintained glossary rather than opening a fresh brainstorm:
 
 Build a mental map of what this codebase is and what its parts are:
 
-- From the context's role-labelled file inventory and nominations, read the
-  listed README, CLAUDE.md/AGENTS.md, ARCHITECTURE, design notes, and principal
-  production files that are present. These name the problem domain and the
-  intended structure. Agent-host instructions already loaded before this skill
-  remain authoritative even if they are outside the scanned inventory.
+- From the context's role-labelled file inventory, naming-candidate locations,
+  and register-exemplar locations, read the listed README,
+  CLAUDE.md/AGENTS.md, ARCHITECTURE, design notes, and principal production
+  files that are present. These name the problem domain and the intended
+  structure. Agent-host instructions already loaded before this skill remain
+  authoritative even if they are outside the scanned inventory.
 - Map the directory tree and module boundaries from the context. Note the entry
   points, services/daemons, shared contracts, data layer, and public surfaces.
   If the context inventory is partial, do not fill it with a recursive bulk

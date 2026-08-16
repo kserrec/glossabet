@@ -2,9 +2,12 @@
 
 import json
 import os
+from pathlib import Path
 
 from glossabet import agent_context
+from glossabet.agent_context import ROUTINE_AGENT_CONTEXT_TARGET_BYTES
 from glossabet.cli import EXIT_USER_ERROR, main
+from glossabet.evidence import build_evidence
 from glossabet.glossary import save_glossary
 
 
@@ -25,13 +28,18 @@ def test_inspect_emits_versioned_context_and_refreshes_evidence(tmp_path, capsys
     captured = capsys.readouterr()
     context = json.loads(captured.out)
     assert captured.err == ""
-    assert context["context_schema_version"] == 1
+    assert context["context_schema_version"] == 2
+    assert context["evidence_schema_version"] == 10
     assert context["freshness"]["status"] == "current"
     assert context["files"]["code"] == [
         {"language": "python", "path": "service.py", "role": "production"}
     ]
     assert context["glossary"] == {"present": False}
     assert context["coverage"]["corpus"]["complete"] is True
+    assert context["coverage"]["context"]["projection"] == "lean"
+    assert context["coverage"]["context"]["complete"] is False
+    assert captured.out.endswith("\n")
+    assert "\n " not in captured.out
     assert (tmp_path / "glossabet-out" / "evidence.json").is_file()
 
 
@@ -103,13 +111,90 @@ def test_context_sampling_is_explicit(tmp_path, capsys, monkeypatch):
     context = json.loads(capsys.readouterr().out)
     coverage = context["coverage"]["context"]
     assert coverage["complete"] is False
-    assert coverage["affected_sections"] == ["files"]
-    assert coverage["omission_counts"] == {"list_items": 1}
-    assert coverage["omitted_amounts"] == {"list_items": 1}
     assert {
         "path": "files.code", "kind": "list_items", "amount": 1
     } in coverage["omissions"]
+    assert coverage["omission_counts"]["list_items"] >= 1
+    assert coverage["omitted_amounts"]["list_items"] >= 1
     assert len(context["files"]["code"]) == 1
+
+
+def test_lean_projection_rolls_up_locations_and_keeps_read_targets(tmp_path):
+    auth = tmp_path / "auth"
+    auth.mkdir()
+    (auth / "service.py").write_text("payment_service = payment_router\n")
+    (auth / "worker.py").write_text("payment_service = payment_worker\n")
+    database = tmp_path / "database"
+    database.mkdir()
+    (database / "store.py").write_text("payment_store = payment_router\n")
+
+    context = agent_context.build_agent_context(
+        build_evidence(tmp_path, cache=False),
+        None,
+    )
+
+    payment = next(
+        item
+        for item in context["vocabulary"]["tokens"]["items"]
+        if item["term"] == "payment"
+    )
+    assert "locations" not in payment
+    assert payment["module_counts"] == {"auth": 4, "database": 2}
+    assert payment["module_counts_truncated"] is False
+
+    nomination = next(
+        item
+        for item in context["naming_candidates"]["terms"]
+        if item["term"] == "payment"
+    )
+    assert {location["path"] for location in nomination["locations"]} == {
+        "auth/service.py",
+        "auth/worker.py",
+        "database/store.py",
+    }
+
+    exemplar = next(
+        item
+        for item in context["terminology"]["register"]["exemplars"]["items"]
+        if item["name"] == "payment_service"
+    )
+    assert exemplar["style"] == "snake_case"
+    assert {location["path"] for location in exemplar["locations"]} == {
+        "auth/service.py",
+        "auth/worker.py",
+    }
+    rollup_omission = next(
+        omission
+        for omission in context["coverage"]["context"]["omissions"]
+        if omission["path"] == "vocabulary.tokens.items.*.locations"
+    )
+    assert rollup_omission["kind"] == "file_locations_rolled_up"
+    assert rollup_omission["amount"] > 0
+
+
+def test_full_projection_retains_detailed_vocabulary_locations(tmp_path, capsys):
+    (tmp_path / "service.py").write_text("payment_service = 1\n")
+
+    assert main([
+        "inspect", str(tmp_path), "--no-graphify", "--full",
+    ]) == 0
+
+    context = json.loads(capsys.readouterr().out)
+    token = context["vocabulary"]["tokens"]["items"][0]
+    assert context["coverage"]["context"]["projection"] == "full"
+    assert "locations" in token
+    assert "module_counts" not in token
+    assert "exemplars" not in context["terminology"]["register"]
+
+
+def test_glossabet_routine_context_fits_the_soft_target():
+    root = Path(__file__).resolve().parents[1]
+    evidence = build_evidence(root, cache=False)
+    context = agent_context.build_agent_context(evidence, None)
+
+    size = len(agent_context.serialize_agent_context(context).encode("utf-8"))
+
+    assert size <= ROUTINE_AGENT_CONTEXT_TARGET_BYTES, size
 
 
 def test_too_many_context_omissions_fail_instead_of_becoming_ambiguous(

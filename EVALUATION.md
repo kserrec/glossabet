@@ -343,12 +343,15 @@ one complete boundary execution, not a zero-flake rate for future model
 invocations.
 
 Phases 24–26 changed the source engine but deliberately did not relabel this
-older installed-agent evidence. The checked-in plugin wheel remains the exact
-Phase 22 bundle described here; it delivers neither later phase. A fresh
-standalone Phase 26 wheel passes the isolated wheel smoke, while the release
-distribution check correctly reports that it differs from the checked-in
-plugin. The plugin
-and scenario evidence must be refreshed together no later than Phase 27.
+older installed-agent evidence. The Phase 27 work branch rebuilds the
+standalone and checked-in plugin wheel from the same source and canonical
+skill; deterministic evaluation, blinded reviewer verification, wheel smoke,
+and the mechanical release-distribution check pass. The current managed
+environment cannot complete Codex's temporary plugin lifecycle because its
+user-state directory is protected read-only, so the committed agent result
+still binds the earlier proven bundle and is intentionally stale. Phase 27 is
+not complete until `scripts/agent_eval.py --run` succeeds on a writable Codex
+host and refreshes this evidence.
 
 After the repository and documentation rename, Kyle separately authorized an
 exact local artifact refresh without ending the owner self-testing pause. The

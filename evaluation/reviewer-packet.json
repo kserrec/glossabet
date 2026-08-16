@@ -4,7 +4,7 @@
     "evaluation_schema_version": 6,
     "evidence_schema_version": 10,
     "name": "glossabet",
-    "source_sha256": "c4c07cb4ff973b169bb15c322cacc1839f9528e5bed0b5ebfbadbe31f79f220c",
+    "source_sha256": "a9b8c49c39ff9427b5714223da7ee1dfec46ef65ee1e48dde4356098413b0585",
     "validation_schema_version": 6,
     "version": "0.1.0"
   },

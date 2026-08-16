@@ -174,17 +174,20 @@ strictly validated optional glossary into the JSON printed by
 `confined_artifact_path()`, performs a fresh scan, atomically refreshes the
 ordinary evidence artifact, and emits no progress text on standard output.
 
-The context has its own `context_schema_version`. Agent-facing collections are
-sampled at documented per-field limits, arbitrary nested lists have a smaller
-default limit, strings have a character ceiling, omission records are bounded,
-and the final UTF-8 JSON is capped at 1 MB. A projection needing more than 100
-distinct omission records fails rather than hiding which collection was cut.
-`coverage.corpus` preserves scanner
-coverage; `coverage.context` separately identifies every agent-projection
-omission and whether that projection is complete. If the final object still
-cannot fit, the command exits as a user error instead of emitting partial JSON.
-This is a model-context boundary, not a replacement for the full deterministic
-artifact used by other engine commands.
+AgentContext v2 is serialized as compact JSON. Its routine projection samples
+tokens/identifiers/document terms at 100/50/50 items, replaces their repeated
+file-location lists with per-module occurrence rollups, and retains file paths
+only on the naming candidates and register exemplars the skill may inspect.
+`glossabet inspect . --full` keeps the former detailed projection for
+diagnostics. Both modes have documented per-field limits, a smaller default
+list limit, a string ceiling, and at most 100 omission records.
+`coverage.corpus` preserves scanner coverage; `coverage.context` names the
+projection mode and every omitted section, item, string, or rolled-up file
+location. The routine projection has a repository-level regression target of
+80 KB; the universal 1 MB ceiling remains a hard failure backstop. If the
+final object cannot fit, the command exits as a user error instead of emitting
+partial JSON. This is a model-context boundary, not a replacement for the full
+deterministic artifact used by other engine commands.
 
 ## Module map
 
@@ -461,10 +464,12 @@ that evidence as partial.
 **`inspect`** (`cli.py` → `agent_context.inspect_command`). Loads and validates
 the optional glossary first, builds fresh evidence through the same scanner as
 `scan`, refreshes `glossabet-out/evidence.json`, projects the result through
-the independent `AgentContext` limits, and emits one JSON document on stdout.
-Malformed, oversized, or symlinked glossaries and a context that exceeds its
-hard byte ceiling exit `1` without a lower-trust fallback. The installed skill
-parses this output and reads only production paths it names.
+the independent lean `AgentContext` limits, and emits one compact JSON document
+on stdout. `--full` selects the detailed diagnostic projection without
+changing `RepositoryEvidence`. Malformed, oversized, or symlinked glossaries
+and a context that exceeds its hard byte ceiling exit `1` without a lower-trust
+fallback. The installed skill parses the routine output and reads only
+production paths it names.
 
 **`save`** (`cli.py` → `glossary.save_command`). Accepts at most 64 MB from
 standard input (reading one additional byte only to detect overflow), parses
@@ -568,14 +573,13 @@ structural validation is partial until an adapter supplies trustworthy paths.
 ## Where things stand
 
 `PLAN.md` is the authoritative roadmap. Phases 0–22 and Phases 24–26 are
-complete; Phase 27 is next, and the owner self-testing pause remains active.
-Phases 27–28 finish before any outside maintainer invitation, and no Phase 23
+complete. Phase 27's source and distribution implementation are prepared, but
+its installed-agent acceptance rerun remains open; the owner self-testing pause
+is active. Phases 27–28.3 finish before any outside maintainer invitation, and no Phase 23
 work begins
 until the trusted-alpha gate passes. Package metadata, the embedded plugin
-wheel, and installed-agent evidence remain bound to the renamed GitHub
-repository, but the checked-in plugin wheel is still the last exact Phase 22
-installed-agent-proven bundle; Phases 24–26 currently live in source and the
-standalone source build. The plugin must be refreshed and its installed-skill
-scenarios rerun no later than Phase 27. The trusted-alpha evidence gate, Phase
-23, and explicit external authorization remain before public package or plugin
-publication.
+wheel, and source skill are bound to the renamed GitHub repository and the same
+Phase 27 bytes. The committed installed-agent evidence still describes the
+earlier proven bundle and must be regenerated before Phase 27 completion. The
+trusted-alpha evidence gate, Phase 23, and explicit external authorization
+remain before public package or plugin publication.

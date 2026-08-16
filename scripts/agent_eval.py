@@ -30,6 +30,7 @@ SENSITIVE_CANARY = "GLOSSABET_SENSITIVE_CANARY_MUST_NOT_APPEAR"
 sys.path.insert(0, str(ROOT))
 
 from glossabet import __version__  # noqa: E402
+from glossabet.agent_context import AGENT_CONTEXT_SCHEMA_VERSION  # noqa: E402
 from glossabet.artifacts import MAX_JSON_BYTES  # noqa: E402
 from glossabet.scanner import is_sensitive  # noqa: E402
 
@@ -547,6 +548,8 @@ def _expected_error(scenario_id: str, output: str) -> bool:
 
 def _check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
     failures = []
+    projection_ledger = context.get("coverage", {}).get("context", {})
+    omissions = projection_ledger.get("omissions", [])
     observed: dict[str, object] = {
         "context_schema_version": context.get("context_schema_version"),
         "generator": context.get("generator"),
@@ -554,18 +557,43 @@ def _check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
         "corpus_complete": context.get("coverage", {}).get("corpus", {}).get(
             "complete"
         ),
-        "context_complete": context.get("coverage", {}).get("context", {}).get(
-            "complete"
-        ),
+        "context_complete": projection_ledger.get("complete"),
+        "context_projection": projection_ledger.get("projection"),
+        "context_omissions": len(omissions),
     }
-    if context.get("context_schema_version") != 1:
-        failures.append("context schema was not 1")
+    if context.get("context_schema_version") != AGENT_CONTEXT_SCHEMA_VERSION:
+        failures.append(
+            f"context schema was not {AGENT_CONTEXT_SCHEMA_VERSION}"
+        )
     if context.get("generator") != {"name": "glossabet", "version": __version__}:
         failures.append("context generator did not match the installed engine")
     if observed["freshness"] != "current":
         failures.append("inspect did not return invocation-current context")
     if observed["corpus_complete"] is not True:
         failures.append("scenario unexpectedly had partial scanner coverage")
+    if observed["context_projection"] != "lean":
+        failures.append("inspect did not return the routine lean projection")
+    if observed["context_complete"] is not False:
+        failures.append("lean projection did not disclose its standard omissions")
+
+    omission_pairs = {
+        (item.get("path"), item.get("kind"))
+        for item in omissions
+        if isinstance(item, dict)
+    }
+    required_lean_omissions = {
+        ("imports", "section_excluded"),
+        (
+            "vocabulary.tokens.items.*.locations",
+            "file_locations_rolled_up",
+        ),
+        (
+            "vocabulary.identifiers.items.*.locations",
+            "file_locations_rolled_up",
+        ),
+    }
+    if not required_lean_omissions <= omission_pairs:
+        failures.append("lean projection did not account for standard omissions")
 
     structural = context.get("structural_groups", {})
     glossary = context.get("glossary", {})
@@ -588,12 +616,13 @@ def _check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
         if observed["glossary_present"] is not False:
             failures.append("absent glossary was not reported absent")
     elif scenario_id == "partial":
-        omissions = context.get("coverage", {}).get("context", {}).get(
-            "omissions", []
-        )
-        observed["context_omissions"] = len(omissions)
-        if observed["context_complete"] is not False or not omissions:
-            failures.append("partial projection did not expose bounded omissions")
+        if (
+            "vocabulary.identifiers.items",
+            "list_items",
+        ) not in omission_pairs:
+            failures.append(
+                "partial projection did not expose its identifier sample cap"
+            )
     elif scenario_id == "monorepo":
         observed["monorepo"] = context.get("monorepo")
         if context.get("monorepo", {}).get("detected") is not True:
@@ -620,8 +649,24 @@ def _check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
         if SENSITIVE_CANARY in json.dumps(context):
             failures.append("sensitive canary entered the agent context")
 
-    if scenario_id != "partial" and observed["context_complete"] is not True:
-        failures.append("scenario unexpectedly had partial agent projection")
+    if scenario_id != "partial":
+        unexpected = [
+            item
+            for item in omissions
+            if not (
+                item.get("kind") == "section_excluded"
+                and item.get("path") == "imports"
+            )
+            and not (
+                item.get("kind") == "file_locations_rolled_up"
+                and item.get("path", "").startswith("vocabulary.")
+                and item.get("path", "").endswith(".locations")
+            )
+        ]
+        if unexpected:
+            failures.append(
+                "scenario unexpectedly exceeded the standard lean projection"
+            )
     return failures, observed
 
 

@@ -31,6 +31,10 @@ This first alpha is prepared but has not been published to PyPI.
   canonical-name versus disambiguation intent, and carry an exact
   repository-level evaluation gate without making naming decisions for the
   human.
+- A compact schema-v2 routine agent context with vocabulary module rollups,
+  file locations only on nomination/read targets, an 80 KB self-repository
+  regression target, explicit projection omissions, and `inspect --full` for
+  the former detailed diagnostic shape.
 - The canonical agent skill and `glossabet install` for current Codex and
   Claude Code personal skill locations.
 - A version-coupled Codex plugin prototype carrying the canonical skill and a
@@ -58,6 +62,10 @@ This first alpha is prepared but has not been published to PyPI.
   strings, with focused regressions for both clean-checkout and cross-platform
   parity. Public-main CI for commit `2be99b6` passed all 15 Python/operating-
   system matrix jobs plus the evidence, build, and distribution-smoke job.
+- The checked-in plugin wheel now carries the same Phase 27 engine and
+  canonical skill as the standalone source tree. Installed-agent boundary
+  evidence intentionally remains bound to the earlier proven bundle until the
+  real host rerun succeeds.
 
 - Bounded analysis collections now share exact coverage ledgers; terminology,
   naming, Graphify, drift, and validation propagate every known omission.
