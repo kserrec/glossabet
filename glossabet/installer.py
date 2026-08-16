@@ -18,7 +18,6 @@ import tempfile
 from importlib import resources
 from pathlib import Path
 
-from glossabet.cli import EXIT_OK, EXIT_USER_ERROR
 from glossabet.display import escape_terminal_text, print_error
 
 _DESTINATIONS = {
@@ -141,7 +140,7 @@ def install_command(
         path, outcome = install_skill(destination, force=force)
     except InstallError as exc:
         print_error(exc)
-        return EXIT_USER_ERROR
+        return 1
 
     verbs = {
         "installed": "Installed",
@@ -151,4 +150,4 @@ def install_command(
     safe_agent = escape_terminal_text(agent)
     safe_path = escape_terminal_text(str(path))
     print(f"{verbs[outcome]} Glossabet skill for {safe_agent}: {safe_path}")
-    return EXIT_OK
+    return 0

@@ -18,9 +18,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from glossabet.artifacts import repo_root
-from glossabet.brief import build_managed_brief, glossary_sha256
+from glossabet.brief import build_managed_brief
 from glossabet.display import escape_terminal_text, print_error
-from glossabet.glossary import require_glossary
+from glossabet.glossary import glossary_sha256, require_glossary
 
 
 MANAGED_CONTEXT_SCHEMA_VERSION = 1

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import sys
 
 from glossabet.artifacts import ArtifactError, repo_root
@@ -12,6 +10,7 @@ from glossabet.glossary import (
     GLOSSARY_SCHEMA_VERSION,
     GlossaryError,
     concept_scope,
+    glossary_sha256,
     load_glossary,
 )
 
@@ -53,17 +52,6 @@ def _truncate_utf8(text: str, limit: int) -> tuple[str, bool]:
 def _one_line(text: str) -> str:
     """Collapse allowed prose layout while retaining terminal-safe text."""
     return escape_terminal_text(" ".join(text.split()))
-
-
-def glossary_sha256(glossary: dict) -> str:
-    """Return the semantic digest used to bind every vocabulary projection."""
-    canonical = json.dumps(
-        glossary,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
-    return hashlib.sha256(canonical).hexdigest()
 
 
 def _git_value(value: object) -> str:

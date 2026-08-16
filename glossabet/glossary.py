@@ -10,6 +10,7 @@ subsystems; an omitted scope retains the original repository-wide meaning.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 import unicodedata
@@ -69,6 +70,17 @@ MAX_VALIDATION_ERRORS = 100
 
 class GlossaryError(ValueError):
     """The glossary file exists but is not usable as written."""
+
+
+def glossary_sha256(glossary: dict) -> str:
+    """Return the semantic digest used to bind every vocabulary projection."""
+    canonical = json.dumps(
+        glossary,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
 
 
 def _fold_vocabulary(term: str) -> str:
