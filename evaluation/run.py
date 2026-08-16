@@ -92,6 +92,10 @@ def _dotenv_part(name: str) -> bool:
     )
 
 
+def _hex_digest(value: object) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
 def _digest_paths(root: Path, relative_paths: list[str]) -> str:
     """Hash path names and bytes with unambiguous framing."""
     base = root.resolve()
@@ -177,7 +181,7 @@ def _read_manifest(path: Path) -> tuple[dict, str]:
         files = source.get("corpus_files")
         if (
             not isinstance(digest, str)
-            or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+            or not _hex_digest(digest)
             or not isinstance(files, int)
             or isinstance(files, bool)
             or files < 0
@@ -289,16 +293,7 @@ def _timed_build(
 
 
 def _terminology_keys(evidence: dict) -> set[str]:
-    terminology = evidence["terminology"]
-    keys = {
-        "synonym:" + ":".join(sorted((item["a"], item["b"])))
-        for item in terminology["synonym_candidates"]["items"]
-    }
-    keys.update(
-        f"overload:{item['term']}"
-        for item in terminology["overload_candidates"]["items"]
-    )
-    return keys
+    return set(_terminology_items(evidence))
 
 
 def _terminology_items(evidence: dict) -> dict[str, tuple[str, dict]]:
@@ -334,10 +329,7 @@ def _drift_key(section: str, finding: dict) -> tuple[str, str]:
 
 def _drift_keys(drift: dict) -> dict[str, str]:
     return {
-        key: kind
-        for section in DRIFT_SECTIONS
-        for finding in drift[section]["items"]
-        for kind, key in [_drift_key(section, finding)]
+        key: kind for key, (kind, _) in _drift_items(drift).items()
     }
 
 
@@ -1172,10 +1164,6 @@ _ENGINE_METADATA_KEYS = {
     "validation_schema_version",
     "evaluation_schema_version",
 }
-
-
-def _hex_digest(value: object) -> bool:
-    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
 
 
 def _stored_threshold_targets(thresholds: object) -> dict | None:

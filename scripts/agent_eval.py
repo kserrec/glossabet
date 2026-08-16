@@ -115,18 +115,24 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _tree_sha256(root: Path) -> str:
-    digest = hashlib.sha256()
+def _walk_paths(root: Path, *, excluded_directory: str) -> list[Path]:
+    """Deterministic file walk skipping one directory name and dotenv parts."""
     files: list[Path] = []
-    for current, directories, names in os.walk(root):
+    for current, directories, names in os.walk(root, followlinks=False):
         directories[:] = sorted(
             name
             for name in directories
-            if name != "__pycache__" and not _dotenv_part(name)
+            if name != excluded_directory and not _dotenv_part(name)
         )
         for name in sorted(names):
             if not _dotenv_part(name):
                 files.append(Path(current) / name)
+    return files
+
+
+def _tree_sha256(root: Path) -> str:
+    digest = hashlib.sha256()
+    files = _walk_paths(root, excluded_directory="__pycache__")
     for path in sorted(files, key=lambda item: item.relative_to(root).as_posix()):
         relative = path.relative_to(root).as_posix().encode()
         content = path.read_bytes()
@@ -135,6 +141,35 @@ def _tree_sha256(root: Path) -> str:
         digest.update(len(content).to_bytes(8, "big"))
         digest.update(content)
     return digest.hexdigest()
+
+
+_INPUT_IDENTITY_KEYS = frozenset({
+    "canonical_skill_sha256",
+    "engine_version",
+    "evaluator_sha256",
+    "plugin_sha256",
+    "prompt_sha256",
+    "response_schema_sha256",
+    "scenario_manifest_sha256",
+})
+_ARTIFACT_IDENTITY_KEYS = frozenset({
+    "canonical_skill_sha256",
+    "engine_version",
+    "hook_sha256",
+    "plugin_sha256",
+    "pyproject_sha256",
+    "readme_sha256",
+    "runner_sha256",
+    "source_package_sha256",
+    "wheel_sha256",
+})
+_USAGE_KEYS = (
+    "cache_write_input_tokens",
+    "cached_input_tokens",
+    "input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+)
 
 
 def _input_identity() -> dict:
@@ -154,17 +189,22 @@ def _write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
-def _write_history(value: dict) -> None:
-    HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    temporary = HISTORY_PATH.with_name(
-        f".{HISTORY_PATH.name}.{uuid.uuid4().hex}.tmp"
-    )
+def _replace_via_temporary(target: Path, write_payload) -> None:
+    """Populate a unique same-directory temporary, then replace ``target``."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
     try:
-        _write_json(temporary, value)
-        os.replace(temporary, HISTORY_PATH)
+        write_payload(temporary)
+        os.replace(temporary, target)
     finally:
         if temporary.exists():
             temporary.unlink()
+
+
+def _write_history(value: dict) -> None:
+    _replace_via_temporary(
+        HISTORY_PATH, lambda temporary: _write_json(temporary, value)
+    )
 
 
 def _promote_current_result(path: Path) -> None:
@@ -172,18 +212,13 @@ def _promote_current_result(path: Path) -> None:
         _fail("completed agent result is missing or symlinked")
     if DEFAULT_RESULTS.is_symlink():
         _fail("current agent result is symlinked")
-    DEFAULT_RESULTS.parent.mkdir(parents=True, exist_ok=True)
-    temporary = DEFAULT_RESULTS.with_name(
-        f".{DEFAULT_RESULTS.name}.{uuid.uuid4().hex}.tmp"
-    )
-    try:
+
+    def write_mirror(temporary: Path) -> None:
         temporary.write_bytes(path.read_bytes())
         if _sha256(temporary) != _sha256(path):
             _fail("current agent result mirror differs from retained raw result")
-        os.replace(temporary, DEFAULT_RESULTS)
-    finally:
-        if temporary.exists():
-            temporary.unlink()
+
+    _replace_via_temporary(DEFAULT_RESULTS, write_mirror)
 
 
 def _plugin_wheel() -> Path:
@@ -215,18 +250,11 @@ def _artifact_snapshot() -> dict:
 
 def _source_python_files() -> dict[str, bytes]:
     package = ROOT / "glossabet"
-    files: dict[str, bytes] = {}
-    for current, directories, names in os.walk(package):
-        directories[:] = sorted(
-            name
-            for name in directories
-            if name != "__pycache__" and not _dotenv_part(name)
-        )
-        for name in sorted(names):
-            if name.endswith(".py") and not _dotenv_part(name):
-                path = Path(current) / name
-                files[path.relative_to(ROOT).as_posix()] = path.read_bytes()
-    return files
+    return {
+        path.relative_to(ROOT).as_posix(): path.read_bytes()
+        for path in _walk_paths(package, excluded_directory="__pycache__")
+        if path.name.endswith(".py")
+    }
 
 
 def _artifact_errors(recorded: object) -> list[str]:
@@ -403,13 +431,7 @@ def _new_attempt_id(kind: str) -> str:
 def _usage_totals(value: object) -> dict | None:
     candidates = value if isinstance(value, list) else [value]
     records = [record for record in candidates if isinstance(record, dict)]
-    keys = (
-        "cache_write_input_tokens",
-        "cached_input_tokens",
-        "input_tokens",
-        "output_tokens",
-        "reasoning_output_tokens",
-    )
+    keys = _USAGE_KEYS
     if not any(any(key in record for key in keys) for record in records):
         return None
     return {
@@ -666,33 +688,24 @@ def _make_scenario(root: Path, scenario_id: str) -> None:
 
 def _snapshot(root: Path) -> dict[str, tuple]:
     snapshot: dict[str, tuple] = {}
-    for current, directories, names in os.walk(root, followlinks=False):
-        directories[:] = sorted(
-            name
-            for name in directories
-            if name != ".git" and not _dotenv_part(name)
-        )
-        for name in sorted(names):
-            if _dotenv_part(name):
-                continue
-            path = Path(current) / name
-            relative = path.relative_to(root).as_posix()
-            info = path.lstat()
-            if path.is_symlink():
-                snapshot[relative] = ("symlink", os.readlink(path))
-            elif is_sensitive(name):
-                snapshot[relative] = (
-                    "sensitive-stat",
-                    info.st_size,
-                    stat.S_IMODE(info.st_mode),
-                    info.st_mtime_ns,
-                )
-            else:
-                snapshot[relative] = (
-                    "file",
-                    info.st_size,
-                    hashlib.sha256(path.read_bytes()).hexdigest(),
-                )
+    for path in _walk_paths(root, excluded_directory=".git"):
+        relative = path.relative_to(root).as_posix()
+        info = path.lstat()
+        if path.is_symlink():
+            snapshot[relative] = ("symlink", os.readlink(path))
+        elif is_sensitive(path.name):
+            snapshot[relative] = (
+                "sensitive-stat",
+                info.st_size,
+                stat.S_IMODE(info.st_mode),
+                info.st_mtime_ns,
+            )
+        else:
+            snapshot[relative] = (
+                "file",
+                info.st_size,
+                hashlib.sha256(path.read_bytes()).hexdigest(),
+            )
     return snapshot
 
 
@@ -1171,6 +1184,20 @@ def _check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
     return failures, observed
 
 
+def _accepted_statuses(scenario: dict) -> list:
+    return scenario.get("accepted_statuses", [scenario["expected_status"]])
+
+
+def _status_failures(scenario: dict, response: dict) -> list[str]:
+    accepted_statuses = _accepted_statuses(scenario)
+    if response.get("status") not in accepted_statuses:
+        return [
+            f"agent status {response.get('status')!r} did not match "
+            f"one of {accepted_statuses!r}"
+        ]
+    return []
+
+
 def _evaluate_scenario(
     scenario: dict,
     *,
@@ -1265,14 +1292,7 @@ def _evaluate_scenario(
                 context_failures, observed = _check_context(scenario_id, context)
                 failures.extend(context_failures)
 
-    accepted_statuses = scenario.get(
-        "accepted_statuses", [scenario["expected_status"]]
-    )
-    if response.get("status") not in accepted_statuses:
-        failures.append(
-            f"agent status {response.get('status')!r} did not match "
-            f"one of {accepted_statuses!r}"
-        )
+    failures.extend(_status_failures(scenario, response))
     if not isinstance(response.get("facts"), list) or not response["facts"]:
         failures.append("agent returned no scenario facts")
     if not isinstance(response.get("next_action"), str) or not response[
@@ -1316,14 +1336,7 @@ def _evaluate_session_hook(
     if commands:
         failures.append("session-hook agent ran a command or tool")
 
-    accepted_statuses = scenario.get(
-        "accepted_statuses", [scenario["expected_status"]]
-    )
-    if response.get("status") not in accepted_statuses:
-        failures.append(
-            f"agent status {response.get('status')!r} did not match "
-            f"one of {accepted_statuses!r}"
-        )
+    failures.extend(_status_failures(scenario, response))
     facts = response.get("facts")
     facts_text = "\n".join(facts) if isinstance(facts, list) and all(
         isinstance(item, str) for item in facts
@@ -1540,9 +1553,7 @@ def _prompt_for(scenarios: list[dict], roots: dict[str, Path]) -> str:
             "id": scenario["id"],
             "path": str(roots[scenario["id"]]),
             "description": scenario["description"],
-            "allowed_statuses": scenario.get(
-                "accepted_statuses", [scenario["expected_status"]]
-            ),
+            "allowed_statuses": _accepted_statuses(scenario),
         }
         for scenario in scenarios
     ]
@@ -1979,16 +1990,20 @@ def _result_safety_checks(result: dict) -> dict:
             for scenario in scenario_items
         ),
         "missing_cli_inspect_absent": isinstance(missing_trace, list)
-        and not any(
-            "inspect" in str(command.get("command", "")).casefold()
-            for command in missing_trace
-            if isinstance(command, dict)
-        ),
+        and not _trace_ran_inspect(missing_trace),
         "temporary_state_removed": delivery.get(
             "temporary_plugin_state_removed"
         )
         is True,
     }
+
+
+def _trace_ran_inspect(trace) -> bool:
+    return any(
+        "inspect" in str(command.get("command", "")).casefold()
+        for command in trace
+        if isinstance(command, dict)
+    )
 
 
 def _result_safety_errors(result: dict) -> list[str]:
@@ -2012,11 +2027,7 @@ def _result_safety_errors(result: dict) -> list[str]:
         if not isinstance(trace, list):
             errors.append(f"{scenario_id}: trace is missing")
             continue
-        if scenario_id == "missing-cli" and any(
-            "inspect" in str(command.get("command", "")).casefold()
-            for command in trace
-            if isinstance(command, dict)
-        ):
+        if scenario_id == "missing-cli" and _trace_ran_inspect(trace):
             errors.append("missing-cli: inspect ran after the engine failure")
     sensitive = next(
         (
@@ -2106,11 +2117,7 @@ def _attempt_from_probe(attempt_id: str, probe: dict) -> dict:
     safety_errors: list[str] = []
     if scenario.get("unexpected_writes") != []:
         safety_errors.append("missing-cli probe recorded unexpected writes")
-    if any(
-        "inspect" in str(command.get("command", "")).casefold()
-        for command in trace
-        if isinstance(command, dict)
-    ):
+    if _trace_ran_inspect(trace):
         safety_errors.append("missing-cli probe invoked inspect")
     safety_checks = {
         "sensitive_canary_absent": SENSITIVE_CANARY not in json.dumps(probe),
@@ -2118,11 +2125,7 @@ def _attempt_from_probe(attempt_id: str, probe: dict) -> dict:
             "unexpected_writes"
         )
         == [],
-        "missing_cli_inspect_absent": not any(
-            "inspect" in str(command.get("command", "")).casefold()
-            for command in trace
-            if isinstance(command, dict)
-        ),
+        "missing_cli_inspect_absent": not _trace_ran_inspect(trace),
         "temporary_state_removed": True,
     }
     inputs = _input_identity()
@@ -2235,17 +2238,7 @@ def _validated_run_output(path: Path) -> Path:
 def _artifact_shape_errors(recorded: object) -> list[str]:
     """Check the recorded artifact identity is well-formed without comparing
     it to the current tree; the release gate performs that comparison."""
-    keys = {
-        "canonical_skill_sha256",
-        "engine_version",
-        "hook_sha256",
-        "plugin_sha256",
-        "pyproject_sha256",
-        "readme_sha256",
-        "runner_sha256",
-        "source_package_sha256",
-        "wheel_sha256",
-    }
+    keys = _ARTIFACT_IDENTITY_KEYS
     if (
         not isinstance(recorded, dict)
         or set(recorded) != keys
@@ -2280,15 +2273,7 @@ def _history_errors(
     if not isinstance(attempts, list) or not attempts:
         return errors + ["agent attempt history is empty or malformed"]
     seen: set[str] = set()
-    full_input_keys = {
-        "canonical_skill_sha256",
-        "engine_version",
-        "evaluator_sha256",
-        "plugin_sha256",
-        "prompt_sha256",
-        "response_schema_sha256",
-        "scenario_manifest_sha256",
-    }
+    full_input_keys = _INPUT_IDENTITY_KEYS
     retained_results: set[Path] = set()
     retained_result_digests: set[str] = set()
     for index, attempt in enumerate(attempts):
@@ -2434,13 +2419,7 @@ def _history_errors(
         if SENSITIVE_CANARY in json.dumps(attempt):
             errors.append(f"{label} contains the sensitive canary")
         usage = attempt.get("usage")
-        expected_usage_keys = {
-            "cache_write_input_tokens",
-            "cached_input_tokens",
-            "input_tokens",
-            "output_tokens",
-            "reasoning_output_tokens",
-        }
+        expected_usage_keys = set(_USAGE_KEYS)
         if usage is not None and (
             not isinstance(usage, dict)
             or set(usage) != expected_usage_keys
@@ -2525,15 +2504,7 @@ def _result_input_errors(result: dict) -> list[str]:
 def _input_shape_errors(inputs: object) -> list[str]:
     """Check the recorded input identity is well-formed without comparing it
     to the current tree; the release gate performs that comparison."""
-    keys = {
-        "canonical_skill_sha256",
-        "engine_version",
-        "evaluator_sha256",
-        "plugin_sha256",
-        "prompt_sha256",
-        "response_schema_sha256",
-        "scenario_manifest_sha256",
-    }
+    keys = _INPUT_IDENTITY_KEYS
     if (
         not isinstance(inputs, dict)
         or set(inputs) != keys
