@@ -59,7 +59,7 @@ def _check_wheel(wheel: Path, version: str, skill: bytes) -> None:
             _fail("wheel skill differs from canonical skill/SKILL.md")
 
 
-def _check_sources(version: str) -> tuple[Path, Path, bytes]:
+def _check_sources(version: str) -> tuple[Path, bytes]:
     manifest_path = PLUGIN_ROOT / ".codex-plugin" / "plugin.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("name") != "glossabet" or manifest.get("version") != version:
@@ -103,7 +103,7 @@ def _check_sources(version: str) -> tuple[Path, Path, bytes]:
     skill = skill_path.read_bytes()
     if f"matching Glossabet {version} engine".encode() not in skill:
         _fail("canonical skill does not declare the source package version")
-    return skill_path, runner, skill
+    return skill_path, skill
 
 
 def main() -> int:
@@ -113,7 +113,7 @@ def main() -> int:
 
     version = _source_version()
     wheel = _one_wheel(args.dist_dir)
-    skill_path, _runner, skill = _check_sources(version)
+    skill_path, skill = _check_sources(version)
     _check_wheel(wheel, version, skill)
 
     skill_root = PLUGIN_ROOT / "skills" / "glossabet"
