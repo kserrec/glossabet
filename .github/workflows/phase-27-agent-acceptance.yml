@@ -1,0 +1,76 @@
+name: Phase 27 installed-agent acceptance
+
+on:
+  push:
+    branches:
+      - phase-27-agent-acceptance
+    paths:
+      - .github/workflows/phase-27-agent-acceptance.yml
+
+permissions:
+  contents: write
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.CODEX_API_KEY }}
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: phase-27-agent-acceptance
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: '0.11.33'
+
+      - name: Install project
+        run: uv sync --locked --python 3.12
+
+      - name: Install pinned Codex CLI
+        run: npm install --global @openai/codex@0.147.0
+
+      - name: Confirm Codex authentication is available
+        shell: bash
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "No OPENAI_API_KEY or CODEX_API_KEY repository secret is configured." >&2
+            exit 86
+          fi
+          codex --version
+
+      - name: Run real installed-agent acceptance
+        run: uv run python scripts/agent_eval.py --run
+
+      - name: Verify refreshed evidence
+        run: uv run python scripts/agent_eval.py --verify-results evaluation/agent-results.json
+
+      - name: Run full test suite with refreshed evidence
+        run: uv run pytest -q
+
+      - name: Commit refreshed installed-agent evidence
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add evaluation/agent-results.json
+          if git diff --cached --quiet; then
+            echo "Installed-agent evidence was already current."
+            exit 0
+          fi
+          git commit -m "Refresh Phase 27 installed-agent evidence"
+          git push origin HEAD:phase-27-agent-acceptance
