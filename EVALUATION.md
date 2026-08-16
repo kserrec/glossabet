@@ -344,10 +344,11 @@ invocations.
 
 Phases 24–26 changed the source engine but deliberately did not relabel this
 older installed-agent evidence. The Phase 27 work branch rebuilds the
-standalone and checked-in plugin wheel from the same source and canonical skill;
-wheel smoke and the mechanical release-distribution check pass. The current
-managed environment cannot complete Codex's temporary plugin lifecycle because
-its user-state directory is protected read-only, so the committed agent result
+standalone and checked-in plugin wheel from the same source and canonical
+skill; deterministic evaluation, blinded reviewer verification, wheel smoke,
+and the mechanical release-distribution check pass. The current managed
+environment cannot complete Codex's temporary plugin lifecycle because its
+user-state directory is protected read-only, so the committed agent result
 still binds the earlier proven bundle and is intentionally stale. Phase 27 is
 not complete until `scripts/agent_eval.py --run` succeeds on a writable Codex
 host and refreshes this evidence.

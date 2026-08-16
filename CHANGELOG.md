@@ -62,8 +62,10 @@ This first alpha is prepared but has not been published to PyPI.
   strings, with focused regressions for both clean-checkout and cross-platform
   parity. Public-main CI for commit `2be99b6` passed all 15 Python/operating-
   system matrix jobs plus the evidence, build, and distribution-smoke job.
-- The checked-in plugin wheel and installed-agent boundary evidence now carry
-  the same Phase 27 engine and canonical skill as the standalone source tree.
+- The checked-in plugin wheel now carries the same Phase 27 engine and
+  canonical skill as the standalone source tree. Installed-agent boundary
+  evidence intentionally remains bound to the earlier proven bundle until the
+  real host rerun succeeds.
 
 - Bounded analysis collections now share exact coverage ledgers; terminology,
   naming, Graphify, drift, and validation propagate every known omission.

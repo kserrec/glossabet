@@ -60,7 +60,7 @@ class AgentContextError(ArtifactError):
 
 
 @dataclass
-class _Coverage:
+class _ProjectionOmissions:
     omissions: list[dict] = field(default_factory=list)
     affected_sections: set[str] = field(default_factory=set)
     omission_counts: dict[str, int] = field(default_factory=dict)
@@ -109,7 +109,7 @@ class _Coverage:
 def _bounded_copy(
     value: object,
     path: tuple[str, ...],
-    coverage: _Coverage,
+    omissions: _ProjectionOmissions,
     list_limits: dict[tuple[str, ...], int],
 ):
     if value is None or isinstance(value, (bool, int, float)):
@@ -117,7 +117,7 @@ def _bounded_copy(
     if isinstance(value, str):
         if len(value) <= MAX_AGENT_CONTEXT_STRING_CHARS:
             return value
-        coverage.record(
+        omissions.record(
             path, "string_characters",
             len(value) - MAX_AGENT_CONTEXT_STRING_CHARS,
         )
@@ -125,9 +125,9 @@ def _bounded_copy(
     if isinstance(value, list):
         limit = list_limits.get(path, DEFAULT_AGENT_LIST_LIMIT)
         if len(value) > limit:
-            coverage.record(path, "list_items", len(value) - limit)
+            omissions.record(path, "list_items", len(value) - limit)
         return [
-            _bounded_copy(item, (*path, str(index)), coverage, list_limits)
+            _bounded_copy(item, (*path, str(index)), omissions, list_limits)
             for index, item in enumerate(value[:limit])
         ]
     if isinstance(value, dict):
@@ -139,7 +139,7 @@ def _bounded_copy(
                 "non-string object key"
             )
         return {
-            key: _bounded_copy(item, (*path, key), coverage, list_limits)
+            key: _bounded_copy(item, (*path, key), omissions, list_limits)
             for key, item in value.items()
         }
     raise AgentContextError(
@@ -151,7 +151,7 @@ def _bounded_copy(
 def _module_rollup_section(
     section: dict,
     section_name: str,
-    coverage: _Coverage,
+    omissions: _ProjectionOmissions,
 ) -> dict:
     """Replace repeated file paths with compact per-module occurrence counts."""
     projected = {
@@ -179,7 +179,7 @@ def _module_rollup_section(
         projected_items.append(projected_item)
     projected["items"] = projected_items
     if location_records:
-        coverage.record(
+        omissions.record(
             ("vocabulary", section_name, "items", "*", "locations"),
             "file_locations_rolled_up",
             location_records,
@@ -204,7 +204,10 @@ def _identifier_style(name: str) -> str:
     return "flat"
 
 
-def _register_exemplars(identifier_section: dict, coverage: _Coverage) -> dict:
+def _register_exemplars(
+    identifier_section: dict,
+    omissions: _ProjectionOmissions,
+) -> dict:
     eligible = []
     for item in identifier_section["items"]:
         style = _identifier_style(item["name"])
@@ -215,13 +218,13 @@ def _register_exemplars(identifier_section: dict, coverage: _Coverage) -> dict:
         eligible.append({**deepcopy(item), "style": style})
     kept = eligible[:REGISTER_EXEMPLAR_LIMIT]
     if len(eligible) > len(kept):
-        coverage.record(
+        omissions.record(
             ("terminology", "register", "exemplars", "items"),
             "list_items",
             len(eligible) - len(kept),
         )
-    source_coverage = identifier_section["coverage"]
-    reasons = coverage_reasons(source_coverage, "identifier input")
+    source_ledger = identifier_section["coverage"]
+    reasons = coverage_reasons(source_ledger, "identifier input")
     if len(eligible) > REGISTER_EXEMPLAR_LIMIT:
         reasons.append(
             f"register exemplar display cap is {REGISTER_EXEMPLAR_LIMIT} items"
@@ -231,13 +234,16 @@ def _register_exemplars(identifier_section: dict, coverage: _Coverage) -> dict:
         "coverage": coverage_ledger(
             len(eligible),
             len(kept),
-            total_items_exact=source_coverage["complete"],
+            total_items_exact=source_ledger["complete"],
             reasons=reasons,
         ),
     }
 
 
-def _naming_with_locations(evidence: dict, coverage: _Coverage) -> dict:
+def _naming_with_locations(
+    evidence: dict,
+    omissions: _ProjectionOmissions,
+) -> dict:
     naming = deepcopy(evidence["naming_candidates"])
     token_entries = {
         item["term"]: item for item in evidence["vocabulary"]["tokens"]["items"]
@@ -257,7 +263,7 @@ def _naming_with_locations(evidence: dict, coverage: _Coverage) -> dict:
         terms.append(projected)
     naming["terms"] = terms
     if unavailable:
-        coverage.record(
+        omissions.record(
             ("naming_candidates", "terms", "*", "locations"),
             "source_items_unavailable",
             unavailable,
@@ -281,7 +287,7 @@ def build_agent_context(
             }
         )
 
-    coverage = _Coverage()
+    omissions = _ProjectionOmissions()
     projection = "full" if full else "lean"
     list_limits = _FULL_LIST_LIMITS if full else _LIST_LIMITS
 
@@ -289,7 +295,7 @@ def build_agent_context(
     # candidates already carry the import-derived importance signal the agent
     # needs, without exposing an additional potentially large graph. Record the
     # section exclusion so context completeness is always literal.
-    coverage.record(("imports",), "section_excluded", 1)
+    omissions.record(("imports",), "section_excluded", 1)
 
     vocabulary = deepcopy(evidence["vocabulary"])
     terminology = deepcopy(evidence["terminology"])
@@ -298,19 +304,19 @@ def build_agent_context(
         vocabulary = {
             "normalization": deepcopy(evidence["vocabulary"]["normalization"]),
             "tokens": _module_rollup_section(
-                evidence["vocabulary"]["tokens"], "tokens", coverage
+                evidence["vocabulary"]["tokens"], "tokens", omissions
             ),
             "identifiers": _module_rollup_section(
-                evidence["vocabulary"]["identifiers"], "identifiers", coverage
+                evidence["vocabulary"]["identifiers"], "identifiers", omissions
             ),
             "doc_terms": _module_rollup_section(
-                evidence["vocabulary"]["doc_terms"], "doc_terms", coverage
+                evidence["vocabulary"]["doc_terms"], "doc_terms", omissions
             ),
         }
         terminology["register"]["exemplars"] = _register_exemplars(
-            evidence["vocabulary"]["identifiers"], coverage
+            evidence["vocabulary"]["identifiers"], omissions
         )
-        naming_candidates = _naming_with_locations(evidence, coverage)
+        naming_candidates = _naming_with_locations(evidence, omissions)
 
     source = {
         "context_schema_version": AGENT_CONTEXT_SCHEMA_VERSION,
@@ -334,10 +340,10 @@ def build_agent_context(
         "skipped": evidence["skipped"],
         "glossary": glossary_section,
     }
-    context = _bounded_copy(source, (), coverage, list_limits)
+    context = _bounded_copy(source, (), omissions, list_limits)
     context["coverage"] = {
         "corpus": context["skipped"]["corpus_budget"],
-        "context": coverage.as_dict(
+        "context": omissions.as_dict(
             projection=projection,
             list_limits=list_limits,
         ),

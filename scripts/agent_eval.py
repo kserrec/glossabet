@@ -548,8 +548,8 @@ def _expected_error(scenario_id: str, output: str) -> bool:
 
 def _check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
     failures = []
-    context_coverage = context.get("coverage", {}).get("context", {})
-    omissions = context_coverage.get("omissions", [])
+    projection_ledger = context.get("coverage", {}).get("context", {})
+    omissions = projection_ledger.get("omissions", [])
     observed: dict[str, object] = {
         "context_schema_version": context.get("context_schema_version"),
         "generator": context.get("generator"),
@@ -557,8 +557,8 @@ def _check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
         "corpus_complete": context.get("coverage", {}).get("corpus", {}).get(
             "complete"
         ),
-        "context_complete": context_coverage.get("complete"),
-        "context_projection": context_coverage.get("projection"),
+        "context_complete": projection_ledger.get("complete"),
+        "context_projection": projection_ledger.get("projection"),
         "context_omissions": len(omissions),
     }
     if context.get("context_schema_version") != AGENT_CONTEXT_SCHEMA_VERSION:
