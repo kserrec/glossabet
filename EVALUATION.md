@@ -288,17 +288,31 @@ commits.
 The result identifies engine version 0.1.0, the evidence, drift, validation,
 and evaluator schema versions, a SHA-256 digest over the evaluator and every
 engine Python source file, the exact manifest digest, and a framed path/content
-digest over every accepted corpus file. The manifest pins that digest and
-accepted-file count for all seven cases; local fixtures and their structural
-and register scores plus Glossabet's self-register and self-nomination scores
-are additionally recomputed without network, while external cases
-retain their immutable commit identity. The reusable release gate also
-recomputes aggregate metrics and thresholds, and rejects stale inputs, missing
-or reordered cases, fewer than five runs, weakened Graphify coverage, or
-non-passing thresholds:
+digest over every accepted corpus file.
+
+Verification runs in two modes. The default checks **genuineness**: the
+committed result is untampered and internally consistent — well-formed
+digests, no missing or duplicated cases, the required five-run sample,
+aggregate metrics that recompute exactly from the per-case records, and
+passing thresholds rebuilt from the recorded targets. It never compares the
+evidence to the current source tree, so ordinary development (refactors,
+fixes, features) leaves it green while the evidence honestly describes the
+commit it was generated from:
 
 ```bash
 uv run python evaluation/run.py --verify-results evaluation/results.json
+```
+
+The release gate adds `--current`, which additionally checks **currency**:
+the engine source digest, manifest digest, and case order match the current
+tree; local fixtures and their structural and register scores plus
+Glossabet's self-register and self-nomination scores are recomputed without
+network; external cases retain their immutable commit identity; and
+thresholds are rebuilt from the manifest configuration. Evidence may lag the
+tree between releases, but it can never lag at the moment something ships:
+
+```bash
+uv run python evaluation/run.py --verify-results evaluation/results.json --current
 ```
 
 The second-reviewer lane can be regenerated only with an authenticated Codex
@@ -310,6 +324,12 @@ packet and summarized judgments to the repository:
 uv run python evaluation/review.py --run-reviewer
 uv run python evaluation/review.py --verify-results evaluation/reviewer-results.json
 ```
+
+Reviewer verification follows the same two-mode contract: the default checks
+the stored packet stays blinded and the recorded judgments, comparisons, and
+usefulness threshold are internally consistent; the release gate adds
+`--current` to require the packet and digests to match the current evaluation
+results, manifest, and reviewer inputs.
 
 The committed result records Codex CLI 0.147.0, one bounded packet-only
 command, and the configured-default model because the CLI did not report a
@@ -482,10 +502,15 @@ an immutable unique file below `evaluation/agent-runs/`, append its path and
 digest to history, and only then mirror those exact bytes to
 `evaluation/agent-results.json`. Verification accepts that current mirror only
 when its digest matches retained raw evidence; an arbitrary copied result is
-rejected. It also compares the selected result's evaluator, scenario manifest,
-prompt, response schema, canonical skill, plugin, and engine identities to the
-current inputs. A stale result therefore cannot pass merely because its own
-history record and the current artifact record are separately valid.
+rejected. By default it checks genuineness only: recorded identities must be
+well-formed and the results, history, and retained raw runs must cohere,
+without comparing anything to the current tree. With `--current` (the release
+gate) it additionally compares the selected result's evaluator, scenario
+manifest, prompt, response schema, canonical skill, plugin, and engine
+identities to the current inputs, and validates the checked-in plugin
+artifact against the current source. A lagging result therefore cannot ship
+merely because its own history record and artifact record are separately
+valid.
 
 An authenticated `--run` temporarily changes user-level Codex
 plugin/marketplace state and then removes only its uniquely named state. It now
@@ -501,6 +526,7 @@ offline and make no Codex or network call:
 uv run python scripts/agent_eval.py --run
 uv run python scripts/agent_eval.py --refresh-artifact
 uv run python scripts/agent_eval.py --verify-results evaluation/agent-results.json
+uv run python scripts/agent_eval.py --verify-results evaluation/agent-results.json --current
 ```
 
 ## Parsing-adapter decision

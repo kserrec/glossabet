@@ -2233,8 +2233,36 @@ def _validated_run_output(path: Path) -> Path:
     return candidate
 
 
+def _artifact_shape_errors(recorded: object) -> list[str]:
+    """Check the recorded artifact identity is well-formed without comparing
+    it to the current tree; the release gate performs that comparison."""
+    keys = {
+        "canonical_skill_sha256",
+        "engine_version",
+        "hook_sha256",
+        "plugin_sha256",
+        "pyproject_sha256",
+        "readme_sha256",
+        "runner_sha256",
+        "source_package_sha256",
+        "wheel_sha256",
+    }
+    if (
+        not isinstance(recorded, dict)
+        or set(recorded) != keys
+        or not isinstance(recorded.get("engine_version"), str)
+        or not recorded.get("engine_version")
+        or any(not _digest(recorded[key]) for key in keys - {"engine_version"})
+    ):
+        return ["recorded plugin artifact identity is malformed"]
+    return []
+
+
 def _history_errors(
-    path: Path = HISTORY_PATH, *, result_path: Path | None = None
+    path: Path = HISTORY_PATH,
+    *,
+    result_path: Path | None = None,
+    current: bool = False,
 ) -> list[str]:
     errors: list[str] = []
     try:
@@ -2245,7 +2273,10 @@ def _history_errors(
         errors.append("agent attempt history schema is stale")
     if path.is_symlink():
         errors.append("agent attempt history is symlinked")
-    errors.extend(_artifact_errors(history.get("current_artifact")))
+    if current:
+        errors.extend(_artifact_errors(history.get("current_artifact")))
+    else:
+        errors.extend(_artifact_shape_errors(history.get("current_artifact")))
     attempts = history.get("attempts")
     if not isinstance(attempts, list) or not attempts:
         return errors + ["agent attempt history is empty or malformed"]
@@ -2492,12 +2523,48 @@ def _result_input_errors(result: dict) -> list[str]:
     return []
 
 
-def verify_results(path: Path = DEFAULT_RESULTS) -> list[str]:
+def _input_shape_errors(inputs: object) -> list[str]:
+    """Check the recorded input identity is well-formed without comparing it
+    to the current tree; the release gate performs that comparison."""
+    keys = {
+        "canonical_skill_sha256",
+        "engine_version",
+        "evaluator_sha256",
+        "plugin_sha256",
+        "prompt_sha256",
+        "response_schema_sha256",
+        "scenario_manifest_sha256",
+    }
+    if (
+        not isinstance(inputs, dict)
+        or set(inputs) != keys
+        or not isinstance(inputs.get("engine_version"), str)
+        or not inputs.get("engine_version")
+        or any(not _digest(inputs[key]) for key in keys - {"engine_version"})
+    ):
+        return ["agent result input identity is malformed"]
+    return []
+
+
+def verify_results(
+    path: Path = DEFAULT_RESULTS, *, current: bool = False
+) -> list[str]:
+    """Check committed installed-agent evidence.
+
+    Always checks genuineness: the recorded results and attempt history are
+    untampered, bounded, internally consistent, and safety-complete. With
+    ``current=True`` (the release gate) it additionally checks currency: the
+    recorded input and artifact identities match the current plugin, skill,
+    and engine source.
+    """
     errors: list[str] = []
     manifest = _read_json(SCENARIOS_PATH, "agent scenario manifest")
     scenarios, limits = _validate_manifest(manifest)
     result = _read_json(path, "agent evaluation results")
-    errors.extend(_result_input_errors(result))
+    if current:
+        errors.extend(_result_input_errors(result))
+    else:
+        errors.extend(_input_shape_errors(result.get("inputs")))
     result_schema_version = result.get("schema_version")
     if result_schema_version not in SUPPORTED_RESULT_SCHEMA_VERSIONS:
         errors.append("agent result schema is stale")
@@ -2518,11 +2585,21 @@ def verify_results(path: Path = DEFAULT_RESULTS) -> list[str]:
         errors.append("agent evaluation method is weakened or stale")
     delivery = result.get("delivery", {})
     delivery_trace = delivery.get("trace") if isinstance(delivery, dict) else None
+    delivery_hook_sha = (
+        delivery.get("installed_plugin_hook_sha256")
+        if isinstance(delivery, dict)
+        else None
+    )
+    delivery_hook_sha_ok = (
+        delivery_hook_sha == _sha256(PLUGIN_HOOK)
+        if current
+        else _digest(delivery_hook_sha)
+    )
     if (
         not isinstance(delivery, dict)
         or delivery.get("installed_plugin_skill_read") is not True
         or delivery.get("installed_plugin_engine_version_checked") is not True
-        or delivery.get("installed_plugin_hook_sha256") != _sha256(PLUGIN_HOOK)
+        or not delivery_hook_sha_ok
         or delivery.get("session_start_hook_context_seen") is not True
         or delivery.get("session_start_user_prompt_mentions_glossabet") is not False
         or not isinstance(
@@ -2576,6 +2653,12 @@ def verify_results(path: Path = DEFAULT_RESULTS) -> list[str]:
             {},
         )
         hook_observed = hook.get("observed", {})
+        hook_prompt_sha = hook_observed.get("user_prompt_sha256")
+        hook_prompt_sha_ok = (
+            hook_prompt_sha == hashlib.sha256(HOOK_PROMPT.encode()).hexdigest()
+            if current
+            else _digest(hook_prompt_sha)
+        )
         if (
             hook.get("passed") is not True
             or hook_observed.get("agent_command_count") != 0
@@ -2584,8 +2667,7 @@ def verify_results(path: Path = DEFAULT_RESULTS) -> list[str]:
             or hook_observed.get("proposed_term_absent") is not True
             or hook_observed.get("source_text_absent") is not True
             or hook_observed.get("user_prompt_mentions_glossabet") is not False
-            or hook_observed.get("user_prompt_sha256")
-            != hashlib.sha256(HOOK_PROMPT.encode()).hexdigest()
+            or not hook_prompt_sha_ok
         ):
             errors.append("session-start hook evidence is missing or stale")
     for item in items:
@@ -2626,7 +2708,7 @@ def verify_results(path: Path = DEFAULT_RESULTS) -> list[str]:
     if not isinstance(environment.get("codex_version"), str):
         errors.append("agent results do not identify the Codex CLI version")
     errors.extend(_result_safety_errors(result))
-    errors.extend(_history_errors(result_path=path))
+    errors.extend(_history_errors(result_path=path, current=current))
     return errors
 
 
@@ -2638,10 +2720,20 @@ def main(argv: list[str] | None = None) -> int:
     action.add_argument("--refresh-artifact", action="store_true")
     action.add_argument("--verify-results", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--current",
+        action="store_true",
+        help=(
+            "with --verify-results, additionally require the evidence to "
+            "match the current plugin artifact and inputs (the release gate)"
+        ),
+    )
     args = parser.parse_args(argv)
     try:
         if args.output is not None and not args.run:
             _fail("--output can be used only with --run")
+        if args.current and args.verify_results is None:
+            _fail("--current can be used only with --verify-results")
         if args.run:
             attempt_id = _new_attempt_id("full")
             output = _validated_run_output(
@@ -2682,15 +2774,21 @@ def main(argv: list[str] | None = None) -> int:
             artifact = _refresh_artifact_record()
             print(json.dumps(artifact, indent=2, sort_keys=True))
             return 0
-        errors = verify_results(args.verify_results)
+        errors = verify_results(args.verify_results, current=args.current)
         if errors:
             for error in errors:
                 print(f"agent evaluation verification: {error}", file=sys.stderr)
             return 1
-        print(
-            "installed-agent deterministic artifact and safety gates pass; "
-            "procedural reliability history retained"
-        )
+        if args.current:
+            print(
+                "installed-agent evidence matches the current plugin artifact "
+                "and inputs; procedural reliability history retained"
+            )
+        else:
+            print(
+                "installed-agent evidence is genuine, bounded, and "
+                "safety-complete; procedural reliability history retained"
+            )
         return 0
     except (AgentEvaluationError, OSError, subprocess.TimeoutExpired) as exc:
         print(f"agent evaluation: {exc}", file=sys.stderr)

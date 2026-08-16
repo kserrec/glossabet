@@ -1,6 +1,6 @@
 # Glossabet — Plan
 
-Status: **phases 0–22 and Phases 24–28 complete; owner self-testing pause
+Status: **phases 0–22 and Phases 24–29 complete; owner self-testing pause
 active before the trusted-alpha gate** as of 2026-08-16.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -925,6 +925,66 @@ Together with the deterministic hostile write-path coverage, that authorized
 exact-artifact pass closes Phase 28.3. The earlier `wc -l` miss remains in the
 reliability ledger rather than being rewritten or hidden.
 
+### Phase 29 — Decouple evidence currency from development ✅ 2026-08-16
+
+**Goal:** development never collides with committed evidence again; currency
+is demanded only where it earns its cost — the release gate.
+
+**Why (Kyle's decision, 2026-08-16):** Phase 20 bound the per-commit CI gate
+to byte-level currency: any edit to engine or evaluator source made the
+committed evaluation evidence "stale," and restoring green required
+regenerating two witness artifacts through live Codex runs. That made every
+refactor, fix, or feature carry a live-evaluation toll. Kyle rejected that
+model: reports stay fingerprinted as sealed testimony about the state they
+measured, but the repository must never be broken merely because testimony
+honestly lags the tree.
+
+**The two-mode contract:** every evidence verifier now separates
+- **genuineness** (always, every commit, every branch): the artifact is
+  untampered and internally consistent — well-formed digests, recomputable
+  aggregates/comparisons/summaries, blinding preserved, safety and method
+  bars met, retained raw runs cohering byte-for-byte. Never compares
+  evidence to the current tree, so it stays green through development.
+- **currency** (`--current`, release gate only): the evidence additionally
+  describes the current tree — engine source digest, manifest, corpora,
+  plugin artifact, and reviewer/agent input identities all match. Evidence
+  may lag between releases; it can never lag at the moment something ships.
+
+**Steps (all landed):**
+
+1. `evaluation/run.py verify_results` split into `_genuineness_errors` /
+   `_currency_errors` behind a `current` flag; thresholds rebuild from the
+   recorded targets in genuine mode and from the manifest at the release
+   gate; `--current` CLI flag added.
+2. `scripts/agent_eval.py` gates `_result_input_errors`, `_artifact_errors`,
+   and the plugin-hook/host-prompt digest comparisons behind `current`, with
+   shape-only genuineness replacements (`_input_shape_errors`,
+   `_artifact_shape_errors`); `--current` CLI flag added.
+3. `evaluation/review.py` verifies blinding, judgment/packet coherence, and
+   threshold arithmetic from the stored artifacts alone (rebuilding
+   comparisons from the recorded primary labels); packet-vs-current-results
+   equality and reviewer input identity move behind `--current`. Building a
+   new packet or running the reviewer still demands current engine results —
+   new testimony is never generated from stale inputs.
+4. `quality.yml` (per-commit, reused by CI) keeps the three verifiers in
+   genuineness mode and drops `git diff --exit-code -- plugins/glossabet`;
+   `release.yml` publish runs all three with `--current` plus the plugin
+   diff. `scripts/check_workflows.py` enforces the split fail-closed,
+   including rejecting any `--current` inside the per-commit quality gate
+   and any release verifier without it.
+5. Tests updated: committed-evidence tests assert genuineness (they no
+   longer break when source lags evidence); currency detection is pinned by
+   synthetic mutations that are robust to lag; new tests prove each check
+   fires only in its mode. Docs (README, RELEASING, EVALUATION, CLAUDE)
+   describe the two modes.
+
+**Acceptance:** full suite passes; all four per-commit gates pass in
+genuineness mode on a tree whose evaluator sources were edited this phase;
+each `--current` verifier correctly reports that same lag as staleness. The
+committed evidence artifacts were not modified: they remain the sealed
+2026-08-16 testimony and honestly lag until regenerated at the next release
+gate.
+
 ### Owner self-testing pause — active, not an implementation phase
 
 Kyle is keeping the current build to himself while he runs it and performs
@@ -1025,7 +1085,7 @@ Each finding was verified against the engine's own output on this repository.
 - Public package/plugin publication only after Phase 23, the trusted-alpha
   gate, and explicit authorization.
 
-## Settled decisions (through 2026-08-15)
+## Settled decisions (through 2026-08-16)
 
 1. **Implementation language: Python.** Same distribution story as Graphify
    (`uv tool install`), mature ecosystem if tree-sitter is ever wanted.
@@ -1079,3 +1139,10 @@ Each finding was verified against the engine's own output on this repository.
     copied skill lifecycle explicit. Only Codex CLI 0.147.0 on Linux has direct
     plugin lifecycle and 12-scenario installed-host probes; other hosts remain
     unverified.
+13. **Evidence may lag; it may never lie (Phase 29, Kyle, 2026-08-16).**
+    Committed evaluation evidence is sealed, fingerprinted testimony about
+    the state it measured. Per-commit gates verify only genuineness
+    (untampered, internally consistent); currency against the current tree
+    is enforced solely at the release gate via `--current` and the plugin
+    `git diff` step. Development — refactors included — never requires
+    regenerating witness evidence; releases always do.

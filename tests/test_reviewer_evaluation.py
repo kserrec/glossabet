@@ -22,7 +22,7 @@ def _contains_useful_key(value):
     return False
 
 
-def test_committed_second_reviewer_evidence_is_current_and_blinded():
+def test_committed_second_reviewer_evidence_is_genuine_and_blinded():
     assert verify_results(RESULTS, PACKET) == []
     packet = json.loads(PACKET.read_text(encoding="utf-8"))
     results = json.loads(RESULTS.read_text(encoding="utf-8"))
@@ -42,4 +42,34 @@ def test_reviewer_verifier_rejects_tampered_comparison(tmp_path):
     assert any(
         "comparisons or input digests are stale" in error
         for error in verify_results(path, PACKET)
+    )
+
+
+def test_reviewer_verifier_checks_input_currency_only_at_the_release_gate(
+    tmp_path,
+):
+    result = json.loads(RESULTS.read_text(encoding="utf-8"))
+    lagging = deepcopy(result)
+    lagging["reviewer"]["input_identity"]["evaluator_sha256"] = "0" * 64
+    path = tmp_path / "lagging-identity.json"
+    path.write_text(json.dumps(lagging), encoding="utf-8")
+
+    genuine_errors = verify_results(path, PACKET)
+    assert not any(
+        "identity or blinding metadata is malformed" in error
+        for error in genuine_errors
+    )
+    current_errors = verify_results(path, PACKET, current=True)
+    assert any(
+        "identity or blinding metadata is malformed" in error
+        for error in current_errors
+    )
+
+    malformed = deepcopy(result)
+    malformed["reviewer"]["input_identity"]["evaluator_sha256"] = "not-a-digest"
+    malformed_path = tmp_path / "malformed-identity.json"
+    malformed_path.write_text(json.dumps(malformed), encoding="utf-8")
+    assert any(
+        "identity or blinding metadata is malformed" in error
+        for error in verify_results(malformed_path, PACKET)
     )

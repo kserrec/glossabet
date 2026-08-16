@@ -404,9 +404,13 @@ The package is `glossabet/`. Grouped by role:
   warm scans without importing or executing target code, scores lexical,
   terminology, drift, and structural findings, records
   truncation/runtime/cache behavior, and checks release thresholds. Its
-  verification mode recomputes local structural results, aggregates, and
-  thresholds and rejects stale engine source, schemas, manifest, corpora,
-  source metadata, run count, or Graphify case coverage.
+  verification mode always checks genuineness (untampered, internally
+  consistent results with recomputable aggregates and passing thresholds);
+  with `--current` — the release gate — it additionally rejects stale engine
+  source, schemas, manifest, corpora, source metadata, run count, or
+  Graphify case coverage. The other two evidence verifiers follow the same
+  two-mode contract, so committed evidence may honestly lag the tree during
+  development but can never lag at a release.
 - `evaluation/results.json` — the current seven-case, five-run Phase 22 replay,
   including every actual/expected finding key, per-case timing, structured
   engine/version metadata, and digests for the engine, manifest, and each

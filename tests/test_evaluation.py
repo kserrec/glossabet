@@ -202,8 +202,43 @@ def test_structural_cases_pin_findings_provenance_and_truncation(tmp_path):
     assert result["aggregate"]["quality"]["structural_contract_rate"] == 1.0
 
 
-def test_committed_results_match_current_engine_manifest_and_local_corpora():
+def test_committed_results_are_genuine_and_internally_consistent():
     assert verify_results(RESULTS, MANIFEST) == []
+
+
+def test_genuineness_verifier_catches_internal_tampering_without_currency(
+    tmp_path,
+):
+    original = json.loads(RESULTS.read_text(encoding="utf-8"))
+
+    tampered_aggregate = deepcopy(original)
+    tampered_aggregate["aggregate"]["quality"]["false_alarms"] += 1
+    aggregate_path = tmp_path / "tampered-aggregate.json"
+    aggregate_path.write_text(json.dumps(tampered_aggregate), encoding="utf-8")
+    assert any(
+        "aggregate is stale or internally inconsistent" in error
+        for error in verify_results(aggregate_path, MANIFEST)
+    )
+
+    weakened_thresholds = deepcopy(original)
+    weakened_thresholds["release_thresholds"]["passed"] = False
+    thresholds_path = tmp_path / "weakened-thresholds.json"
+    thresholds_path.write_text(
+        json.dumps(weakened_thresholds), encoding="utf-8"
+    )
+    assert any(
+        "thresholds are not configured and passing" in error
+        for error in verify_results(thresholds_path, MANIFEST)
+    )
+
+    malformed_engine = deepcopy(original)
+    malformed_engine["engine"]["source_sha256"] = "not-a-digest"
+    engine_path = tmp_path / "malformed-engine.json"
+    engine_path.write_text(json.dumps(malformed_engine), encoding="utf-8")
+    assert any(
+        "engine identity metadata is malformed" in error
+        for error in verify_results(engine_path, MANIFEST)
+    )
 
 
 def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path):
@@ -257,5 +292,6 @@ def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path):
         path = tmp_path / f"results-{index}.json"
         path.write_text(json.dumps(result), encoding="utf-8")
         assert any(
-            expected in error for error in verify_results(path, MANIFEST)
+            expected in error
+            for error in verify_results(path, MANIFEST, current=True)
         )

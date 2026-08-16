@@ -1,4 +1,4 @@
-"""Installed Codex boundary evidence is current, bounded, and fail-closed."""
+"""Installed Codex boundary evidence is genuine, bounded, and fail-closed."""
 
 import hashlib
 import json
@@ -16,8 +16,6 @@ from scripts.agent_eval import (
     HOOK_SOURCE_CANARY,
     HOOK_TERM,
     _append_attempt,
-    _artifact_errors,
-    _artifact_snapshot,
     _attempt_from_error,
     _attempt_from_probe_error,
     _codex_exec_command,
@@ -140,7 +138,7 @@ def test_current_result_identity_must_match_every_bound_input(
     ]
 
 
-def test_committed_installed_agent_evidence_is_current_safe_and_complete():
+def test_committed_installed_agent_evidence_is_genuine_safe_and_complete():
     assert verify_results(RESULTS) == []
     results = json.loads(RESULTS.read_text(encoding="utf-8"))
     history = json.loads(HISTORY.read_text(encoding="utf-8"))
@@ -171,8 +169,6 @@ def test_committed_installed_agent_evidence_is_current_safe_and_complete():
         "raw_results_retained": 6,
         "safety": {"failed": 0, "passed": 11},
     }
-    assert history["current_artifact"] == _artifact_snapshot()
-    assert _artifact_errors(history["current_artifact"]) == []
     assert results["delivery"]["installed_plugin_skill_read"] is True
     assert results["delivery"]["session_start_hook_context_seen"] is True
     assert results["delivery"]["temporary_plugin_state_removed"] is True
@@ -257,7 +253,18 @@ def test_attempt_history_rejects_stale_artifact_or_safety_claim(tmp_path):
     stale_path = tmp_path / "stale-artifact.json"
     stale_path.write_text(json.dumps(stale_artifact), encoding="utf-8")
     assert "current deterministic plugin artifact identity is stale" in (
+        _history_errors(stale_path, current=True)
+    )
+    assert "current deterministic plugin artifact identity is stale" not in (
         _history_errors(stale_path)
+    )
+
+    malformed_artifact = deepcopy(original)
+    malformed_artifact["current_artifact"]["wheel_sha256"] = "not-a-digest"
+    malformed_path = tmp_path / "malformed-artifact.json"
+    malformed_path.write_text(json.dumps(malformed_artifact), encoding="utf-8")
+    assert "recorded plugin artifact identity is malformed" in (
+        _history_errors(malformed_path)
     )
 
     unsafe = deepcopy(original)
@@ -641,3 +648,31 @@ def test_agent_verifier_rejects_unretained_weakened_or_unsafe_evidence(
         path = tmp_path / f"agent-results-{index}.json"
         path.write_text(json.dumps(value), encoding="utf-8")
         assert any(expected in error for error in verify_results(path))
+
+
+def test_agent_verifier_checks_input_currency_only_at_the_release_gate(
+    tmp_path,
+):
+    original = json.loads(RESULTS.read_text(encoding="utf-8"))
+
+    lagging = deepcopy(original)
+    lagging["inputs"]["plugin_sha256"] = "0" * 64
+    lagging_path = tmp_path / "lagging-inputs.json"
+    lagging_path.write_text(json.dumps(lagging), encoding="utf-8")
+    assert any(
+        "input identity is stale" in error
+        for error in verify_results(lagging_path, current=True)
+    )
+    assert not any(
+        "input identity is stale" in error
+        for error in verify_results(lagging_path)
+    )
+
+    malformed = deepcopy(original)
+    malformed["inputs"]["plugin_sha256"] = "not-a-digest"
+    malformed_path = tmp_path / "malformed-inputs.json"
+    malformed_path.write_text(json.dumps(malformed), encoding="utf-8")
+    assert any(
+        "input identity is malformed" in error
+        for error in verify_results(malformed_path)
+    )

@@ -104,9 +104,9 @@ release_dir="$(mktemp -d)"
 uv sync --locked
 uv run pytest -q
 uv run python scripts/check_workflows.py
-uv run python evaluation/run.py --verify-results evaluation/results.json
-uv run python scripts/agent_eval.py --verify-results evaluation/agent-results.json
-uv run python evaluation/review.py --verify-results evaluation/reviewer-results.json
+uv run python evaluation/run.py --verify-results evaluation/results.json --current
+uv run python scripts/agent_eval.py --verify-results evaluation/agent-results.json --current
+uv run python evaluation/review.py --verify-results evaluation/reviewer-results.json --current
 uv build --no-sources --out-dir "$release_dir"
 uv run python scripts/build_plugin.py "$release_dir"
 git diff --exit-code -- plugins/glossabet
@@ -114,6 +114,15 @@ uv run python scripts/check_distribution.py "$release_dir" --tag v0.1.0
 uv run python scripts/wheel_smoke.py "$release_dir"
 uv run python scripts/plugin_smoke.py "$release_dir"
 ```
+
+The `--current` flags and the `git diff` step are the release-only currency
+checks: they require the committed evaluation evidence and the checked-in
+plugin artifact to describe the exact source being tagged. Between releases,
+development leaves evidence honestly lagging and only the genuineness form
+(without `--current`) gates ordinary commits. If a currency check fails here,
+regenerate the affected evidence against the release commit — the
+deterministic evaluation with `evaluation/run.py`, and the live installed-agent
+and second-reviewer lanes with their authorized Codex runs — before tagging.
 
 Before a real release, replace `Unreleased` beside `0.1.0` in `CHANGELOG.md`
 with the publication date, commit that change, and rerun the gate from the

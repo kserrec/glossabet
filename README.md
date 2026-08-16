@@ -460,11 +460,16 @@ uv run python scripts/agent_eval.py --verify-results evaluation/agent-results.js
 uv run python evaluation/review.py --verify-results evaluation/reviewer-results.json
 uv build --no-sources
 uv run python scripts/build_plugin.py dist
-git diff --exit-code -- plugins/glossabet
 uv run python scripts/check_distribution.py dist --tag v0.1.0
 uv run python scripts/wheel_smoke.py dist
 uv run python scripts/plugin_smoke.py dist
 ```
+
+The three `--verify-results` gates check that the committed evaluation
+evidence is genuine — untampered and internally consistent. Between releases
+the evidence may honestly lag the source tree; the release gate reruns each
+verifier with `--current` to additionally require that the evidence describes
+the exact code being shipped (see `RELEASING.md`).
 
 - `ARCHITECTURE.md` — how the engine is built and how to work on it (start here
   to take ownership).

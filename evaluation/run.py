@@ -1163,36 +1163,154 @@ def _thresholds(aggregate: dict, thresholds: dict | None) -> dict:
     }
 
 
-def verify_results(
-    results_path: Path,
-    manifest_path: Path = DEFAULT_MANIFEST,
-) -> list[str]:
-    """Check that committed evaluation evidence matches current inputs."""
-    manifest, manifest_sha256 = _read_manifest(manifest_path)
-    try:
-        results = json.loads(results_path.read_bytes())
-    except (OSError, ValueError, RecursionError) as exc:
-        raise EvaluationError(
-            f"{results_path}: unreadable evaluation results ({exc})"
-        ) from exc
-    if not isinstance(results, dict):
-        raise EvaluationError(f"{results_path}: results must be a JSON object")
+_ENGINE_METADATA_KEYS = {
+    "name",
+    "version",
+    "source_sha256",
+    "evidence_schema_version",
+    "drift_schema_version",
+    "validation_schema_version",
+    "evaluation_schema_version",
+}
 
+
+def _hex_digest(value: object) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def _stored_threshold_targets(thresholds: object) -> dict | None:
+    """Recover the threshold configuration recorded inside the results."""
+    if not isinstance(thresholds, dict):
+        return None
+    checks = thresholds.get("checks")
+    if not isinstance(checks, list) or not checks:
+        return None
+    targets: dict = {}
+    for check in checks:
+        if not isinstance(check, dict) or not isinstance(check.get("name"), str):
+            return None
+        name = check["name"]
+        if name == "warm_outputs_match_cold":
+            continue
+        if name in targets or "target" not in check:
+            return None
+        targets[name] = check["target"]
+    return targets
+
+
+def _genuineness_errors(results: dict) -> list[str]:
+    """Check the results artifact standalone: untampered, internally consistent."""
     errors: list[str] = []
     if results.get("schema_version") != EVALUATION_SCHEMA_VERSION:
         errors.append(
             "evaluation schema does not match the current evaluator "
             f"({results.get('schema_version')!r} != {EVALUATION_SCHEMA_VERSION})"
         )
-    expected_engine = _engine_metadata()
-    if results.get("engine") != expected_engine:
+    engine = results.get("engine")
+    if (
+        not isinstance(engine, dict)
+        or set(engine) != _ENGINE_METADATA_KEYS
+        or engine.get("name") != "glossabet"
+        or not isinstance(engine.get("version"), str)
+        or not engine.get("version")
+        or not _hex_digest(engine.get("source_sha256"))
+    ):
+        errors.append("engine identity metadata is malformed")
+    if not _hex_digest(results.get("manifest_sha256")):
+        errors.append("evaluation manifest digest is malformed")
+
+    cases = results.get("cases")
+    if not isinstance(cases, list):
+        errors.append("evaluation cases are missing or malformed")
+        cases = []
+    ids = [case.get("id") for case in cases if isinstance(case, dict)]
+    if (
+        not cases
+        or len(ids) != len(cases)
+        or not all(isinstance(case_id, str) for case_id in ids)
+        or len(set(ids)) != len(ids)
+    ):
+        errors.append("evaluation case ids are missing or duplicated")
+    for case in cases:
+        if not isinstance(case, dict):
+            continue
+        corpus = case.get("corpus")
+        if (
+            not isinstance(corpus, dict)
+            or not _hex_digest(corpus.get("sha256"))
+            or not isinstance(corpus.get("files_hashed"), int)
+            or isinstance(corpus.get("files_hashed"), bool)
+            or corpus["files_hashed"] < 0
+        ):
+            errors.append(
+                f"{case.get('id', '<unknown>')}: corpus digest metadata is malformed"
+            )
+
+    method = results.get("method", {})
+    if method.get("runtime_runs_per_case") != RELEASE_RUNTIME_RUNS:
+        errors.append(
+            "evaluation results do not contain the required five-run sample"
+        )
+    graphify_cases = method.get("graphify_cases")
+    if (
+        not isinstance(graphify_cases, int)
+        or isinstance(graphify_cases, bool)
+        or not 0 <= graphify_cases <= len(cases)
+    ):
+        errors.append("evaluation Graphify case count is malformed")
+    if (
+        method.get("graphify") != "per-case"
+        or method.get("external_source_vendored") is not False
+    ):
+        errors.append("evaluation source method is weakened or stale")
+
+    self_register = results.get("self_register")
+    self_nominations = results.get("self_nominations")
+    aggregate = results.get("aggregate")
+    expected_aggregate = None
+    try:
+        if cases:
+            expected_aggregate = _aggregate(
+                cases, self_register, self_nominations
+            )
+    except (KeyError, TypeError, ValueError):
+        errors.append("evaluation case metrics are malformed")
+    if expected_aggregate is not None and aggregate != expected_aggregate:
+        errors.append("evaluation aggregate is stale or internally inconsistent")
+
+    thresholds = results.get("release_thresholds", {})
+    stored_targets = _stored_threshold_targets(thresholds)
+    if stored_targets is None:
+        errors.append("evaluation release metrics are malformed")
+    else:
+        expected_thresholds = None
+        try:
+            if isinstance(aggregate, dict):
+                expected_thresholds = _thresholds(aggregate, stored_targets)
+        except (KeyError, TypeError, ValueError):
+            errors.append("evaluation release metrics are malformed")
+        if expected_thresholds is not None and thresholds != expected_thresholds:
+            errors.append("evaluation release thresholds are stale")
+    if (
+        not isinstance(thresholds, dict)
+        or thresholds.get("configured") is not True
+        or thresholds.get("passed") is not True
+    ):
+        errors.append("evaluation release thresholds are not configured and passing")
+    return errors
+
+
+def _currency_errors(results: dict, manifest_path: Path) -> list[str]:
+    """Check that the evidence additionally describes the current tree."""
+    manifest, manifest_sha256 = _read_manifest(manifest_path)
+    errors: list[str] = []
+    if results.get("engine") != _engine_metadata():
         errors.append("engine version, schema, or source digest is stale")
     if results.get("manifest_sha256") != manifest_sha256:
         errors.append("evaluation manifest digest is stale")
 
     cases = results.get("cases")
     if not isinstance(cases, list):
-        errors.append("evaluation cases are missing or malformed")
         cases = []
     case_by_id = {
         case.get("id"): case
@@ -1206,7 +1324,6 @@ def verify_results(
     if result_ids != expected_ids or len(case_by_id) != len(cases):
         errors.append("evaluation case ids/order do not match the manifest")
 
-    sha256_pattern = re.compile(r"[0-9a-f]{64}")
     for source in manifest["sources"]:
         case = case_by_id.get(source["id"])
         if case is None:
@@ -1216,11 +1333,10 @@ def verify_results(
         corpus = case.get("corpus")
         if (
             not isinstance(corpus, dict)
-            or sha256_pattern.fullmatch(str(corpus.get("sha256", ""))) is None
+            or not _hex_digest(corpus.get("sha256"))
             or not isinstance(corpus.get("files_hashed"), int)
             or corpus["files_hashed"] < 0
         ):
-            errors.append(f"{source['id']}: corpus digest metadata is malformed")
             continue
         if corpus != _manifest_corpus_identity(source):
             errors.append(f"{source['id']}: corpus digest does not match manifest")
@@ -1258,61 +1374,58 @@ def verify_results(
     self_evidence = build_evidence(
         PROJECT_ROOT, cache=False, graphify=False
     )
-    expected_self_register = _evaluate_self_register(
+    if results.get("self_register") != _evaluate_self_register(
         manifest["self_register"], self_evidence
-    )
-    self_register = results.get("self_register")
-    if self_register != expected_self_register:
+    ):
         errors.append("self register evidence is stale")
-    expected_self_nominations = _evaluate_self_nominations(
+    if results.get("self_nominations") != _evaluate_self_nominations(
         manifest["self_nominations"], self_evidence
-    )
-    self_nominations = results.get("self_nominations")
-    if self_nominations != expected_self_nominations:
+    ):
         errors.append("self nomination evidence is stale")
 
-    method = results.get("method", {})
-    if method.get("runtime_runs_per_case") != RELEASE_RUNTIME_RUNS:
-        errors.append(
-            "evaluation results do not contain the required five-run sample"
-        )
     expected_graphify_cases = sum(
         source.get("expectations", {}).get("structural") is not None
         for source in manifest["sources"]
     )
-    if method.get("graphify_cases") != expected_graphify_cases:
+    if results.get("method", {}).get("graphify_cases") != expected_graphify_cases:
         errors.append("evaluation Graphify case count is stale")
-    if (
-        method.get("graphify") != "per-case"
-        or method.get("external_source_vendored") is not False
-    ):
-        errors.append("evaluation source method is weakened or stale")
 
     aggregate = results.get("aggregate")
-    expected_aggregate = None
     try:
-        if cases:
-            expected_aggregate = _aggregate(
-                cases, self_register, self_nominations
-            )
-    except (KeyError, TypeError, ValueError):
-        errors.append("evaluation case metrics are malformed")
-    if expected_aggregate is not None and aggregate != expected_aggregate:
-        errors.append("evaluation aggregate is stale or internally inconsistent")
-
-    thresholds = results.get("release_thresholds", {})
-    expected_thresholds = None
-    try:
-        if isinstance(aggregate, dict):
-            expected_thresholds = _thresholds(
-                aggregate, manifest.get("release_thresholds")
-            )
+        if isinstance(aggregate, dict) and results.get(
+            "release_thresholds"
+        ) != _thresholds(aggregate, manifest.get("release_thresholds")):
+            errors.append("evaluation release thresholds are stale")
     except (KeyError, TypeError, ValueError):
         errors.append("evaluation release metrics are malformed")
-    if expected_thresholds is not None and thresholds != expected_thresholds:
-        errors.append("evaluation release thresholds are stale")
-    if thresholds.get("configured") is not True or thresholds.get("passed") is not True:
-        errors.append("evaluation release thresholds are not configured and passing")
+    return errors
+
+
+def verify_results(
+    results_path: Path,
+    manifest_path: Path = DEFAULT_MANIFEST,
+    *,
+    current: bool = False,
+) -> list[str]:
+    """Check committed evaluation evidence.
+
+    Always checks genuineness: the artifact is untampered and internally
+    consistent, so it truthfully reports the run it records. With
+    ``current=True`` (the release gate) it additionally checks currency:
+    the evidence describes the current engine source, manifest, and local
+    corpora, not an earlier state of the repository.
+    """
+    try:
+        results = json.loads(results_path.read_bytes())
+    except (OSError, ValueError, RecursionError) as exc:
+        raise EvaluationError(
+            f"{results_path}: unreadable evaluation results ({exc})"
+        ) from exc
+    if not isinstance(results, dict):
+        raise EvaluationError(f"{results_path}: results must be a JSON object")
+    errors = _genuineness_errors(results)
+    if current:
+        errors.extend(_currency_errors(results, manifest_path))
     return errors
 
 
@@ -1404,12 +1517,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--verify-results",
         type=Path,
-        help="verify committed results against the current engine and corpus",
+        help="verify committed results are genuine and internally consistent",
+    )
+    parser.add_argument(
+        "--current",
+        action="store_true",
+        help=(
+            "with --verify-results, additionally require the evidence to "
+            "describe the current engine source, manifest, and corpora "
+            "(the release gate)"
+        ),
     )
     args = parser.parse_args(argv)
+    if args.current and args.verify_results is None:
+        parser.error("--current requires --verify-results")
     if args.verify_results is not None:
         try:
-            errors = verify_results(args.verify_results, args.manifest)
+            errors = verify_results(
+                args.verify_results, args.manifest, current=args.current
+            )
         except (EvaluationError, OSError, subprocess.TimeoutExpired) as exc:
             print(f"evaluation verification: {exc}", file=sys.stderr)
             return 1
@@ -1417,7 +1543,10 @@ def main(argv: list[str] | None = None) -> int:
             for error in errors:
                 print(f"evaluation verification: {error}", file=sys.stderr)
             return 1
-        print("evaluation results match the current engine and corpus")
+        if args.current:
+            print("evaluation results match the current engine and corpus")
+        else:
+            print("evaluation results are genuine and internally consistent")
         return 0
     if args.runs < 1:
         parser.error("--runs must be at least 1")

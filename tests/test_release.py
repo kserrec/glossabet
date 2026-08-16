@@ -66,7 +66,7 @@ def test_workflow_policy_rejects_meaningful_gate_weakening():
         ),
         (
             "release.yml",
-            "python evaluation/run.py --verify-results evaluation/results.json",
+            "python evaluation/run.py --verify-results evaluation/results.json --current",
             "python -c pass",
         ),
         (
@@ -76,8 +76,13 @@ def test_workflow_policy_rejects_meaningful_gate_weakening():
         ),
         (
             "release.yml",
-            "python evaluation/review.py --verify-results evaluation/reviewer-results.json",
+            "python evaluation/review.py --verify-results evaluation/reviewer-results.json --current",
             "python -c pass",
+        ),
+        (
+            "release.yml",
+            "python scripts/agent_eval.py --verify-results evaluation/agent-results.json --current",
+            "python scripts/agent_eval.py --verify-results evaluation/agent-results.json",
         ),
         (
             "quality.yml",
@@ -85,7 +90,7 @@ def test_workflow_policy_rejects_meaningful_gate_weakening():
             "python -c pass",
         ),
         (
-            "quality.yml",
+            "release.yml",
             "git diff --exit-code -- plugins/glossabet",
             "git status --short",
         ),

@@ -127,13 +127,16 @@ def validate_workflow_texts(workflows: dict[str, str]) -> list[str]:
             "python evaluation/review.py --verify-results evaluation/reviewer-results.json",
             "uv build --no-sources --clear",
             "python scripts/build_plugin.py dist",
-            "git diff --exit-code -- plugins/glossabet",
             "python scripts/check_distribution.py dist",
             "python scripts/wheel_smoke.py dist",
         ],
         errors,
         "quality package job",
     )
+    if "--current" in quality:
+        errors.append(
+            "quality.yml demands evidence currency outside the release gate"
+        )
 
     if _job_names(ci) != ["quality"]:
         errors.append("ci.yml must delegate its only job to the reusable quality gate")
@@ -170,9 +173,9 @@ def validate_workflow_texts(workflows: dict[str, str]) -> list[str]:
         publish,
         [
             "python scripts/check_workflows.py",
-            "python evaluation/run.py --verify-results evaluation/results.json",
-            "python scripts/agent_eval.py --verify-results evaluation/agent-results.json",
-            "python evaluation/review.py --verify-results evaluation/reviewer-results.json",
+            "python evaluation/run.py --verify-results evaluation/results.json --current",
+            "python scripts/agent_eval.py --verify-results evaluation/agent-results.json --current",
+            "python evaluation/review.py --verify-results evaluation/reviewer-results.json --current",
             "uv build --no-sources --clear",
             "python scripts/build_plugin.py dist",
             "git diff --exit-code -- plugins/glossabet",
