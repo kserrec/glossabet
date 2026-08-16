@@ -1,11 +1,11 @@
 # Release preparation and publication
 
-Glossabet 0.1.0 is locally packageable and its current local verification
-gates pass, but it is **not release-ready and is not published to PyPI**. The
-installed-agent and controlled structural evaluation is complete. Kyle has
-paused before outside trusted-alpha evidence while he runs the current build
-and performs additional checks himself; the exact-artifact Phase 23 gate comes
-after that outside evidence. Phase 21 records the Glossabet decision and a
+Glossabet 0.1.0 is locally packageable, but it is **not release-ready and is
+not published to PyPI**. The deterministic, blinded-reviewer, and current
+Phase 27 installed-agent gates pass. Kyle has paused before outside
+trusted-alpha evidence while he runs the current build and performs additional
+checks himself; the exact-artifact Phase 23 gate comes after that outside
+evidence. Phase 21 records the Glossabet decision and a
 working local Codex plugin lifecycle in `NAME-CLEARANCE.md` and
 `DISTRIBUTION.md`. The source repository remains public and was renamed with
 explicit authorization to <https://github.com/kserrec/glossabet>; its
@@ -34,14 +34,16 @@ require his explicit authorization.
   dependency-free wheel behind a version-checking skill-local runner. The
   local Codex 0.147.0 Linux probe installed 0.1.0, updated to a synthetic
   0.1.1, exercised `inspect`, and removed its plugin and marketplace state.
-- The Phase 22 installed-agent harness passed 11/11 bounded scenarios through
-  Codex CLI 0.147.0 on Linux, including hostile direct inputs, truncation,
-  monorepo/resume behavior, excluded sensitive content, and missing CLI. The
-  refreshed current wheel also passed all 11 scenarios on its first complete
-  batch, and the temporary plugin state was removed. The deterministic
-  seven-case evaluation and a separate blinded Codex reviewer also pass their
-  recorded thresholds; this remains local/controlled evidence, not outside
-  adopter validation.
+- The current Phase 27 installed-agent harness passes 11/11 bounded scenarios
+  through Codex CLI 0.147.0 on Linux, including hostile direct inputs,
+  truncation, monorepo/resume behavior, excluded sensitive content, and missing
+  CLI. All ten plugin scenarios preserve direct engine stdout. The missing-CLI
+  host run disables both profile loading and login-shell requests, observes the
+  absent engine, invokes no `inspect`, and writes nothing. Temporary plugin and
+  marketplace state was removed, and the same-named user skill remained
+  byte-identical. The deterministic seven-case evaluation and a separate
+  blinded Codex reviewer pass their recorded thresholds; this remains
+  local/controlled evidence, not outside adopter validation.
 - `.github/workflows/quality.yml` is the one reusable gate: it runs the
   complete suite on CPython 3.10–3.14 on Linux, macOS, and Windows, verifies
   workflow policy plus deterministic, installed-agent, and second-reviewer

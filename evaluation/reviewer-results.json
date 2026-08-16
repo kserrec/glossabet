@@ -153,7 +153,7 @@
     "secondary_usefulness_rate": 0.85,
     "secondary_usefulness_threshold": 0.8
   },
-  "evaluation_results_sha256": "7adf0e12324a05cfcd51732e8fec4e4a97b2ffe6812c89d318265cd5f76fa4cb",
+  "evaluation_results_sha256": "9de2ebad6fd217e5f0a0c4d29a393f0ce4b6aca636660879ee9097d1f3886131",
   "judgments": [
     {
       "reason": "The complete evidence places \u201csession\u201d in three clearly disjoint domains\u2014authentication, database transactions, and machine-learning inference\u2014giving maintainers a concrete reason to review whether more specific names are needed.",

@@ -1,8 +1,8 @@
 # Glossabet — Plan
 
-Status: **phases 0–22 and Phases 24–26 complete; Phase 27 is the next
-implementation work; owner self-testing pause active before the trusted-alpha
-gate** as of 2026-08-15. Phases 18–23 are the complete
+Status: **phases 0–22 and Phases 24–27 complete; Phase 28.1 is next; owner
+self-testing pause active before the trusted-alpha gate** as of 2026-08-16.
+Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
 Phases 24–28 were added 2026-08-15 from Kyle's self-testing findings and run
 before the trusted-alpha gate and Phase 23 in execution order, so outside
@@ -717,7 +717,7 @@ finding payloads remained exactly equal after removing only engine and
 manifest identities, so the second-reviewer judgments retain explicit reuse
 provenance rather than claiming a new review.
 
-### Phase 27 — Lean agent context
+### Phase 27 — Lean agent context ✅ 2026-08-16
 
 **Goal:** the `inspect` projection must fit routine agent context budgets;
 the 1 MB ceiling is a failure backstop, never a target. (Independent of
@@ -739,6 +739,21 @@ in the existing agent-context module.)
 soft target (down from 552,619 bytes measured 2026-08-15); every omission
 relative to full evidence is observable in coverage; existing skill and
 hostile-input scenarios still pass.
+
+**Acceptance (2026-08-16):** the routine projection has a repository regression
+at or below 80,000 bytes, records every projection omission, and preserves the
+detailed pre-Phase-27 shape behind `inspect --full`. The current authenticated
+installed-agent result, bound to the current evaluator, prompt, scenarios,
+canonical skill, plugin, and engine, passes all 11 scenarios on Codex CLI
+0.147.0/Linux. Each of the ten plugin scenarios ran one direct `inspect`
+command with unchanged stdout and no pipe or projection. The missing-CLI host
+run alone disables both profile loading and login-shell requests; its trace
+uses `/usr/bin/zsh -c`, reads the installed standalone-skill boundary, observes
+`glossabet --version` exiting 127, invokes no `inspect`, and makes no repository
+write. The evaluator also disables a same-named user-level standalone
+Glossabet skill for each host run without modifying that user-owned file.
+Temporary plugin and marketplace state was removed, and the user-owned skill
+remained byte-identical.
 
 ### Phase 28 — Ambient glossary consumption
 

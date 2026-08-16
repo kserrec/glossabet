@@ -2052,15 +2052,15 @@
         "excluded_by_reason": {
           "language_tagged_flat": 23,
           "no_lexical_tokens": 116,
-          "prose_dominated_flat": 1107
+          "prose_dominated_flat": 1113
         },
-        "excluded_spellings": 1246,
-        "total_spellings": 3567,
+        "excluded_spellings": 1252,
+        "total_spellings": 3587,
         "used_by_reason": {
-          "corroborated_flat": 1115,
-          "structurally_styled": 1206
+          "corroborated_flat": 1114,
+          "structurally_styled": 1221
         },
-        "used_spellings": 2321
+        "used_spellings": 2335
       },
       "dominant_style": "snake_case",
       "multi_word_pct": 100.0,

@@ -118,17 +118,17 @@ in [`evaluation/results.json`](evaluation/results.json).
 
 **Status: 0.1.0 source alpha under an owner self-testing pause; not yet
 published to PyPI or a plugin directory and not yet a trusted-alpha release.**
-Phases 0–22 and Phases 24–26 are complete. Phase 27's implementation and
-distribution are prepared on the current work branch, but its installed-agent
-acceptance rerun is still required before the phase can be marked complete.
-The earlier work
-includes 11/11 installed-skill scenarios on Codex CLI 0.147.0/Linux. Owner-run
-testing and Phases 27–28.3 remain before any outside maintainer invitation.
+Phases 0–22 and Phases 24–27 are complete. The current authenticated
+installed-agent evidence passes 11/11 scenarios on Codex CLI 0.147.0/Linux.
+The harness isolates a same-named user-level skill without modifying it,
+requires direct and unchanged `inspect` stdout, and applies both profile and
+login-shell isolation only to the missing-CLI host run. That run now observes
+the absent command, invokes no `inspect`, and writes nothing to the scenario
+repository. Owner-run testing and Phases 28.1–28.3 remain before any outside
+maintainer invitation.
 Package metadata, the embedded plugin wheel, and installed-agent evidence are
-bound to the renamed GitHub repository. The rebuilt plugin wheel now matches
-the Phase 27 source and skill, but the committed installed-agent result still
-binds the earlier proven bundle and is intentionally stale until the real host
-rerun succeeds.
+bound to the renamed GitHub repository, and the rebuilt plugin wheel matches
+the Phase 27 source and skill.
 The trusted-alpha evidence gate and Phase 23 remain later work; do not describe
 the current stopping point as release-ready. See
 [`NAME-CLEARANCE.md`](NAME-CLEARANCE.md) for the

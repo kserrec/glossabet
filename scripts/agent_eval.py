@@ -24,7 +24,7 @@ RESPONSE_SCHEMA_PATH = ROOT / "evaluation" / "agent-response-schema.json"
 DEFAULT_RESULTS = ROOT / "evaluation" / "agent-results.json"
 PLUGIN = ROOT / "plugins" / "glossabet"
 CANONICAL_SKILL = ROOT / "skill" / "SKILL.md"
-RESULT_SCHEMA_VERSION = 2
+RESULT_SCHEMA_VERSION = 3
 SENSITIVE_CANARY = "GLOSSABET_SENSITIVE_CANARY_MUST_NOT_APPEAR"
 
 sys.path.insert(0, str(ROOT))
@@ -32,6 +32,7 @@ sys.path.insert(0, str(ROOT))
 from glossabet import __version__  # noqa: E402
 from glossabet.agent_context import AGENT_CONTEXT_SCHEMA_VERSION  # noqa: E402
 from glossabet.artifacts import MAX_JSON_BYTES  # noqa: E402
+from glossabet.installer import default_skill_directory  # noqa: E402
 from glossabet.scanner import is_sensitive  # noqa: E402
 
 
@@ -337,6 +338,25 @@ def _codex_version(codex: str) -> str:
     return match.group(1)
 
 
+def _competing_standalone_skill_paths(
+    *, home: Path | None = None
+) -> tuple[Path, ...]:
+    """Return Glossabet's default standalone skill when it can shadow a plugin."""
+    skill = default_skill_directory("codex", home=home) / "SKILL.md"
+    return (skill.absolute(),) if skill.is_file() else ()
+
+
+def _disabled_skills_config(paths: tuple[Path, ...]) -> str | None:
+    """Build a per-run Codex override without changing user-owned config."""
+    normalized = sorted({str(path.absolute()) for path in paths})
+    if not normalized:
+        return None
+    entries = ",".join(
+        f"{{path={json.dumps(path)},enabled=false}}" for path in normalized
+    )
+    return f"skills.config=[{entries}]"
+
+
 def _parse_events(raw: str, limits: dict) -> list[dict]:
     encoded = raw.encode("utf-8")
     if len(encoded) > limits["jsonl_bytes"]:
@@ -436,6 +456,49 @@ def _trace_summary(
     }
 
 
+def _installed_version_command(
+    commands: list[dict],
+    *,
+    installed_path: Path,
+    workspace: Path,
+    limits: dict,
+) -> dict:
+    """Require one successful version check through the installed plugin path."""
+    matching = [
+        command
+        for command in commands
+        if str(installed_path) in command["command"]
+        and "--version" in command["command"]
+    ]
+    aliases = ((str(installed_path), "<INSTALLED_PLUGIN>"),)
+    version_commands = [
+        _normalize_text(
+            command["command"],
+            workspace,
+            limits["stored_command_characters"],
+            aliases,
+        )
+        for command in commands
+        if "--version" in command["command"]
+    ][:8]
+    if len(matching) != 1:
+        observed = json.dumps(version_commands) if version_commands else "none"
+        _fail(
+            "installed plugin engine version-check count was "
+            f"{len(matching)}, expected 1; observed --version commands: {observed}"
+        )
+    command = matching[0]
+    expected = f"glossabet {__version__}"
+    if command["output"].strip() != expected:
+        output = command["output"]
+        _fail(
+            "installed plugin engine version output did not match "
+            f"{expected!r}; output characters={len(output)}, "
+            f"sha256={hashlib.sha256(output.encode()).hexdigest()}"
+        )
+    return command
+
+
 def _extract_context(output: str) -> dict | None:
     stripped = output.strip()
     if not stripped.startswith("{"):
@@ -447,15 +510,16 @@ def _extract_context(output: str) -> dict | None:
     return value if isinstance(value, dict) else None
 
 
-def _run_codex(
+def _codex_exec_command(
     codex: str,
     *,
     workspace: Path,
     prompt: str,
-    environment: dict[str, str],
-    limits: dict,
-) -> tuple[dict, list[dict], dict]:
-    final_path = workspace / "agent-final.json"
+    final_path: Path,
+    disabled_skills: tuple[Path, ...] = (),
+    use_shell_profile: bool | None = None,
+    allow_login_shell: bool | None = None,
+) -> list[str]:
     command = [
         codex,
         "exec",
@@ -466,6 +530,22 @@ def _run_codex(
         "--skip-git-repo-check",
         "-c",
         'approval_policy="never"',
+    ]
+    skills_config = _disabled_skills_config(disabled_skills)
+    if skills_config is not None:
+        command.extend(["-c", skills_config])
+    if use_shell_profile is not None:
+        command.extend([
+            "-c",
+            "shell_environment_policy.experimental_use_profile="
+            + json.dumps(use_shell_profile),
+        ])
+    if allow_login_shell is not None:
+        command.extend([
+            "-c",
+            "allow_login_shell=" + json.dumps(allow_login_shell),
+        ])
+    command.extend([
         "--output-schema",
         str(RESPONSE_SCHEMA_PATH),
         "--output-last-message",
@@ -473,7 +553,31 @@ def _run_codex(
         "--cd",
         str(workspace),
         prompt,
-    ]
+    ])
+    return command
+
+
+def _run_codex(
+    codex: str,
+    *,
+    workspace: Path,
+    prompt: str,
+    environment: dict[str, str],
+    limits: dict,
+    disabled_skills: tuple[Path, ...] = (),
+    use_shell_profile: bool | None = None,
+    allow_login_shell: bool | None = None,
+) -> tuple[dict, list[dict], dict]:
+    final_path = workspace / "agent-final.json"
+    command = _codex_exec_command(
+        codex,
+        workspace=workspace,
+        prompt=prompt,
+        final_path=final_path,
+        disabled_skills=disabled_skills,
+        use_shell_profile=use_shell_profile,
+        allow_login_shell=allow_login_shell,
+    )
     print("$ codex exec --json --ephemeral --sandbox workspace-write ...", flush=True)
     result = subprocess.run(
         command,
@@ -716,11 +820,14 @@ def _evaluate_scenario(
     if scenario_id == "missing-cli":
         if any("inspect" in command["command"] for command in relevant):
             failures.append("missing engine scenario attempted inspect")
-        if not any(
-            ".agents/skills/glossabet/SKILL.md" in command["command"]
+        skill_boundary_observed = any(
+            ".agents/skills/glossabet/skill.md" in command["command"].casefold()
+            or ".agents/skills/glossabet/scripts/run_glossabet.py"
+            in command["command"].casefold()
             for command in relevant
-        ):
-            failures.append("Codex did not load the installed canonical skill")
+        )
+        if not skill_boundary_observed:
+            failures.append("Codex did not use the installed standalone skill boundary")
         version_commands = [
             command for command in relevant if "--version" in command["command"]
         ]
@@ -730,6 +837,7 @@ def _evaluate_scenario(
             or "glossabet" not in version_commands[0]["output"].casefold()
         ):
             failures.append("missing CLI was not observed as an engine failure")
+        observed["standalone_skill_boundary_observed"] = skill_boundary_observed
         observed["engine_missing"] = not failures
     else:
         inspect_commands = [
@@ -1052,6 +1160,8 @@ def _run_missing_cli_scenario(
     scenario: dict,
     limits: dict,
     work: Path,
+    *,
+    disabled_skills: tuple[Path, ...] = (),
 ) -> tuple[dict, dict]:
     missing_workspace = work / "missing-cli-run"
     missing_root = missing_workspace / "scenarios" / "missing-cli"
@@ -1075,6 +1185,9 @@ def _run_missing_cli_scenario(
         prompt=_prompt_for([scenario], {"missing-cli": missing_root}),
         environment=missing_environment,
         limits=limits,
+        disabled_skills=disabled_skills,
+        use_shell_profile=False,
+        allow_login_shell=False,
     )
     response_items = _response_by_id(response, ["missing-cli"])
     result = _evaluate_scenario(
@@ -1097,9 +1210,14 @@ def probe_missing_cli() -> dict:
     if codex is None:
         _fail("codex is not installed")
     codex = str(Path(codex).resolve())
+    disabled_skills = _competing_standalone_skill_paths()
     with tempfile.TemporaryDirectory(prefix="glossabet-missing-cli-probe-") as raw:
         result, usage = _run_missing_cli_scenario(
-            codex, scenario, limits, Path(raw)
+            codex,
+            scenario,
+            limits,
+            Path(raw),
+            disabled_skills=disabled_skills,
         )
     return {
         "codex_version": _codex_version(codex),
@@ -1116,6 +1234,7 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
         _fail("codex is not installed")
     codex = str(Path(codex).resolve())
     codex_version = _codex_version(codex)
+    disabled_skills = _competing_standalone_skill_paths()
     _ensure_no_installed_glossabet(codex)
 
     plugin_scenarios = [
@@ -1164,18 +1283,15 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
                 prompt=_prompt_for(plugin_scenarios, roots),
                 environment=environment,
                 limits=limits,
+                disabled_skills=disabled_skills,
             )
             usages.append(usage)
-            version_commands = [
-                command
-                for command in commands
-                if str(installed_path) in command["command"]
-                and "--version" in command["command"]
-            ]
-            if len(version_commands) != 1 or version_commands[0][
-                "output"
-            ].strip() != f"glossabet {__version__}":
-                _fail("installed plugin engine was not version-checked exactly once")
+            version_command = _installed_version_command(
+                commands,
+                installed_path=installed_path,
+                workspace=batch,
+                limits=limits,
+            )
             installed_skill = installed_path / "skills" / "glossabet" / "SKILL.md"
             glossabet_skill_reads = [
                 command
@@ -1200,7 +1316,7 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
             delivery_trace = [
                 _trace_summary(command, batch, limits, trace_aliases)
                 for command in commands
-                if command in glossabet_skill_reads or command in version_commands
+                if command in glossabet_skill_reads or command is version_command
             ]
             response_items = _response_by_id(
                 response, [scenario["id"] for scenario in plugin_scenarios]
@@ -1238,7 +1354,11 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
             raise primary_error
 
         missing_result, missing_usage = _run_missing_cli_scenario(
-            codex, missing_scenario, limits, work
+            codex,
+            missing_scenario,
+            limits,
+            work,
+            disabled_skills=disabled_skills,
         )
         usages.append(missing_usage)
         results.append(missing_result)
@@ -1260,13 +1380,18 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
             "sandbox": "workspace-write",
             "approval_policy": "never",
             "plugin_lifecycle": "temporary install and complete removal",
+            "same_name_skill_policy": (
+                "disable Glossabet's default standalone skill for each host run"
+            ),
+            "missing_cli_shell_profile_disabled": True,
+            "missing_cli_login_shell_disabled": True,
             "trace_limits": limits,
             "model": "configured default; Codex CLI JSONL did not report it",
         },
         "delivery": {
             "installed_plugin_skill_read": True,
             "installed_plugin_engine_version_checked": True,
-            "standalone_skill_read": True,
+            "standalone_skill_boundary_observed": True,
             "temporary_plugin_state_removed": True,
             "trace": delivery_trace,
         },
@@ -1302,6 +1427,10 @@ def verify_results(path: Path = DEFAULT_RESULTS) -> list[str]:
         or method.get("codex_exec_ephemeral") is not True
         or method.get("sandbox") != "workspace-write"
         or method.get("approval_policy") != "never"
+        or method.get("same_name_skill_policy")
+        != "disable Glossabet's default standalone skill for each host run"
+        or method.get("missing_cli_shell_profile_disabled") is not True
+        or method.get("missing_cli_login_shell_disabled") is not True
         or method.get("trace_limits") != limits
     ):
         errors.append("agent evaluation method is weakened or stale")
@@ -1311,7 +1440,7 @@ def verify_results(path: Path = DEFAULT_RESULTS) -> list[str]:
         not isinstance(delivery, dict)
         or delivery.get("installed_plugin_skill_read") is not True
         or delivery.get("installed_plugin_engine_version_checked") is not True
-        or delivery.get("standalone_skill_read") is not True
+        or delivery.get("standalone_skill_boundary_observed") is not True
         or delivery.get("temporary_plugin_state_removed") is not True
         or not isinstance(delivery_trace, list)
         or len(delivery_trace) > limits["commands_per_scenario"]
