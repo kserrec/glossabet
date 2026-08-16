@@ -13,11 +13,10 @@ import os
 import re
 import stat
 import sys
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from glossabet.artifacts import repo_root
+from glossabet.artifacts import repo_root, replace_file_atomic
 from glossabet.brief import build_managed_brief
 from glossabet.display import escape_terminal_text, print_error
 from glossabet.glossary import glossary_sha256, require_glossary
@@ -222,15 +221,7 @@ def _write_bytes_atomic(
     *,
     expected: bytes | None,
 ) -> None:
-    fd, temporary = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
-    )
-    try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(temporary, mode)
+    def _require_unchanged_target() -> None:
         current, current_mode = _read_regular_target(path)
         if current != expected or (
             expected is not None and current_mode != mode
@@ -238,13 +229,10 @@ def _write_bytes_atomic(
             raise ContextSyncError(
                 f"{path.name} changed during synchronization; no update was made"
             )
-        os.replace(temporary, path)
-    except BaseException:
-        try:
-            Path(temporary).unlink()
-        except OSError:
-            pass
-        raise
+
+    replace_file_atomic(
+        path, payload, mode=mode, before_replace=_require_unchanged_target
+    )
 
 
 def _append_block(text: str, block: str, newline: str) -> str:

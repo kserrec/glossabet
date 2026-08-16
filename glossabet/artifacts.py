@@ -82,18 +82,34 @@ def confined_artifact_path(root: Path, relative: str) -> Path:
     return current
 
 
-def write_json_atomic(path: Path, payload: dict, *, indent: int = 2) -> None:
-    """Write deterministic JSON atomically, replacing ``path`` at commit."""
-    serialized = json.dumps(payload, indent=indent, sort_keys=True) + "\n"
-    path.parent.mkdir(parents=True, exist_ok=True)
+def replace_file_atomic(
+    path: Path,
+    payload: bytes,
+    *,
+    mode: int | None = None,
+    before_replace=None,
+) -> None:
+    """Write ``payload`` to a same-directory temporary, then replace ``path``.
+
+    The temporary is flushed and fsynced before the swap so an interrupted
+    command cannot leave a partial file, and it is unlinked on any failure.
+    ``mode`` is applied to the temporary when given; without it the file
+    keeps mkstemp's owner-only permissions. ``before_replace``, when given,
+    runs after the temporary is durable and immediately before the swap —
+    the caller's last chance to abort the replacement.
+    """
     fd, temporary = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
     )
     try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(serialized)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
+        if mode is not None:
+            os.chmod(temporary, mode)
+        if before_replace is not None:
+            before_replace()
         os.replace(temporary, path)
     except BaseException:
         try:
@@ -101,6 +117,13 @@ def write_json_atomic(path: Path, payload: dict, *, indent: int = 2) -> None:
         except OSError:
             pass
         raise
+
+
+def write_json_atomic(path: Path, payload: dict, *, indent: int = 2) -> None:
+    """Write deterministic JSON atomically, replacing ``path`` at commit."""
+    serialized = json.dumps(payload, indent=indent, sort_keys=True) + "\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    replace_file_atomic(path, serialized.encode("utf-8"))
 
 
 def write_artifact(root: Path, filename: str, payload: dict) -> Path:
