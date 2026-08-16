@@ -231,6 +231,19 @@ def test_genuineness_verifier_catches_internal_tampering_without_currency(
         for error in verify_results(thresholds_path, MANIFEST)
     )
 
+    dropped_check = deepcopy(original)
+    dropped_check["release_thresholds"]["checks"] = [
+        check
+        for check in dropped_check["release_thresholds"]["checks"]
+        if check["name"] != "terminology_precision_min"
+    ]
+    dropped_path = tmp_path / "dropped-check.json"
+    dropped_path.write_text(json.dumps(dropped_check), encoding="utf-8")
+    assert any(
+        "thresholds are missing required checks" in error
+        for error in verify_results(dropped_path, MANIFEST)
+    )
+
     malformed_engine = deepcopy(original)
     malformed_engine["engine"]["source_sha256"] = "not-a-digest"
     engine_path = tmp_path / "malformed-engine.json"
@@ -238,6 +251,15 @@ def test_genuineness_verifier_catches_internal_tampering_without_currency(
     assert any(
         "engine identity metadata is malformed" in error
         for error in verify_results(engine_path, MANIFEST)
+    )
+
+    method_as_list = deepcopy(original)
+    method_as_list["method"] = ["not", "a", "mapping"]
+    method_path = tmp_path / "method-as-list.json"
+    method_path.write_text(json.dumps(method_as_list), encoding="utf-8")
+    assert any(
+        "required five-run sample" in error
+        for error in verify_results(method_path, MANIFEST)
     )
 
 

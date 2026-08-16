@@ -30,7 +30,30 @@ PLUGIN = ROOT / "plugins" / "glossabet"
 PLUGIN_HOOK = PLUGIN / "hooks" / "hooks.json"
 CANONICAL_SKILL = ROOT / "skill" / "SKILL.md"
 RESULT_SCHEMA_VERSION = 5
-SUPPORTED_RESULT_SCHEMA_VERSIONS = {3, 4, RESULT_SCHEMA_VERSION}
+# The scenario set the evaluator's per-scenario assertions understand;
+# genuineness verification pins this set without reading the current
+# scenario manifest, which the evidence may honestly lag.
+REQUIRED_SCENARIO_IDS = (
+    "fresh",
+    "stale",
+    "absent",
+    "malformed",
+    "oversized",
+    "symlinked",
+    "partial",
+    "monorepo",
+    "resumed-glossary",
+    "sensitive-file",
+    "session-hook",
+    "missing-cli",
+)
+_TRACE_LIMIT_KEYS = frozenset({
+    "commands_per_scenario",
+    "events",
+    "jsonl_bytes",
+    "stored_command_characters",
+    "stored_output_characters",
+})
 HISTORY_SCHEMA_VERSION = 1
 SENSITIVE_CANARY = "GLOSSABET_SENSITIVE_CANARY_MUST_NOT_APPEAR"
 HOOK_SOURCE_CANARY = "AMBIENT_SOURCE_TEXT_MUST_NOT_REACH_SESSION_CONTEXT"
@@ -1255,14 +1278,17 @@ def _evaluate_scenario(
         version_commands = [
             command for command in relevant if "--version" in command["command"]
         ]
-        if (
-            len(version_commands) != 1
-            or version_commands[0].get("exit_code") in {0, None}
-            or "glossabet" not in version_commands[0]["output"].casefold()
-        ):
+        engine_failure_observed = (
+            len(version_commands) == 1
+            and version_commands[0].get("exit_code") not in {0, None}
+            and "glossabet" in version_commands[0]["output"].casefold()
+        )
+        if not engine_failure_observed:
             failures.append("missing CLI was not observed as an engine failure")
         observed["standalone_skill_boundary_observed"] = skill_boundary_observed
-        observed["engine_missing"] = not failures
+        # The observation records the engine-failure evidence itself, not
+        # whether unrelated checks had already failed.
+        observed["engine_missing"] = engine_failure_observed
     else:
         inspect_commands = [
             command for command in relevant if "inspect" in command["command"]
@@ -2441,9 +2467,14 @@ def _history_errors(
                 if raw_candidate.is_symlink():
                     raise ValueError("raw result is symlinked")
                 raw_path = raw_candidate.resolve()
-                raw_path.relative_to(ROOT.resolve())
+                # Confined to the immutable runs directory, mirroring
+                # _validated_run_output on the write path: retention must
+                # not be satisfiable by a file vouching for itself.
+                raw_path.relative_to(RUNS_PATH.resolve())
             except (KeyError, TypeError, ValueError):
-                errors.append(f"{label} raw result escapes the repository")
+                errors.append(
+                    f"{label} raw result escapes evaluation/agent-runs"
+                )
                 continue
             if not raw_path.is_file():
                 errors.append(f"{label} raw result is missing or symlinked")
@@ -2528,17 +2559,50 @@ def verify_results(
     and engine source.
     """
     errors: list[str] = []
-    manifest = _read_json(SCENARIOS_PATH, "agent scenario manifest")
-    scenarios, limits = _validate_manifest(manifest)
     result = _read_json(path, "agent evaluation results")
     if current:
         errors.extend(_result_input_errors(result))
     else:
         errors.extend(_input_shape_errors(result.get("inputs")))
+    method = result.get("method")
+    recorded_limits = (
+        method.get("trace_limits") if isinstance(method, dict) else None
+    )
+    if current:
+        # The release gate demands the recorded run used the current
+        # scenario manifest exactly.
+        manifest = _read_json(SCENARIOS_PATH, "agent scenario manifest")
+        scenarios, manifest_limits = _validate_manifest(manifest)
+        expected_ids = [scenario["id"] for scenario in scenarios]
+        limits_ok = recorded_limits == manifest_limits
+    else:
+        # Genuineness never reads the current manifest: the evidence may
+        # honestly lag it. The scenario set and limit shape are pinned by
+        # the evaluator itself.
+        expected_ids = list(REQUIRED_SCENARIO_IDS)
+        limits_ok = (
+            isinstance(recorded_limits, dict)
+            and set(recorded_limits) == _TRACE_LIMIT_KEYS
+            and all(
+                isinstance(value, int)
+                and not isinstance(value, bool)
+                and value > 0
+                for value in recorded_limits.values()
+            )
+        )
+    if not limits_ok:
+        recorded_limits = None
+    limits = recorded_limits or {
+        "commands_per_scenario": 0,
+        "stored_command_characters": 0,
+        "stored_output_characters": 0,
+    }
     result_schema_version = result.get("schema_version")
-    if result_schema_version not in SUPPORTED_RESULT_SCHEMA_VERSIONS:
+    if result_schema_version != RESULT_SCHEMA_VERSION:
+        # A self-declared older schema must not disable newer checks: the
+        # verified mirror always carries the current schema.
         errors.append("agent result schema is stale")
-    method = result.get("method", {})
+    method = method if isinstance(method, dict) else {}
     if (
         method.get("host_runs") != 3
         or method.get("codex_exec_ephemeral") is not True
@@ -2550,10 +2614,11 @@ def verify_results(
         or method.get("missing_cli_login_shell_disabled") is not True
         or method.get("plugin_hook_trust")
         != "one-off bypass for the digest-bound temporary plugin artifact"
-        or method.get("trace_limits") != limits
+        or not limits_ok
     ):
         errors.append("agent evaluation method is weakened or stale")
-    delivery = result.get("delivery", {})
+    delivery = result.get("delivery")
+    delivery = delivery if isinstance(delivery, dict) else {}
     delivery_trace = delivery.get("trace") if isinstance(delivery, dict) else None
     delivery_hook_sha = (
         delivery.get("installed_plugin_hook_sha256")
@@ -2597,7 +2662,6 @@ def verify_results(
     if not isinstance(items, list):
         errors.append("agent scenario results are missing")
         items = []
-    expected_ids = [scenario["id"] for scenario in scenarios]
     if [item.get("id") for item in items if isinstance(item, dict)] != expected_ids:
         errors.append("agent scenario result ids/order are stale")
     if result_schema_version == RESULT_SCHEMA_VERSION:
@@ -2667,14 +2731,17 @@ def verify_results(
         item.get("passed") is True for item in items if isinstance(item, dict)
     )
     expected_summary = {
-        "required": len(scenarios),
+        "required": len(expected_ids),
         "passed": passed,
-        "failed": len(scenarios) - passed,
-        "all_passed": passed == len(scenarios),
+        "failed": len(expected_ids) - passed,
+        "all_passed": passed == len(expected_ids),
     }
     if result.get("summary") != expected_summary:
         errors.append("agent scenario summary is inconsistent")
-    environment = result.get("environment", {})
+    if not expected_summary["all_passed"]:
+        errors.append("agent evaluation scenarios did not all pass")
+    environment = result.get("environment")
+    environment = environment if isinstance(environment, dict) else {}
     if not isinstance(environment.get("codex_version"), str):
         errors.append("agent results do not identify the Codex CLI version")
     errors.extend(_result_safety_errors(result))

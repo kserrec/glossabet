@@ -278,6 +278,24 @@ def test_attempt_history_rejects_stale_artifact_or_safety_claim(tmp_path):
     )
 
 
+def test_attempt_history_rejects_self_referential_raw_retention(tmp_path):
+    history = json.loads(HISTORY.read_text(encoding="utf-8"))
+    retained = next(
+        attempt for attempt in history["attempts"] if attempt["raw_result"]
+    )
+    retained["raw_result"]["path"] = "evaluation/agent-results.json"
+    retained["raw_result"]["sha256"] = hashlib.sha256(
+        RESULTS.read_bytes()
+    ).hexdigest()
+    path = tmp_path / "self-referential.json"
+    path.write_text(json.dumps(history), encoding="utf-8")
+
+    assert any(
+        "raw result escapes evaluation/agent-runs" in error
+        for error in _history_errors(path)
+    )
+
+
 def test_attempt_history_rejects_rewritten_raw_evidence(tmp_path):
     history = json.loads(HISTORY.read_text(encoding="utf-8"))
     retained = next(
@@ -638,16 +656,61 @@ def test_agent_verifier_rejects_unretained_weakened_or_unsafe_evidence(
     inconsistent["summary"]["passed"] = 11
     mutations.append((inconsistent, "scenario summary is inconsistent"))
 
+    failed_scenario = deepcopy(original)
+    failed_scenario["scenarios"][0]["passed"] = False
+    failed_scenario["scenarios"][0]["failures"] = ["agent status mismatch"]
+    failed_scenario["summary"] = {
+        "required": 12,
+        "passed": 11,
+        "failed": 1,
+        "all_passed": False,
+    }
+    mutations.append((failed_scenario, "scenarios did not all pass"))
+
     contradictory = deepcopy(original)
     contradictory["delivery"]["standalone_skill_boundary_observed"] = False
     mutations.append(
         (contradictory, "standalone delivery summary contradicts its scenario")
     )
 
+    downgraded = deepcopy(original)
+    downgraded["schema_version"] = 3
+    downgraded["scenarios"] = [
+        item
+        for item in downgraded["scenarios"]
+        if item["id"] != "session-hook"
+    ]
+    mutations.append((downgraded, "agent result schema is stale"))
+
+    for field, expected in (
+        ("method", "method is weakened or stale"),
+        ("delivery", "delivery evidence is missing or stale"),
+        ("environment", "do not identify the Codex CLI version"),
+    ):
+        section_as_list = deepcopy(original)
+        section_as_list[field] = ["not", "a", "mapping"]
+        mutations.append((section_as_list, expected))
+
     for index, (value, expected) in enumerate(mutations):
         path = tmp_path / f"agent-results-{index}.json"
         path.write_text(json.dumps(value), encoding="utf-8")
         assert any(expected in error for error in verify_results(path))
+
+
+def test_genuine_verification_never_reads_the_current_scenario_manifest(
+    monkeypatch, tmp_path
+):
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    manifest["trace_limits"]["stored_output_characters"] += 1
+    mutated = tmp_path / "scenarios.json"
+    mutated.write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(agent_eval, "SCENARIOS_PATH", mutated)
+
+    assert verify_results(RESULTS) == []
+    assert any(
+        "method is weakened or stale" in error
+        for error in verify_results(RESULTS, current=True)
+    )
 
 
 def test_agent_verifier_checks_input_currency_only_at_the_release_gate(

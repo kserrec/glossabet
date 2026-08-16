@@ -52,6 +52,26 @@ EVALUATION_SCHEMA_VERSION = 6
 DEFAULT_MANIFEST = PROJECT_ROOT / "evaluation" / "corpus.json"
 DEFAULT_RESULTS = PROJECT_ROOT / "evaluation" / "results.json"
 RELEASE_RUNTIME_RUNS = 5
+# Every metric the evaluator can gate on. Genuineness verification pins this
+# exact set so a tampered artifact cannot simply drop the checks it fails;
+# which targets those checks carry is verified against the manifest at the
+# release gate.
+RELEASE_THRESHOLD_NAMES = frozenset({
+    "terminology_precision_min",
+    "drift_precision_min",
+    "drift_recall_min",
+    "structural_precision_min",
+    "structural_recall_min",
+    "reviewer_usefulness_min",
+    "false_alarms_per_1000_max",
+    "cold_seconds_per_1000_source_files_max",
+    "corpus_budget_truncations_max",
+    "minimum_cache_reuse_min",
+    "lexical_contract_min",
+    "register_accuracy_min",
+    "nomination_quality_min",
+    "structural_contract_min",
+})
 GIT_SAFE_CONFIG = ("-c", "core.fsmonitor=", "-c", "core.hooksPath=/dev/null")
 DRIFT_SECTIONS = (
     "parallel_terms",
@@ -462,8 +482,10 @@ def _lexical_score(evidence: dict, expectation: object) -> dict:
     if (
         not isinstance(required, list)
         or not all(isinstance(token, str) for token in required)
+        or len(set(required)) != len(required)
         or not isinstance(forbidden, list)
         or not all(isinstance(token, str) for token in forbidden)
+        or len(set(forbidden)) != len(forbidden)
         or not isinstance(identifiers, dict)
         or not all(
             isinstance(name, str)
@@ -1234,7 +1256,8 @@ def _genuineness_errors(results: dict) -> list[str]:
                 f"{case.get('id', '<unknown>')}: corpus digest metadata is malformed"
             )
 
-    method = results.get("method", {})
+    method = results.get("method")
+    method = method if isinstance(method, dict) else {}
     if method.get("runtime_runs_per_case") != RELEASE_RUNTIME_RUNS:
         errors.append(
             "evaluation results do not contain the required five-run sample"
@@ -1270,6 +1293,10 @@ def _genuineness_errors(results: dict) -> list[str]:
     stored_targets = _stored_threshold_targets(thresholds)
     if stored_targets is None:
         errors.append("evaluation release metrics are malformed")
+    elif set(stored_targets) != RELEASE_THRESHOLD_NAMES:
+        errors.append(
+            "evaluation release thresholds are missing required checks"
+        )
     else:
         expected_thresholds = None
         try:
@@ -1375,7 +1402,9 @@ def _currency_errors(results: dict, manifest_path: Path) -> list[str]:
         source.get("expectations", {}).get("structural") is not None
         for source in manifest["sources"]
     )
-    if results.get("method", {}).get("graphify_cases") != expected_graphify_cases:
+    method = results.get("method")
+    method = method if isinstance(method, dict) else {}
+    if method.get("graphify_cases") != expected_graphify_cases:
         errors.append("evaluation Graphify case count is stale")
 
     aggregate = results.get("aggregate")
