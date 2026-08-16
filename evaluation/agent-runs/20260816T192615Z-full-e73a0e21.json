@@ -18,7 +18,7 @@
         "status": "completed"
       },
       {
-        "command": "/usr/bin/zsh -lc 'python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py --version'",
+        "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py --version'",
         "cwd": null,
         "exit_code": 0,
         "output_characters": 16,
@@ -65,13 +65,12 @@
     {
       "agent_response": {
         "facts": [
-          "The single engine check returned exactly `glossabet 0.1.0`; inspection returned schema version 2 with current freshness.",
-          "Corpus coverage is complete: 1 production source file, 66 bytes, no source skips, and an exact walk remainder.",
-          "Graphify is present and available; its one group has complete, exact coverage, and its commit matches the clean repository HEAD.",
-          "The lean context\u2019s named routine omissions are raw imports plus 3 token-location and 2 identifier-location rollups. No glossary or monorepo was detected."
+          "Glossabet 0.1.0 returned a fresh schema-version-2 context with complete production corpus coverage.",
+          "Graphify groups are available and current against the clean repository HEAD, with no adapter warnings.",
+          "The lean projection excludes imports and rolls up 3 token and 2 identifier locations; retained collection ledgers are complete."
         ],
         "id": "fresh",
-        "next_action": "Step 0 is complete; Step 1 would read only the context-named production files before proposing names.",
+        "next_action": "Step 0 permits Step 1 to read the principal production files named by the context; this evaluation stops before doing so.",
         "status": "grounded"
       },
       "delivery": "plugin",
@@ -94,12 +93,12 @@
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc 'python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/fresh'",
+          "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/fresh'",
           "cwd": null,
           "exit_code": 0,
           "output_characters": 8600,
           "output_preview": "{\"configuration\":{\"file\":null,\"ignore_paths\":[],\"path_roles\":{},\"present\":false,\"schema_version\":1},\"context_schema_version\":2,\"coverage\":{\"context\":{\"affected_sections\":[\"imports\",\"vocabulary\"],\"complete\":false,\"limits\":{\"default_list_items\":50,\"list_items\":{\"files.code\":250,\"files.docs\":150,\"glossary.concepts\":200,\"modules\":150,\"structural_groups.groups\":100,\"vocabulary.doc_terms.items\":50,\"vocabulary.identifiers.items\":50,\"vocabulary.tokens.items\":100},\"omission_records\":100,\"register_exemplars\":24,\"routine_target_bytes\":80000,\"serialized_bytes\":1000000,\"string_characters\":512},\"omission_co\u2026",
-          "output_sha256": "bc9e4a70b443dc837b675482246375c7ad344a103d3f976fc77b151ef76a5282",
+          "output_sha256": "815e0e95238fc22169fab8d51f20fceb3eaf2d17c587addcabc364a209ddd2d3",
           "status": "completed"
         }
       ],
@@ -108,12 +107,12 @@
     {
       "agent_response": {
         "facts": [
-          "Inspection returned a fresh schema-version-2 context with complete corpus coverage.",
-          "Graphify is present and available, but stale: its recorded commit is `0000000000000000000000000000000000000000`, while clean HEAD is `2bca267b5fddfeffbeea16bdb1e0caf6f3fd2824`. Its groups are advisory, not current fact.",
-          "The lean context\u2019s named routine omissions are raw imports plus 3 token-location and 2 identifier-location rollups. No glossary or monorepo was detected."
+          "The fresh schema-version-2 context has complete production corpus coverage.",
+          "Graphify is available but stale: its recorded commit is 0000000000000000000000000000000000000000, while current HEAD is c491f2fadd4b4d3add57882c95593426d6f929de.",
+          "Routine lean-projection omissions exclude imports and roll up vocabulary locations."
         ],
         "id": "stale",
-        "next_action": "Step 1 would read the context-named production files while explicitly treating the stale Graphify group as advisory.",
+        "next_action": "Step 0 requires surfacing the stale-graph warning before Step 1 and treating structural groups as advisory.",
         "status": "grounded-with-warning"
       },
       "delivery": "plugin",
@@ -135,12 +134,12 @@
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc 'python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/stale'",
+          "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/stale'",
           "cwd": null,
           "exit_code": 0,
           "output_characters": 8606,
           "output_preview": "{\"configuration\":{\"file\":null,\"ignore_paths\":[],\"path_roles\":{},\"present\":false,\"schema_version\":1},\"context_schema_version\":2,\"coverage\":{\"context\":{\"affected_sections\":[\"imports\",\"vocabulary\"],\"complete\":false,\"limits\":{\"default_list_items\":50,\"list_items\":{\"files.code\":250,\"files.docs\":150,\"glossary.concepts\":200,\"modules\":150,\"structural_groups.groups\":100,\"vocabulary.doc_terms.items\":50,\"vocabulary.identifiers.items\":50,\"vocabulary.tokens.items\":100},\"omission_records\":100,\"register_exemplars\":24,\"routine_target_bytes\":80000,\"serialized_bytes\":1000000,\"string_characters\":512},\"omission_co\u2026",
-          "output_sha256": "ed6a9d797fc2614a08430d22f234be4f9b2070fcd334401c4d6c8104e2ef2b5b",
+          "output_sha256": "a4e36facf3d417a927c0b5c97bc810103c52904a84944ad12e6e31fb088e9ece",
           "status": "completed"
         }
       ],
@@ -149,12 +148,12 @@
     {
       "agent_response": {
         "facts": [
-          "Inspection returned a current schema-version-2 context with complete production corpus coverage.",
-          "No Graphify artifact is present or available, so no structural coverage can be claimed; no glossary exists.",
-          "The lean context\u2019s named routine omissions are raw imports plus 3 token-location and 2 identifier-location rollups. No monorepo was detected."
+          "The engine returned a fresh schema-version-2 context with complete production corpus coverage.",
+          "No glossary is present, and no Graphify file or usable structural groups were found.",
+          "Routine lean-projection omissions exclude imports and roll up vocabulary locations."
         ],
         "id": "absent",
-        "next_action": "Step 1 would read only the context-named production files without relying on structural groups or maintained glossary terms.",
+        "next_action": "Step 0 permits Step 1 to proceed from the listed production evidence without structural groups or an existing glossary.",
         "status": "grounded"
       },
       "delivery": "plugin",
@@ -177,7 +176,7 @@
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc 'python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/absent'",
+          "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/absent'",
           "cwd": null,
           "exit_code": 0,
           "output_characters": 7545,
@@ -191,29 +190,29 @@
     {
       "agent_response": {
         "facts": [
-          "The engine rejected `glossabet-out/glossary.json` as unreadable JSON: `Expecting property name enclosed in double quotes: line 1 column 2 (char 1)`.",
-          "No schema-version-2 context was returned; the malformed glossary cannot be treated as absent, and fallback repository reading is forbidden."
+          "The engine rejected glossabet-out/glossary.json as unreadable JSON: expected a double-quoted property name at line 1, column 2.",
+          "No valid context was returned, and the glossary cannot be treated as absent."
         ],
         "id": "malformed",
-        "next_action": "Stop before Step 1; repair the malformed glossary through a trusted Glossabet workflow, then rerun Step 0 inspection.",
+        "next_action": "Step 0 requires repairing the malformed glossary through the Glossabet boundary and rerunning inspect; fallback repository reading is forbidden.",
         "status": "stopped"
       },
       "delivery": "plugin",
       "failures": [],
       "id": "malformed",
       "observed": {
-        "error_sha256": "0cd76cbfd86df1939552c25332549fc6c959a1e7d44b1dc74f9286740afa7b12",
+        "error_sha256": "5a35c67537e57722ecee48256749360f00fa8ace28f44d300abd78cf35a3d83c",
         "inspect_exit_code": 1
       },
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc 'python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/malformed'",
+          "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/malformed'",
           "cwd": null,
           "exit_code": 1,
           "output_characters": 200,
           "output_preview": "glossabet: <WORKSPACE>/scenarios/malformed/glossabet-out/glossary.json: unreadable JSON (Expecting property name enclosed in double quotes: line 1 column 2 (char 1))\n",
-          "output_sha256": "0cd76cbfd86df1939552c25332549fc6c959a1e7d44b1dc74f9286740afa7b12",
+          "output_sha256": "5a35c67537e57722ecee48256749360f00fa8ace28f44d300abd78cf35a3d83c",
           "status": "failed"
         }
       ],
@@ -222,29 +221,29 @@
     {
       "agent_response": {
         "facts": [
-          "The engine refused the glossary because it is larger than 64,000,000 bytes.",
-          "No schema-version-2 context was returned, so Step 0 cannot continue and the glossary cannot be treated as absent."
+          "The engine refused to load glossabet-out/glossary.json because it exceeds the 64000000-byte limit.",
+          "No valid context was returned."
         ],
         "id": "oversized",
-        "next_action": "Stop before Step 1; bring the glossary within the engine\u2019s direct-JSON limit through a trusted workflow, then rerun Step 0 inspection.",
+        "next_action": "Step 0 requires reducing or replacing the glossary with an engine-accepted artifact and rerunning inspect; fallback reading is forbidden.",
         "status": "stopped"
       },
       "delivery": "plugin",
       "failures": [],
       "id": "oversized",
       "observed": {
-        "error_sha256": "211556c3d12360d61732723414448aff001c5a46c412da40ec76599705627cbc",
+        "error_sha256": "9aeef151cc741e09de0344e227e97d964205893661adf30042274fa55383a4a9",
         "inspect_exit_code": 1
       },
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc 'python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/oversized'",
+          "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/oversized'",
           "cwd": null,
           "exit_code": 1,
           "output_characters": 152,
           "output_preview": "glossabet: <WORKSPACE>/scenarios/oversized/glossabet-out/glossary.json: larger than 64000000 bytes \u2014 refusing to load\n",
-          "output_sha256": "211556c3d12360d61732723414448aff001c5a46c412da40ec76599705627cbc",
+          "output_sha256": "9aeef151cc741e09de0344e227e97d964205893661adf30042274fa55383a4a9",
           "status": "failed"
         }
       ],
@@ -253,11 +252,11 @@
     {
       "agent_response": {
         "facts": [
-          "The engine rejected `glossabet-out/glossary.json` because symlinked artifact paths are not trusted.",
-          "No schema-version-2 context was returned, and fallback reading of the glossary or repository is forbidden."
+          "The engine rejected glossabet-out/glossary.json because symlinked artifact paths are not trusted.",
+          "No valid context was returned."
         ],
         "id": "symlinked",
-        "next_action": "Stop before Step 1; establish a confined, non-symlink glossary artifact through a trusted Glossabet workflow, then rerun Step 0 inspection.",
+        "next_action": "Step 0 requires a confined, regular glossary artifact and a successful rerun of inspect; fallback reading is forbidden.",
         "status": "stopped"
       },
       "delivery": "plugin",
@@ -270,7 +269,7 @@
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc 'python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/symlinked'",
+          "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/symlinked'",
           "cwd": null,
           "exit_code": 1,
           "output_characters": 81,
@@ -284,13 +283,12 @@
     {
       "agent_response": {
         "facts": [
-          "Inspection returned a current schema-version-2 context; corpus coverage remains complete for 1 production file and 9,860 bytes, with no source skips.",
-          "The bounded context is incomplete: it retains 24 of 360 register exemplars, 100 of 361 token details, and 50 of 360 identifier details; the omitted totals are exact.",
-          "The code-only display retains 10 of 361 items and drops 351 because of its display cap. Raw imports are excluded, while 361 token locations and 360 identifier locations are rolled up.",
-          "Retained entries support positive observations only; they cannot establish repository-wide absence, uniqueness, or exhaustiveness."
+          "The live production corpus is complete, but the lean context is incomplete.",
+          "The projection omits 310 of 360 identifier details, 261 of 361 token details, and 336 of 360 register exemplars; the code-only display retains 10 of 361 items. These totals are exact.",
+          "Imports are excluded, and 361 token plus 360 identifier locations are rolled up."
         ],
         "id": "partial",
-        "next_action": "Step 1 would use only retained entries and context-named paths, preserve the partial-coverage warning, and avoid bulk-reading around the caps.",
+        "next_action": "Step 0 requires reporting these caps and using only retained evidence in Step 1, without reconstructing omissions or making exhaustive claims.",
         "status": "grounded-partial"
       },
       "delivery": "plugin",
@@ -311,7 +309,7 @@
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc 'python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/partial'",
+          "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/partial'",
           "cwd": null,
           "exit_code": 0,
           "output_characters": 31913,
@@ -325,13 +323,12 @@
     {
       "agent_response": {
         "facts": [
-          "Inspection returned a current schema-version-2 context with complete coverage of 4 production files and 167 bytes.",
-          "Monorepo detection is positive because `package.json` declares workspaces and 3 subprojects have their own package manifests.",
-          "The detected sub-roots are `packages/alpha`, `packages/beta`, and `packages/gamma`.",
-          "The lean context\u2019s named routine omissions are raw imports plus 12 token-location and 8 identifier-location rollups."
+          "The engine detected a monorepo because package.json declares workspaces and three subprojects have package manifests.",
+          "The reported sub-roots are packages/alpha, packages/beta, and packages/gamma.",
+          "Production corpus coverage is complete; routine lean-projection omissions remain."
         ],
         "id": "monorepo",
-        "next_action": "Pause and ask the user to choose whole-repository naming or separate Glossabet runs per subproject; the skill recommends per-subproject scope.",
+        "next_action": "Step 0 requires the user to choose whole-repository analysis or separate Glossabet runs per subproject; per-subproject analysis is recommended.",
         "status": "choice-required"
       },
       "delivery": "plugin",
@@ -364,7 +361,7 @@
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc 'python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/monorepo'",
+          "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/monorepo'",
           "cwd": null,
           "exit_code": 0,
           "output_characters": 11932,
@@ -378,12 +375,12 @@
     {
       "agent_response": {
         "facts": [
-          "Inspection returned a current schema-version-2 context with complete corpus coverage.",
-          "A valid schema-version-1 glossary is present: `Payment Service` is canonical and must be kept; `Gateway Route` is proposed and remains open.",
-          "The lean context\u2019s named routine omissions are raw imports plus 3 token-location and 2 identifier-location rollups. No monorepo was detected."
+          "A valid schema-version-1 glossary is present in a fresh schema-version-2 context.",
+          "Payment Service is canonical and must be kept; Gateway Route is proposed and remains open.",
+          "Production corpus coverage is complete, with only routine lean-projection omissions."
         ],
         "id": "resumed-glossary",
-        "next_action": "Resume the maintained glossary at the proposed `Gateway Route`, retain canonical `Payment Service`, and read context-named production files before nominating uncovered concepts.",
+        "next_action": "Step 0 requires resuming the maintained glossary\u2014preserving the canonical concept and carrying the proposed concept forward\u2014before any new nominations.",
         "status": "resumed"
       },
       "delivery": "plugin",
@@ -409,7 +406,7 @@
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc 'python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/resumed-glossary'",
+          "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/resumed-glossary'",
           "cwd": null,
           "exit_code": 0,
           "output_characters": 7825,
@@ -423,12 +420,12 @@
     {
       "agent_response": {
         "facts": [
-          "Inspection returned a current schema-version-2 context with complete production corpus coverage: 1 source file, 66 bytes, and no source skips.",
-          "The engine excluded `.env` and `api-secret.txt` as sensitive paths; neither is part of the lexical evidence.",
-          "The lean context\u2019s named routine omissions are raw imports plus 3 token-location and 2 identifier-location rollups. No Graphify graph or glossary was detected."
+          "The engine returned a fresh schema-version-2 context with complete production corpus coverage.",
+          "It excluded .env and api-secret.txt as sensitive and did not read them lexically.",
+          "Ordinary production evidence remains available; routine lean-projection omissions exclude imports and roll up vocabulary locations."
         ],
         "id": "sensitive-file",
-        "next_action": "Step 1 would read only context-named production files and must never inspect the excluded sensitive paths.",
+        "next_action": "Step 0 permits Step 1 to use only the listed ordinary production paths while leaving both excluded sensitive paths unread.",
         "status": "grounded"
       },
       "delivery": "plugin",
@@ -453,7 +450,7 @@
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc 'python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/sensitive-file'",
+          "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/sensitive-file'",
           "cwd": null,
           "exit_code": 0,
           "output_characters": 7568,
@@ -470,7 +467,7 @@
           "Payment Service \u2014 The boundary that owns payment attempts."
         ],
         "id": "session-hook",
-        "next_action": "Use \u201cPayment Service\u201d for the boundary that owns payment attempts.",
+        "next_action": "Use \u201cPayment Service\u201d to name the boundary that owns payment attempts.",
         "status": "grounded"
       },
       "delivery": "plugin-hook",
@@ -492,30 +489,50 @@
     {
       "agent_response": {
         "facts": [
-          "No plugin-bundled engine exists, so Step 0 selected the standalone `glossabet` command.",
-          "`glossabet --version` exited 127: `zsh:1: command not found: glossabet`.",
-          "No `inspect` command ran, and no repository files or artifacts were read or written."
+          "No plugin-bundled scripts/run_glossabet.py exists, so Step 0 selected the standalone glossabet command.",
+          "`glossabet --version` failed with exit code 127: `zsh:1: command not found: glossabet`.",
+          "Per the skill contract, inspect was not invoked and no repository artifacts or production files were read."
         ],
         "id": "missing-cli",
-        "next_action": "Install or repair the Glossabet engine from the same distribution as this skill, then verify that `glossabet --version` prints exactly `glossabet 0.1.0` before running `inspect`.",
+        "next_action": "Install or repair the standalone engine from the same Glossabet distribution, then verify that `glossabet --version` prints exactly `glossabet 0.1.0` before running inspect.",
         "status": "stopped"
       },
       "delivery": "standalone-skill",
-      "failures": [],
+      "failures": [
+        "agent used a non-engine command inside the scenario"
+      ],
       "id": "missing-cli",
       "observed": {
-        "engine_missing": true,
+        "engine_missing": false,
         "standalone_skill_boundary_observed": true
       },
-      "passed": true,
+      "passed": false,
       "trace": [
         {
-          "command": "/usr/bin/zsh -c \"sed -n '1,9999p' <WORKSPACE>/scenarios/missing-cli/.agents/skills/glossabet/SKILL.md\"",
+          "command": "/usr/bin/zsh -c 'wc -l <WORKSPACE>/scenarios/missing-cli/.agents/skills/glossabet/SKILL.md'",
           "cwd": null,
           "exit_code": 0,
-          "output_characters": 21323,
+          "output_characters": 111,
+          "output_preview": "404 <WORKSPACE>/scenarios/missing-cli/.agents/skills/glossabet/SKILL.md\n",
+          "output_sha256": "a7f40904351c4ee7c473d560373599a545b8f5d004fa63b0daa5b1a0623a736e",
+          "status": "completed"
+        },
+        {
+          "command": "/usr/bin/zsh -c \"sed -n '1,210p' <WORKSPACE>/scenarios/missing-cli/.agents/skills/glossabet/SKILL.md\"",
+          "cwd": null,
+          "exit_code": 0,
+          "output_characters": 11809,
           "output_preview": "---\nname: glossabet\ndescription: >-\n  Build a shared naming vocabulary for a codebase. Use when the user wants to\n  name or rename the parts of a repo, establish a glossary, coin house terms,\n  or brainstorm names for components, subsystems, surfaces, data structures, or\n  domain concepts. Scans the repo from its root, identifies the parts that\n  warrant a name, and proposes three ranked names for each \u2014 one recommended\n  pick plus two alternates \u2014 as the OPENING PASS of a brainstorm with the user,\n  never as a final answer. Works for any repo, visual or purely backend.\n---\n\n# Glossabet\n\nGive \u2026",
-          "output_sha256": "a4776847cfc97b932e0a99dabc6c38a804351ff1258926b77b6ece90b0ee045f",
+          "output_sha256": "4ce125289002cd289400b7d2236a140d7aade90eef99b503bf82ac23507748f2",
+          "status": "completed"
+        },
+        {
+          "command": "/usr/bin/zsh -c \"sed -n '211,404p' <WORKSPACE>/scenarios/missing-cli/.agents/skills/glossabet/SKILL.md\"",
+          "cwd": null,
+          "exit_code": 0,
+          "output_characters": 9514,
+          "output_preview": "  before interpreting counts. Treat configured `production` paths as product\n  evidence; use test/fixture paths to understand support structure, not to\n  infer the house vocabulary. Do not inspect generated or vendored paths that\n  the engine deliberately excluded merely to increase evidence volume.\n- Skim the principal types/interfaces, the protocol/message/event shapes, the\n  core domain entities, and the boundaries between trust or ownership zones.\n- Adapt to the repo's nature. A visual app has surfaces, panes, and components\n  to name; a pure-backend service has subsystems, pipelines, enti\u2026",
+          "output_sha256": "11dc880bd5723e3d71fb8b74791dcee8eeeaa638ce44d0a3aaca79e0fbdf5edf",
           "status": "completed"
         },
         {
@@ -542,32 +559,32 @@
   ],
   "schema_version": 5,
   "summary": {
-    "all_passed": true,
-    "failed": 0,
-    "passed": 12,
+    "all_passed": false,
+    "failed": 1,
+    "passed": 11,
     "required": 12
   },
   "usage": [
     {
       "cache_write_input_tokens": 0,
       "cached_input_tokens": 0,
-      "input_tokens": 19483,
-      "output_tokens": 164,
-      "reasoning_output_tokens": 106
+      "input_tokens": 18976,
+      "output_tokens": 156,
+      "reasoning_output_tokens": 97
     },
     {
       "cache_write_input_tokens": 0,
-      "cached_input_tokens": 408576,
-      "input_tokens": 468378,
-      "output_tokens": 9896,
-      "reasoning_output_tokens": 6405
+      "cached_input_tokens": 424704,
+      "input_tokens": 484780,
+      "output_tokens": 8287,
+      "reasoning_output_tokens": 5243
     },
     {
       "cache_write_input_tokens": 0,
-      "cached_input_tokens": 81152,
-      "input_tokens": 113258,
-      "output_tokens": 1731,
-      "reasoning_output_tokens": 1043
+      "cached_input_tokens": 106496,
+      "input_tokens": 139737,
+      "output_tokens": 2007,
+      "reasoning_output_tokens": 1137
     }
   ]
 }

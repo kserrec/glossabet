@@ -48,6 +48,10 @@ def test_skill_keeps_ambient_vocabulary_read_only_and_human_gated():
     assert "It is not permission to nominate, coin, finalize, save, edit, or rename anything" in normalized
     assert "requires the user to enter a `/glossabet` naming session" in normalized
     assert "the brief is not a substitute for Step 0" in normalized
+    assert "Never run it merely because a glossary was finalized" in normalized
+    assert "only after the human explicitly asks" in normalized
+    assert "`--agent claude` selects root `CLAUDE.md`" in normalized
+    assert "separate explicit approval before `--force`" in normalized
 
 
 def test_skill_glossary_protocol_matches_engine():

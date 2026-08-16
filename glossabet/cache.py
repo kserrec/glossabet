@@ -19,10 +19,10 @@ from pathlib import Path
 from glossabet import __version__
 from glossabet.artifacts import oversized, write_json_atomic
 
-# Version 3 invalidates ASCII-only identifier/doc extraction after Phase 16's
-# Unicode NFKC+casefold tokenizer. Reusing version-2 entries would make warm
-# scans disagree with cold scans even when the source digest still matched.
-CACHE_VERSION = 3
+# Version 4 invalidates doc extraction from before Phase 28.3. Reusing a
+# version-3 entry for AGENTS.md/CLAUDE.md could echo a synchronized glossary
+# block into evidence even though the current extractor removes that block.
+CACHE_VERSION = 4
 CACHE_FILE = "cache.json"
 CACHE_ROOT_ENV = "GLOSSABET_CACHE_DIR"
 

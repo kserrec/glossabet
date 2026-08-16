@@ -14,6 +14,11 @@ from itertools import combinations
 
 from glossabet.artifacts import repo_root, write_artifact
 from glossabet.coverage import capped_collection, coverage_reasons
+from glossabet.context_sync import (
+    inspect_managed_context,
+    print_managed_context_issues,
+    unchecked_managed_context,
+)
 from glossabet.display import escape_terminal_text
 from glossabet.evidence import build_evidence, write_evidence
 from glossabet.glossary import (
@@ -32,7 +37,7 @@ from glossabet.matching import (
 from glossabet.terminology import OVERLOAD_MIN_DISPERSION, OVERLOAD_MIN_MODULES
 from glossabet.tokenize import tokenize_term
 
-DRIFT_SCHEMA_VERSION = 5
+DRIFT_SCHEMA_VERSION = 6
 DRIFT_FILE = "drift.json"
 
 FINDINGS_PER_KIND_CAP = 10
@@ -363,6 +368,7 @@ def build_drift(
     glossary: dict,
     *,
     matcher: EvidenceIndex | None = None,
+    managed_context: dict | None = None,
 ) -> dict:
     canonical, watched, known_scopes = _index_glossary(glossary)
     matcher = matcher or EvidenceIndex(evidence, _glossary_terms(glossary))
@@ -438,6 +444,7 @@ def build_drift(
             ),
         },
         "total_findings": total,
+        "managed_context": managed_context or unchecked_managed_context(),
         **sections,
     }
 
@@ -449,6 +456,7 @@ def _print_report(drift: dict) -> None:
         f"drift check against {drift['checked_concepts']} glossary "
         f"concept(s): {drift['total_findings']} {count_label}"
     )
+    print_managed_context_issues(drift["managed_context"])
     if not drift.get("coverage", {}).get("production_corpus_complete", True):
         print(
             "corpus coverage is partial; absence and low-use findings were "
@@ -531,7 +539,8 @@ def drift_command(path_arg: str) -> int:
         return 1
     evidence = build_evidence(root, cache=True)
     write_evidence(root, evidence)
-    drift = build_drift(evidence, glossary)
+    managed_context = inspect_managed_context(root, glossary)
+    drift = build_drift(evidence, glossary, managed_context=managed_context)
     write_artifact(root, DRIFT_FILE, drift)
     _print_report(drift)
     return 0

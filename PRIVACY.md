@@ -26,6 +26,24 @@ Its output contains canonical terms, human-written definitions, scopes,
 aliases, and state fingerprints, so it remains confidential repository data
 even though it is small.
 
+`sync-context` is a separate, explicitly invoked local write. It reads the
+validated glossary and at most one selected repository-root host file:
+`AGENTS.md` by default or `CLAUDE.md` with `--agent claude`. It reads no source
+files, Git state, Graphify output, or network service. It persists canonical
+terms, definitions, scopes, aliases, semantic/content hashes, and coverage in
+one marked block. The chosen host will ordinarily load that project instruction
+file in later sessions, so the block may be sent to that host's configured
+model provider even when a later user prompt does not mention Glossabet. Run
+the command only when that disclosure and persistent project change are
+intended.
+
+`drift` and `validate` read both fixed root host files, when present, only to
+classify a managed block as absent, current, stale, edited, or uninspectable;
+they do not follow a target symlink or modify either file. Normal scanning still
+analyzes the surrounding human-written documentation, but removes one exactly
+bounded managed block before lexical extraction so the synchronized copy does
+not contaminate vocabulary evidence.
+
 Sensitive-file exclusion is path-based. Dotenv variants, common private-key
 and credential-store names, and paths containing `secret` or `credential` are
 excluded without reading their contents. Glossabet does **not** scan ordinary
@@ -41,6 +59,11 @@ configuration paths, and human-written definitions. Handle them with the same
 confidentiality as the repository. `README.md` documents exact ownership and
 cleanup rules; in particular, `glossary.json` is not disposable if it contains
 decisions that exist nowhere else.
+
+A synchronized `AGENTS.md`/`CLAUDE.md` block is project-owned state outside
+`glossabet-out/`. Package/plugin uninstall and cache cleanup do not remove it.
+Review and commit it if it should be shared; otherwise remove only the exact
+marked block while preserving surrounding instructions.
 
 `glossabet install` is separate from repository analysis. It reads the
 canonical skill bundled in the installed wheel and writes one `SKILL.md` to

@@ -30,10 +30,10 @@
       "terminology_recall_where_complete": 1.0
     },
     "runtime": {
-      "cold_median_seconds_total": 0.523601,
-      "cold_seconds_per_1000_source_files": 5.289,
-      "warm_median_seconds_total": 0.537346,
-      "warm_seconds_per_1000_source_files": 5.428
+      "cold_median_seconds_total": 0.552056,
+      "cold_seconds_per_1000_source_files": 5.576,
+      "warm_median_seconds_total": 0.607688,
+      "warm_seconds_per_1000_source_files": 6.138
     },
     "source_bytes": 661164,
     "source_files": 99,
@@ -465,21 +465,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.010063,
+        "cold_median": 0.010902,
         "cold_samples": [
-          0.01102,
-          0.010063,
-          0.0099,
-          0.009884,
-          0.010093
+          0.010862,
+          0.010025,
+          0.013369,
+          0.010902,
+          0.011007
         ],
-        "warm_median": 0.019792,
+        "warm_median": 0.029974,
         "warm_samples": [
-          0.024774,
-          0.014283,
-          0.013926,
-          0.019792,
-          0.030181
+          0.019281,
+          0.021442,
+          0.029974,
+          0.035061,
+          0.047152
         ]
       },
       "source": {
@@ -620,21 +620,21 @@
       },
       "review_items": [],
       "runtime_seconds": {
-        "cold_median": 0.026251,
+        "cold_median": 0.030101,
         "cold_samples": [
-          0.02605,
-          0.026251,
-          0.026141,
-          0.027066,
-          0.026464
+          0.030884,
+          0.030101,
+          0.029894,
+          0.031179,
+          0.029632
         ],
-        "warm_median": 0.033514,
+        "warm_median": 0.041491,
         "warm_samples": [
-          0.031885,
-          0.043444,
-          0.037111,
-          0.031928,
-          0.033514
+          0.037629,
+          0.035882,
+          0.049519,
+          0.042077,
+          0.041491
         ]
       },
       "source": {
@@ -903,21 +903,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.324986,
+        "cold_median": 0.327474,
         "cold_samples": [
-          0.422888,
-          0.324986,
-          0.326403,
-          0.308966,
-          0.298122
+          0.423693,
+          0.352526,
+          0.327474,
+          0.30878,
+          0.320543
         ],
-        "warm_median": 0.288498,
+        "warm_median": 0.285333,
         "warm_samples": [
-          0.24737,
-          0.304485,
-          0.307239,
-          0.277247,
-          0.288498
+          0.239858,
+          0.30103,
+          0.285333,
+          0.26525,
+          0.291781
         ]
       },
       "source": {
@@ -1066,21 +1066,21 @@
       },
       "review_items": [],
       "runtime_seconds": {
-        "cold_median": 0.068047,
+        "cold_median": 0.071144,
         "cold_samples": [
-          0.159464,
-          0.06722,
-          0.067066,
-          0.068047,
-          0.071252
+          0.159839,
+          0.069255,
+          0.071152,
+          0.070915,
+          0.071144
         ],
-        "warm_median": 0.079749,
+        "warm_median": 0.088317,
         "warm_samples": [
-          0.079749,
-          0.077449,
-          0.080073,
-          0.080601,
-          0.070444
+          0.086988,
+          0.068101,
+          0.088317,
+          0.139784,
+          0.135205
         ]
       },
       "source": {
@@ -1248,21 +1248,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.070829,
+        "cold_median": 0.071703,
         "cold_samples": [
-          0.161063,
-          0.071054,
-          0.070829,
-          0.070562,
-          0.069969
+          0.160973,
+          0.072036,
+          0.07169,
+          0.071703,
+          0.070036
         ],
-        "warm_median": 0.077749,
+        "warm_median": 0.083613,
         "warm_samples": [
-          0.078153,
-          0.077749,
-          0.079412,
-          0.068906,
-          0.074609
+          0.100375,
+          0.083613,
+          0.084726,
+          0.079035,
+          0.072194
         ]
       },
       "source": {
@@ -1565,21 +1565,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.011272,
+        "cold_median": 0.011995,
         "cold_samples": [
-          0.011413,
-          0.011272,
-          0.011276,
-          0.011244,
-          0.010985
+          0.012137,
+          0.011634,
+          0.01116,
+          0.014033,
+          0.011995
         ],
-        "warm_median": 0.020755,
+        "warm_median": 0.0404,
         "warm_samples": [
-          0.020755,
-          0.024946,
-          0.016197,
-          0.0165,
-          0.022654
+          0.034047,
+          0.0404,
+          0.037656,
+          0.049631,
+          0.044032
         ]
       },
       "source": {
@@ -1749,21 +1749,21 @@
       },
       "review_items": [],
       "runtime_seconds": {
-        "cold_median": 0.012153,
+        "cold_median": 0.028737,
         "cold_samples": [
-          0.011665,
-          0.011954,
-          0.012153,
-          0.012354,
-          0.012196
+          0.028649,
+          0.02972,
+          0.028737,
+          0.028292,
+          0.030891
         ],
-        "warm_median": 0.017289,
+        "warm_median": 0.03856,
         "warm_samples": [
-          0.014543,
-          0.014921,
-          0.026233,
-          0.021721,
-          0.017289
+          0.03856,
+          0.047813,
+          0.034201,
+          0.038209,
+          0.039373
         ]
       },
       "source": {
@@ -1825,12 +1825,12 @@
     }
   ],
   "engine": {
-    "drift_schema_version": 5,
+    "drift_schema_version": 6,
     "evaluation_schema_version": 6,
     "evidence_schema_version": 10,
     "name": "glossabet",
-    "source_sha256": "61c72b2303de0c634bf0478e14fd1088b8ff52843e281f50d3dac5bdcbe1d510",
-    "validation_schema_version": 6,
+    "source_sha256": "46a3405d07ccc8cecade149ee42f40ed046541f18bd0a96bca1e7ba32897cbc9",
+    "validation_schema_version": 7,
     "version": "0.1.0"
   },
   "environment": {
@@ -1891,7 +1891,7 @@
         "target": 50.0
       },
       {
-        "actual": 5.289,
+        "actual": 5.576,
         "name": "cold_seconds_per_1000_source_files_max",
         "passed": true,
         "target": 10.0
@@ -1950,6 +1950,10 @@
         "term": "cache"
       },
       {
+        "nomination_kind": "deserves a canonical name",
+        "term": "cold"
+      },
+      {
         "nomination_kind": "deserves disambiguation",
         "term": "config"
       },
@@ -1972,10 +1976,6 @@
       {
         "nomination_kind": "deserves disambiguation",
         "term": "glossary"
-      },
-      {
-        "nomination_kind": "deserves a canonical name",
-        "term": "max"
       },
       {
         "nomination_kind": "deserves a canonical name",
@@ -2052,15 +2052,15 @@
         "excluded_by_reason": {
           "language_tagged_flat": 23,
           "no_lexical_tokens": 118,
-          "prose_dominated_flat": 1147
+          "prose_dominated_flat": 1209
         },
-        "excluded_spellings": 1288,
-        "total_spellings": 3816,
+        "excluded_spellings": 1350,
+        "total_spellings": 3928,
         "used_by_reason": {
-          "corroborated_flat": 1149,
-          "structurally_styled": 1379
+          "corroborated_flat": 1155,
+          "structurally_styled": 1423
         },
-        "used_spellings": 2528
+        "used_spellings": 2578
       },
       "dominant_style": "snake_case",
       "multi_word_pct": 100.0,

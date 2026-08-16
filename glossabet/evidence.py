@@ -21,6 +21,7 @@ from glossabet.artifacts import OUT_DIR, repo_root, write_artifact
 from glossabet.cache import entry_if_valid, load_cache, save_cache
 from glossabet.config import load_config
 from glossabet.coverage import coverage_ledger
+from glossabet.context_sync import strip_managed_context_for_evidence
 from glossabet.display import escape_terminal_text
 from glossabet.graphify import (
     build_structural_groups,
@@ -272,6 +273,8 @@ def build_evidence(root: Path, limits: Limits = Limits(),
         entry = entry_if_valid(cached, rel, kind, content_sha256)
         if entry is None:
             text = content.decode(errors="ignore")
+            if kind == "doc":
+                text = strip_managed_context_for_evidence(rel, text)
             entry = extractor(text)
             extracted += 1
         else:

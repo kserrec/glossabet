@@ -338,13 +338,24 @@ The package is `glossabet/`. Grouped by role:
   directory, supports Claude Code and an explicit destination, writes
   atomically, is idempotent, refuses symlink components, and requires
   `--force` before replacing different content.
+- `context_sync.py` — the explicit project-context fallback for hosts without
+  a trusted lifecycle hook. `sync-context` selects only root `AGENTS.md`
+  (Codex default) or root `CLAUDE.md` (explicit Claude target), renders the
+  same bounded canonical projection with a stable semantic-glossary stamp,
+  and atomically appends or replaces one exact managed block. It bounds and
+  identity-checks regular UTF-8 targets, never follows a symlink, preserves
+  surrounding bytes and the file mode, refuses ambiguous marker layouts, and
+  requires `--force` before replacing an integrity-mismatched body. Its
+  read-only inspector supplies managed-context state to drift and validation.
 - `cache.py` — the user-owned per-file extraction cache. It lives under the
   platform cache directory, outside the scanned repository, in a directory
   keyed by the repository's resolved path. Reuse requires the current file's
   SHA-256 digest plus a valid entry shape; the whole cache invalidates on a
-  cache-schema or generator-version change. Cache schema 3 specifically
-  invalidates pre-Unicode extraction entries. Any doubt reads as a miss. An
-  override that resolves inside the target repository disables caching.
+  cache-schema or generator-version change. Cache schema 4 invalidates
+  entries from before managed blocks were removed from host-document
+  extraction; schema 3 previously invalidated pre-Unicode entries. Any doubt
+  reads as a miss. An override that resolves inside the target repository
+  disables caching.
 - `glossary.py` — the persistent glossary (`glossabet-out/glossary.json`):
   schema validation (`validate_glossary`), load/save, the `show` command, and
   `require_glossary()` (the shared load-or-report-error helper). Bindings may
@@ -365,6 +376,9 @@ The package is `glossabet/`. Grouped by role:
   `total_findings` includes displayed and dropped items.
   Every term occurrence, parallel-vocabulary association, fading check, and
   overload check is restricted to its concept's scope and reports that scope.
+  Schema 6 also records the read-only managed-context inspection and prints
+  stale, edited, or uninspectable host blocks without counting them as lexical
+  findings.
 - `reconcile.py` — `build_validation()`: two-directional coverage plus the
   mismatch taxonomy (unnamed structure, orphaned concept, unresolved binding,
   boundary mismatch, fragmentation, overloaded region) — exact compound
@@ -377,6 +391,8 @@ The package is `glossabet/`. Grouped by role:
   drift's signal/certainty and total-count contracts. Structural matching
   reaches concepts through an inverted token index under an explicit work
   budget; boundary pairs are counted without materializing the full pair set.
+  Schema 7 carries the same managed-context inspection and terminal warning as
+  drift.
 
 **Evaluation and calibration**
 - `evaluation/corpus.json` — pinned source revisions, SPDX licenses,
@@ -472,7 +488,10 @@ paths are not read. A warm scan still reads every included file to establish
 its digest, but avoids tokenization and import/doc extraction for unchanged
 content while remaining byte-identical to a cold scan. Any scanner-budget stop
 is visible in `skipped.corpus_budget` and on stderr; downstream users must treat
-that evidence as partial.
+that evidence as partial. For root `AGENTS.md` and `CLAUDE.md`, one exactly
+bounded Glossabet managed block is removed before doc-word extraction; the raw
+file digest still controls cache reuse and every surrounding human-authored
+byte remains evidence.
 
 **`inspect`** (`cli.py` → `agent_context.inspect_command`). Loads and validates
 the optional glossary first, builds fresh evidence through the same scanner as
@@ -503,6 +522,18 @@ ceiling and empty output when no glossary exists. Codex requires hook trust
 before execution; the authenticated evidence harness uses a one-invocation
 trust bypass only after digest-checking the temporary plugin bytes.
 
+**`sync-context`** (`cli.py` → `context_sync.sync_context_command`). Requires a
+validated glossary and an explicit command invocation. `--agent codex`
+(default) maps to root `AGENTS.md`; `--agent claude` maps to root `CLAUDE.md`.
+The persistent body shares brief's canonical projection and 4,096-byte bound,
+but replaces live Git state with a semantic-snapshot line so the act of writing
+cannot make its own stamp false. The outer metadata binds format, glossary,
+and content hashes. An absent block is appended, an integrity-valid stale block
+is replaced, and a current block does not write. An edited body needs
+`--force`; malformed/duplicated/unmatched markers or metadata are never
+overwritten. The same-directory atomic commit rechecks target bytes and mode
+before replacement and preserves every byte outside the managed range.
+
 **`save`** (`cli.py` → `glossary.save_command`). Accepts at most 64 MB from
 standard input (reading one additional byte only to detect overflow), parses
 exactly one JSON document, applies the strict glossary schema and semantic
@@ -514,7 +545,9 @@ directly.
 glossary (`require_glossary`, exits `1` if absent). Builds fresh evidence,
 indexes the glossary's canonical/watched tokens and ownership scopes, runs the
 four checks within those path regions, writes `glossabet-out/drift.json`, and
-prints the report.
+prints the report. It also inspects both supported managed-context targets
+without following links, persists that separate status, and visibly flags
+stale, edited, or uninspectable blocks.
 
 **`validate`** (`cli.py` → `reconcile.validate_command` → `build_validation`).
 Requires a glossary. Builds fresh evidence (with the Graphify graph if present),
@@ -525,6 +558,7 @@ adapter's presence/usability/freshness/warning state; all structural sections
 carry `skipped: true` plus a reason when usable groups were not loaded.
 Scoped lexical checks still run, while structural sections disclose partial or
 skipped scope coverage because normalized Graphify groups have no path map.
+It carries the same read-only managed-context report as drift.
 
 ## Git freshness and artifact lifecycle
 
@@ -548,7 +582,9 @@ whether output is tracked or untracked. Disabling rename detection ensures a
 move across the ownership boundary still reports the changed non-output path.
 No other path inside the scanned root is filtered: source, `GLOSSARY.md`,
 Graphify output, and the legacy repository-local cache path all retain normal
-Git status behavior. Git-ignored files remain invisible under Git's own rules,
+Git status behavior. `AGENTS.md` and `CLAUDE.md` are likewise normal Git state:
+an uncommitted synchronized block makes a tracked or untracked target visible
+as dirty. Git-ignored files remain invisible under Git's own rules,
 and a missing/unreadable `HEAD` or failed status check yields `null` rather than
 a false clean claim. `freshness.status: current` in `AgentContext` means
 generated in the current invocation; it is not an atomic-snapshot or

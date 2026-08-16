@@ -96,6 +96,54 @@ sequences or reorder the displayed result.
   document; it is not a guarantee against storage-device failure after the
   replacement. Regressions are in `tests/test_artifacts.py`.
 
+### Managed project context
+
+- **Only an explicit command selects this write path.** `sync-context` is the
+  sole product route that targets a project-owned host instruction file. Its
+  closed mapping is root `AGENTS.md` for Codex (the default) or root
+  `CLAUDE.md` for explicit `--agent claude`; no arbitrary target path is
+  accepted. `install`, `brief`, the plugin hook, the agent skill's glossary
+  finalization, and every analysis command do not call it. Regression:
+  `test_every_other_repository_command_leaves_host_file_byte_identical`.
+- **The target is bounded and cannot redirect the read or write.** Existing
+  targets must be regular UTF-8 files no larger than 2,000,000 bytes. The
+  reader uses a non-following file descriptor where the platform supplies it,
+  compares pre-open, opened, and post-open identities, and reads at most one
+  byte beyond the cap. Symlinks, directories, other non-files, invalid UTF-8,
+  and oversized files are user errors. The atomic commit preserves the prior
+  mode, rechecks the bytes and mode before `os.replace`, and cleans its
+  temporary file after failure. Regressions include
+  `test_symlink_target_is_never_followed_or_replaced`,
+  `test_unsafe_existing_targets_are_unchanged`,
+  `test_atomic_replace_failure_preserves_original_and_cleans_temporary_file`,
+  and `test_concurrent_target_change_is_not_overwritten`.
+- **Markers define ownership; ambiguity preserves the file.** A missing block
+  is appended without altering preceding bytes. One current deterministic
+  block is a no-write operation, and one integrity-valid stale block is
+  replaced inside its exact markers. A body that no longer matches its content
+  stamp, or a newer unsupported format, requires explicit `--force`. Changed,
+  missing, duplicate, nested, or malformed markers/metadata are never replaced,
+  even with force. Surrounding bytes and line-ending style are covered by
+  `test_stale_block_updates_only_the_managed_range`,
+  `test_claude_target_preserves_crlf_surrounding_bytes_and_file_mode`, and the
+  collision cases in `tests/test_context_sync.py`.
+- **Health checks do not write host files.** `drift` and `validate` inspect
+  both fixed targets read-only, never follow target symlinks, and record/print
+  `stale`, `edited`, or `uninspectable` state. Absence and current state are not
+  warnings. A structurally bounded block is removed from documentation text
+  before lexical extraction so it cannot echo glossary words into drift; the
+  hand-written surrounding file remains evidence. Cache schema 4 invalidates
+  older extracted copies. Regressions:
+  `test_drift_and_validate_flag_stale_and_edited_blocks` and
+  `test_managed_block_never_echoes_into_repository_evidence`.
+
+The pre-commit identity check catches an ordinary concurrent edit before the
+replacement, but portable `os.replace` is not a filesystem compare-and-swap.
+Do not run `sync-context` while another process is concurrently changing the
+same host file. This is the same live-checkout limitation stated for scans,
+not a claim that hostile concurrent mutation can be made atomic on every
+supported platform.
+
 ### Agent skill installation
 
 - **Existing user content is preserved by default.** `glossabet install` is
@@ -199,6 +247,10 @@ sequences or reorder the displayed result.
   symlink refusal, terminal-safe one-line prose, and the byte ceiling.
   `tests/test_plugin.py` additionally executes the declared hook command with
   and without a glossary and proves exact output plus zero repository changes.
+- **Persistent ambient vocabulary remains separately human-authorized.** The
+  skill states that ordinary ambient context is read-only and that glossary
+  finalization does not authorize `sync-context`. It may run that command only
+  after a separate explicit human request naming the desired host target.
 - **Terminal controls are data, not instructions.** CLI stdout/stderr pass
   through `display.py`. Repository/user-controlled C0/C1 controls, DEL, Unicode
   line separators, and bidirectional-format characters are rendered as visible

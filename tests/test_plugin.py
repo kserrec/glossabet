@@ -173,6 +173,7 @@ def test_plugin_wheel_matches_package_version_entry_point_and_skill():
     wheel = _wheel()
     with zipfile.ZipFile(wheel) as archive:
         assert "glossabet/brief.py" in archive.namelist()
+        assert "glossabet/context_sync.py" in archive.namelist()
         metadata_path = f"glossabet-{__version__}.dist-info/METADATA"
         metadata = BytesParser(policy=policy.default).parsebytes(
             archive.read(metadata_path)

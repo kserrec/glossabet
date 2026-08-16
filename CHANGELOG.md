@@ -38,6 +38,10 @@ This first alpha is prepared but has not been published to PyPI.
 - A deterministic `glossabet brief` command that reads only validated glossary
   state plus the hardened Git stamp and emits at most 4 KB of read-only
   canonical vocabulary with explicit projection coverage.
+- An explicit `glossabet sync-context` fallback that persists one
+  semantic-glossary-stamped managed block in root `AGENTS.md` (Codex default)
+  or root `CLAUDE.md` (explicit Claude target), plus read-only stale/edit checks
+  in drift and validation.
 - The canonical agent skill and `glossabet install` for current Codex and
   Claude Code personal skill locations.
 - A version-coupled Codex plugin prototype carrying the canonical skill and a
@@ -108,3 +112,10 @@ This first alpha is prepared but has not been published to PyPI.
   scanning; target Git configuration cannot name executable hooks or monitors.
 - Skill installation preserves a differing existing file unless `--force` is
   explicit and refuses symlinked destination components.
+- Managed context targets are fixed, regular bounded UTF-8 files; symlinks and
+  ambiguous markers are refused, surrounding bytes/mode are preserved,
+  atomic failure and detected concurrent edits keep the prior file, and edited
+  managed content requires explicit `--force`.
+- Synchronized glossary blocks are excluded from lexical evidence, with cache
+  schema 4 invalidating pre-exclusion entries so ambient context cannot echo
+  canonical words back into drift.

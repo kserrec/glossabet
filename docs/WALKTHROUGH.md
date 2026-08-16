@@ -54,6 +54,18 @@ exists, Glossabet preserves it and exits with a user error; `--force`
 replaces only that file and should be used only when replacement is intended.
 Symlinked destination components are refused.
 
+For a host without a trusted session-start hook, persist canonical vocabulary
+in the selected repository only when that project change is intended:
+
+```bash
+glossabet sync-context /path/to/repository
+```
+
+This exact command targets root `AGENTS.md`. Add `--agent claude` to target
+root `CLAUDE.md` instead. Installation and glossary finalization never invoke
+it automatically; it preserves all text outside its marked block, and later
+`drift`/`validate` runs report if that block is stale or edited.
+
 The locations above follow the current
 [OpenAI Codex skill documentation](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills)
 and [Claude Code skill documentation](https://code.claude.com/docs/en/skills#where-skills-live).

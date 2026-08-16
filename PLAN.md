@@ -1,8 +1,7 @@
 # Glossabet — Plan
 
-Status: **phases 0–22, Phases 24–27, and Phases 28.1–28.2 complete; Phase 28.3
-is next; owner self-testing pause active before the trusted-alpha gate** as of
-2026-08-16.
+Status: **phases 0–22 and Phases 24–28 complete; owner self-testing pause
+active before the trusted-alpha gate** as of 2026-08-16.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
 Phases 24–28 were added 2026-08-15 from Kyle's self-testing findings and run
@@ -163,6 +162,7 @@ glossabet scan .        build/refresh RepositoryEvidence          (Phase 2)
 glossabet analyze .     terminology + register analysis           (Phase 4)
 glossabet inspect .     emit fresh bounded agent context          (Phase 18)
 glossabet brief .       emit bounded read-only vocabulary         (Phase 28.1)
+glossabet sync-context . explicitly persist managed host context  (Phase 28.3)
 glossabet save .        validate/save glossary JSON from stdin    (Phase 18)
 glossabet show          display current glossary                  (Phase 6)
 glossabet drift .       compare live vocabulary vs canonical      (Phase 7)
@@ -882,13 +882,48 @@ unverified.
    hooks. Never written unbidden; marker and collision semantics with
    hand-written surrounding content are defined before code.
 2. `drift` and `validate` flag a stale or hand-edited managed block.
-3. Hostile-scenario review of the write path: this is the only place
-   Glossabet touches user-owned files outside the confirmed glossary
-   finalize, and tests prove no other code path can.
+3. Hostile-scenario review of the write path: this is the only product path
+   that modifies a project-owned host instruction file (the explicit personal
+   skill installer is a separate user-state write), and tests prove no other
+   repository command can modify those targets.
 
-**Acceptance:** no code path writes to user-owned files without an explicit
-human command; a stale sync block is flagged by drift/validate; hostile
-write-path scenarios pass.
+**Acceptance:** no code path writes a project-owned host instruction file
+without an explicit human command; a stale sync block is flagged by
+drift/validate; hostile write-path scenarios pass.
+
+**Completion evidence (2026-08-16):** the implementation and
+offline hostile-path tests are complete on canonical skill SHA-256
+`a4776847cfc97b932e0a99dabc6c38a804351ff1258926b77b6ece90b0ee045f`,
+plugin-tree SHA-256
+`7954e53b298d00c91eb364448a014cff68ab39bfe1541c6bdb5e9fde5b65bc6c`,
+and wheel SHA-256
+`d249ff1b33a92a14898586331b9cb6c991786d29b75b22d38a31ae65235631f7`.
+The one authorized no-retry current-artifact batch is retained at
+`evaluation/agent-runs/20260816T192615Z-full-e73a0e21.json` with SHA-256
+`8860101d8bd57b7665271b5f1e1734b44abd0d8bbd1a3414ad34001975b42e31`.
+It passed 11/12: the missing-CLI agent used `wc -l` on its installed
+`SKILL.md` before reading that same skill with `sed`, while the evaluator's
+installed-skill exception recognizes only `cat` and `sed`. It did not run
+`inspect`, read production repository files, expose sensitive content, or
+write repository state; all safety and cleanup checks passed.
+
+A process-control error then launched a second three-turn batch after the
+still-running first command was incorrectly treated as absent. That duplicate
+contradicted the one-batch/no-retry authorization. Its retained 12/12 result at
+`evaluation/agent-runs/20260816T192933Z-full-6b8b5f75.json` is historical
+evidence only and does not close this phase. No further authenticated run is
+authorized by that mistaken launch.
+
+Kyle then explicitly authorized one new current-artifact retry. Without any
+intervening executable, evaluator, skill, or artifact change, it passed all
+12 scenarios on Codex CLI 0.147.0/Linux, with no unexpected repository write,
+no sensitive-canary exposure, and verified removal of all temporary host
+state. Its raw result is retained at
+`evaluation/agent-runs/20260816T193824Z-full-f7879d5e.json` with SHA-256
+`871b681854a6cd340a8e5a38911b4a767ef07af8bf624597566f3d91c1326fc9`.
+Together with the deterministic hostile write-path coverage, that authorized
+exact-artifact pass closes Phase 28.3. The earlier `wc -l` miss remains in the
+reliability ledger rather than being rewritten or hidden.
 
 ### Owner self-testing pause — active, not an implementation phase
 

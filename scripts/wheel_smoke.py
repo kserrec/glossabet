@@ -142,6 +142,44 @@ def main() -> int:
         if len(brief_text.encode("utf-8")) > 4_096:
             raise RuntimeError("wheel-installed brief exceeded its byte limit")
 
+        agents = boundary_repo / "AGENTS.md"
+        human_context = b"# Human instructions\n\nPreserve this text.\n"
+        agents.write_bytes(human_context)
+        _run(
+            [str(cli), "sync-context", str(boundary_repo)],
+            cwd=work,
+            env=env,
+        )
+        synchronized = agents.read_bytes()
+        if not synchronized.startswith(human_context):
+            raise RuntimeError("wheel-installed sync-context changed surrounding text")
+        if b"Payment Service" not in synchronized:
+            raise RuntimeError("wheel-installed sync-context lost canonical vocabulary")
+        _run(
+            [str(cli), "sync-context", str(boundary_repo)],
+            cwd=work,
+            env=env,
+        )
+        if agents.read_bytes() != synchronized:
+            raise RuntimeError("wheel-installed sync-context was not idempotent")
+        _run(
+            [str(cli), "drift", str(boundary_repo)],
+            cwd=work,
+            env=env,
+        )
+        drift = json.loads(
+            (boundary_repo / "glossabet-out" / "drift.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        agents_status = next(
+            target
+            for target in drift["managed_context"]["targets"]
+            if target["path"] == "AGENTS.md"
+        )
+        if agents_status["status"] != "current":
+            raise RuntimeError("wheel-installed drift did not verify managed context")
+
         _run(
             [str(python), str(ROOT / "scripts" / "run_walkthrough.py")],
             cwd=work,
@@ -162,10 +200,12 @@ def main() -> int:
             raise RuntimeError("pip uninstall left the glossabet entry point behind")
         if not installed_skill.is_file():
             raise RuntimeError("pip uninstall unexpectedly removed the user-installed skill")
+        if agents.read_bytes() != synchronized:
+            raise RuntimeError("pip uninstall unexpectedly changed managed repository context")
 
     print(
         "wheel smoke passed: isolated install, skill install, agent boundary, "
-        "walkthrough, package uninstall, and temporary cleanup completed"
+        "managed context, walkthrough, package uninstall, and temporary cleanup completed"
     )
     return 0
 

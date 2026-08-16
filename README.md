@@ -118,17 +118,17 @@ in [`evaluation/results.json`](evaluation/results.json).
 
 **Status: 0.1.0 source alpha under an owner self-testing pause; not yet
 published to PyPI or a plugin directory and not yet a trusted-alpha release.**
-Phases 0–22, Phases 24–27, and Phases 28.1–28.2 are complete. Phase 28.3
-explicit sync-context remains. The installed-agent harness separately probes
-fresh-session hook delivery, the installed skill, and the non-login,
-profile-disabled missing-CLI boundary. Its offline gate checks the current
-plugin artifact and all recorded safety outcomes deterministically, while its
-append-only attempt history reports procedural agent misses instead of
+Phases 0–22 and Phases 24–28 are implemented; `PLAN.md` records their exact
+acceptance and commit state. The installed-agent harness
+separately probes fresh-session hook delivery, the installed skill, and the
+non-login, profile-disabled missing-CLI boundary. Its offline gate checks the
+current plugin artifact and all recorded safety outcomes deterministically,
+while its append-only attempt history reports procedural agent misses instead of
 selecting a green retry. See [`EVALUATION.md`](EVALUATION.md) for every observed
-attempt and its provenance limits. Owner-run testing and the remaining Phase
-28.3 gate stay before any outside maintainer invitation.
+attempt and its provenance limits. Owner-run testing and the trusted-alpha
+evidence gate stay before any outside maintainer invitation.
 Package metadata and the embedded plugin wheel are bound to the renamed GitHub
-repository; the checked-in wheel matches the Phase 28.2 executable source and
+repository; the checked-in wheel matches the Phase 28.3 executable source and
 canonical skill.
 The trusted-alpha evidence gate and Phase 23 remain later work; do not describe
 the current stopping point as release-ready. See
@@ -177,6 +177,8 @@ glossabet analyze <repo>    scan + terminology report (register, overlaps, overl
 glossabet inspect <repo>    fresh, lean JSON context for the agent skill
 glossabet inspect <repo> --full  detailed diagnostic projection
 glossabet brief <repo>      bounded read-only canonical vocabulary digest
+glossabet sync-context <repo>  explicitly sync a managed block into AGENTS.md
+glossabet sync-context <repo> --agent claude  target CLAUDE.md instead
 glossabet save <repo>       validate/save glossary JSON from standard input
 glossabet show <repo>       display the current glossary
 glossabet drift <repo>      live vocabulary vs the canonical glossary
@@ -211,6 +213,28 @@ it automatically through its trusted `SessionStart` hook. It is context for
 using settled words, never permission to nominate, coin, finalize, save, edit,
 or rename vocabulary; those changes still require a human `/glossabet` naming
 session.
+
+Hosts without a trusted session-start hook can persist the same canonical
+vocabulary with an explicit `glossabet sync-context <repo>` invocation. The
+default Codex target is the repository-root `AGENTS.md`; `--agent claude`
+selects only root `CLAUDE.md`. The command is never called by `install`,
+`scan`, `inspect`, `brief`, `drift`, `validate`, or the agent skill's normal
+finalization flow. It creates or updates one marked block only after the human
+invokes it. The stable block repeats the semantic glossary SHA-256 rather than
+a live Git stamp: a persistent file cannot truthfully preserve live dirtiness,
+because writing that file changes the worktree itself.
+
+Hand-written bytes outside the two exact markers are preserved. One intact
+older glossary block is updated atomically; a current block is a no-write
+operation. A stamped body that was edited is preserved unless `--force` is
+explicit, while malformed, duplicated, unmatched, or changed markers/metadata
+are always refused because the replacement boundary is ambiguous. Targets
+must be regular UTF-8 files no larger than 2 MB; symlinks are never followed.
+`drift` and `validate` inspect both supported root files read-only and report a
+stale, edited, or uninspectable block in their terminal output and JSON report.
+The scanner removes one exactly bounded managed block before lexical analysis,
+so canonical vocabulary cannot echo through `AGENTS.md`/`CLAUDE.md` and hide
+drift; surrounding human instructions remain ordinary documentation evidence.
 
 Artifacts live in `<repo>/glossabet-out/` (evidence, glossary, drift and
 validation reports). The incremental extraction cache is user-owned state,
@@ -258,6 +282,13 @@ Repository owners decide which artifacts to track. Removing the derived
 reports is sufficient cleanup when the glossary should be retained; the
 user-cache directory can be removed independently because it is only a
 performance optimization.
+
+A synchronized block lives in a project-owned `AGENTS.md` or `CLAUDE.md`, not
+under `glossabet-out/`. It is therefore normal repository state: review and
+commit it if the team wants the context shared. Package or plugin removal does
+not delete or edit it. To stop using this fallback, remove only the text from
+the exact Glossabet start marker through the exact end marker, leaving the
+surrounding host instructions intact.
 
 The installed agent skill is separate user-owned state. Uninstalling the
 Python package removes the CLI but deliberately does not delete that copied

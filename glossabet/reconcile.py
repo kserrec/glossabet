@@ -17,6 +17,11 @@ from itertools import combinations, islice
 
 from glossabet.artifacts import repo_root, write_artifact
 from glossabet.coverage import coverage_ledger, coverage_reasons
+from glossabet.context_sync import (
+    inspect_managed_context,
+    print_managed_context_issues,
+    unchecked_managed_context,
+)
 from glossabet.display import escape_terminal_text
 from glossabet.drift import build_drift
 from glossabet.evidence import build_evidence, write_evidence
@@ -35,7 +40,7 @@ from glossabet.matching import (
 )
 from glossabet.tokenize import tokenize_term
 
-VALIDATION_SCHEMA_VERSION = 6
+VALIDATION_SCHEMA_VERSION = 7
 VALIDATION_FILE = "validation.json"
 
 FINDINGS_CAP = 10
@@ -445,7 +450,12 @@ def _mark_incomplete(section: dict, reason: str) -> dict:
     }
 
 
-def build_validation(evidence: dict, glossary: dict) -> dict:
+def build_validation(
+    evidence: dict,
+    glossary: dict,
+    *,
+    managed_context: dict | None = None,
+) -> dict:
     canonical = [
         c for c in glossary["concepts"] if c["status"] == "canonical"
     ]
@@ -522,7 +532,12 @@ def build_validation(evidence: dict, glossary: dict) -> dict:
     orphaned, unresolved, fragmented = _concept_findings(
         canonical, vocab, evidence, matcher
     )
-    drift = build_drift(evidence, glossary, matcher=matcher)
+    drift = build_drift(
+        evidence,
+        glossary,
+        matcher=matcher,
+        managed_context=managed_context,
+    )
 
     production_complete = production_corpus_complete(evidence)
     inventory_complete = repository_corpus_complete(evidence)
@@ -642,6 +657,7 @@ def build_validation(evidence: dict, glossary: dict) -> dict:
         "graph_available": graph_ok,
         "total_findings": total,
         "total_findings_complete": total_complete,
+        "managed_context": managed_context or unchecked_managed_context(),
         **sections,
     }
 
@@ -665,6 +681,7 @@ def _print_report(validation: dict) -> None:
         f"validate: {validation['canonical_concepts']} canonical concept(s), "
         f"{validation['total_findings']} {count_label}"
     )
+    print_managed_context_issues(validation["managed_context"])
     graph = validation["graph"]
     if graph["usable"]:
         freshness = graph["freshness"] or {
@@ -746,7 +763,12 @@ def validate_command(path_arg: str) -> int:
         return 1
     evidence = build_evidence(root, cache=True)
     write_evidence(root, evidence)
-    validation = build_validation(evidence, glossary)
+    managed_context = inspect_managed_context(root, glossary)
+    validation = build_validation(
+        evidence,
+        glossary,
+        managed_context=managed_context,
+    )
     write_artifact(root, VALIDATION_FILE, validation)
     for warning in validation["graph"]["warnings"]:
         print(

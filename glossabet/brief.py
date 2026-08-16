@@ -8,7 +8,6 @@ import sys
 
 from glossabet.artifacts import ArtifactError, repo_root
 from glossabet.display import escape_terminal_text
-from glossabet.evidence import _git_stamp
 from glossabet.glossary import (
     GLOSSARY_SCHEMA_VERSION,
     GlossaryError,
@@ -26,6 +25,13 @@ _ELLIPSIS = "…"
 
 class BriefError(ArtifactError):
     """A safe vocabulary brief could not be produced within its contract."""
+
+
+def _git_stamp(root):
+    """Lazy test seam around the hardened repository Git-state probe."""
+    from glossabet.evidence import _git_stamp as evidence_git_stamp
+
+    return evidence_git_stamp(root)
 
 
 def _utf8_size(text: str) -> int:
@@ -49,7 +55,8 @@ def _one_line(text: str) -> str:
     return escape_terminal_text(" ".join(text.split()))
 
 
-def _glossary_sha256(glossary: dict) -> str:
+def glossary_sha256(glossary: dict) -> str:
+    """Return the semantic digest used to bind every vocabulary projection."""
     canonical = json.dumps(
         glossary,
         ensure_ascii=False,
@@ -137,8 +144,8 @@ def _coverage_line(
     )
 
 
-def build_brief(glossary: dict, git_stamp: dict) -> str:
-    """Build deterministic ambient text from one already validated glossary."""
+def _build_digest(glossary: dict, state_line: str) -> str:
+    """Build one bounded vocabulary projection with a caller-owned stamp."""
     canonical = sorted(
         (
             concept
@@ -152,9 +159,8 @@ def build_brief(glossary: dict, git_stamp: dict) -> str:
         f"Glossabet vocabulary brief v{BRIEF_FORMAT_VERSION}\n"
         "policy: read-only; vocabulary changes require a human /glossabet session\n"
         f"glossary: schema={GLOSSARY_SCHEMA_VERSION}; "
-        f"sha256={_glossary_sha256(glossary)}; canonical={total}\n"
-        f"git: head={_git_value(git_stamp.get('head'))}; "
-        f"dirty={_git_value(git_stamp.get('dirty'))}\n"
+        f"sha256={glossary_sha256(glossary)}; canonical={total}\n"
+        + state_line
     )
     if _utf8_size(header) + _utf8_size(_coverage_line(0, total, 0)) > MAX_BRIEF_BYTES:
         raise BriefError("vocabulary brief metadata exceeds its output limit")
@@ -202,6 +208,29 @@ def build_brief(glossary: dict, git_stamp: dict) -> str:
             f"vocabulary brief exceeds its {MAX_BRIEF_BYTES}-byte output limit"
         )
     return output
+
+
+def build_brief(glossary: dict, git_stamp: dict) -> str:
+    """Build deterministic ambient text from one already validated glossary."""
+    return _build_digest(
+        glossary,
+        f"git: head={_git_value(git_stamp.get('head'))}; "
+        f"dirty={_git_value(git_stamp.get('dirty'))}\n",
+    )
+
+
+def build_managed_brief(glossary: dict) -> str:
+    """Build the stable projection embedded in a managed host-context block.
+
+    A persistent file cannot truthfully carry live Git dirtiness: writing the
+    file would change that state immediately. Its durable freshness boundary
+    is therefore the semantic glossary digest, which is also repeated in the
+    managed-block metadata.
+    """
+    return _build_digest(
+        glossary,
+        "sync: semantic glossary snapshot; refresh with glossabet sync-context\n",
+    )
 
 
 def brief_command(path_arg: str) -> int:

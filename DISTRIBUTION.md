@@ -18,10 +18,10 @@ equivalent installed-host probe and are not called supported.
 | --- | --- | --- |
 | Engine | A pure-Python wheel inside the plugin. The skill runs it through `scripts/run_glossabet.py`; no executable is added to `PATH`. | The package manager owns an isolated environment and the `glossabet` executable on `PATH`. |
 | Skill | Codex owns the skill inside the same versioned plugin cache entry. | `glossabet install` makes a separate copy at the selected agent skill directory. |
-| Ambient context | After the user trusts the plugin hook, Codex runs the bundled `brief .` command at session startup, resume, clear, and compaction. Canonical glossary text becomes developer context; no glossary means no added text. | No automatic host integration. Run `glossabet brief .` and deliberately supply its output to the chosen host. |
+| Ambient context | After the user trusts the plugin hook, Codex runs the bundled `brief .` command at session startup, resume, clear, and compaction. Canonical glossary text becomes developer context; no glossary means no added text. | No automatic host integration. Run `glossabet brief .` and deliberately supply its output, or explicitly run `glossabet sync-context .` to persist one managed block in root `AGENTS.md` (`--agent claude` selects root `CLAUDE.md`). |
 | Version coupling | Plugin manifest, skill instructions, runner constant, nested wheel metadata, and wheel-embedded skill must all match. Tests and distribution checks fail on any mismatch. | The wheel version and wheel-embedded skill are built together. The skill checks the CLI's exact version before analysis. |
 | Upgrade | Installing the same plugin identifier from a refreshed marketplace snapshot replaces the cached version. Codex 0.147.0 removed the prior version during the direct 0.1.0 → synthetic 0.1.1 probe. | Reinstall or upgrade the wheel, then run `glossabet install`. If a prior Glossabet-owned skill differs, inspect that exact file and use `--force` deliberately; the installer never assumes ownership. |
-| Removal | `codex plugin remove` removes the plugin engine and skill together. Removing the local marketplace removes its configuration entry. Codex 0.147.0 left one empty marketplace cache parent, which the smoke test removes only after proving it is empty and test-owned. | Uninstalling the Python package removes its environment and command, not the separately copied skill. Inspect and remove only the reported skill directory if that copy is no longer wanted. |
+| Removal | `codex plugin remove` removes the plugin engine and skill together. Removing the local marketplace removes its configuration entry. Codex 0.147.0 left one empty marketplace cache parent, which the smoke test removes only after proving it is empty and test-owned. | Uninstalling the Python package removes its environment and command, not the separately copied skill or a project-owned synchronized block. Inspect and remove only the reported skill directory and/or exact marked project block if no longer wanted. |
 
 Both routes leave analyzed repositories alone during package/plugin removal.
 `glossabet-out/glossary.json` is human-governed project state, derived reports
@@ -106,8 +106,16 @@ The first command owns the Python environment and `glossabet` executable. The
 second command writes only the canonical `SKILL.md` at the reported Codex
 location (or the explicit destination). The isolated wheel smoke creates a
 fresh virtual environment, installs the wheel without an index or dependency,
-uses the CLI and installed skill, uninstalls the package, and proves the
-import and command are gone while the separately installed skill remains.
+uses the CLI and installed skill, exercises an idempotent `sync-context` plus
+drift inspection against a temporary repository, uninstalls the package, and
+proves the import and command are gone while the separately installed skill
+and project block remain.
+
+`glossabet install` never invokes `sync-context`. The latter is a separate
+human-authorized project write. It refuses target symlinks, non-files,
+oversized/non-UTF-8 files, and ambiguous markers; it preserves surrounding
+bytes and requires `--force` to replace an integrity-mismatched but
+structurally valid managed body.
 
 The Claude Code destination exposed by `glossabet install --agent claude` is
 still experimental: path selection and safe copying are tested, but no Claude

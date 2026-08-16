@@ -39,6 +39,16 @@ def test_install_help_states_the_default_agent(capsys):
     assert "--force" in output
 
 
+def test_sync_context_help_names_the_exact_default_target(capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(["sync-context", "--help"])
+    assert exc.value.code == 0
+    output = capsys.readouterr().out
+    assert "AGENTS.md for Codex (default)" in output
+    assert "CLAUDE.md for Claude" in output
+    assert "--force" in output
+
+
 def test_repository_control_sequences_are_rendered_visibly(capsys):
     hostile_path = (
         "missing\nforged\t\r\x1b]8;;https://example.invalid\x07\u202ename"

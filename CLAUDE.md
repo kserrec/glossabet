@@ -73,6 +73,9 @@ glossabet install               # install canonical skill for Codex (~/.agents/s
 glossabet install --agent claude # install for Claude Code (~/.claude/skills)
 glossabet scan <repo>           # writes <repo>/glossabet-out/evidence.json
 glossabet analyze <repo>        # scan + terminology report (register, overlaps)
+glossabet brief <repo>          # bounded read-only canonical vocabulary
+glossabet sync-context <repo>   # explicit managed block in root AGENTS.md
+glossabet sync-context <repo> --agent claude # explicit root CLAUDE.md target
 glossabet show <repo>           # display the current glossary
 glossabet drift <repo>          # live vocabulary vs canonical glossary
 glossabet validate <repo>       # reconcile glossary vs evidence + graph

@@ -3,9 +3,10 @@
 Glossabet 0.1.0 is locally packageable, but it is **not release-ready and is
 not published to PyPI**. The deterministic, blinded-reviewer, and Phase 28.1
 artifact/safety gates pass, and Phase 28.2 proves exact-artifact session-start
-delivery. Phase 28.3 explicit context sync and Kyle's owner self-testing pause
-remain before outside trusted-alpha evidence; the exact-artifact Phase 23 gate
-comes after that evidence. Phase 21 records the Glossabet decision and a
+delivery. Phase 28.3's explicit managed-context implementation and final
+exact-artifact gates also pass. Kyle's owner self-testing pause remains before
+outside trusted-alpha evidence; the exact-artifact Phase 23 gate comes after
+that evidence. Phase 21 records the Glossabet decision and a
 working local Codex plugin lifecycle in `NAME-CLEARANCE.md` and
 `DISTRIBUTION.md`. The source repository remains public and was renamed with
 explicit authorization to <https://github.com/kserrec/glossabet>; its
@@ -36,18 +37,26 @@ require his explicit authorization.
   local Codex 0.147.0 Linux probe installed 0.1.0, ran the configured hook and
   `inspect`, updated to a synthetic 0.1.1, reran both boundaries, and removed
   its plugin and marketplace state.
-- `evaluation/agent-history.json` retains all eight authorized Phase 28.1–28.2
-  attempts instead of selecting a green run: six procedural passes and two
-  failures overall, plugin preflight four of five, plugin scenarios in all four
-  applicable completed batches, and the missing-CLI boundary six of seven. All
-  eight safety records show no canary exposure, unexpected repository write,
-  or post-failure `inspect`, plus verified cleanup. Three raw results remain;
-  five older entries are explicitly labelled as weaker session records because
+- The standalone wheel exposes the explicit `sync-context` fallback for hosts
+  without a trusted hook. It can modify only root `AGENTS.md` or `CLAUDE.md`,
+  preserves surrounding instructions, and is not invoked by installation,
+  hooks, analysis, or glossary finalization. Drift and validation flag managed
+  block staleness/edits read-only.
+- `evaluation/agent-history.json` retains all eleven Phase 28.1–28.3 attempts,
+  including one unapproved duplicate, instead of selecting only green runs:
+  eight procedural passes and three failures overall, plugin preflight seven
+  of eight, plugin scenarios in all seven applicable completed batches, and
+  the missing-CLI boundary eight of ten. All eleven safety records show no
+  canary exposure, unexpected repository write, or post-failure `inspect`,
+  plus verified cleanup. Six raw results remain; five older entries are
+  explicitly labelled as weaker session records because
   the earlier harness overwrote its single output path. Both Phase 28.2
   12-scenario batches passed fresh-session hook delivery with no user mention
   of Glossabet or agent command; the replacement result binds the final
-  metadata-only rebuilt wheel. The offline gate directly smokes those current
-  bytes and requires the selected result's complete input identity to match.
+  metadata-only rebuilt wheel. The authorized Phase 28.3 retry passed 12/12
+  against the managed-context artifact after an earlier 11/12 procedural miss;
+  the offline gate directly smokes those current bytes and requires the
+  selected result's complete input identity to match.
   Agent-command reliability remains a reported small sample. Future runs use
   unique raw paths and append their outcomes. The deterministic seven-case
   evaluation and separate blinded Codex reviewer also pass their recorded

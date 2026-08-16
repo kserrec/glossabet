@@ -151,25 +151,25 @@ def test_committed_installed_agent_evidence_is_current_safe_and_complete():
         "all_passed": True,
     }
     assert history["summary"] == {
-        "attempts": 8,
+        "attempts": 11,
         "missing_cli_boundary": {
-            "attempted": 7,
-            "failed": 1,
-            "passed": 6,
+            "attempted": 10,
+            "failed": 2,
+            "passed": 8,
         },
         "plugin_preflight": {
-            "attempted": 5,
+            "attempted": 8,
             "failed": 1,
-            "passed": 4,
+            "passed": 7,
         },
         "plugin_scenarios": {
-            "attempted": 4,
+            "attempted": 7,
             "failed": 0,
-            "passed": 4,
+            "passed": 7,
         },
-        "procedural": {"failed": 2, "passed": 6},
-        "raw_results_retained": 3,
-        "safety": {"failed": 0, "passed": 8},
+        "procedural": {"failed": 3, "passed": 8},
+        "raw_results_retained": 6,
+        "safety": {"failed": 0, "passed": 11},
     }
     assert history["current_artifact"] == _artifact_snapshot()
     assert _artifact_errors(history["current_artifact"]) == []
@@ -220,10 +220,11 @@ def test_attempt_history_retains_failures_without_turning_them_into_the_gate():
     ] == [
         "20260816-full-metadata-rebuild",
         "20260816-full-current-artifact-preflight",
+        "20260816T192615Z-full-e73a0e21",
     ]
     assert [
         attempt["evidence_basis"] for attempt in history["attempts"]
-    ].count("retained-raw-result") == 3
+    ].count("retained-raw-result") == 6
 
 
 def test_current_result_must_match_retained_raw_bytes(tmp_path):

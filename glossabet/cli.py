@@ -82,6 +82,27 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_repository_path(brief)
 
+    sync_context = sub.add_parser(
+        "sync-context",
+        help="explicitly sync canonical vocabulary into a host instruction file",
+        description=(
+            "Explicitly sync one managed canonical-vocabulary block into the "
+            "selected repository-root host instruction file."
+        ),
+    )
+    _add_repository_path(sync_context)
+    sync_context.add_argument(
+        "--agent",
+        choices=("codex", "claude"),
+        default="codex",
+        help="host file to update: AGENTS.md for Codex (default), CLAUDE.md for Claude",
+    )
+    sync_context.add_argument(
+        "--force",
+        action="store_true",
+        help="replace edited content in a structurally valid managed block",
+    )
+
     show = sub.add_parser("show", help="display the current glossary")
     _add_repository_path(show)
 
@@ -158,6 +179,11 @@ def _run(argv: list[str] | None) -> int:
         from glossabet.brief import brief_command
 
         return brief_command(args.path)
+
+    if args.command == "sync-context":
+        from glossabet.context_sync import sync_context_command
+
+        return sync_context_command(args.path, args.agent, force=args.force)
 
     if args.command == "show":
         from glossabet.glossary import show_command

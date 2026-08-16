@@ -50,6 +50,15 @@ If the brief reports incomplete coverage, do not infer or reconstruct omitted
 terms. When this skill is explicitly invoked, the brief is not a substitute for
 Step 0: run `inspect` and follow the complete naming protocol.
 
+`glossabet sync-context` is a separate persistent project write for hosts
+without a trusted lifecycle hook. Never run it merely because a glossary was
+finalized, because this skill was invoked, or because a host file exists. Run
+it only after the human explicitly asks to persist Glossabet vocabulary and
+the intended target is clear: Codex writes one managed block in root
+`AGENTS.md`; `--agent claude` selects root `CLAUDE.md`. An edited managed body
+also needs separate explicit approval before `--force`; never force malformed
+or ambiguous markers.
+
 ## Step 0 — Ground through the engine boundary
 
 The matching Glossabet 0.1.0 engine is required for this skill. Resolve the
