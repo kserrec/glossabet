@@ -45,6 +45,8 @@ MODULE_CONTEXT_SAMPLE = 5
 MODULE_CONTEXT_ANALYSIS_CAP = 30
 REGISTER_AFFIX_CAP = 8
 LAYER_CAP = 10
+
+
 def _register(
     identifier_counts: Counter,
     doc_term_counts: Counter,
@@ -69,7 +71,7 @@ def _register(
             suffixes[tokens[-1]] += 1
             prefixes[tokens[0]] += 1
 
-    for name, code_presence in identifier_counts.items():
+    for name, code_count in identifier_counts.items():
         tokens = tokenize_identifier(name)
         if not tokens:
             excluded_by_reason["no_lexical_tokens"] += 1
@@ -100,11 +102,11 @@ def _register(
         # A multi-token flat form (for example a language-specific hyphenated
         # name) uses the strongest constituent document count rather than the
         # sum, so one prose occurrence is not multiplied by token count.
-        doc_presence = max(
+        doc_count = max(
             (doc_term_counts.get(token, 0) for token in set(tokens)),
             default=0,
         )
-        if doc_presence > code_presence:
+        if doc_count > code_count:
             excluded_by_reason["prose_dominated_flat"] += 1
             continue
 

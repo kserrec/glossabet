@@ -144,7 +144,7 @@ def _coverage_line(
     )
 
 
-def _build_digest(glossary: dict, state_line: str) -> str:
+def _render_brief(glossary: dict, state_line: str) -> str:
     """Build one bounded vocabulary projection with a caller-owned stamp."""
     canonical = sorted(
         (
@@ -212,7 +212,7 @@ def _build_digest(glossary: dict, state_line: str) -> str:
 
 def build_brief(glossary: dict, git_stamp: dict) -> str:
     """Build deterministic ambient text from one already validated glossary."""
-    return _build_digest(
+    return _render_brief(
         glossary,
         f"git: head={_git_value(git_stamp.get('head'))}; "
         f"dirty={_git_value(git_stamp.get('dirty'))}\n",
@@ -227,7 +227,7 @@ def build_managed_brief(glossary: dict) -> str:
     is therefore the semantic glossary digest, which is also repeated in the
     managed-block metadata.
     """
-    return _build_digest(
+    return _render_brief(
         glossary,
         "sync: semantic glossary snapshot; refresh with glossabet sync-context\n",
     )

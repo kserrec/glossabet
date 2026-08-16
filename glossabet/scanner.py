@@ -88,7 +88,7 @@ def is_sensitive(name: str) -> bool:
     return any(p.search(lower) for p in _SENSITIVE_RES)
 
 
-def _escapes(full: str, root: Path) -> bool:
+def _resolves_outside_root(full: str, root: Path) -> bool:
     """True if the path's real target lies outside the repo root."""
     try:
         Path(os.path.realpath(full)).relative_to(root)
@@ -344,7 +344,7 @@ def walk_repository(root: Path, config: RepositoryConfig) -> WalkResult:
                 # A symlink resolving outside the repo is not repo content:
                 # reading it would ingest arbitrary host files into evidence
                 # (os.walk's followlinks=False guards dirs, not files).
-                if os.path.islink(full) and _escapes(full, root):
+                if os.path.islink(full) and _resolves_outside_root(full, root):
                     result.skipped_symlinks.append(rel)
                     continue
                 try:
@@ -398,7 +398,7 @@ def _read_root_manifest(
         | set(walk.skipped_vendored)
     ):
         return None
-    if path.is_symlink() and _escapes(str(path), root):
+    if path.is_symlink() and _resolves_outside_root(str(path), root):
         if rel not in walk.skipped_symlinks:
             walk.skipped_symlinks.append(rel)
         return None

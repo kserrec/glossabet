@@ -36,9 +36,9 @@ _DOCUMENT_SUFFIXES = frozenset({".md", ".rst", ".txt", ".pdf"})
 _GLOSSARY_OUTPUT_DIRS = frozenset({"glossabet-out", "glossarize-out"})
 
 
-def _first(d: dict, keys, types=None):
+def _first_value(mapping: dict, keys, types=None):
     for key in keys:
-        value = d.get(key)
+        value = mapping.get(key)
         if value is not None and (types is None or isinstance(value, types)):
             return value
     return None
@@ -117,13 +117,13 @@ def _normalized_source(value: str) -> str:
 
 
 def _provenance(node: dict) -> str:
-    source = _first(
+    source = _first_value(
         node, ("source_file", "source", "file", "path", "origin"), str
     ) or ""
     normalized_source = _normalized_source(source)
     source_parts = PurePosixPath(normalized_source).parts
     ntype = unicodedata.normalize(
-        "NFKC", _first(node, ("file_type", "type", "kind"), str) or ""
+        "NFKC", _first_value(node, ("file_type", "type", "kind"), str) or ""
     ).strip().casefold()
     if (
         ntype in _GLOSSARY_TYPES
@@ -210,15 +210,15 @@ def _normalize_nodes(graph: dict) -> dict[str, dict]:
     for raw in graph["nodes"]:
         if not isinstance(raw, dict):
             continue
-        node_id = _first(raw, ("id", "name"))
+        node_id = _first_value(raw, ("id", "name"))
         if node_id is None:
             continue
         node_id = str(node_id)
         nodes[node_id] = {
-            "label": str(_first(raw, ("label", "name", "id"))),
+            "label": str(_first_value(raw, ("label", "name", "id"))),
             "prov": _provenance(raw),
             "community": raw.get("community"),
-            "community_name": _first(raw, ("community_name",), str),
+            "community_name": _first_value(raw, ("community_name",), str),
         }
     return nodes
 
@@ -230,12 +230,12 @@ def _edge_summary(
 ) -> tuple[Counter, int]:
     degree: Counter = Counter()
     edge_count = 0
-    links = _first(graph, ("links", "edges"), list) or []
+    links = _first_value(graph, ("links", "edges"), list) or []
     for edge in links:
         if not isinstance(edge, dict):
             continue
-        source = _first(edge, ("source", "from", "a"))
-        target = _first(edge, ("target", "to", "b"))
+        source = _first_value(edge, ("source", "from", "a"))
+        target = _first_value(edge, ("target", "to", "b"))
         if source is None or target is None:
             continue
         source, target = str(source), str(target)
@@ -262,7 +262,7 @@ def _extract_groups(
         for index, community in enumerate(communities):
             if not isinstance(community, dict):
                 continue
-            group_id_value = _first(community, ("id", "label", "name"))
+            group_id_value = _first_value(community, ("id", "label", "name"))
             # Zero is a valid Graphify community id, so only None falls back.
             group_id = str(
                 index if group_id_value is None else group_id_value
@@ -280,7 +280,7 @@ def _extract_groups(
             cohesion = community.get("cohesion")
             groups[group_id] = {
                 "label": str(
-                    _first(community, ("label", "name"))
+                    _first_value(community, ("label", "name"))
                     or f"community {group_id}"
                 ),
                 "cohesion": (

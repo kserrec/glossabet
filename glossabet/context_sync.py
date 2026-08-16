@@ -86,7 +86,7 @@ def _render_block(glossary: dict, *, newline: str = "\n") -> str:
     return block if newline == "\n" else block.replace("\n", newline)
 
 
-def _parse_text(text: str, glossary: dict) -> _Analysis:
+def _analyze_managed_block(text: str, glossary: dict) -> _Analysis:
     if _MARKER_PREFIX not in text:
         return _Analysis("absent", "no Glossabet managed context block")
     if text.count(START_MARKER) != 1 or text.count(END_MARKER) != 1:
@@ -289,7 +289,7 @@ def sync_context(
         except UnicodeError as exc:
             raise ContextSyncError(f"{filename} is not valid UTF-8") from exc
 
-    analysis = _parse_text(existing, glossary)
+    analysis = _analyze_managed_block(existing, glossary)
     newline = _detect_newline(existing)
     block = _render_block(glossary, newline=newline)
 
@@ -341,7 +341,7 @@ def _inspect_target(path: Path, glossary: dict) -> dict:
         except UnicodeError:
             analysis = _Analysis("uninspectable", "host-context file is not valid UTF-8")
         else:
-            analysis = _parse_text(text, glossary)
+            analysis = _analyze_managed_block(text, glossary)
     return {"path": path.name, "status": analysis.status, "detail": analysis.detail}
 
 
