@@ -324,7 +324,9 @@ Glossabet program or its output artifacts.
   `git rev-parse`/`git status` call overrides `core.fsmonitor` and
   `core.hooksPath`, and additionally clears every content-filter driver the
   repository defines (`filter.<name>.clean/smudge/process`, enumerated from
-  the repository's own config and overridden per name), because `git status`
+  the repository's *effective* config with `include.path`/`includeIf`
+  directives resolved exactly as `git status` resolves them — not just the
+  literal `.git/config` — and overridden per name), because `git status`
   runs those commands during content conversion of a modified tracked file.
   The `git` executable is resolved to an absolute path so a repository that
   ships `git.exe` cannot be run through Windows's current-directory search.
@@ -447,9 +449,14 @@ the opt-in developer/release operations that do use the network.
   spelling is capped at `MAX_IDENTIFIER_TOKENS` (64); any file with a longer
   spelling is counted in `skipped.oversized_identifiers` and its excess
   tokens do not enter pattern/co-occurrence analysis. Owner-scope overlap in
-  drift is likewise bounded by a comparison budget and reports its section
-  partial when reached. Real code never approaches either bound; both exist
-  to keep a hostile glossary or source file from exhausting CPU/memory.
+  drift is likewise bounded by a comparison budget charged the actual
+  path-prefix-pair work each overlap performs (not the owner count, which
+  would let one concept carrying tens of thousands of prefixes hide a
+  hundred-million-comparison overlap behind a charge of one), and reports its
+  section partial when reached. Import extraction is anchored so its
+  line-oriented patterns cannot backtrack across blank lines into quadratic
+  work. Real code never approaches either bound; both exist to keep a hostile
+  glossary or source file from exhausting CPU/memory.
 - A symlink whose own name is ordinary but whose in-repository target has a
   sensitive name (for example `notes.py -> .env`) is classified sensitive by
   the resolved target and excluded, so it cannot launder secret contents into
@@ -464,7 +471,15 @@ the opt-in developer/release operations that do use the network.
 - **The evaluation harness (`evaluation/run.py --fetch`) rejects non-`https://`
   corpus URLs and disables Git's `ext::` remote helper**, because an
   attacker-authored corpus entry could otherwise run a shell at fetch time on
-  a maintainer's machine. This is maintainer tooling, not shipped code.
+  a maintainer's machine. The manifest's `checkout_dir` and local-source
+  `path` are additionally required to be safe relative paths (no absolute
+  path, no `..`, no drive letter) and the resolved checkout is asserted to
+  stay inside its base, so a poisoned `corpus.json` cannot create or overwrite
+  files outside the temporary checkout root; each `commit` must be a 40- or
+  64-character hex object name and is passed after a `--` guard so a value
+  beginning with `-` cannot be read as a git option. The three committed
+  result artifacts are also size-capped before parsing. This is maintainer
+  tooling, not shipped code.
 - **Accepted risk — build backend is version-pinned, not hash-pinned.** The
   release build resolves `hatchling>=1.32,<1.33` from PyPI at build time in
   the one job that holds PyPI upload permission; a compromised hatchling patch

@@ -555,3 +555,54 @@ def test_parallel_term_scope_checks_are_bounded_against_a_hostile_glossary(
     start = time.monotonic()
     drift = build_drift(evidence, glossary)
     assert time.monotonic() - start < 15, "parallel-term scope work was unbounded"
+
+
+def test_parallel_term_budget_charges_prefix_pair_work_not_owner_count(tmp_path):
+    # The prior budget charged one unit per owner scope regardless of how many
+    # path-prefix pairs the overlap actually compares, so a single concept
+    # carrying tens of thousands of prefixes hid a 100M+ comparison behind a
+    # charge of 1 and the ceiling never tripped (~279s CPU within the 50k-prefix
+    # ceiling). The budget must be charged the real prefix-pair product: two
+    # concepts of 6000 disjoint prefixes each, made parallel by an alias, must
+    # trip the budget fast and report the section partial.
+    import time
+
+    # Shared token contexts (record/scheduler/start) make "run" and "execution"
+    # parallel-term synonym candidates, so _parallel_terms actually reaches the
+    # scope-overlap check.
+    (tmp_path / "runs.py").write_text(
+        "run_record = 1\nrun_scheduler = 2\nstart_run = 3\nrun_record_id = 4\n"
+    )
+    (tmp_path / "exec_new.py").write_text(
+        "execution_record = 1\nexecution_scheduler = 2\nstart_execution = 3\n"
+    )
+    n = 6000
+    concepts = [
+        {
+            "id": "run",
+            "term": "run",
+            "definition": "d",
+            "status": "canonical",
+            "scope": {"path_prefixes": [f"a/{i:05d}" for i in range(n)]},
+        },
+        {
+            "id": "other",
+            "term": "other",
+            "definition": "d",
+            "status": "canonical",
+            "scope": {"path_prefixes": [f"b/{i:05d}" for i in range(n)]},
+            "aliases": [{"term": "execution", "status": "proposed"}],
+        },
+    ]
+    glossary = {"schema_version": 1, "concepts": concepts}
+
+    evidence = build_evidence(tmp_path)
+    start = time.monotonic()
+    drift = build_drift(evidence, glossary)
+    elapsed = time.monotonic() - start
+    assert elapsed < 5, f"prefix-pair work was unbounded ({elapsed:.1f}s)"
+    parallel = drift["coverage"]["collections"]["parallel_terms"]
+    assert not parallel["complete"], "parallel-term section should be partial"
+    assert any(
+        "comparison budget" in reason for reason in parallel["reasons"]
+    ), parallel["reasons"]

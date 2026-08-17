@@ -119,3 +119,23 @@ def test_reviewer_verifier_checks_input_currency_only_at_the_release_gate(
         "identity or blinding metadata is malformed" in error
         for error in verify_results(malformed_path, PACKET)
     )
+
+
+def test_bounded_text_redacts_repo_root_and_home(tmp_path):
+    # The committed reviewer-results.json must not carry the maintainer's repo
+    # root or home directory even when the reviewer echoes an absolute path the
+    # workspace replacement never anticipated (mirrors agent_eval redaction).
+    from pathlib import Path
+
+    from evaluation.review import PROJECT_ROOT, _bounded_text
+
+    workspace = tmp_path / "review-workspace"
+    text = (
+        f"ran {PROJECT_ROOT}/scripts/x and {Path.home()}/.local/bin/codex "
+        f"in {workspace}/pkg"
+    )
+    out = _bounded_text(text, workspace, limit=10_000)
+    assert str(PROJECT_ROOT) not in out
+    assert str(Path.home()) not in out
+    assert "<REPO>" in out and "<HOME>" in out
+    assert "<REVIEW_WORKSPACE>" in out

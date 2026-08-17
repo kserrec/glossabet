@@ -71,8 +71,9 @@ class Limits:
 # execution. Command-line -c beats repo-local config. Content filter drivers
 # (filter.<name>.clean/smudge/process) are a third such surface — `git status`
 # runs them during content conversion — but their names are attacker-chosen,
-# so they are enumerated from the repository's own config and cleared
-# per-name in _filter_driver_overrides.
+# so they are enumerated from the repository's effective config (with
+# include.path/includeIf directives resolved, exactly as `git status` sees
+# them) and cleared per-name in _filter_driver_overrides.
 _GIT_SAFE_CONFIG = ("-c", "core.fsmonitor=", "-c", "core.hooksPath=/dev/null")
 
 
@@ -107,9 +108,15 @@ def _filter_driver_overrides(git_exe: str, root: Path) -> tuple[str, ...]:
     process command during content conversion. Reading config runs no filter.
     """
     try:
+        # Enumerate the way `git status` will resolve config: WITHOUT --local,
+        # so `include.path`/`includeIf` directives are followed. A hostile repo
+        # can define its filter driver in an included file that --local never
+        # reads, then trip it during status content conversion. Reading config
+        # runs no filter. Clearing the user's own global/system filter names as
+        # a side effect is harmless: this probe never wants any filter to run.
         proc = subprocess.run(
             [git_exe, *_GIT_SAFE_CONFIG, "-C", str(root),
-             "config", "--local", "--name-only", "--get-regexp", r"^filter\."],
+             "config", "--name-only", "--get-regexp", r"^filter\."],
             capture_output=True, text=True, timeout=30,
             env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
         )

@@ -130,7 +130,12 @@ def test_distribution_content_guard_catches_local_home_paths():
     # ships in the sdist.
     posix = b"trace " + b"/home/" + b"alice/Projects/x"
     windows = b"C:" + b"\\Users\\" + b"dev\\proj"
+    root_home = b"trace " + b"/roo" + b"t/.local/bin/glossabet"
     assert _LOCAL_PATH_RE.search(posix)
     assert _LOCAL_PATH_RE.search(windows)
+    # the superuser home directory (root's) must also be caught
+    assert _LOCAL_PATH_RE.search(root_home)
+    # ...but an ordinary nested directory of that name must not false-positive
+    assert not _LOCAL_PATH_RE.search(b"/usr/" + b"roo" + b"t/share")
     # the guard's own pattern source must not be a self-match
     assert not _LOCAL_PATH_RE.search(b"(?:/home/|/Users/)[literal]")

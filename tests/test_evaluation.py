@@ -377,3 +377,76 @@ def test_manifest_rejects_non_https_corpus_url(tmp_path):
         assert False, "an ext:: corpus url was accepted"
     except EvaluationError as exc:
         assert "url must be an https" in str(exc)
+
+
+def _poison_first_source(overrides: dict, drop: tuple[str, ...] = ()) -> dict:
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    for source in manifest["sources"]:
+        if source.get("kind") != "local":
+            for key in drop:
+                source.pop(key, None)
+            source.update(overrides)
+            break
+    return manifest
+
+
+def test_manifest_rejects_escaping_checkout_dir(tmp_path):
+    # corpus.json is contributor-editable; a `..`/absolute checkout_dir joined
+    # onto the temp checkout root writes attacker files outside the sandbox.
+    from evaluation.run import EvaluationError, _read_manifest
+
+    for bad in ("../../pwn", "/tmp/pwn", "a/../../pwn"):
+        poisoned = _poison_first_source({"checkout_dir": bad})
+        path = tmp_path / "corpus.json"
+        path.write_text(json.dumps(poisoned), encoding="utf-8")
+        try:
+            _read_manifest(path)
+            assert False, f"escaping checkout_dir accepted: {bad}"
+        except EvaluationError as exc:
+            assert "checkout_dir" in str(exc)
+
+
+def test_manifest_rejects_escaping_local_path(tmp_path):
+    from evaluation.run import EvaluationError, _read_manifest
+
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    manifest["sources"] = [{
+        "id": "evil", "kind": "local", "path": "../../../etc",
+        "corpus_sha256": "0" * 64, "corpus_files": 1,
+        "expectations": {"register": {}},
+    }]
+    path = tmp_path / "corpus.json"
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    try:
+        _read_manifest(path)
+        assert False, "escaping local path accepted"
+    except EvaluationError as exc:
+        assert "path must be a safe relative path" in str(exc)
+
+
+def test_manifest_rejects_non_hex_commit(tmp_path):
+    # A commit beginning with `-` is parsed by git as an option in a refspec
+    # slot; require a 40/64-char hex object name.
+    from evaluation.run import EvaluationError, _read_manifest
+
+    poisoned = _poison_first_source({"commit": "--upload-pack=touch /tmp/pwn"})
+    path = tmp_path / "corpus.json"
+    path.write_text(json.dumps(poisoned), encoding="utf-8")
+    try:
+        _read_manifest(path)
+        assert False, "a non-hex commit was accepted"
+    except EvaluationError as exc:
+        assert "commit must be" in str(exc)
+
+
+def test_manifest_rejects_oversized_file(tmp_path):
+    from evaluation.run import EvaluationError, _read_manifest
+    from glossabet.artifacts import MAX_JSON_BYTES
+
+    path = tmp_path / "corpus.json"
+    path.write_bytes(b'{"x":' + b" " * (MAX_JSON_BYTES + 10) + b"1}")
+    try:
+        _read_manifest(path)
+        assert False, "an oversized manifest was accepted"
+    except EvaluationError as exc:
+        assert "exceeds" in str(exc)

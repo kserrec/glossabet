@@ -2,12 +2,35 @@
 must resolve across languages, external deps must separate, the lossy tag
 must be present, and every nomination must carry its reasons."""
 
+import time
+
 from glossabet.evidence import build_evidence
 from glossabet.importance import (
     NOMINATION_CANONICAL_NAME,
     NOMINATION_DISAMBIGUATION,
 )
 from glossabet.imports import extract_imports
+
+
+def test_import_extraction_is_linear_on_blank_line_bomb():
+    # The `^\s*<keyword>` patterns let `\s*` span newlines under re.MULTILINE,
+    # so a file of only blank lines re-scanned the tail at every line start —
+    # clean O(n^2) that pinned a core for hours within the 2 MB file cap. The
+    # anchors must not cross line boundaries. A 500k-newline file (well under
+    # the cap) must finish effectively instantly for every language.
+    blank = "\n" * 500_000
+    for language in ("python", "go", "rust", "ocaml", "java", "kotlin", "ruby"):
+        start = time.perf_counter()
+        assert extract_imports(blank, language) == []
+        elapsed = time.perf_counter() - start
+        assert elapsed < 1.0, f"{language}: {elapsed:.2f}s — quadratic backtracking"
+
+
+def test_import_extraction_still_matches_indented_statements():
+    # The anchor fix must keep matching leading-whitespace import lines.
+    assert extract_imports("    import os\n\tfrom a.b import c\n", "python") == [
+        "os", "a.b",
+    ]
 
 
 def test_extract_imports_per_language():

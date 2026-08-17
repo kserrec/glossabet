@@ -37,9 +37,9 @@ DOC_EXTENSIONS = {".md", ".rst", ".txt", ".adoc"}
 _SENSITIVE_RES = [
     re.compile(p) for p in (
         r"^\.env$", r"\.env$", r"^\.env\.", r"\.env\.",
-        r"\.(pem|key|p12|pfx|jks|keystore|der)$",
+        r"\.(pem|key|p12|pfx|jks|keystore|der|p8|ppk|kdbx|asc|gpg|pgp)$",
         r"^id_(rsa|dsa|ecdsa|ed25519)$",
-        r"^\.(netrc|npmrc|pypirc|htpasswd)$",
+        r"^\.(netrc|npmrc|pypirc|htpasswd|dockercfg)$",
         r"secret", r"credential",
     )
 ]

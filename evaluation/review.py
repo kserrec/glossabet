@@ -22,6 +22,7 @@ from evaluation.run import (  # noqa: E402
     EvaluationError,
     verify_results as verify_engine_results,
 )
+from glossabet.artifacts import MAX_JSON_BYTES  # noqa: E402
 
 PACKET_SCHEMA_VERSION = 1
 REVIEW_SCHEMA_VERSION = 2
@@ -50,6 +51,10 @@ TRACE_LIMITS = {
 
 def _read_json(path: Path, label: str) -> dict:
     try:
+        if path.stat().st_size > MAX_JSON_BYTES:
+            raise EvaluationError(
+                f"{label} exceeds {MAX_JSON_BYTES} bytes — refusing to load"
+            )
         value = json.loads(path.read_bytes())
     except (OSError, ValueError, RecursionError) as exc:
         raise EvaluationError(f"{label} is unreadable: {exc}") from exc
@@ -96,6 +101,13 @@ def _codex_version(codex: str) -> str:
 
 def _bounded_text(text: str, workspace: Path, limit: int) -> str:
     normalized = text.replace(str(workspace), "<REVIEW_WORKSPACE>")
+    # Mirror agent_eval._normalize_text: the reviewer may echo absolute
+    # interpreter/shell paths the workspace replacement never anticipated, so
+    # scrub the repo root and home directory too, keeping the committed public
+    # reviewer-results.json from leaking the maintainer's username or layout.
+    # Repo root first (more specific than home).
+    normalized = normalized.replace(str(PROJECT_ROOT), "<REPO>")
+    normalized = normalized.replace(str(Path.home()), "<HOME>")
     if len(normalized) <= limit:
         return normalized
     return normalized[:limit] + "…"

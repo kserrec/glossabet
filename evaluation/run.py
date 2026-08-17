@@ -25,6 +25,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from glossabet import __version__  # noqa: E402
+from glossabet.artifacts import MAX_JSON_BYTES  # noqa: E402
 from glossabet.cache import CACHE_ROOT_ENV  # noqa: E402
 from glossabet.config import CONFIG_FILE  # noqa: E402
 from glossabet.drift import (  # noqa: E402
@@ -124,6 +125,32 @@ def _hex_digest(value: object) -> bool:
     return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
 
 
+def _is_safe_relative(value: object) -> bool:
+    """A manifest-supplied path that cannot escape the base it is joined onto.
+
+    `corpus.json` is contributor-editable (a pull request adds a repo to the
+    eval corpus), so `checkout_dir`/`path` are attacker-controlled. Joining an
+    absolute path or one containing `..` onto the temp checkout root (or the
+    project root) escapes it and lets a poisoned manifest create/overwrite
+    files anywhere the maintainer can write. Require a non-empty relative path
+    with no parent traversal, drive letters, or NUL.
+    """
+    if not isinstance(value, str) or not value or "\x00" in value:
+        return False
+    candidate = Path(value)
+    return not (
+        candidate.is_absolute()
+        or ".." in candidate.parts
+        or (len(value) >= 2 and value[1] == ":")  # Windows drive, e.g. C:\
+    )
+
+
+def _is_commit_sha(value: object) -> bool:
+    """git object name: 40 hex (SHA-1) or 64 hex (SHA-256). Rejects a value
+    starting with `-` that git would parse as an option in a refspec slot."""
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}", value) is not None
+
+
 def _digest_paths(root: Path, relative_paths: list[str]) -> str:
     """Hash path names and bytes with unambiguous framing."""
     base = root.resolve()
@@ -192,6 +219,10 @@ def _corpus_identity(root: Path, evidence: dict, *, graphify: bool = False) -> d
 
 
 def _read_manifest(path: Path) -> tuple[dict, str]:
+    if path.stat().st_size > MAX_JSON_BYTES:
+        raise EvaluationError(
+            f"{path}: manifest exceeds {MAX_JSON_BYTES} bytes — refusing to load"
+        )
     raw = path.read_bytes()
     try:
         manifest = json.loads(raw)
@@ -221,15 +252,30 @@ def _read_manifest(path: Path) -> tuple[dict, str]:
             raise EvaluationError(
                 f"{path}: {source['id']} needs a register expectation"
             )
-        url = source.get("url")
-        if source.get("kind") != "local" and (
-            not isinstance(url, str) or not url.startswith("https://")
-        ):
-            # A non-https url (e.g. `ext::sh -c ...`) reaches `git remote add`
-            # and can execute a shell at fetch time.
-            raise EvaluationError(
-                f"{path}: {source['id']} url must be an https:// URL"
-            )
+        if source.get("kind") == "local":
+            if not _is_safe_relative(source.get("path")):
+                raise EvaluationError(
+                    f"{path}: {source['id']} path must be a safe relative path"
+                )
+        else:
+            url = source.get("url")
+            if not isinstance(url, str) or not url.startswith("https://"):
+                # A non-https url (e.g. `ext::sh -c ...`) reaches
+                # `git remote add` and can execute a shell at fetch time.
+                raise EvaluationError(
+                    f"{path}: {source['id']} url must be an https:// URL"
+                )
+            if not _is_safe_relative(source.get("checkout_dir")):
+                # Joined onto the temp checkout root; `..`/absolute escapes it.
+                raise EvaluationError(
+                    f"{path}: {source['id']} checkout_dir must be a safe "
+                    "relative path"
+                )
+            if not _is_commit_sha(source.get("commit")):
+                raise EvaluationError(
+                    f"{path}: {source['id']} commit must be a 40- or 64-char "
+                    "hex object name"
+                )
     if not isinstance(manifest.get("self_register"), dict):
         raise EvaluationError(f"{path}: self_register must be an object")
     if not isinstance(manifest.get("self_nominations"), dict):
@@ -260,12 +306,20 @@ def _git(args: list[str], cwd: Path, timeout: int = 120) -> str:
 
 def _fetch(source: dict, repositories_root: Path) -> Path:
     destination = repositories_root / source["checkout_dir"]
+    # Defense in depth: _read_manifest already rejects unsafe checkout_dir, but
+    # never let a resolved destination escape its base even if that changes.
+    try:
+        destination.resolve().relative_to(repositories_root.resolve())
+    except ValueError as exc:
+        raise EvaluationError(
+            f"{source['id']}: checkout_dir escapes the checkout root"
+        ) from exc
     if destination.exists():
         raise EvaluationError(f"refusing to replace existing {destination}")
     destination.mkdir(parents=True)
     _git(["init", "-q"], destination)
     _git(["remote", "add", "origin", "--", source["url"]], destination)
-    _git(["fetch", "--depth", "1", "origin", source["commit"]], destination)
+    _git(["fetch", "--depth", "1", "origin", "--", source["commit"]], destination)
     _git(["checkout", "--detach", "--force", "FETCH_HEAD"], destination)
     return destination
 
@@ -273,9 +327,25 @@ def _fetch(source: dict, repositories_root: Path) -> Path:
 def _source_root(source: dict, repositories_root: Path | None,
                  fetch: bool) -> Path:
     if source.get("kind") == "local":
-        return (PROJECT_ROOT / source["path"]).resolve()
+        resolved = (PROJECT_ROOT / source["path"]).resolve()
+        try:
+            resolved.relative_to(PROJECT_ROOT.resolve())
+        except ValueError as exc:
+            raise EvaluationError(
+                f"{source['id']}: local path escapes the project root"
+            ) from exc
+        return resolved
     if repositories_root is None:
         raise EvaluationError("external sources require --fetch or --repositories-root")
+    if not fetch:
+        # --repositories-root branch: same escape guard as _fetch.
+        pre = (repositories_root / source["checkout_dir"]).resolve()
+        try:
+            pre.relative_to(repositories_root.resolve())
+        except ValueError as exc:
+            raise EvaluationError(
+                f"{source['id']}: checkout_dir escapes the checkout root"
+            ) from exc
     root = (
         _fetch(source, repositories_root)
         if fetch else repositories_root / source["checkout_dir"]
@@ -1457,6 +1527,11 @@ def verify_results(
     corpora, not an earlier state of the repository.
     """
     try:
+        if results_path.stat().st_size > MAX_JSON_BYTES:
+            raise EvaluationError(
+                f"{results_path}: results exceed {MAX_JSON_BYTES} bytes — "
+                "refusing to load"
+            )
         results = json.loads(results_path.read_bytes())
     except (OSError, ValueError, RecursionError) as exc:
         raise EvaluationError(

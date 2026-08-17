@@ -129,6 +129,8 @@ def _dotenv_part(name: str) -> bool:
 
 def _read_json(path: Path, label: str) -> dict:
     try:
+        if path.stat().st_size > MAX_JSON_BYTES:
+            _fail(f"{label} exceeds {MAX_JSON_BYTES} bytes — refusing to load")
         value = json.loads(path.read_bytes())
     except (OSError, ValueError, RecursionError) as exc:
         _fail(f"{label} is unreadable: {exc}")

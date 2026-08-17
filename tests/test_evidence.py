@@ -44,6 +44,20 @@ def test_sensitive_files_never_enter_evidence(tmp_path):
     ]
 
 
+def test_additional_private_key_and_credential_names_are_sensitive():
+    # Private-key / credential filename conventions beyond the original set.
+    from glossabet.scanner import is_sensitive
+
+    for name in (
+        "backup.kdbx", "key.asc", "key.gpg", "key.pgp",
+        "private.p8", "server.ppk", ".dockercfg",
+        "SERVER.PEM", "Key.GPG",  # case-insensitive
+    ):
+        assert is_sensitive(name), name
+    for name in ("main.py", "README.md", "data.json"):
+        assert not is_sensitive(name), name
+
+
 def test_own_outputs_and_noise_dirs_excluded(tmp_path):
     blob = json.dumps(build_evidence(make_repo(tmp_path)))
     assert "zanzibar" not in blob  # GLOSSARY.md (contamination rule)
@@ -444,6 +458,48 @@ def test_hostile_git_filter_driver_does_not_execute_code(tmp_path):
     stamp = _git_stamp(repo)
     assert stamp["head"] is not None  # git still works
     assert not marker.exists(), "filter driver command was executed"
+
+
+def test_hostile_git_filter_driver_via_config_include_does_not_execute(tmp_path):
+    # The filter driver is defined in a file pulled in by `include.path`, not
+    # directly in .git/config. `git config --local` never resolves includes, so
+    # an enumeration that used --local missed it while `git status` (which does
+    # resolve includes) still ran it — an RCE bypass. The override enumeration
+    # must follow includes exactly as git does.
+    import subprocess as sp
+    from glossabet.evidence import _git_stamp, _filter_driver_overrides, _resolve_git
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null",
+           "GIT_CONFIG_SYSTEM": "/dev/null"}
+    sp.run(["git", "init", "-q"], cwd=repo, env=env, check=True)
+    sp.run(["git", "config", "user.email", "t@t.t"], cwd=repo, check=True)
+    sp.run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+    marker = tmp_path / "PWNED_INCLUDE"
+    include_file = repo / ".git" / "evil-include"
+    include_file.write_text(
+        "[filter \"evil\"]\n"
+        f"\tclean = sh -c 'touch {marker}; cat'\n"
+        f"\tsmudge = sh -c 'touch {marker}; cat'\n"
+    )
+    sp.run(["git", "config", "include.path", str(include_file)],
+           cwd=repo, check=True)
+    (repo / "main.py").write_text("x = 1\n")
+    (repo / ".gitattributes").write_text("* filter=evil\n")
+    sp.run(["git", "add", "-A"], cwd=repo, check=True)
+    sp.run(["git", "-c", "commit.gpgsign=false", "commit", "-qm", "i"],
+           cwd=repo, check=True)
+    os.utime(repo / "main.py", (0, 0))  # racy-old forces the re-hash path
+
+    # The include-defined driver must be enumerated for clearing...
+    overrides = _filter_driver_overrides(_resolve_git(), repo)
+    assert "-c" in overrides and any(
+        o.startswith("filter.evil.") for o in overrides
+    ), overrides
+    # ...and never executed.
+    stamp = _git_stamp(repo)
+    assert stamp["head"] is not None
+    assert not marker.exists(), "include-defined filter driver was executed"
 
 
 def test_deeply_nested_graph_json_does_not_crash(tmp_path):

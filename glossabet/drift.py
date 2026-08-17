@@ -93,6 +93,24 @@ def _known_in_scope(
     return any(scopes_overlap(scope, owner) for owner in known_scopes.get(token, []))
 
 
+def _overlap_cost(
+    scope: tuple[str, ...] | None,
+    owners: "list[tuple[str, ...] | None] | tuple[tuple[str, ...] | None, ...]",
+) -> int:
+    """Prefix-pair work `_known_in_scope` will perform for this term.
+
+    `scopes_overlap` is O(len(scope) x len(owner)) when both sides are
+    path-scoped; a repository-wide (None) side short-circuits in O(1). The
+    budget must be charged this real product, not the owner count, or a single
+    concept carrying tens of thousands of prefixes hides a 100M+ comparison
+    behind a charge of 1 and the ceiling never trips.
+    """
+    left = len(scope) if scope is not None else 1
+    return sum(
+        left * (len(owner) if owner is not None else 1) for owner in owners
+    )
+
+
 def _sampled_to_zero(occurrence: dict) -> bool:
     """Whether a zero count reflects a clipped location sample, not absence.
 
@@ -136,10 +154,11 @@ def _parallel_terms(
         for concept in canonical[canon_token]:
             scope = concept_scope(concept)
             owners = known_scopes.get(new_term, ())
-            if comparisons_remaining < len(owners):
+            cost = _overlap_cost(scope, owners)
+            if cost > comparisons_remaining:
                 budget_exhausted = True
                 break
-            comparisons_remaining -= len(owners)
+            comparisons_remaining -= cost
             if _known_in_scope(new_term, scope, known_scopes):
                 continue
             canonical_occurrence = matcher.code_term_occurrence(

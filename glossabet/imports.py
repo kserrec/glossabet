@@ -12,8 +12,8 @@ from collections import Counter
 
 _PATTERNS: dict[str, list[re.Pattern]] = {
     "python": [
-        re.compile(r"^\s*import\s+([\w.]+)", re.M),
-        re.compile(r"^\s*from\s+([\w.]+)\s+import", re.M),
+        re.compile(r"^[ \t]*import\s+([\w.]+)", re.M),
+        re.compile(r"^[ \t]*from[ \t]+([\w.]+)[ \t]+import", re.M),
     ],
     "javascript": [
         re.compile(r"""import\s+(?:[^'"]*?from\s+)?['"]([^'"]+)['"]"""),
@@ -21,27 +21,27 @@ _PATTERNS: dict[str, list[re.Pattern]] = {
         re.compile(r"""export\s+[^'"]*?from\s+['"]([^'"]+)['"]"""),
     ],
     "go": [
-        re.compile(r'^\s*import\s+(?:\w+\s+)?"([^"]+)"', re.M),
+        re.compile(r'^[ \t]*import\s+(?:\w+\s+)?"([^"]+)"', re.M),
     ],
     "rust": [
-        re.compile(r"^\s*(?:pub\s+)?use\s+([\w:]+)", re.M),
+        re.compile(r"^[ \t]*(?:pub\s+)?use\s+([\w:]+)", re.M),
     ],
     "ocaml": [
-        re.compile(r"^\s*open\s+([\w.]+)", re.M),
-        re.compile(r"^\s*include\s+([\w.]+)", re.M),
+        re.compile(r"^[ \t]*open\s+([\w.]+)", re.M),
+        re.compile(r"^[ \t]*include\s+([\w.]+)", re.M),
     ],
-    "java": [re.compile(r"^\s*import\s+(?:static\s+)?([\w.]+)", re.M)],
-    "kotlin": [re.compile(r"^\s*import\s+([\w.]+)", re.M)],
+    "java": [re.compile(r"^[ \t]*import\s+(?:static\s+)?([\w.]+)", re.M)],
+    "kotlin": [re.compile(r"^[ \t]*import\s+([\w.]+)", re.M)],
     "c": [re.compile(r'#include\s+["<]([^">]+)[">]')],
     "cpp": [re.compile(r'#include\s+["<]([^">]+)[">]')],
     "ruby": [
-        re.compile(r"""^\s*require(?:_relative)?\s+['"]([^'"]+)['"]""", re.M),
+        re.compile(r"""^[ \t]*require(?:_relative)?\s+['"]([^'"]+)['"]""", re.M),
     ],
 }
 _PATTERNS["typescript"] = _PATTERNS["javascript"]
 
 _GO_BLOCK = re.compile(r"import\s*\(([^)]*)\)", re.S)
-_GO_BLOCK_LINE = re.compile(r'^\s*(?:\w+\s+)?"([^"]+)"', re.M)
+_GO_BLOCK_LINE = re.compile(r'^[ \t]*(?:\w+\s+)?"([^"]+)"', re.M)
 
 _JS_SUFFIXES = ("", ".js", ".ts", ".tsx", ".jsx", ".mjs", ".cjs",
                 "/index.js", "/index.ts")

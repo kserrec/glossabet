@@ -118,8 +118,18 @@ def _check_names(names: list[str], label: str) -> None:
 # A published artifact must never carry a local absolute home path: those leak
 # a username and the maintainer's directory layout permanently on PyPI. The
 # username segment must be path-like (word chars), so this pattern's own
-# source text (which contains the literal "/home/") is not a match.
-_LOCAL_PATH_RE = re.compile(rb"(?:/home/|/Users/)[\w.-]+/|[A-Za-z]:\\Users\\[\w.-]+")
+# source text (which contains the literal "/home/") is not a match. The
+# superuser home directory on Linux (where a CI or container build may run)
+# has no separate username segment, so it is matched as a whole path element;
+# a negative lookbehind keeps an ordinary nested directory of that name (for
+# example "/usr/<name>/") from matching, and its spelling is split across two
+# byte-literals so this file does not flag itself when the sdist (which ships
+# scripts/) is scanned.
+_LOCAL_PATH_RE = re.compile(
+    rb"(?:/home/|/Users/)[\w.-]+/"
+    rb"|(?<![\w/.-])/roo" rb"t/"
+    rb"|[A-Za-z]:\\Users\\[\w.-]+"
+)
 
 
 def _check_no_local_paths(data: bytes, member: str, label: str) -> None:
