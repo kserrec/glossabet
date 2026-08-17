@@ -50,7 +50,7 @@ inspectable, and maintainable.
 - With Kyle's explicit authorization, renamed the public GitHub repository to
   `kserrec/glossabet`, changed `origin` to
   `git@github.com:kserrec/glossabet.git`, moved the local checkout to
-  `/home/serrecchia/Projects/glossabet`, and verified the old GitHub path's
+  `<local>/glossabet`, and verified the old GitHub path's
   redirect. No commit was pushed as part of the rename.
 - Refreshed the ignored repository-local `.venv` from `uv.lock` because its
   generated launchers contained the old absolute checkout path. The stale
@@ -122,8 +122,8 @@ inspectable, and maintainable.
   `https://github.com/kserrec/glossabet`; the old GitHub path was verified to
   resolve to it. The configured Git remote is
   `git@github.com:kserrec/glossabet.git`.
-- The checkout now lives at `/home/serrecchia/Projects/glossabet`; the old
-  `/home/serrecchia/Projects/glossarize` directory no longer exists.
+- The checkout now lives at `<local>/glossabet`; the old
+  `<local>/glossarize` directory no longer exists.
 - Package project URLs, the embedded plugin wheel, and installed-agent evidence
   now use and bind to `kserrec/glossabet`. The refreshed evidence records plugin
   tree SHA-256

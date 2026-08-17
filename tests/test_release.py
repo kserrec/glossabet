@@ -120,3 +120,17 @@ def test_workflow_policy_rejects_meaningful_gate_weakening():
         assert validate_workflow_texts(workflows), (
             f"workflow policy accepted weakening in {filename}: {weakened}"
         )
+
+
+def test_distribution_content_guard_catches_local_home_paths():
+    from scripts.check_distribution import _LOCAL_PATH_RE
+
+    # Build the samples from parts so this test file itself carries no
+    # contiguous home-path literal that would trip the guard when tests/
+    # ships in the sdist.
+    posix = b"trace " + b"/home/" + b"alice/Projects/x"
+    windows = b"C:" + b"\\Users\\" + b"dev\\proj"
+    assert _LOCAL_PATH_RE.search(posix)
+    assert _LOCAL_PATH_RE.search(windows)
+    # the guard's own pattern source must not be a self-match
+    assert not _LOCAL_PATH_RE.search(b"(?:/home/|/Users/)[literal]")

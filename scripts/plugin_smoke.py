@@ -279,6 +279,11 @@ def _verify_install(
     hook_config = json.loads(installed_hook.read_text(encoding="utf-8"))
     handler = hook_config["hooks"]["SessionStart"][0]["hooks"][0]
     hook_command = handler["commandWindows" if os.name == "nt" else "command"]
+    # shell=True reproduces exactly how Codex runs the hook. It is safe only
+    # because _verify_install already asserted the installed hook.json bytes
+    # equal the source bytes (source_hook_bytes) BEFORE reaching here, and
+    # build_plugin/check_distribution independently pin the command string.
+    # Do not run this before that byte-equality check.
     hook_result = subprocess.run(
         hook_command,
         cwd=sample,

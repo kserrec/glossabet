@@ -3,11 +3,20 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
 
 EXPECTED_VERSION = "0.1.0"
+# SHA-256 of the exact wheel this runner is authorized to execute. It lives
+# here in scripts/ — a different directory than the assets/ wheel it guards —
+# so a write primitive scoped to assets/ (e.g. a marketplace updater) cannot
+# swap in a tampered wheel and matching hash together. build_plugin.py keeps
+# this in sync with the bundled wheel.
+EXPECTED_WHEEL_SHA256 = (
+    "093c3bb3d18c77f549ddb93ff4bd00fed263784a472867bfc60b2034984ab3bb"
+)
 
 
 def _fail(message: str) -> int:
@@ -47,6 +56,11 @@ def _load_wheel() -> Path:
         raise RuntimeError(
             f"expected only {expected_name!r} in bundled assets; found {candidates!r}"
         )
+    digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    if digest != EXPECTED_WHEEL_SHA256:
+        raise RuntimeError(
+            "bundled wheel failed its integrity check; refusing to execute it"
+        )
     return wheel
 
 
@@ -55,7 +69,10 @@ def run() -> int:
         return _fail("Python 3.10 or newer is required")
     try:
         wheel = _load_wheel()
-        sys.path.insert(0, str(wheel))
+        # Append, not insert(0): the integrity-checked bundle must never
+        # outrank the stdlib, so a wheel that somehow carried a top-level
+        # module name (e.g. subprocess.py) cannot shadow it.
+        sys.path.append(str(wheel))
         from glossabet import __version__
         from glossabet.cli import main
     except (ImportError, OSError, RuntimeError, ValueError) as exc:

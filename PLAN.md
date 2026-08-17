@@ -548,8 +548,8 @@ exact-bundle run, not a zero-flake claim.
 With Kyle's explicit authorization, the public GitHub repository was renamed
 from `kserrec/glossarize` to `kserrec/glossabet`, the configured `origin` was
 changed to `git@github.com:kserrec/glossabet.git`, and the local checkout was
-moved from `/home/serrecchia/Projects/glossarize` to
-`/home/serrecchia/Projects/glossabet`. GitHub's old repository path was
+moved from `<local>/glossarize` to
+`<local>/glossabet`. GitHub's old repository path was
 verified to resolve to the renamed repository, and the old local directory no
 longer exists. During the authorized documentation wrapup, the package project
 URLs and distribution assertion were switched to `kserrec/glossabet`, the
