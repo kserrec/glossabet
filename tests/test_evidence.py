@@ -569,3 +569,28 @@ def test_symlink_to_in_repo_sensitive_file_is_not_laundered(tmp_path):
     assert "notes.py" in evidence["skipped"]["sensitive"]
     names = {i["name"] for i in evidence["vocabulary"]["identifiers"]["items"]}
     assert names == {"legit_name"}
+
+
+def test_exclusion_ledger_owns_every_skipped_key_and_sentence(tmp_path):
+    """Phase 35.3: the scanner's ledger is the one spelling of each
+    exclusion's evidence key and report sentence — a kind that is collected
+    but not in the ledger, or in the ledger but not collected, is a silent
+    exclusion."""
+    from dataclasses import fields
+    from glossabet.scanner import EXCLUSION_KINDS, WalkResult, exclusion_sentences
+
+    collected = {f.name for f in fields(WalkResult) if f.name.startswith("skipped_")}
+    assert {kind.attribute for kind in EXCLUSION_KINDS} == collected
+    assert len({kind.key for kind in EXCLUSION_KINDS}) == len(EXCLUSION_KINDS)
+
+    (tmp_path / "main.py").write_text("x = 1\n")
+    (tmp_path / ".env").write_text("SECRET=1\n")
+    (tmp_path / "GLOSSARY.md").write_text("# g\n")
+    evidence = build_evidence(tmp_path, cache=False)
+    skipped = evidence["skipped"]
+    assert set(skipped) >= {kind.key for kind in EXCLUSION_KINDS}
+    assert exclusion_sentences(skipped) == [
+        "excluded 1 sensitive path(s) from evidence",
+        "excluded 1 GLOSSARY.md file(s) from lexical evidence "
+        "(never evidence for itself)",
+    ]

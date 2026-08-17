@@ -30,7 +30,11 @@ from glossabet.graphify import (
 )
 from glossabet.imports import build_imports_section, extract_imports, module_of
 from glossabet.importance import build_naming_candidates
-from glossabet.scanner import detect_monorepo, walk_repository
+from glossabet.scanner import (
+    detect_monorepo,
+    exclusion_sentences,
+    walk_repository,
+)
 from glossabet.terminology import (
     MODULE_CONTEXT_ANALYSIS_CAP,
     build_terminology,
@@ -443,14 +447,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
         },
         "monorepo": detect_monorepo(root, walk),
         "skipped": {
-            "sensitive": sorted(walk.skipped_sensitive),
-            "oversized": sorted(walk.skipped_oversized),
-            "symlinks_escaping_repo": sorted(walk.skipped_symlinks),
-            "configured": sorted(walk.skipped_configured),
-            "generated": sorted(walk.skipped_generated),
-            "vendored": sorted(walk.skipped_vendored),
-            "self_glossaries": sorted(walk.skipped_self_glossaries),
-            "self_reports": sorted(walk.skipped_self_reports),
+            **walk.skipped_as_evidence(),
             "oversized_identifiers": vocabulary.oversized_identifiers,
             "corpus_budget": walk.corpus_budget.as_evidence(),
         },
@@ -636,51 +633,8 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
         f"file(s) -> {escape_terminal_text(str(out_path))}"
     )
     skipped = evidence["skipped"]
-    if skipped["sensitive"]:
-        print(
-            f"excluded {len(skipped['sensitive'])} sensitive path(s) from evidence",
-            file=sys.stderr,
-        )
-    if skipped["oversized"]:
-        print(
-            f"skipped {len(skipped['oversized'])} oversized file(s) (>2MB)",
-            file=sys.stderr,
-        )
-    if skipped["symlinks_escaping_repo"]:
-        print(
-            f"skipped {len(skipped['symlinks_escaping_repo'])} symlink(s) "
-            "resolving outside the repository",
-            file=sys.stderr,
-        )
-    if skipped["configured"]:
-        print(
-            f"ignored {len(skipped['configured'])} configured path(s)",
-            file=sys.stderr,
-        )
-    if skipped["generated"]:
-        print(
-            f"excluded {len(skipped['generated'])} generated path(s) "
-            "from lexical analysis",
-            file=sys.stderr,
-        )
-    if skipped["vendored"]:
-        print(
-            f"excluded {len(skipped['vendored'])} vendored path(s) "
-            "from lexical analysis",
-            file=sys.stderr,
-        )
-    if skipped["self_glossaries"]:
-        print(
-            f"excluded {len(skipped['self_glossaries'])} GLOSSARY.md file(s) "
-            "from lexical evidence (never evidence for itself)",
-            file=sys.stderr,
-        )
-    if skipped["self_reports"]:
-        print(
-            f"excluded {len(skipped['self_reports'])} GLOSSABET.md report(s) "
-            "from lexical evidence (derived Glossabet output)",
-            file=sys.stderr,
-        )
+    for sentence in exclusion_sentences(skipped):
+        print(sentence, file=sys.stderr)
     budget = skipped["corpus_budget"]
     if not budget["complete"]:
         omitted = budget["skipped"]["source_files"]

@@ -208,6 +208,63 @@ class CorpusBudget:
         }
 
 
+@dataclass(frozen=True)
+class ExclusionKind:
+    """One reason the walk leaves a path out of lexical evidence: its stable
+    key under ``evidence["skipped"]``, the ``WalkResult`` list that collects
+    it, and the sentence the scan reports it with. Every exclusion is
+    reported — capped or filtered output never reads as complete — and this
+    ledger is the only place the key, the sentence, and the collection are
+    spelled, so adding a kind is one entry here."""
+    key: str
+    attribute: str
+    sentence: str  # ``{n}`` is the path count
+
+
+EXCLUSION_KINDS: tuple[ExclusionKind, ...] = (
+    ExclusionKind("sensitive", "skipped_sensitive",
+                  "excluded {n} sensitive path(s) from evidence"),
+    ExclusionKind("oversized", "skipped_oversized",
+                  "skipped {n} oversized file(s) (>2MB)"),
+    ExclusionKind("symlinks_escaping_repo", "skipped_symlinks",
+                  "skipped {n} symlink(s) resolving outside the repository"),
+    ExclusionKind("configured", "skipped_configured",
+                  "ignored {n} configured path(s)"),
+    ExclusionKind("generated", "skipped_generated",
+                  "excluded {n} generated path(s) from lexical analysis"),
+    ExclusionKind("vendored", "skipped_vendored",
+                  "excluded {n} vendored path(s) from lexical analysis"),
+    # Every GLOSSARY.md the walk saw and excluded (root and nested), so the
+    # self-file exclusion is never silent; the root file's safe discovery is
+    # a separate channel (glossabet.repository_glossary).
+    ExclusionKind("self_glossaries", "skipped_self_glossaries",
+                  "excluded {n} GLOSSARY.md file(s) from lexical evidence "
+                  "(never evidence for itself)"),
+    # Every GLOSSABET.md the walk saw and excluded (root and nested):
+    # derived Glossabet report output.
+    ExclusionKind("self_reports", "skipped_self_reports",
+                  "excluded {n} GLOSSABET.md report(s) from lexical evidence "
+                  "(derived Glossabet output)"),
+)
+SKIPPED_SELF_GLOSSARIES = "self_glossaries"
+
+
+def exclusion_sentences(skipped: dict) -> list[str]:
+    """Human sentences for every non-empty exclusion kind in an evidence
+    ``skipped`` section, in ledger order."""
+    return [
+        kind.sentence.format(n=len(skipped[kind.key]))
+        for kind in EXCLUSION_KINDS
+        if skipped.get(kind.key)
+    ]
+
+
+def excluded_paths(skipped: dict, key: str) -> list[str]:
+    """The paths an evidence ``skipped`` section records under one ledger
+    key (``[]`` when the kind is absent), so callers never index the dict."""
+    return list(skipped.get(key, []))
+
+
 @dataclass
 class WalkResult:
     # (repository-relative path, language, configured/default role)
@@ -215,22 +272,26 @@ class WalkResult:
     # (repository-relative path, configured/default role)
     doc_files: list[tuple[str, str]] = field(default_factory=list)
     other_files: int = 0
+    # One list per EXCLUSION_KINDS entry, by that entry's ``attribute``.
     skipped_sensitive: list[str] = field(default_factory=list)
     skipped_oversized: list[str] = field(default_factory=list)
     skipped_symlinks: list[str] = field(default_factory=list)
     skipped_configured: list[str] = field(default_factory=list)
     skipped_generated: list[str] = field(default_factory=list)
     skipped_vendored: list[str] = field(default_factory=list)
-    # Every GLOSSARY.md the walk saw and excluded (root and nested). Reported
-    # so the self-file exclusion is never silent; the root file's safe
-    # discovery is a separate channel (glossabet.repository_glossary).
     skipped_self_glossaries: list[str] = field(default_factory=list)
-    # Every GLOSSABET.md the walk saw and excluded (root and nested): derived
-    # Glossabet report output, reported so the exclusion is never silent.
     skipped_self_reports: list[str] = field(default_factory=list)
     sub_roots: list[str] = field(default_factory=list)
     workspace_manifests: list[str] = field(default_factory=list)
     corpus_budget: CorpusBudget = field(default_factory=CorpusBudget)
+
+    def skipped_as_evidence(self) -> dict:
+        """The path exclusions of ``evidence["skipped"]``, keyed and sorted
+        as the ledger dictates (the caller adds its non-walk entries)."""
+        return {
+            kind.key: sorted(getattr(self, kind.attribute))
+            for kind in EXCLUSION_KINDS
+        }
 
 
 def _record_role_skip(result: WalkResult, relative: str, role: str) -> None:

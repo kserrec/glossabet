@@ -250,7 +250,12 @@ The package is `glossabet/`. Grouped by role:
   derived Glossabet output that must never become evidence for its own next
   run;
   symlinks whose real target escapes the repo root (`_escapes`) are skipped so a
-  hostile repo can't read outside files. Root `Cargo.toml` and `package.json`
+  hostile repo can't read outside files. Every such exclusion is one entry in
+  `EXCLUSION_KINDS`, the ledger that owns its `evidence["skipped"]` key, the
+  `WalkResult` list that collects it, and the sentence `scan` reports it with
+  (`WalkResult.skipped_as_evidence()` emits the section, `exclusion_sentences()`
+  renders it, `excluded_paths()` reads it) — adding a kind is one entry, and
+  no other module spells the keys. Root `Cargo.toml` and `package.json`
   workspace probes use that same symlink boundary and 2 MB limit. Configured
   ignores and generated/vendored paths are pruned and reported. Explicit
   production rules can override a default role, including inside a normally

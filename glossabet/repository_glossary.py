@@ -23,7 +23,9 @@ from glossabet.artifacts import READ_OVERSIZED, read_bounded_bytes
 from glossabet.scanner import (
     MAX_FILE_BYTES,
     MAX_WALK_ENTRIES,
+    SKIPPED_SELF_GLOSSARIES,
     _resolves_outside_root,
+    excluded_paths,
     is_sensitive,
 )
 
@@ -277,7 +279,7 @@ def repository_glossary_section(
         section["divergence"] = repository_glossary_divergence(glossary, payload)
     nested = [
         rel
-        for rel in evidence["skipped"]["self_glossaries"]
+        for rel in excluded_paths(evidence["skipped"], SKIPPED_SELF_GLOSSARIES)
         if rel != REPOSITORY_GLOSSARY_FILE
     ]
     section["nested_ignored"] = sorted(nested)
