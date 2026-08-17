@@ -13,7 +13,7 @@ SKILL = Path(__file__).resolve().parents[1] / "skill" / "SKILL.md"
 
 
 def test_skill_exists_with_cli_context_protocol():
-    text = SKILL.read_text()
+    text = SKILL.read_text(encoding="utf-8")
     normalized = " ".join(text.split())
     assert "glossabet inspect ." in text
     assert (
@@ -25,12 +25,12 @@ def test_skill_exists_with_cli_context_protocol():
 
 
 def test_distribution_skill_copy_is_declared_from_the_canonical_source():
-    pyproject = (SKILL.parents[1] / "pyproject.toml").read_text()
+    pyproject = (SKILL.parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     assert '"skill/SKILL.md" = "glossabet/_skill/SKILL.md"' in pyproject
 
 
 def test_skill_requires_the_engine_boundary_without_artifact_fallback():
-    text = SKILL.read_text()
+    text = SKILL.read_text(encoding="utf-8")
     normalized = " ".join(text.split())
     assert "Never open, read, search, or parse Glossabet's repository JSON artifacts yourself" in normalized
     assert "Do not replace a failed command with recursive repository reading" in normalized
@@ -40,7 +40,7 @@ def test_skill_requires_the_engine_boundary_without_artifact_fallback():
 
 
 def test_skill_keeps_ambient_vocabulary_read_only_and_human_gated():
-    text = SKILL.read_text()
+    text = SKILL.read_text(encoding="utf-8")
     normalized = " ".join(text.split())
 
     assert "`glossabet brief .`" in normalized
@@ -57,7 +57,7 @@ def test_skill_keeps_ambient_vocabulary_read_only_and_human_gated():
 def test_skill_glossary_protocol_matches_engine():
     from glossabet.glossary import SCOPE_PATHS_KEY, STATUSES
 
-    text = SKILL.read_text()
+    text = SKILL.read_text(encoding="utf-8")
     assert "glossabet-out/glossary.json" in text
     assert "resume" in text.lower() and "restart" in text.lower()
     for status in STATUSES:  # every engine status is defined for the skill
@@ -73,7 +73,7 @@ def test_skill_referenced_fields_exist_in_agent_context(tmp_path):
     (tmp_path / "billing" / "b.py").write_text("payment_worker = 1\n")
     evidence = build_evidence(tmp_path)
     context = build_agent_context(evidence, None)
-    text = SKILL.read_text()
+    text = SKILL.read_text(encoding="utf-8")
     assert context["context_schema_version"] == AGENT_CONTEXT_SCHEMA_VERSION
     assert context["freshness"]["status"] == "current"
     assert context["repository"]["git"].keys() >= {"head", "dirty"}
@@ -137,7 +137,7 @@ def test_skill_repository_glossary_protocol_matches_engine(tmp_path):
         discover_repository_glossary,
     )
 
-    text = SKILL.read_text()
+    text = SKILL.read_text(encoding="utf-8")
     normalized = " ".join(text.split())
 
     # Every field the skill names exists in the engine's section.

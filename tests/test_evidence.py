@@ -533,7 +533,7 @@ def test_evidence_symlink_cannot_overwrite_outside_file(tmp_path, capsys):
     os.symlink(outside, out / "evidence.json")
 
     assert main(["scan", str(repo)]) == 1
-    assert outside.read_text() == "sentinel\n"
+    assert outside.read_text(encoding="utf-8") == "sentinel\n"
     assert "symlinked artifact" in capsys.readouterr().err
 
 

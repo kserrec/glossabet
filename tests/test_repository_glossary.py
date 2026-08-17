@@ -447,7 +447,7 @@ def test_validate_reports_repository_glossary_divergence(tmp_path, capsys):
     ) in out
 
     validation = json.loads(
-        (tmp_path / "glossabet-out" / "validation.json").read_text()
+        (tmp_path / "glossabet-out" / "validation.json").read_text(encoding="utf-8")
     )
     assert validation["schema_version"] == 8
     section = validation["repository_glossary"]
@@ -701,8 +701,14 @@ def test_divergence_guard_fires_before_casefold_and_collapse_allocate():
     """On the NFKC bomb, casefold reserves a 3x buffer (~170 MB) and the
     whitespace collapse allocates millions of tiny strings (~180 MB). The
     length guard must be judged right after NFKC (72 MB peak), before either
-    of those steps."""
-    import time
+    of those steps.
+
+    Allocation is the whole claim, so allocation is the whole assertion. A
+    wall-clock bound cannot tell "the guard fired early on a slow machine"
+    apart from "it fired late on a fast one" -- it measures the runner, and a
+    5-second bound that held here took 55 seconds on CI's Windows hosts. The
+    input is already capped at MAX_REPOSITORY_GLOSSARY_BYTES, so the work is
+    bounded by construction; the peak below is what proves it stayed early."""
     import tracemalloc
 
     bomb = ("\ufdfa" * (MAX_REPOSITORY_GLOSSARY_BYTES // 3)).encode("utf-8")
@@ -713,9 +719,7 @@ def test_divergence_guard_fires_before_casefold_and_collapse_allocate():
         ],
     }
     tracemalloc.start()
-    started = time.perf_counter()
     result = repository_glossary_divergence(glossary, bomb)
-    elapsed = time.perf_counter() - started
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
 
@@ -723,7 +727,6 @@ def test_divergence_guard_fires_before_casefold_and_collapse_allocate():
     # NFKC alone peaks at ~72 MB for this document; casefold or the collapse
     # would each push it past 165 MB. Generous ceiling, well under either.
     assert peak < 120_000_000, peak
-    assert elapsed < 5, elapsed
 
 
 def test_discovery_name_is_the_scanner_exclusion_name():

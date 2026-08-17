@@ -9,8 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_release_metadata_matches_package_version_and_supported_pythons():
-    pyproject = (ROOT / "pyproject.toml").read_text()
-    init = (ROOT / "glossabet" / "__init__.py").read_text()
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    init = (ROOT / "glossabet" / "__init__.py").read_text(encoding="utf-8")
     assert f'__version__ = "{__version__}"' in init
     for minor in range(10, 15):
         assert f'"Programming Language :: Python :: 3.{minor}"' in pyproject
