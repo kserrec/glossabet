@@ -138,8 +138,15 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _walk_paths(root: Path, *, excluded_directory: str) -> list[Path]:
-    """Deterministic file walk skipping one directory name and dotenv parts."""
+def _walk_paths(
+    root: Path, *, excluded_directory: str, skip_dotenv: bool = True
+) -> list[Path]:
+    """Deterministic file walk skipping one directory name.
+
+    Dotenv names are skipped by default so identity digests never touch
+    them; the write-diff snapshot opts back in, tracking sensitive files
+    by stat only.
+    """
     files: list[Path] = []
     for current, directories, names in os.walk(root, followlinks=False):
         directories[:] = sorted(
@@ -148,7 +155,7 @@ def _walk_paths(root: Path, *, excluded_directory: str) -> list[Path]:
             if name != excluded_directory and not _dotenv_part(name)
         )
         for name in sorted(names):
-            if not _dotenv_part(name):
+            if not skip_dotenv or not _dotenv_part(name):
                 files.append(Path(current) / name)
     return files
 
@@ -711,7 +718,9 @@ def _make_scenario(root: Path, scenario_id: str) -> None:
 
 def _snapshot(root: Path) -> dict[str, tuple]:
     snapshot: dict[str, tuple] = {}
-    for path in _walk_paths(root, excluded_directory=".git"):
+    for path in _walk_paths(
+        root, excluded_directory=".git", skip_dotenv=False
+    ):
         relative = path.relative_to(root).as_posix()
         info = path.lstat()
         if path.is_symlink():
@@ -1024,12 +1033,12 @@ def _run_codex(
         print(result.stderr[-4000:], end="", file=sys.stderr, flush=True)
     if SENSITIVE_CANARY in result.stdout or SENSITIVE_CANARY in result.stderr:
         _fail("sensitive canary appeared in the Codex trace")
-    events = _parse_events(result.stdout, limits)
     if result.returncode:
         _fail(
             f"codex exec exited {result.returncode}: "
             f"{result.stderr[-2000:] or result.stdout[-2000:]}"
         )
+    events = _parse_events(result.stdout, limits)
     response = _read_json(final_path, "Codex final response")
     if SENSITIVE_CANARY in json.dumps(response):
         _fail("sensitive canary appeared in the Codex final response")
@@ -1083,17 +1092,23 @@ def _expected_error(scenario_id: str, output: str) -> bool:
     return all(part in lowered for part in required)
 
 
+def _mapping(value: object) -> dict:
+    """Agent-relayed output controls these shapes; never crash on them."""
+    return value if isinstance(value, dict) else {}
+
+
 def _check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
     failures = []
-    projection_ledger = context.get("coverage", {}).get("context", {})
-    omissions = projection_ledger.get("omissions", [])
+    coverage = _mapping(context.get("coverage"))
+    projection_ledger = _mapping(coverage.get("context"))
+    omissions = projection_ledger.get("omissions")
+    if not isinstance(omissions, list):
+        omissions = []
     observed: dict[str, object] = {
         "context_schema_version": context.get("context_schema_version"),
         "generator": context.get("generator"),
-        "freshness": context.get("freshness", {}).get("status"),
-        "corpus_complete": context.get("coverage", {}).get("corpus", {}).get(
-            "complete"
-        ),
+        "freshness": _mapping(context.get("freshness")).get("status"),
+        "corpus_complete": _mapping(coverage.get("corpus")).get("complete"),
         "context_complete": projection_ledger.get("complete"),
         "context_projection": projection_ledger.get("projection"),
         "context_omissions": len(omissions),
@@ -1132,17 +1147,17 @@ def _check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
     if not required_lean_omissions <= omission_pairs:
         failures.append("lean projection did not account for standard omissions")
 
-    structural = context.get("structural_groups", {})
-    glossary = context.get("glossary", {})
+    structural = _mapping(context.get("structural_groups"))
+    glossary = _mapping(context.get("glossary"))
     if scenario_id == "fresh":
-        observed["graph_freshness"] = structural.get("freshness", {}).get("status")
+        observed["graph_freshness"] = _mapping(structural.get("freshness")).get("status")
         observed["graph_available"] = structural.get("available")
         if observed["graph_freshness"] != "current" or observed[
             "graph_available"
         ] is not True:
             failures.append("fresh Graphify input was not reported current/available")
     elif scenario_id == "stale":
-        observed["graph_freshness"] = structural.get("freshness", {}).get("status")
+        observed["graph_freshness"] = _mapping(structural.get("freshness")).get("status")
         if observed["graph_freshness"] != "stale":
             failures.append("stale Graphify input was not reported stale")
     elif scenario_id == "absent":
@@ -1162,7 +1177,7 @@ def _check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
             )
     elif scenario_id == "monorepo":
         observed["monorepo"] = context.get("monorepo")
-        if context.get("monorepo", {}).get("detected") is not True:
+        if _mapping(context.get("monorepo")).get("detected") is not True:
             failures.append("workspace manifest did not trigger monorepo detection")
     elif scenario_id == "resumed-glossary":
         concepts = glossary.get("concepts", [])
@@ -1190,7 +1205,8 @@ def _check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
         unexpected = [
             item
             for item in omissions
-            if not (
+            if isinstance(item, dict)
+            and not (
                 item.get("kind") == "section_excluded"
                 and item.get("path") == "imports"
             )
@@ -1413,7 +1429,11 @@ def _evaluate_session_hook(
 
 
 def _copy_ignore(_directory: str, names: list[str]) -> set[str]:
-    return {name for name in names if _dotenv_part(name)}
+    # Mirror _tree_sha256's exclusions so the installed bytes never exceed
+    # what the digest-bound artifact claim covered.
+    return {
+        name for name in names if _dotenv_part(name) or name == "__pycache__"
+    }
 
 
 def _prepare_marketplace(root: Path, name: str) -> None:
@@ -1454,7 +1474,11 @@ def _ensure_no_installed_glossabet(codex: str) -> None:
     assert isinstance(data, dict)
     installed = data.get("installed", [])
     if any(
-        isinstance(item, dict) and item.get("name") == "glossabet"
+        isinstance(item, dict)
+        and (
+            item.get("name") == "glossabet"
+            or str(item.get("pluginId", "")).startswith("glossabet@")
+        )
         for item in installed
     ):
         _fail("a Glossabet plugin is already installed; refusing to replace it")
@@ -1466,41 +1490,57 @@ def _install_plugin(
     marketplace_name: str,
 ) -> tuple[str, Path, Path]:
     plugin_id = f"glossabet@{marketplace_name}"
-    added = _run(
-        [codex, "plugin", "marketplace", "add", str(marketplace), "--json"],
-        cwd=ROOT,
-        parse_json=True,
-    )
-    assert isinstance(added, dict)
-    if added.get("marketplaceName") != marketplace_name:
-        _fail("Codex registered the temporary marketplace under another name")
-    installed = _run(
-        [codex, "plugin", "add", plugin_id, "--json"],
-        cwd=ROOT,
-        parse_json=True,
-    )
-    assert isinstance(installed, dict)
-    path = Path(str(installed.get("installedPath", "")))
-    expected_cache = Path.home() / ".codex" / "plugins" / "cache"
-    expected_parent = expected_cache / marketplace_name
-    if (
-        installed.get("version") != __version__
-        or not path.is_absolute()
-        or path.name != __version__
-        or path.parent.name != "glossabet"
-        or path.parents[1] != expected_parent
-    ):
-        _fail(f"Codex returned an unexpected plugin installation: {installed}")
-    runner = path / "skills" / "glossabet" / "scripts" / "run_glossabet.py"
-    if not runner.is_file():
-        _fail("installed plugin has no skill-local runner")
-    installed_hook = path / "hooks" / "hooks.json"
-    if (
-        installed_hook.is_symlink()
-        or not installed_hook.is_file()
-        or installed_hook.read_bytes() != PLUGIN_HOOK.read_bytes()
-    ):
-        _fail("installed plugin has no exact session-start hook")
+    # Progress is attached to any failure so cleanup removes exactly the
+    # state that was created, including the cache directory Codex leaves
+    # behind once `plugin add` has run.
+    progress = {
+        "marketplace_added": False,
+        "plugin_added": False,
+        "cache_parent": None,
+    }
+    try:
+        added = _run(
+            [codex, "plugin", "marketplace", "add", str(marketplace), "--json"],
+            cwd=ROOT,
+            parse_json=True,
+        )
+        progress["marketplace_added"] = True
+        assert isinstance(added, dict)
+        if added.get("marketplaceName") != marketplace_name:
+            _fail("Codex registered the temporary marketplace under another name")
+        installed = _run(
+            [codex, "plugin", "add", plugin_id, "--json"],
+            cwd=ROOT,
+            parse_json=True,
+        )
+        progress["plugin_added"] = True
+        expected_cache = Path.home() / ".codex" / "plugins" / "cache"
+        expected_parent = expected_cache / marketplace_name
+        progress["cache_parent"] = expected_parent
+        assert isinstance(installed, dict)
+        path = Path(str(installed.get("installedPath", "")))
+        if (
+            installed.get("version") != __version__
+            or not path.is_absolute()
+            or path.name != __version__
+            or path.parent.name != "glossabet"
+            or path.parents[1] != expected_parent
+        ):
+            _fail(f"Codex returned an unexpected plugin installation: {installed}")
+        runner = path / "skills" / "glossabet" / "scripts" / "run_glossabet.py"
+        if not runner.is_file():
+            _fail("installed plugin has no skill-local runner")
+        installed_hook = path / "hooks" / "hooks.json"
+        if (
+            installed_hook.is_symlink()
+            or not installed_hook.is_file()
+            or installed_hook.read_bytes() != PLUGIN_HOOK.read_bytes()
+        ):
+            _fail("installed plugin has no exact session-start hook")
+    except BaseException as exc:
+        for key, value in progress.items():
+            setattr(exc, key, value)
+        raise
     return plugin_id, path, expected_parent
 
 
@@ -1509,31 +1549,36 @@ def _cleanup_plugin(
     plugin_id: str,
     marketplace_name: str,
     cache_parent: Path | None,
+    *,
+    plugin_added: bool = True,
+    marketplace_added: bool = True,
 ) -> None:
     errors = []
-    try:
-        _run(
-            [codex, "plugin", "remove", plugin_id, "--json"],
-            cwd=ROOT,
-            parse_json=True,
-        )
-    except Exception as exc:  # preserve all narrowly scoped cleanup failures
-        errors.append(str(exc))
-    try:
-        _run(
-            [
-                codex,
-                "plugin",
-                "marketplace",
-                "remove",
-                marketplace_name,
-                "--json",
-            ],
-            cwd=ROOT,
-            parse_json=True,
-        )
-    except Exception as exc:
-        errors.append(str(exc))
+    if plugin_added:
+        try:
+            _run(
+                [codex, "plugin", "remove", plugin_id, "--json"],
+                cwd=ROOT,
+                parse_json=True,
+            )
+        except Exception as exc:  # preserve all narrowly scoped cleanup failures
+            errors.append(str(exc))
+    if marketplace_added:
+        try:
+            _run(
+                [
+                    codex,
+                    "plugin",
+                    "marketplace",
+                    "remove",
+                    marketplace_name,
+                    "--json",
+                ],
+                cwd=ROOT,
+                parse_json=True,
+            )
+        except Exception as exc:
+            errors.append(str(exc))
     if cache_parent is not None and cache_parent.exists():
         expected = Path.home() / ".codex" / "plugins" / "cache" / marketplace_name
         if cache_parent != expected:
@@ -1558,12 +1603,20 @@ def _cleanup_plugin(
         assert isinstance(plugin_data, dict)
         assert isinstance(marketplace_data, dict)
         if any(
-            isinstance(item, dict) and item.get("pluginId") == plugin_id
+            isinstance(item, dict)
+            and (
+                item.get("pluginId") == plugin_id
+                or item.get("name") == "glossabet"
+            )
             for item in plugin_data.get("installed", [])
         ):
             errors.append("temporary plugin remains installed")
         if any(
-            isinstance(item, dict) and item.get("name") == marketplace_name
+            isinstance(item, dict)
+            and (
+                item.get("name") == marketplace_name
+                or item.get("marketplaceName") == marketplace_name
+            )
             for item in marketplace_data.get("marketplaces", [])
         ):
             errors.append("temporary marketplace remains configured")
@@ -1647,6 +1700,9 @@ def _validate_manifest(manifest: dict) -> tuple[list[dict], dict]:
             _fail("agent scenario is malformed")
         expected = scenario.get("expected_status")
         accepted = scenario.get("accepted_statuses", [expected])
+        description = scenario.get("description")
+        if not isinstance(description, str) or not description.strip():
+            _fail(f"agent scenario {scenario.get('id')} has no description")
         if (
             expected not in status_vocabulary
             or not isinstance(accepted, list)
@@ -1758,6 +1814,10 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
         _fail("codex is not installed")
     codex = str(Path(codex).resolve())
     codex_version = _codex_version(codex)
+    # The identity must describe the bytes this run consumes; computing it
+    # after the host runs would bind the evidence to whatever the tree
+    # contains by then.
+    inputs = _input_identity()
     disabled_skills = _competing_standalone_skill_paths()
     _ensure_no_installed_glossabet(codex)
 
@@ -1773,6 +1833,7 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
     results: list[dict] = []
     usages: list[dict] = []
     delivery_trace: list[dict] = []
+    delivery_trace_truncated = False
 
     with tempfile.TemporaryDirectory(prefix="glossabet-agent-eval-") as raw:
         work = Path(raw)
@@ -1808,12 +1869,18 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
         }
         hook_result: dict | None = None
 
-        primary_error: Exception | None = None
+        primary_error: BaseException | None = None
         cleanup_verified = False
+        stage = "plugin-preflight"
+        marketplace_added = False
+        plugin_added = False
         try:
             plugin_id, installed_path, cache_parent = _install_plugin(
                 codex, marketplace, marketplace_name
             )
+            marketplace_added = True
+            plugin_added = True
+            stage = "plugin-scenarios"
             hook_response, hook_commands, hook_usage = _run_codex(
                 codex,
                 workspace=hook_root,
@@ -1874,11 +1941,17 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
             ):
                 _fail("Codex read a different Glossabet skill during the plugin run")
             trace_aliases = ((str(installed_path), "<INSTALLED_PLUGIN>"),)
-            delivery_trace = [
+            skill_read_summaries = [
                 _trace_summary(command, batch, limits, trace_aliases)
                 for command in commands
-                if command in glossabet_skill_reads or command is version_command
+                if command in glossabet_skill_reads
+                and command is not version_command
             ]
+            allowed_reads = max(0, limits["commands_per_scenario"] - 1)
+            delivery_trace = [
+                _trace_summary(version_command, batch, limits, trace_aliases)
+            ] + skill_read_summaries[:allowed_reads]
+            delivery_trace_truncated = len(skill_read_summaries) > allowed_reads
             response_items = _response_by_id(
                 response, [scenario["id"] for scenario in plugin_scenarios]
             )
@@ -1894,8 +1967,15 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
                     limits=limits,
                     trace_aliases=trace_aliases,
                 ))
-        except Exception as exc:
+        except BaseException as exc:
+            # BaseException so an operator interrupt still records its
+            # cleanup outcome and attempt instead of vanishing.
             primary_error = exc
+            marketplace_added = getattr(
+                exc, "marketplace_added", marketplace_added
+            )
+            plugin_added = getattr(exc, "plugin_added", plugin_added)
+            cache_parent = getattr(exc, "cache_parent", cache_parent)
         finally:
             try:
                 _cleanup_plugin(
@@ -1903,27 +1983,46 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
                     plugin_id,
                     marketplace_name,
                     cache_parent,
+                    plugin_added=plugin_added,
+                    marketplace_added=marketplace_added,
                 )
                 cleanup_verified = True
             except Exception as cleanup_exc:
                 if primary_error is None:
                     primary_error = cleanup_exc
-                else:
+                elif isinstance(primary_error, Exception):
                     primary_error = AgentEvaluationError(
                         f"{primary_error}; cleanup also failed: {cleanup_exc}"
+                    )
+                else:
+                    # Never replace an interrupt with the cleanup failure;
+                    # report it alongside instead.
+                    print(
+                        "agent evaluation: cleanup failed during interrupt: "
+                        f"{cleanup_exc}",
+                        file=sys.stderr,
+                        flush=True,
                     )
         if primary_error is not None:
             setattr(primary_error, "cleanup_verified", cleanup_verified)
             setattr(primary_error, "attempt_usage", usages)
+            setattr(primary_error, "failed_stage", stage)
             raise primary_error
 
-        missing_result, missing_usage = _run_missing_cli_scenario(
-            codex,
-            missing_scenario,
-            limits,
-            work,
-            disabled_skills=disabled_skills,
-        )
+        stage = "missing-cli"
+        try:
+            missing_result, missing_usage = _run_missing_cli_scenario(
+                codex,
+                missing_scenario,
+                limits,
+                work,
+                disabled_skills=disabled_skills,
+            )
+        except BaseException as exc:
+            setattr(exc, "cleanup_verified", cleanup_verified)
+            setattr(exc, "attempt_usage", usages)
+            setattr(exc, "failed_stage", stage)
+            raise
         usages.append(missing_usage)
         results.append(missing_result)
 
@@ -1932,7 +2031,7 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
     passed = sum(result["passed"] for result in results)
     result = {
         "schema_version": RESULT_SCHEMA_VERSION,
-        "inputs": _input_identity(),
+        "inputs": inputs,
         "environment": {
             "codex_version": codex_version,
             "python": platform.python_version(),
@@ -1975,6 +2074,7 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
             is True,
             "temporary_plugin_state_removed": True,
             "trace": delivery_trace,
+            "trace_truncated": delivery_trace_truncated,
         },
         "usage": usages,
         "scenarios": results,
@@ -2189,8 +2289,8 @@ def _attempt_from_probe(attempt_id: str, probe: dict) -> dict:
     }
 
 
-def _attempt_from_error(attempt_id: str, exc: Exception) -> dict:
-    message = str(exc)
+def _attempt_from_error(attempt_id: str, exc: BaseException) -> dict:
+    message = str(exc) or type(exc).__name__
     # Errors raised before the managed plugin lifecycle create no test-owned
     # state. Once that lifecycle begins, run_evaluation attaches the observed
     # cleanup outcome explicitly.
@@ -2207,6 +2307,27 @@ def _attempt_from_error(attempt_id: str, exc: Exception) -> dict:
         "missing_cli_inspect_absent": True,
         "temporary_state_removed": cleanup_verified,
     }
+    stage_checks = {
+        "plugin-preflight": {
+            "plugin_preflight": "failed",
+            "plugin_scenarios": "not_run",
+            "missing_cli_boundary": "not_run",
+        },
+        "plugin-scenarios": {
+            "plugin_preflight": "passed",
+            "plugin_scenarios": "failed",
+            "missing_cli_boundary": "not_run",
+        },
+        "missing-cli": {
+            "plugin_preflight": "passed",
+            "plugin_scenarios": "passed",
+            "missing_cli_boundary": "failed",
+        },
+    }
+    checks = stage_checks.get(
+        getattr(exc, "failed_stage", "plugin-preflight"),
+        stage_checks["plugin-preflight"],
+    )
     return {
         "id": attempt_id,
         "recorded_on": datetime.now(timezone.utc).date().isoformat(),
@@ -2214,11 +2335,7 @@ def _attempt_from_error(attempt_id: str, exc: Exception) -> dict:
         "inputs": _input_identity(),
         "outcome": "aborted",
         "evidence_basis": "session-record",
-        "checks": {
-            "plugin_preflight": "failed",
-            "plugin_scenarios": "not_run",
-            "missing_cli_boundary": "not_run",
-        },
+        "checks": checks,
         "procedural_pass": False,
         "safety_checks": safety_checks,
         "safety_pass": all(safety_checks.values()) and not unsafe,
@@ -2374,11 +2491,23 @@ def _history_errors(
                 errors.append(f"{label} completed-full checks are inconsistent")
             if attempt.get("kind") == "full" and attempt.get(
                 "outcome"
-            ) == "aborted" and checks != {
-                "plugin_preflight": "failed",
-                "plugin_scenarios": "not_run",
-                "missing_cli_boundary": "not_run",
-            }:
+            ) == "aborted" and checks not in (
+                {
+                    "plugin_preflight": "failed",
+                    "plugin_scenarios": "not_run",
+                    "missing_cli_boundary": "not_run",
+                },
+                {
+                    "plugin_preflight": "passed",
+                    "plugin_scenarios": "failed",
+                    "missing_cli_boundary": "not_run",
+                },
+                {
+                    "plugin_preflight": "passed",
+                    "plugin_scenarios": "passed",
+                    "missing_cli_boundary": "failed",
+                },
+            ):
                 errors.append(f"{label} aborted-full checks are inconsistent")
         safety_checks = attempt.get("safety_checks")
         expected_safety_keys = {
@@ -2778,8 +2907,15 @@ def main(argv: list[str] | None = None) -> int:
             )
             try:
                 result = run_evaluation(output)
-            except Exception as exc:
-                _append_attempt(_attempt_from_error(attempt_id, exc))
+            except BaseException as exc:
+                try:
+                    _append_attempt(_attempt_from_error(attempt_id, exc))
+                except Exception as append_exc:
+                    print(
+                        "agent evaluation: failed to record the aborted "
+                        f"attempt: {append_exc}",
+                        file=sys.stderr,
+                    )
                 raise
             _append_attempt(_attempt_from_result(attempt_id, result, output))
             _promote_current_result(output)

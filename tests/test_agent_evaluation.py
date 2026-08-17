@@ -739,3 +739,63 @@ def test_agent_verifier_checks_input_currency_only_at_the_release_gate(
         "input identity is malformed" in error
         for error in verify_results(malformed_path)
     )
+
+
+def test_aborted_attempts_record_the_stage_that_actually_failed(tmp_path):
+    failure = AgentEvaluationError("codex exec exited 1")
+    failure.failed_stage = "missing-cli"
+    failure.cleanup_verified = True
+    attempt = _attempt_from_error("stage-probe", failure)
+
+    assert attempt["checks"] == {
+        "plugin_preflight": "passed",
+        "plugin_scenarios": "passed",
+        "missing_cli_boundary": "failed",
+    }
+    assert attempt["procedural_pass"] is False
+
+    # The history validator accepts every honest stage pattern.
+    history = json.loads(HISTORY.read_text(encoding="utf-8"))
+    attempt["inputs"] = deepcopy(history["attempts"][-1]["inputs"])
+    history["attempts"].append(attempt)
+    history["summary"] = _history_summary(history["attempts"])
+    path = tmp_path / "staged.json"
+    path.write_text(json.dumps(history), encoding="utf-8")
+    assert not any(
+        "aborted-full checks are inconsistent" in error
+        for error in _history_errors(path)
+    )
+
+
+def test_interrupts_still_produce_a_recordable_attempt():
+    interrupt = KeyboardInterrupt()
+    interrupt.failed_stage = "plugin-scenarios"
+    attempt = _attempt_from_error("interrupt-probe", interrupt)
+
+    assert attempt["failures"] == ["KeyboardInterrupt"]
+    assert attempt["checks"]["plugin_preflight"] == "passed"
+    assert attempt["checks"]["plugin_scenarios"] == "failed"
+
+
+def test_cleanup_only_removes_state_that_was_created(monkeypatch):
+    issued = []
+
+    def fake_run(command, **kwargs):
+        issued.append(tuple(command))
+        return {"installed": [], "marketplaces": []}
+
+    monkeypatch.setattr(agent_eval, "_run", fake_run)
+    agent_eval._cleanup_plugin(
+        "codex",
+        "glossabet@probe",
+        "probe",
+        None,
+        plugin_added=False,
+        marketplace_added=False,
+    )
+
+    assert len(issued) == 2
+    assert all(
+        "remove" not in command and "add" not in command for command in issued
+    ), issued
+    assert all("list" in command for command in issued), issued
