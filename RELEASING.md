@@ -118,8 +118,8 @@ uv run python scripts/plugin_smoke.py "$release_dir"
 The `--current` flags and the `git diff` step are the release-only currency
 checks: they require the committed evaluation evidence and the checked-in
 plugin artifact (including its bundled wheel) to describe the exact source
-being tagged. Between releases the checked-in plugin may honestly lag engine
-source; rebuild it with `build_plugin.py` as part of release preparation. Between releases,
+being tagged; rebuild the plugin with `build_plugin.py` as part of release
+preparation. Between releases,
 development leaves evidence honestly lagging and only the genuineness form
 (without `--current`) gates ordinary commits. If a currency check fails here,
 regenerate the affected evidence against the release commit — the

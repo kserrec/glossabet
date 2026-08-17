@@ -985,6 +985,31 @@ committed evidence artifacts were not modified: they remain the sealed
 2026-08-16 testimony and honestly lag until regenerated at the next release
 gate.
 
+### Open bughunt deferrals (2026-08-17)
+
+Three items from the whole-project bughunts were deliberately not fixed;
+each names the evidence or ruling that settles it:
+
+1. **Safety-failure permanence needs Kyle's ruling.** One live run whose
+   agent leaves a stray file in a disposable scenario fixture records
+   `safety_pass: false` in the append-only `evaluation/agent-history.json`,
+   which fails `--verify-results` permanently with no supported recovery
+   (hand-editing committed history is the only remedy). Procedural failures
+   are deliberately retained without gating; whether fixture-scoped safety
+   failures should gate forever, gate until a later clean run, or offer an
+   explicit supersede path is an intended-behavior question, not a silent
+   fix.
+2. **Codex `plugin list --json` key schema needs one live observation.**
+   The evaluator's guards now match both `name` and `pluginId` spellings
+   defensively, but which key the CLI actually emits was not observable
+   without an authenticated Codex run; one `codex plugin list --json` with
+   a plugin installed settles it.
+3. **Multi-turn Codex usage semantics need live evidence.** `_run_codex`
+   takes the last `turn.completed` event's usage; if a single exec can emit
+   several turns (compaction) and usage is per-turn rather than cumulative,
+   totals undercount. Settling requires a live multi-turn JSONL sample;
+   guessing a summation risks double-counting cumulative values.
+
 ### Owner self-testing pause — active, not an implementation phase
 
 Kyle is keeping the current build to himself while he runs it and performs

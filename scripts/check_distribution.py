@@ -185,13 +185,16 @@ def _check_plugin_bundle(
     version: str,
     canonical_skill: bytes,
     label: str,
+    current: bool = True,
 ) -> None:
     try:
         manifest = json.loads(manifest_bytes)
     except (UnicodeError, ValueError, RecursionError) as exc:
         _fail(f"{label} plugin manifest is invalid JSON: {exc}")
-    if manifest.get("name") != "glossabet" or manifest.get("version") != version:
-        _fail(f"{label} plugin manifest does not match package name/version")
+    if manifest.get("name") != "glossabet":
+        _fail(f"{label} plugin manifest does not match the package name")
+    if current and manifest.get("version") != version:
+        _fail(f"{label} plugin manifest does not match the package version")
     if manifest.get("skills") != "./skills/":
         _fail(f"{label} plugin manifest does not expose its skills directory")
     if manifest.get("hooks") != HOOK_PATH:
@@ -222,26 +225,35 @@ def _check_plugin_bundle(
         or handlers != [expected_handler]
     ):
         _fail(f"{label} plugin SessionStart hook is stale or unbounded")
-    if skill_bytes != canonical_skill:
+    if current and skill_bytes != canonical_skill:
         _fail(f"{label} plugin skill differs from canonical skill/SKILL.md")
-    expected_runner = f'EXPECTED_VERSION = "{version}"'.encode()
-    if expected_runner not in runner_bytes:
-        _fail(f"{label} plugin runner does not match the package version")
+    if current:
+        expected_runner = f'EXPECTED_VERSION = "{version}"'.encode()
+        if expected_runner not in runner_bytes:
+            _fail(f"{label} plugin runner does not match the package version")
 
     with zipfile.ZipFile(io.BytesIO(wheel_bytes)) as archive:
-        metadata_name = f"glossabet-{version}.dist-info/METADATA"
+        metadata_names = [
+            name
+            for name in archive.namelist()
+            if name.endswith(".dist-info/METADATA")
+        ]
+        if len(metadata_names) != 1:
+            _fail(f"{label} plugin wheel has ambiguous metadata")
         try:
             metadata = BytesParser(policy=policy.default).parsebytes(
-                archive.read(metadata_name)
+                archive.read(metadata_names[0])
             )
             bundled_skill = archive.read("glossabet/_skill/SKILL.md")
         except KeyError as exc:
             _fail(f"{label} plugin wheel is missing {exc}")
-        if metadata["Name"] != "glossabet" or metadata["Version"] != version:
-            _fail(f"{label} plugin wheel has the wrong package name/version")
+        if metadata["Name"] != "glossabet":
+            _fail(f"{label} plugin wheel has the wrong package name")
+        if current and metadata["Version"] != version:
+            _fail(f"{label} plugin wheel has the wrong package version")
         if metadata.get_all("Requires-Dist", []) != []:
             _fail(f"{label} plugin wheel declares a runtime dependency")
-        if bundled_skill != canonical_skill:
+        if current and bundled_skill != canonical_skill:
             _fail(f"{label} plugin wheel embeds a mismatched skill")
 
 
@@ -282,9 +294,7 @@ def _check_sdist(
             if member.issym() or member.islnk() or member.isdev():
                 _fail(f"source distribution contains a link/device: {member.name}")
 
-        required_relative = SDIST_REQUIRED_RELATIVE | {
-            f"plugins/glossabet/skills/glossabet/assets/glossabet-{version}-py3-none-any.whl",
-        }
+        required_relative = SDIST_REQUIRED_RELATIVE
         required = {prefix + name for name in required_relative}
         missing = sorted(required - set(names))
         if missing:
@@ -302,16 +312,28 @@ def _check_sdist(
                 _fail(f"source distribution member is unreadable: {relative}")
             return extracted.read()
 
-        if not current:
-            # The bundled plugin snapshots the checked-in tree, which may
-            # honestly lag engine source between releases; its currency is
-            # a release-gate question (--current), like the plugin git-diff
-            # step.
-            return
-        plugin_wheel = member_bytes(
-            f"plugins/glossabet/skills/glossabet/assets/"
-            f"glossabet-{version}-py3-none-any.whl"
-        )
+        asset_prefix = prefix + "plugins/glossabet/skills/glossabet/assets/"
+        asset_names = [
+            name
+            for name in names
+            if name.startswith(asset_prefix + "glossabet-")
+            and name.endswith("-py3-none-any.whl")
+        ]
+        if len(asset_names) != 1:
+            _fail(
+                "source distribution must bundle exactly one plugin wheel, "
+                f"found {len(asset_names)}"
+            )
+        if current and asset_names[0] != (
+            asset_prefix + f"glossabet-{version}-py3-none-any.whl"
+        ):
+            _fail("source-distribution plugin wheel does not match the version")
+        # The bundled plugin snapshots the checked-in tree, which may
+        # honestly lag engine source between releases: its structure and
+        # contracts are always validated, while equality with the current
+        # source and release wheel is a release-gate question (--current),
+        # like the plugin git-diff step.
+        plugin_wheel = member_bytes(asset_names[0][len(prefix):])
         _check_plugin_bundle(
             manifest_bytes=member_bytes(
                 "plugins/glossabet/.codex-plugin/plugin.json"
@@ -329,8 +351,9 @@ def _check_sdist(
             version=version,
             canonical_skill=canonical_skill,
             label="source distribution",
+            current=current,
         )
-        if plugin_wheel != wheel.read_bytes():
+        if current and plugin_wheel != wheel.read_bytes():
             _fail("source-distribution plugin wheel differs from the release wheel")
 
 

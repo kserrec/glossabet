@@ -30,6 +30,15 @@ DEFAULT_REVIEW_RESULTS = PROJECT_ROOT / "evaluation" / "reviewer-results.json"
 PROMPT_PATH = PROJECT_ROOT / "evaluation" / "reviewer-prompt.md"
 RESPONSE_SCHEMA_PATH = PROJECT_ROOT / "evaluation" / "reviewer-response-schema.json"
 SECONDARY_USEFULNESS_THRESHOLD = 0.8
+# Generous absolute ceilings behind any recorded trace limits: genuine
+# verification accepts lagging limit values, never unbounded ones.
+TRACE_LIMIT_CEILINGS = {
+    "jsonl_bytes": 100_000_000,
+    "events": 10_000,
+    "commands": 100,
+    "stored_command_characters": 100_000,
+    "stored_output_characters": 100_000,
+}
 TRACE_LIMITS = {
     "jsonl_bytes": 4_000_000,
     "events": 100,
@@ -596,8 +605,8 @@ def verify_results(
             and all(
                 isinstance(value, int)
                 and not isinstance(value, bool)
-                and value > 0
-                for value in recorded_limits.values()
+                and 0 < value <= TRACE_LIMIT_CEILINGS[key]
+                for key, value in recorded_limits.items()
             )
         )
     if not limits_ok:

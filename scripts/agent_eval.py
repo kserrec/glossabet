@@ -47,13 +47,16 @@ REQUIRED_SCENARIO_IDS = (
     "session-hook",
     "missing-cli",
 )
-_TRACE_LIMIT_KEYS = frozenset({
-    "commands_per_scenario",
-    "events",
-    "jsonl_bytes",
-    "stored_command_characters",
-    "stored_output_characters",
-})
+# Generous absolute ceilings behind any recorded trace limits: genuine
+# verification accepts lagging limit values, never unbounded ones.
+_TRACE_LIMIT_CEILINGS = {
+    "commands_per_scenario": 100,
+    "events": 10_000,
+    "jsonl_bytes": 100_000_000,
+    "stored_command_characters": 100_000,
+    "stored_output_characters": 100_000,
+}
+_TRACE_LIMIT_KEYS = frozenset(_TRACE_LIMIT_CEILINGS)
 HISTORY_SCHEMA_VERSION = 1
 SENSITIVE_CANARY = "GLOSSABET_SENSITIVE_CANARY_MUST_NOT_APPEAR"
 HOOK_SOURCE_CANARY = "AMBIENT_SOURCE_TEXT_MUST_NOT_REACH_SESSION_CONTEXT"
@@ -2715,8 +2718,8 @@ def verify_results(
             and all(
                 isinstance(value, int)
                 and not isinstance(value, bool)
-                and value > 0
-                for value in recorded_limits.values()
+                and 0 < value <= _TRACE_LIMIT_CEILINGS[key]
+                for key, value in recorded_limits.items()
             )
         )
     if not limits_ok:

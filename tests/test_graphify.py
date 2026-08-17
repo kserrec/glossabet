@@ -459,9 +459,9 @@ def test_non_finite_and_bool_cohesion_never_enter_artifacts(tmp_path):
     root = make_repo(tmp_path, None)
     # json.loads accepts the bare NaN token, matching a hostile or odd
     # graph.json on disk.
-    (root / "graphify-out" / "graph.json").write_text(
-        json.dumps(graph).replace("NaN", "NaN")
-    )
+    # json.dumps emits the bare NaN token by default, matching a hostile
+    # or odd graph.json on disk.
+    (root / "graphify-out" / "graph.json").write_text(json.dumps(graph))
     structural = build_structural_groups(
         root, {"head": "a" * 40, "dirty": False}
     )
