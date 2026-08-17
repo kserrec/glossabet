@@ -273,10 +273,14 @@ The package is `glossabet/`. Grouped by role:
   production docs into the terminology layer, then assemble the evidence
   dict. Identifier entries retain normalized tokens and bounded locations so
   compound matching can prove one lexical unit rather than infer from aggregate
-  words. Also holds
-  `_git_stamp()` (runs `git` with the repo's dangerous config keys neutralized
-  and the shared Glossabet-output pathspec — see Security) and the
-  `scan`/`analyze` command handlers.
+  words. Also holds the `scan`/`analyze` command handlers.
+- `git_state.py` — the filtered Git state of a repository root:
+  `repository_git_stamp()` runs `git` with the repo's dangerous config keys
+  neutralized (`SAFE_CONFIG` plus per-name filter-driver overrides — see
+  Security) and the Glossabet-output freshness pathspec
+  (`FRESHNESS_STATUS_ARGS`), returning `{"head", "dirty"}`. The one place
+  the engine runs `git`; `evidence` and `brief` call it, the Graphify
+  adapter and the cache consume its stamp, and tests substitute it here.
 - `agent_context.py` — the `inspect` command and versioned skill boundary.
   It loads the optional glossary through the confined validator, builds fresh
   evidence, applies deterministic list/string/output limits, records all
@@ -602,7 +606,7 @@ It carries the same read-only managed-context report as drift.
 
 ## Git freshness and artifact lifecycle
 
-`_git_stamp()` records the live-state definition used in evidence. It reads
+`git_state.repository_git_stamp()` records the live-state definition used in evidence. It reads
 `HEAD`, then run porcelain-v1 status with all untracked files, rename detection
 disabled, and these scanned-root-relative pathspecs:
 
@@ -665,7 +669,7 @@ boundaries — sensitive-file/directory exclusion, symlink-escape prevention, no
 contamination, per-input size caps, neutralizing the scanned repo's git
 config so it can't execute code, and catching malformed input cleanly rather
 than crashing as a "defect" — are documented with their regression tests in
-`SECURITY.md`. Read that file before touching `scanner.py`, `evidence._git_stamp`,
+`SECURITY.md`. Read that file before touching `scanner.py`, `git_state.py`,
 or any of the JSON readers.
 
 ## Decisions and constraints

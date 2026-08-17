@@ -1694,6 +1694,61 @@ composition stays with the skill (the deterministic `scan` invents no
 agent-level judgment); the agent contract grew only the additive
 `skipped.self_reports` list. Full suite green after rebuild.
 
+### Phase 35 — Deepening refactor (zero behaviour change) — in progress 2026-08-17
+
+**Goal:** apply the accepted findings of the 2026-08-17 architecture review
+(Matt Pocock's `improve-codebase-architecture` skill, verified by hand):
+turn the shallow, duplicated seams in the hot modules into a few deep ones.
+No behaviour change: every engine output for the local corpus fixtures and
+this repository (scan/analyze/inspect/inspect --full/drift/validate/show/
+brief/sync-context stdout+stderr and every `glossabet-out/*.json`) must be
+byte-identical to the pre-refactor baseline after every step, and the full
+suite stays green. Rejected as low value: engine-run preamble module,
+single occurrence record, named terminal-escaping policy; rejected as YAGNI:
+an agent-host registry (two settled hosts) and unifying installer/context_sync
+symlink rules (they differ on purpose).
+
+**Steps (each one pass, one commit):**
+
+1. **Git state module** — `glossabet/git_state.py` owns the hardened stamp
+   (`repository_git_stamp`), the freshness pathspec (`FRESHNESS_STATUS_ARGS`),
+   safe-config and filter-driver neutralization. `evidence` and `brief` call
+   the public name; `brief._git_stamp` shim deleted; tests import public
+   names and get their own `tests/test_git_state.py` home for the freshness
+   cases that were in `test_freshness.py`/`test_report.py`.
+2. **Bounded JSON reader** — `artifacts.read_bounded_json(path, cap)` reads
+   `cap + 1` bytes and returns absent / value / refusal(reason) so
+   `config`, `glossary` (file + stdin), `graphify`, `cache`, and
+   `repository_glossary` share one read discipline; `oversized()` absorbed
+   where its only caller was the read; tests patch one constant.
+3. **Exclusion ledger** — `scanner.WalkResult` owns each exclusion kind's
+   evidence key, human sentence, and paths; `WalkResult.skipped_as_evidence()`
+   emits the `skipped` section; the scan printer iterates the ledger;
+   `repository_glossary` asks the scanner for nested self-glossaries instead
+   of indexing the dict.
+4. **Dependency-direction fixes** — `repository_glossary` stops importing
+   the private `scanner._resolves_outside_root` and re-deriving the
+   walked-file rule: the scanner exposes one public content-path policy
+   both use. `evidence` stops importing `strip_managed_context_for_evidence`
+   from the `context_sync` command module: the managed-block stripper moves
+   to a module beneath both (`glossabet/managed_block.py`) that
+   `context_sync` and `evidence` both import.
+5. **Vocabulary interface** — `_Vocabulary` becomes the public
+   `ProductionVocabulary` owning the fold and the few queries the analyses
+   need; `build_terminology(vocabulary, doc_term_counts)` and
+   `build_naming_candidates(vocabulary, ...)` lose their 19 positional
+   parallel-dict parameters; tests build a vocabulary instead of aliasing
+   four `defaultdict`s.
+6. **Findings document module** — `glossabet/findings.py` owns the finding
+   record, the capped section with its coverage ledger, the
+   evidence-limitations derivation (`vocabulary[*].truncated` and matcher
+   coverage), and the terminal renderer; `drift` and `reconcile` emit
+   documents and call the one renderer instead of two `_print_report`s.
+
+**Acceptance:** baseline diff empty after every step; full suite green;
+ARCHITECTURE.md module map updated for the new modules; wheel/plugin
+rebuilt through the existing process at the end.
+
 ### Owner self-testing pause — active, not an implementation phase
 
 Kyle is keeping the current build to himself while he runs it and performs

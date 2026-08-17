@@ -11,7 +11,8 @@ from pathlib import Path
 
 from glossabet.artifacts import REPORT_FILE
 from glossabet.cli import main
-from glossabet.evidence import _GIT_FRESHNESS_STATUS_ARGS, _git_stamp, build_evidence
+from glossabet.evidence import build_evidence
+from glossabet.git_state import FRESHNESS_STATUS_ARGS, repository_git_stamp
 from glossabet.glossary import load_glossary, save_glossary
 from glossabet.repository_glossary import REPOSITORY_GLOSSARY_FILE
 from glossabet.scanner import SELF_FILES, SELF_REPORT_FILES
@@ -67,9 +68,9 @@ def test_report_name_is_shared_by_scanner_and_freshness_and_distinct_from_glossa
     assert REPORT_FILE == "GLOSSABET.md"
     assert SELF_REPORT_FILES == frozenset({REPORT_FILE})
     assert not (SELF_FILES & SELF_REPORT_FILES)
-    assert f":(exclude){REPORT_FILE}" in _GIT_FRESHNESS_STATUS_ARGS
-    assert f":(exclude){REPOSITORY_GLOSSARY_FILE}" not in _GIT_FRESHNESS_STATUS_ARGS
-    assert not any(REPOSITORY_GLOSSARY_FILE in arg for arg in _GIT_FRESHNESS_STATUS_ARGS)
+    assert f":(exclude){REPORT_FILE}" in FRESHNESS_STATUS_ARGS
+    assert f":(exclude){REPOSITORY_GLOSSARY_FILE}" not in FRESHNESS_STATUS_ARGS
+    assert not any(REPOSITORY_GLOSSARY_FILE in arg for arg in FRESHNESS_STATUS_ARGS)
 
 
 # --- self-feedback prevention -----------------------------------------------
@@ -135,7 +136,7 @@ def test_untracked_report_does_not_dirty_freshness(tmp_path):
 
     (tmp_path / REPORT_FILE).write_text(REPORT)
 
-    live = _git_stamp(tmp_path)
+    live = repository_git_stamp(tmp_path)
     assert live == stamped
     assert live["dirty"] is False
 
@@ -143,11 +144,11 @@ def test_untracked_report_does_not_dirty_freshness(tmp_path):
 def test_tracked_report_regeneration_does_not_dirty_freshness(tmp_path):
     _init_repo(tmp_path, tracked_extra={REPORT_FILE: "# Glossabet\n\nold\n"})
     (tmp_path / REPORT_FILE).write_text(REPORT)
-    assert _git_stamp(tmp_path)["dirty"] is False
+    assert repository_git_stamp(tmp_path)["dirty"] is False
 
     # Deleting the tracked report is likewise an output change.
     (tmp_path / REPORT_FILE).unlink()
-    assert _git_stamp(tmp_path)["dirty"] is False
+    assert repository_git_stamp(tmp_path)["dirty"] is False
 
 
 def test_glossary_markdown_change_remains_visible_next_to_hidden_report(tmp_path):
@@ -157,18 +158,18 @@ def test_glossary_markdown_change_remains_visible_next_to_hidden_report(tmp_path
         REPOSITORY_GLOSSARY_FILE: "# Glossary\n\nold\n",
     })
     (tmp_path / REPORT_FILE).write_text(REPORT)
-    assert _git_stamp(tmp_path)["dirty"] is False
+    assert repository_git_stamp(tmp_path)["dirty"] is False
 
     (tmp_path / REPOSITORY_GLOSSARY_FILE).write_text("# Glossary\n\nnew term\n")
-    assert _git_stamp(tmp_path)["dirty"] is True
+    assert repository_git_stamp(tmp_path)["dirty"] is True
 
 
 def test_untracked_glossary_markdown_is_dirty_even_when_report_is_not(tmp_path):
     _init_repo(tmp_path)
     (tmp_path / REPORT_FILE).write_text(REPORT)
-    assert _git_stamp(tmp_path)["dirty"] is False
+    assert repository_git_stamp(tmp_path)["dirty"] is False
     (tmp_path / REPOSITORY_GLOSSARY_FILE).write_text("# Glossary\n")
-    assert _git_stamp(tmp_path)["dirty"] is True
+    assert repository_git_stamp(tmp_path)["dirty"] is True
 
 
 def test_nested_subproject_report_is_ordinary_state_for_the_enclosing_scan(tmp_path):
@@ -177,13 +178,13 @@ def test_nested_subproject_report_is_ordinary_state_for_the_enclosing_scan(tmp_p
     _init_repo(tmp_path)
     (tmp_path / "pkg").mkdir()
     (tmp_path / "pkg" / REPORT_FILE).write_text(REPORT)
-    assert _git_stamp(tmp_path)["dirty"] is True
+    assert repository_git_stamp(tmp_path)["dirty"] is True
 
 
 def test_move_source_into_report_name_keeps_deletion_visible(tmp_path):
     _init_repo(tmp_path)
     (tmp_path / "service.py").rename(tmp_path / REPORT_FILE)
-    assert _git_stamp(tmp_path)["dirty"] is True
+    assert repository_git_stamp(tmp_path)["dirty"] is True
 
 
 # --- no machine authority ---------------------------------------------------

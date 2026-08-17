@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 
 from glossabet.artifacts import ArtifactError, repo_root
+from glossabet import git_state
 from glossabet.display import escape_terminal_text, print_error
 from glossabet.glossary import (
     GLOSSARY_SCHEMA_VERSION,
@@ -24,13 +25,6 @@ _ELLIPSIS = "…"
 
 class BriefError(ArtifactError):
     """A safe vocabulary brief could not be produced within its contract."""
-
-
-def _git_stamp(root):
-    """Lazy test seam around the hardened repository Git-state probe."""
-    from glossabet.evidence import _git_stamp as evidence_git_stamp
-
-    return evidence_git_stamp(root)
 
 
 def _utf8_size(text: str) -> int:
@@ -235,5 +229,5 @@ def brief_command(path_arg: str) -> int:
         return 1
     if glossary is None:
         return 0
-    print(build_brief(glossary, _git_stamp(root)), end="")
+    print(build_brief(glossary, git_state.repository_git_stamp(root)), end="")
     return 0

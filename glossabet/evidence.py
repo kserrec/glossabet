@@ -9,8 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import shutil
-import subprocess
 import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -18,12 +16,13 @@ from itertools import combinations
 from pathlib import Path
 
 from glossabet import __version__
-from glossabet.artifacts import OUT_DIR, REPORT_FILE, repo_root, write_artifact
+from glossabet.artifacts import OUT_DIR, repo_root, write_artifact
 from glossabet.cache import entry_if_valid, load_cache, save_cache
 from glossabet.config import load_config
 from glossabet.coverage import coverage_ledger
 from glossabet.context_sync import strip_managed_context_for_evidence
 from glossabet.display import escape_terminal_text
+from glossabet import git_state
 from glossabet.graphify import (
     build_structural_groups,
     disabled_structural_groups,
@@ -62,106 +61,6 @@ class Limits:
     identifiers: int = 2000
     doc_terms: int = 2000
     locations_per_term: int = 5
-
-
-# Config keys that let a repository's own .git/config name a program git will
-# execute (core.fsmonitor runs on `git status`, hooks on many operations). We
-# only read HEAD and dirty state from an untrusted repo, so we override these
-# to empty on every call: a hostile .git/config must not achieve code
-# execution. Command-line -c beats repo-local config. Content filter drivers
-# (filter.<name>.clean/smudge/process) are a third such surface — `git status`
-# runs them during content conversion — but their names are attacker-chosen,
-# so they are enumerated from the repository's effective config (with
-# include.path/includeIf directives resolved, exactly as `git status` sees
-# them) and cleared per-name in _filter_driver_overrides.
-_GIT_SAFE_CONFIG = ("-c", "core.fsmonitor=", "-c", "core.hooksPath=/dev/null")
-
-
-def _resolve_git() -> str:
-    """Absolute git path so a repo-shipped git.exe on the cwd search path
-    (Windows resolves the current directory before PATH) cannot be run."""
-    return shutil.which("git") or "git"
-
-# Freshness describes repository inputs, not Glossabet's own output. Keep the
-# pathspec here literal and documented in ARCHITECTURE.md/README: the whole
-# top-level output directory and the root GLOSSABET.md vocabulary-health
-# report are Glossabet-owned derived output, whether tracked or untracked, so
-# regenerating them never makes the inputs they were generated from look
-# stale. GLOSSARY.md is deliberately NOT excluded: it is human-governed
-# vocabulary, and a change to it is meaningful repository state. Only the
-# scan root's GLOSSABET.md is excluded; a nested subproject's report is that
-# subproject's output, not this scan's, and stays visible like any other
-# path. The pathspec is relative to `git -C root`, not Git's top level,
-# because a supported per-subproject scan may start inside a larger worktree.
-# --no-renames ensures a move across that ownership boundary still exposes the
-# changed non-output path. Git-ignored paths retain Git's ordinary status
-# semantics and every other tracked or untracked path remains visible.
-_GIT_FRESHNESS_STATUS_ARGS = (
-    "status",
-    "--porcelain=v1",
-    "--untracked-files=all",
-    "--no-renames",
-    "--",
-    ".",
-    f":(exclude){OUT_DIR}",
-    f":(exclude){OUT_DIR}/**",
-    f":(exclude){REPORT_FILE}",
-)
-
-
-def _filter_driver_overrides(git_exe: str, root: Path) -> tuple[str, ...]:
-    """`-c filter.<name>.<op>=` for every content-filter driver the repository
-    defines, so `git status` cannot execute an attacker-named clean/smudge/
-    process command during content conversion. Reading config runs no filter.
-    """
-    try:
-        # Enumerate the way `git status` will resolve config: WITHOUT --local,
-        # so `include.path`/`includeIf` directives are followed. A hostile repo
-        # can define its filter driver in an included file that --local never
-        # reads, then trip it during status content conversion. Reading config
-        # runs no filter. Clearing the user's own global/system filter names as
-        # a side effect is harmless: this probe never wants any filter to run.
-        proc = subprocess.run(
-            [git_exe, *_GIT_SAFE_CONFIG, "-C", str(root),
-             "config", "--name-only", "--get-regexp", r"^filter\."],
-            capture_output=True, text=True, timeout=30,
-            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return ()
-    if proc.returncode not in (0, 1):  # 1 == no matching keys
-        return ()
-    overrides: list[str] = []
-    for key in proc.stdout.split():
-        if key.startswith("filter.") and key.count(".") >= 2:
-            overrides.extend(("-c", f"{key}="))
-    return tuple(overrides)
-
-
-def _git_stamp(root: Path) -> dict:
-    git_exe = _resolve_git()
-    filter_overrides = _filter_driver_overrides(git_exe, root)
-
-    def git(*args: str) -> str | None:
-        try:
-            proc = subprocess.run(
-                [git_exe, *_GIT_SAFE_CONFIG, *filter_overrides,
-                 "-C", str(root), *args],
-                capture_output=True, text=True, timeout=30,
-                env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return None
-        return proc.stdout if proc.returncode == 0 else None
-
-    head = git("rev-parse", "HEAD")
-    if head is None:
-        return {"head": None, "dirty": None}
-    status = git(*_GIT_FRESHNESS_STATUS_ARGS)
-    return {
-        "head": head.strip(),
-        "dirty": bool(status.strip()) if status is not None else None,
-    }
 
 
 def _capped(counter: Counter, cap: int, entry) -> dict:
@@ -306,7 +205,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
     root = root.resolve()
     config = load_config(root)
     walk = walk_repository(root, config)
-    git_stamp = _git_stamp(root)
+    git_stamp = git_state.repository_git_stamp(root)
     cached = load_cache(root) if cache else None
     cache_files: dict[str, dict] = {}
     reused = extracted = 0

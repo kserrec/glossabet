@@ -47,7 +47,7 @@ def test_brief_emits_only_canonical_vocabulary_with_exact_state_stamp(
     monkeypatch,
 ):
     save_glossary(tmp_path, GLOSSARY)
-    monkeypatch.setattr("glossabet.brief._git_stamp", lambda _root: _fixed_stamp())
+    monkeypatch.setattr("glossabet.git_state.repository_git_stamp", lambda _root: _fixed_stamp())
 
     assert main(["brief", str(tmp_path)]) == 0
 
@@ -81,7 +81,7 @@ def test_brief_is_deterministic_and_reads_only_the_glossary(
     source_before = source.read_bytes()
     secret_before = secret.read_bytes()
     glossary_before = glossary_path.read_bytes()
-    monkeypatch.setattr("glossabet.brief._git_stamp", lambda _root: _fixed_stamp())
+    monkeypatch.setattr("glossabet.git_state.repository_git_stamp", lambda _root: _fixed_stamp())
 
     assert main(["brief", str(tmp_path)]) == 0
     first = capsys.readouterr().out
@@ -105,7 +105,7 @@ def test_brief_without_a_glossary_contributes_nothing(
     def unexpected_git_read(_root):
         raise AssertionError("absent glossary must not request a git stamp")
 
-    monkeypatch.setattr("glossabet.brief._git_stamp", unexpected_git_read)
+    monkeypatch.setattr("glossabet.git_state.repository_git_stamp", unexpected_git_read)
 
     assert main(["brief", str(tmp_path)]) == 0
     captured = capsys.readouterr()
@@ -153,7 +153,7 @@ def test_brief_collapses_allowed_prose_layout_to_one_line(
     glossary = json.loads(json.dumps(GLOSSARY))
     glossary["concepts"][0]["definition"] = "First line.\n\tSecond line."
     save_glossary(tmp_path, glossary)
-    monkeypatch.setattr("glossabet.brief._git_stamp", lambda _root: _fixed_stamp())
+    monkeypatch.setattr("glossabet.git_state.repository_git_stamp", lambda _root: _fixed_stamp())
 
     assert main(["brief", str(tmp_path)]) == 0
 
