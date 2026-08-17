@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import sys
-
-from glossabet.artifacts import ArtifactError, repo_root
+from glossabet.artifacts import ArtifactError
 from glossabet import git_state
-from glossabet.display import escape_terminal_text, print_error
+from glossabet.display import escape_terminal_text
+from glossabet.engine_run import GLOSSARY_OPTIONAL, open_run
 from glossabet.glossary import (
     GLOSSARY_SCHEMA_VERSION,
-    GlossaryError,
     concept_scope,
     glossary_sha256,
-    load_glossary,
 )
 
 
@@ -219,15 +216,11 @@ def build_managed_brief(glossary: dict) -> str:
 
 def brief_command(path_arg: str) -> int:
     """Print current canonical vocabulary without scanning or writing the repo."""
-    root = repo_root(path_arg)
-    if root is None:
-        return 1
-    try:
-        glossary = load_glossary(root)
-    except GlossaryError as exc:
-        print_error(exc)
-        return 1
-    if glossary is None:
+    run = open_run(path_arg, glossary=GLOSSARY_OPTIONAL)
+    if run.glossary is None:
         return 0
-    print(build_brief(glossary, git_state.repository_git_stamp(root)), end="")
+    print(
+        build_brief(run.glossary, git_state.repository_git_stamp(run.root)),
+        end="",
+    )
     return 0

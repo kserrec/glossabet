@@ -15,10 +15,11 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from glossabet.artifacts import repo_root, replace_file_atomic
+from glossabet.artifacts import replace_file_atomic
 from glossabet.brief import build_managed_brief
 from glossabet.display import escape_terminal_text, print_error
-from glossabet.glossary import glossary_sha256, require_glossary
+from glossabet.engine_run import GLOSSARY_REQUIRED, open_run
+from glossabet.glossary import glossary_sha256
 from glossabet.managed_block import (  # noqa: F401 — re-exported names
     AGENT_TARGETS,
     END_MARKER,
@@ -354,14 +355,14 @@ def print_managed_context_issues(report: dict) -> None:
 
 
 def sync_context_command(path_arg: str, agent: str, *, force: bool = False) -> int:
-    root = repo_root(path_arg)
-    if root is None:
-        return 1
-    glossary = require_glossary(root, "no glossary to synchronize")
-    if glossary is None:
-        return 1
+    run = open_run(
+        path_arg, glossary=GLOSSARY_REQUIRED,
+        missing="no glossary to synchronize",
+    )
     try:
-        path, outcome = sync_context(root, glossary, agent, force=force)
+        path, outcome = sync_context(
+            run.root, run.glossary, agent, force=force
+        )
     except ContextSyncError as exc:
         print_error(exc)
         return 1

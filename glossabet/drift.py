@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from itertools import combinations
 
-from glossabet.artifacts import repo_root, write_artifact
+from glossabet.artifacts import write_artifact
 from glossabet.coverage import coverage_reasons
 from glossabet.context_sync import (
     inspect_managed_context,
@@ -20,7 +20,8 @@ from glossabet.context_sync import (
     unchecked_managed_context,
 )
 from glossabet.display import escape_terminal_text
-from glossabet.evidence import build_evidence, write_evidence
+from glossabet.engine_run import GLOSSARY_REQUIRED, open_run
+from glossabet.evidence import persist_evidence
 from glossabet.findings import (
     capped_section,
     finding,
@@ -32,7 +33,6 @@ from glossabet.findings import (
 from glossabet.glossary import (
     concept_scope,
     path_in_scope,
-    require_glossary,
     scope_evidence,
     scopes_overlap,
 )
@@ -528,16 +528,15 @@ def _print_report(drift: dict) -> None:
 
 
 def drift_command(path_arg: str) -> int:
-    root = repo_root(path_arg)
-    if root is None:
-        return 1
-    glossary = require_glossary(root, "no glossary to check against")
-    if glossary is None:
-        return 1
-    evidence = build_evidence(root, cache=True)
-    write_evidence(root, evidence)
-    managed_context = inspect_managed_context(root, glossary)
-    drift = build_drift(evidence, glossary, managed_context=managed_context)
-    write_artifact(root, DRIFT_FILE, drift)
+    run = open_run(
+        path_arg, glossary=GLOSSARY_REQUIRED,
+        missing="no glossary to check against",
+    )
+    evidence = persist_evidence(run.root)
+    managed_context = inspect_managed_context(run.root, run.glossary)
+    drift = build_drift(
+        evidence, run.glossary, managed_context=managed_context
+    )
+    write_artifact(run.root, DRIFT_FILE, drift)
     _print_report(drift)
     return 0

@@ -3,7 +3,7 @@
 Status: **phases 0–22, Phases 24–32, Phase 34 (`GLOSSABET.md` report), and
 Phase 35 (deepening refactor) complete; Phase 33 (Claude Code ambient
 parity) in progress; Phase 36 (good-to-great structural debts) in progress —
-36.1 complete; owner self-testing pause active before the trusted-alpha
+36.1–36.2 complete; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-17.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1822,7 +1822,7 @@ green. Oracle harness for the rest of Phase 36 lives in this session's
 scratchpad (`oracle.py`: `setup`, `capture NAME`, then `diff -r out/base
 out/NAME`).
 
-#### Phase 36.2 — One command preamble and one glossary-error style
+#### Phase 36.2 — One command preamble and one glossary-error style ✅ 2026-08-17
 
 **Problem:** six commands re-spell resolve-root → require/load glossary →
 build evidence → write → print → exit, with three glossary-error styles
@@ -1847,6 +1847,27 @@ and printing.
 **Acceptance:** exactly one place decides "does this command need a
 glossary" and "how is a bad glossary reported"; oracle identical (stderr
 wording preserved verbatim).
+
+**Completion evidence (2026-08-17):** `engine_run.py` — `open_run(path_arg,
+glossary=none|optional|required, missing=…)` → `Run(root, glossary)` or
+`RunError(ArtifactError)`, which `cli` already maps to `print_error` + exit
+1; `evidence.persist_evidence(root, **options)` is the build-through-cache-
+and-write step (kept out of `engine_run` so `brief`, the session-start
+hook, never imports the scanner — pinned in `test_module_dependencies`).
+`repo_root` and `require_glossary` deleted; `show`/`save` moved from
+`glossary.py` to `glossary_commands.py` (avoids the model importing its own
+command preamble); `save_command` = read-stdin (`_read_glossary_from_stdin`)
+→ `save_glossary` → print; `inspect` no longer wraps a `GlossaryError` in
+`AgentContextError` (same stderr byte-for-byte). Two pre-existing dead
+imports dropped (`brief.sys`, `graphify.json`). Happy-path oracle identical;
+a second error-path oracle (9 commands × not-a-directory with a control
+character / glossary absent / malformed / wrong schema / symlinked, plus
+`save` oversized/unreadable/invalid stdin: 48 captures) diffed identical to
+the pre-change tree apart from the cache-warm line the run order added.
+`tests/test_engine_run.py` is the run contract (parametrized over every
+command); the per-command repeats it replaced were deleted (drift no-
+glossary, brief/inspect malformed glossary, cli/evidence missing path).
+Suite 511 green, ~24 s.
 
 #### Phase 36.3 — Accessor layer for the four top-level documents
 

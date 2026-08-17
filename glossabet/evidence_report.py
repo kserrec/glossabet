@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import sys
 
-from glossabet.artifacts import repo_root
 from glossabet.display import escape_terminal_text
+from glossabet.engine_run import open_run
 from glossabet.evidence import build_evidence, write_evidence
 from glossabet.scanner import exclusion_sentences
 
@@ -146,12 +146,12 @@ def _print_terminology_report(evidence: dict) -> None:
 
 
 def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
-    root = repo_root(path_arg)
-    if root is None:
-        return 1
+    run = open_run(path_arg)
     stats: dict = {}
-    evidence = build_evidence(root, cache=True, stats=stats, graphify=graphify)
-    out_path = write_evidence(root, evidence)
+    evidence = build_evidence(
+        run.root, cache=True, stats=stats, graphify=graphify
+    )
+    out_path = write_evidence(run.root, evidence)
     structural = evidence["structural_groups"]
     for warning in structural.get("warnings", []):
         print(

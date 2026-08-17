@@ -92,7 +92,10 @@ This first alpha is prepared but has not been published to PyPI.
   split into assembly (`evidence`), per-file extraction with cache reuse
   (`extraction`), and the `scan`/`analyze` handlers and printer
   (`evidence_report`), with production doc words folded into a
-  `DocumentationVocabulary`.
+  `DocumentationVocabulary`; one command preamble (`engine_run.open_run`)
+  decides for every command whether a glossary is needed and reports a
+  missing directory or bad/absent glossary in one style, and the `show`/
+  `save` commands move out of the glossary model into `glossary_commands`.
 - The pre-release working identity was renamed atomically from Glossarize to
   Glossabet across the package, import, command, skill, artifacts,
   configuration, cache, tests, and documentation. Pre-rename output/cache

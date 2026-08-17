@@ -15,7 +15,7 @@ import sys
 from collections import defaultdict
 from itertools import combinations, islice
 
-from glossabet.artifacts import repo_root, write_artifact
+from glossabet.artifacts import write_artifact
 from glossabet.coverage import coverage_ledger
 from glossabet.context_sync import (
     inspect_managed_context,
@@ -24,7 +24,8 @@ from glossabet.context_sync import (
 )
 from glossabet.display import escape_terminal_text
 from glossabet.drift import build_drift
-from glossabet.evidence import build_evidence, write_evidence
+from glossabet.engine_run import GLOSSARY_REQUIRED, open_run
+from glossabet.evidence import persist_evidence
 from glossabet import findings
 from glossabet.findings import (
     capped_section,
@@ -38,7 +39,6 @@ from glossabet.findings import (
 from glossabet.glossary import (
     concept_scope,
     path_in_scope,
-    require_glossary,
     scope_evidence,
 )
 from glossabet.repository_glossary import repository_glossary_section
@@ -720,24 +720,20 @@ def _print_repository_glossary(section: dict) -> None:
 
 
 def validate_command(path_arg: str) -> int:
-    root = repo_root(path_arg)
-    if root is None:
-        return 1
-    glossary = require_glossary(root, "no glossary to validate")
-    if glossary is None:
-        return 1
-    evidence = build_evidence(root, cache=True)
-    write_evidence(root, evidence)
-    managed_context = inspect_managed_context(root, glossary)
+    run = open_run(
+        path_arg, glossary=GLOSSARY_REQUIRED, missing="no glossary to validate"
+    )
+    evidence = persist_evidence(run.root)
+    managed_context = inspect_managed_context(run.root, run.glossary)
     validation = build_validation(
         evidence,
-        glossary,
+        run.glossary,
         managed_context=managed_context,
         repository_glossary=repository_glossary_section(
-            root, evidence, glossary
+            run.root, evidence, run.glossary
         ),
     )
-    write_artifact(root, VALIDATION_FILE, validation)
+    write_artifact(run.root, VALIDATION_FILE, validation)
     for warning in validation["graph"]["warnings"]:
         print(
             f"graphify adapter: {escape_terminal_text(warning)}",

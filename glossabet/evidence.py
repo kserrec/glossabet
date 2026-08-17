@@ -284,3 +284,12 @@ def build_evidence(root: Path, limits: Limits = Limits(),
 def write_evidence(root: Path, evidence: dict) -> Path:
     return write_artifact(root, EVIDENCE_FILE, evidence)
 
+
+def persist_evidence(root: Path, **options) -> dict:
+    """Build the evidence for one command run through the cache and write
+    it — the step every evidence-reading command performs after opening
+    its run. ``options`` are ``build_evidence`` keyword arguments."""
+    evidence = build_evidence(root, cache=True, **options)
+    write_evidence(root, evidence)
+    return evidence
+

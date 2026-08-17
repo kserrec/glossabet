@@ -216,13 +216,19 @@ The package is `glossabet/`. Grouped by role:
   `1` user error (bad usage, missing input, malformed glossary), `2` internal
   defect. A custom parser remaps argparse's own exit-2-on-usage-error to `1`.
   Both terminal streams are protected for the entire invocation.
+- `engine_run.py` — the one command preamble. `open_run(path_arg,
+  glossary=none|optional|required, missing=…)` resolves the repository root
+  and applies the glossary policy, returning a `Run(root, glossary)` or
+  raising `RunError` (an `ArtifactError`) for the user errors — not a
+  directory, unreadable/invalid glossary, required glossary absent — which
+  `cli` reports through `print_error` and maps to exit `1`. Every repository
+  command opens a run first; none re-spells those decisions or messages.
 - `display.py` — centralized terminal rendering. C0/C1 controls, DEL, line
   separators, and bidirectional-format characters from repository/user data
   are rendered as visible escape spellings rather than emitted as terminal
   instructions. Glossary identity fields reject them during validation.
 - `artifacts.py` — the reserved `glossabet-out/` plumbing shared by every command:
-  `OUT_DIR`, `repo_root()` (the "is this a directory" check + resolve),
-  `confined_artifact_path()` (direct artifacts may contain no symlink
+  `OUT_DIR`, `confined_artifact_path()` (direct artifacts may contain no symlink
   component), `write_artifact()` / `write_json_atomic()` (deterministic,
   same-directory atomic JSON replacement), and the one bounded read
   discipline: `read_bounded_bytes()` / `read_bounded_json()` /
@@ -439,13 +445,15 @@ The package is `glossabet/`. Grouped by role:
   reads as a miss. An override that resolves inside the target repository
   disables caching.
 - `glossary.py` — the persistent glossary (`glossabet-out/glossary.json`):
-  schema validation (`validate_glossary`), load/save, the `show` command, and
-  `require_glossary()` (the shared load-or-report-error helper). Bindings may
+  schema validation (`validate_glossary`) and confined load/save. Bindings may
   only target stable identities (`symbol:` / `file:` / `module:`), never graph
   community or node ids, which are not stable across rebuilds. Optional
   `scope.path_prefixes` are literal repository-relative subsystem boundaries;
   aliases inherit the concept scope. NFKC-casefolded vocabulary has one owner
   within overlapping scopes, while disjoint scopes may deliberately reuse it.
+- `glossary_commands.py` — the `show` and `save` commands: `show` renders the
+  loaded glossary; `save` reads one bounded JSON document from standard input
+  (`_read_glossary_from_stdin`), then `save_glossary()`, then prints the path.
   Every object rejects unknown fields; accepted concepts, aliases, bindings,
   scope paths, strings, and diagnostics have semantic ceilings. Vocabulary
   ownership uses a per-term path-prefix trie rather than pairwise owner scans.
@@ -632,7 +640,7 @@ is replaced, and a current block does not write. An edited body needs
 overwritten. The same-directory atomic commit rechecks target bytes and mode
 before replacement and preserves every byte outside the managed range.
 
-**`save`** (`cli.py` → `glossary.save_command`). Accepts at most 64 MB from
+**`save`** (`cli.py` → `glossary_commands.save_command`). Accepts at most 64 MB from
 standard input (reading one additional byte only to detect overflow), parses
 exactly one JSON document, applies the strict glossary schema and semantic
 budgets, then calls `save_glossary()` for a confined, atomic replacement. The
@@ -640,7 +648,8 @@ skill uses this flow after human approval and never writes the machine artifact
 directly.
 
 **`drift`** (`cli.py` → `drift.drift_command` → `build_drift`). Requires a
-glossary (`require_glossary`, exits `1` if absent). Builds fresh evidence,
+glossary (`open_run(..., glossary=required)`, exits `1` if absent). Builds
+fresh evidence (`evidence.persist_evidence`),
 indexes the glossary's canonical/watched tokens and ownership scopes, runs the
 four checks within those path regions, writes `glossabet-out/drift.json`, and
 prints the report. It also inspects both supported managed-context targets

@@ -475,12 +475,6 @@ def test_drift_command_end_to_end(tmp_path, capsys):
     assert (root / "glossabet-out" / "evidence.json").is_file()
 
 
-def test_drift_without_glossary_is_user_error(tmp_path, capsys):
-    (tmp_path / "a.py").write_text("x_y = 1\n")
-    assert main(["drift", str(tmp_path)]) == 1
-    assert "no glossary" in capsys.readouterr().err
-
-
 def test_scoped_zero_from_a_clipped_location_sample_is_confessed(tmp_path):
     # Five lib/ files dominate the token's 5-location sample; six auth/ uses
     # of the discouraged alias are invisible to the scoped count. The check

@@ -25,11 +25,6 @@ def test_unknown_command_is_user_error_not_argparse_2(capsys):
     assert exc.value.code == EXIT_USER_ERROR
 
 
-def test_scan_rejects_missing_path(capsys):
-    assert main(["scan", "/nonexistent/path"]) == EXIT_USER_ERROR
-    assert "not a directory" in capsys.readouterr().err
-
-
 def test_install_help_states_the_default_agent(capsys):
     with pytest.raises(SystemExit) as exc:
         main(["install", "--help"])

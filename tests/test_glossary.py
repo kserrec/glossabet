@@ -625,7 +625,7 @@ def test_save_command_rejects_invalid_stdin_without_writing(
 
 
 def test_save_command_bounds_standard_input(tmp_path, capsys, monkeypatch):
-    monkeypatch.setattr("glossabet.glossary.MAX_JSON_BYTES", 20)
+    monkeypatch.setattr("glossabet.glossary_commands.MAX_JSON_BYTES", 20)
     monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(GLOSSARY)))
 
     assert main(["save", str(tmp_path)]) == 1

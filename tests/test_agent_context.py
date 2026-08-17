@@ -87,20 +87,6 @@ def test_glossary_projection_truncation_is_visible_at_section_level(
     )
 
 
-def test_inspect_refuses_malformed_glossary_instead_of_treating_it_as_absent(
-    tmp_path, capsys
-):
-    out = tmp_path / "glossabet-out"
-    out.mkdir()
-    (out / "glossary.json").write_text("{broken")
-
-    assert main(["inspect", str(tmp_path), "--no-graphify"]) == EXIT_USER_ERROR
-
-    captured = capsys.readouterr()
-    assert captured.out == ""
-    assert "unreadable JSON" in captured.err
-
-
 def test_context_sampling_is_explicit(tmp_path, capsys, monkeypatch):
     (tmp_path / "a.py").write_text("first_name = 1\n")
     (tmp_path / "b.py").write_text("second_name = 2\n")

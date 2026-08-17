@@ -13,10 +13,10 @@ from collections import Counter
 from copy import deepcopy
 from dataclasses import dataclass, field
 
-from glossabet.artifacts import ArtifactError, repo_root
+from glossabet.artifacts import ArtifactError
 from glossabet.coverage import coverage_ledger, coverage_reasons
-from glossabet.evidence import build_evidence, write_evidence
-from glossabet.glossary import GlossaryError, load_glossary
+from glossabet.engine_run import GLOSSARY_OPTIONAL, open_run
+from glossabet.evidence import persist_evidence
 from glossabet.repository_glossary import repository_glossary_section
 from glossabet.imports import module_of
 from glossabet.tokenize import STRUCTURED_IDENTIFIER_STYLES, identifier_style
@@ -371,20 +371,13 @@ def inspect_command(
     full: bool = False,
 ) -> int:
     """Build current evidence and emit only the bounded agent contract."""
-    root = repo_root(path_arg)
-    if root is None:
-        return 1
-    try:
-        glossary = load_glossary(root)
-    except GlossaryError as exc:
-        raise AgentContextError(str(exc)) from exc
-    evidence = build_evidence(root, cache=True, graphify=graphify)
-    write_evidence(root, evidence)
+    run = open_run(path_arg, glossary=GLOSSARY_OPTIONAL)
+    evidence = persist_evidence(run.root, graphify=graphify)
     context = build_agent_context(
         evidence,
-        glossary,
+        run.glossary,
         repository_glossary=repository_glossary_section(
-            root, evidence, glossary
+            run.root, evidence, run.glossary
         ),
         full=full,
     )

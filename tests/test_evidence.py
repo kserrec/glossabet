@@ -6,7 +6,6 @@ import os
 
 from glossabet.cli import main
 from glossabet.evidence import Limits, build_evidence, write_evidence
-from glossabet.evidence_report import scan_command
 
 
 def make_repo(tmp_path):
@@ -309,10 +308,6 @@ def test_scan_command_end_to_end(tmp_path, capsys):
     out = capsys.readouterr()
     assert "code files" in out.out
     assert "sensitive" in out.err  # exclusion is reported, not silent
-
-
-def test_scan_on_missing_path_is_user_error(tmp_path):
-    assert scan_command(str(tmp_path / "nope")) == 1
 
 
 def test_nested_glossary_md_excluded(tmp_path):

@@ -113,19 +113,6 @@ def test_brief_without_a_glossary_contributes_nothing(
     assert captured.err == ""
 
 
-def test_brief_rejects_a_malformed_glossary_as_a_user_error(tmp_path, capsys):
-    output = tmp_path / "glossabet-out"
-    output.mkdir()
-    (output / "glossary.json").write_text("{broken", encoding="utf-8")
-
-    assert main(["brief", str(tmp_path)]) == 1
-
-    captured = capsys.readouterr()
-    assert captured.out == ""
-    assert "unreadable JSON" in captured.err
-    assert "internal error" not in captured.err
-
-
 def test_brief_rejects_a_symlinked_glossary_without_reading_the_target(
     tmp_path,
     capsys,

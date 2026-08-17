@@ -10,7 +10,6 @@ support (PLAN principle 3). Graphify's artifacts are read, never written.
 
 from __future__ import annotations
 
-import json
 import math
 import unicodedata
 from collections import Counter

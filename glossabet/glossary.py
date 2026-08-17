@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sys
 import unicodedata
 from pathlib import Path
 
@@ -20,19 +19,12 @@ from glossabet.artifacts import (
     READ_ABSENT,
     READ_OVERSIZED,
     ArtifactError,
-    MAX_JSON_BYTES,
     OUT_DIR,
     confined_artifact_path,
-    parse_bounded_json,
     read_bounded_json,
-    repo_root,
     write_artifact,
 )
-from glossabet.display import (
-    contains_terminal_control,
-    escape_terminal_text,
-    print_error,
-)
+from glossabet.display import contains_terminal_control
 
 GLOSSARY_SCHEMA_VERSION = 1
 GLOSSARY_FILE = "glossary.json"
@@ -578,125 +570,3 @@ def save_glossary(root: Path, glossary: dict) -> Path:
         concepts.append(concept)
     glossary["concepts"] = sorted(concepts, key=lambda c: c["id"])
     return write_artifact(root, GLOSSARY_FILE, glossary)
-
-
-def require_glossary(root: Path, missing: str) -> dict | None:
-    """Loaded glossary, or None after reporting why there is nothing usable.
-
-    `missing` is the leading clause for the no-glossary-yet message, e.g.
-    "no glossary to validate".
-    """
-    try:
-        glossary = load_glossary(root)
-    except GlossaryError as exc:
-        print_error(exc)
-        return None
-    if glossary is None:
-        safe_missing = escape_terminal_text(missing)
-        print(
-            f"glossabet: {safe_missing} — run /glossabet and settle terms "
-            f"first ({OUT_DIR}/{GLOSSARY_FILE})",
-            file=sys.stderr,
-        )
-        return None
-    return glossary
-
-
-def show_command(path_arg: str) -> int:
-    root = repo_root(path_arg)
-    if root is None:
-        return 1
-    try:
-        glossary = load_glossary(root)
-    except GlossaryError as exc:
-        print_error(exc)
-        return 1
-    if glossary is None:
-        print(
-            "no glossary yet — run /glossabet and settle terms to create "
-            f"{OUT_DIR}/{GLOSSARY_FILE}"
-        )
-        return 0
-
-    concepts = sorted(glossary["concepts"], key=lambda c: c["id"])
-    by_status: dict[str, list[dict]] = {}
-    for concept in concepts:
-        by_status.setdefault(concept["status"], []).append(concept)
-    counts = ", ".join(
-        f"{len(v)} {k}" for k, v in sorted(by_status.items())
-    )
-    print(f"glossary: {counts}")
-    for status in ("canonical", "proposed", "deprecated", "discouraged",
-                   "alias", "unknown"):
-        group = by_status.get(status)
-        if not group:
-            continue
-        print(f"\n== {status} ==")
-        for concept in group:
-            term = escape_terminal_text(concept["term"])
-            definition = escape_terminal_text(concept["definition"])
-            print(f"{term} — {definition}")
-            scope = concept_scope(concept)
-            if scope is not None:
-                print(
-                    "    scope: "
-                    + ", ".join(escape_terminal_text(path) for path in scope)
-                )
-            for alias in concept.get("aliases", []):
-                alias_term = escape_terminal_text(alias["term"])
-                alias_status = escape_terminal_text(alias["status"])
-                note = (
-                    f" ({escape_terminal_text(alias['note'])})"
-                    if alias.get("note") else ""
-                )
-                print(f"    alias: {alias_term} [{alias_status}]{note}")
-            if concept.get("notes"):
-                print(f"    note: {escape_terminal_text(concept['notes'])}")
-    return 0
-
-
-def save_command(path_arg: str) -> int:
-    """Validate JSON from stdin and persist it through the safe writer."""
-    root = repo_root(path_arg)
-    if root is None:
-        return 1
-    if sys.stdin.isatty():
-        print(
-            "glossabet: save requires one glossary JSON document on "
-            "standard input",
-            file=sys.stderr,
-        )
-        return 1
-
-    stream = getattr(sys.stdin, "buffer", sys.stdin)
-    try:
-        raw = stream.read(MAX_JSON_BYTES + 1)
-    except (OSError, UnicodeError) as exc:
-        print(
-            "glossabet: cannot read glossary JSON from standard input: "
-            + escape_terminal_text(str(exc)),
-            file=sys.stderr,
-        )
-        return 1
-    parsed = parse_bounded_json(raw, MAX_JSON_BYTES)
-    if parsed.status == READ_OVERSIZED:
-        print(
-            "glossabet: glossary JSON on standard input is larger than "
-            f"{MAX_JSON_BYTES} bytes",
-            file=sys.stderr,
-        )
-        return 1
-    if not parsed.ok:
-        print(
-            "glossabet: glossary JSON on standard input is unreadable ("
-            + escape_terminal_text(parsed.error) + ")",
-            file=sys.stderr,
-        )
-        return 1
-    try:
-        path = save_glossary(root, parsed.value)
-    except (GlossaryError, ArtifactError) as exc:
-        print_error(exc)
-        return 1
-    print("saved glossary: " + escape_terminal_text(str(path)))
-    return 0

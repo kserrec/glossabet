@@ -204,12 +204,12 @@ def _run(argv: list[str] | None) -> int:
         return sync_context_command(args.path, args.agent, force=args.force)
 
     if args.command == "show":
-        from glossabet.glossary import show_command
+        from glossabet.glossary_commands import show_command
 
         return show_command(args.path)
 
     if args.command == "save":
-        from glossabet.glossary import save_command
+        from glossabet.glossary_commands import save_command
 
         return save_command(args.path)
 

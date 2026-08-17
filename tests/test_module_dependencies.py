@@ -33,6 +33,15 @@ def test_forbidden_dependency_directions():
             "glossabet.evidence_report",
         },
         "extraction": {"glossabet.evidence", "glossabet.scanner"},
+        # The preamble sits beneath every command module and never pulls the
+        # scanner in: `brief` (a session-start hook) opens a run too.
+        "engine_run": {
+            "glossabet.evidence", "glossabet.scanner", "glossabet.cli",
+            "glossabet.brief", "glossabet.drift", "glossabet.reconcile",
+            "glossabet.context_sync", "glossabet.agent_context",
+            "glossabet.evidence_report", "glossabet.glossary_commands",
+        },
+        "glossary": {"glossabet.engine_run", "glossabet.glossary_commands"},
         "vocabulary": {"glossabet.evidence", "glossabet.scanner"},
         "brief": {"glossabet.evidence", "glossabet.scanner"},
         "managed_block": {"glossabet.context_sync", "glossabet.evidence"},
