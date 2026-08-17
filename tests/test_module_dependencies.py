@@ -42,6 +42,14 @@ def test_forbidden_dependency_directions():
             "glossabet.evidence_report", "glossabet.glossary_commands",
         },
         "glossary": {"glossabet.engine_run", "glossabet.glossary_commands"},
+        # Managed-context inspection is analysis; the sync command sits above
+        # it (Phase 36.4). Drift and validation inspect, never sync.
+        "managed_context": {
+            "glossabet.context_sync", "glossabet.evidence", "glossabet.drift",
+            "glossabet.reconcile", "glossabet.cli",
+        },
+        "drift": {"glossabet.context_sync", "glossabet.cli"},
+        "reconcile": {"glossabet.context_sync", "glossabet.cli"},
         "vocabulary": {"glossabet.evidence", "glossabet.scanner"},
         "brief": {"glossabet.evidence", "glossabet.scanner"},
         "managed_block": {"glossabet.context_sync", "glossabet.evidence"},

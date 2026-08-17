@@ -431,18 +431,27 @@ The package is `glossabet/`. Grouped by role:
 - `managed_block.py` — the exact managed block Glossabet may place in a root
   `AGENTS.md`/`CLAUDE.md`: markers, metadata stamp, block regex, the host →
   file map (`AGENT_TARGETS`), and `strip_managed_context_for_evidence()`.
-  It sits beneath its two users — `context_sync` writes the block, the
-  scanner's read path in `evidence` strips it — so the aggregation hub never
-  imports a command module.
+  It sits beneath its users — `managed_context` renders and analyzes the
+  block, `context_sync` writes it, the scanner's read path in `evidence`
+  strips it — so the aggregation hub never imports a command module.
+- `managed_context.py` — the managed block as an *inspected* thing:
+  `_render_block()` (the exact block one glossary deserves, with its format,
+  glossary and content stamps), `_read_regular_target()` (bounded,
+  identity-checked read of a regular UTF-8 root host file that never follows
+  a symlink), `_analyze_managed_block()` (absent / current / stale / edited),
+  `inspect_managed_context()` (both root targets, read-only; `uninspectable`
+  when the file cannot be read), `unchecked_managed_context()`, and
+  `print_managed_context_issues()`. `drift` and `reconcile` import the
+  inspector and printer from here — analysis never depends on the
+  `sync-context` command (`tests/test_module_dependencies.py`).
 - `context_sync.py` — the explicit project-context fallback for hosts without
   a trusted lifecycle hook. `sync-context` selects only root `AGENTS.md`
   (Codex default) or root `CLAUDE.md` (explicit Claude target), renders the
-  same bounded canonical projection with a stable semantic-glossary stamp,
-  and atomically appends or replaces one exact managed block. It bounds and
-  identity-checks regular UTF-8 targets, never follows a symlink, preserves
-  surrounding bytes and the file mode, refuses ambiguous marker layouts, and
-  requires `--force` before replacing an integrity-mismatched body. Its
-  read-only inspector supplies managed-context state to drift and validation.
+  same bounded canonical projection with a stable semantic-glossary stamp
+  (through `managed_context`), and atomically appends or replaces one exact
+  managed block. It preserves surrounding bytes and the file mode, refuses
+  ambiguous marker layouts, rechecks the target before the atomic commit,
+  and requires `--force` before replacing an integrity-mismatched body.
 - `cache.py` — the user-owned per-file extraction cache. It lives under the
   platform cache directory, outside the scanned repository, in a directory
   keyed by the repository's resolved path. Reuse requires the current file's

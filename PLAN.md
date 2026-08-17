@@ -3,7 +3,7 @@
 Status: **phases 0–22, Phases 24–32, Phase 34 (`GLOSSABET.md` report), and
 Phase 35 (deepening refactor) complete; Phase 33 (Claude Code ambient
 parity) in progress; Phase 36 (good-to-great structural debts) in progress —
-36.1–36.3 complete; owner self-testing pause active before the trusted-alpha
+36.1–36.4 complete; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-17.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1914,7 +1914,7 @@ their owners fail; every top-level evidence key has a view method). Oracle
 identical; the local evaluation cases (`--case` × 4) identical apart from
 timings and this repository's self-scan; suite 513 green.
 
-#### Phase 36.4 — Managed-context printer out of the command module
+#### Phase 36.4 — Managed-context printer out of the command module ✅ 2026-08-17
 
 **Problem:** `drift` and `reconcile` import `print_managed_context_issues`
 from `context_sync` (a command module) — the same backwards direction Phase
@@ -1925,6 +1925,23 @@ from `context_sync` (a command module) — the same backwards direction Phase
 imports them; add the pair to `test_module_dependencies.py`.
 
 **Acceptance:** no analysis module imports `context_sync`; oracle identical.
+
+**Completion evidence (2026-08-17):** the inspector could not move alone —
+it needs the block renderer, the safe host-file reader, and the analysis —
+so `glossabet/managed_context.py` now holds that whole read-side layer
+(`ContextSyncError`, `_render_block`, `_read_regular_target`,
+`_analyze_managed_block`, `_inspect_target`, `inspect_managed_context`,
+`unchecked_managed_context`, `print_managed_context_issues`,
+`MANAGED_CONTEXT_SCHEMA_VERSION`, `MAX_HOST_FILE_BYTES`); `context_sync`
+keeps only the write path (`sync_context`, `_write_bytes_atomic`,
+`_append_block`, `_detect_newline`, the command) and imports the rest;
+`drift`/`reconcile` import from `managed_context`; the re-exports
+`context_sync` carried for tests are gone (tests import from
+`managed_block`/`managed_context`). Dependency test pins `managed_context`
+↛ `context_sync`/`evidence`/`drift`/`reconcile`/`cli` and
+`drift`/`reconcile` ↛ `context_sync`. One test that patched
+`glossabet.context_sync.os.replace` now patches the module that calls it
+(`glossabet.artifacts.os.replace`). Both oracles identical; suite 513 green.
 
 #### Phase 36.5 — Producer-level tests for drift and validation rules
 

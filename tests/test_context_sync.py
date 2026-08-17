@@ -8,12 +8,8 @@ import pytest
 
 import glossabet.context_sync as context_sync
 from glossabet.cli import main
-from glossabet.context_sync import (
-    END_MARKER,
-    MAX_HOST_FILE_BYTES,
-    START_MARKER,
-    inspect_managed_context,
-)
+from glossabet.managed_block import END_MARKER, START_MARKER
+from glossabet.managed_context import MAX_HOST_FILE_BYTES, inspect_managed_context
 from glossabet.evidence import build_evidence
 from glossabet.glossary import load_glossary, save_glossary
 
@@ -279,7 +275,7 @@ def test_atomic_replace_failure_preserves_original_and_cleans_temporary_file(
     def fail_replace(_source, _target):
         raise OSError("injected replace failure")
 
-    monkeypatch.setattr("glossabet.context_sync.os.replace", fail_replace)
+    monkeypatch.setattr("glossabet.artifacts.os.replace", fail_replace)
 
     assert main(["sync-context", str(tmp_path)]) == 1
     assert target.read_bytes() == before

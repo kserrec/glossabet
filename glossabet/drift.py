@@ -14,7 +14,7 @@ from itertools import combinations
 
 from glossabet.artifacts import write_artifact
 from glossabet.coverage import coverage_reasons
-from glossabet.context_sync import (
+from glossabet.managed_context import (
     inspect_managed_context,
     print_managed_context_issues,
     unchecked_managed_context,
