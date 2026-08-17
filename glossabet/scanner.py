@@ -106,6 +106,32 @@ def _resolves_outside_root(full: str, root: Path) -> bool:
     return False
 
 
+# The one content rule for a symlinked repository path, shared by the walk
+# and by root GLOSSARY.md discovery (which must declare readable exactly what
+# the walk would have read — the skill reads what the engine declares
+# readable). Reasons are the reported vocabulary of both.
+LINK_ESCAPES_REPOSITORY = "symlink-escapes-repository"
+LINK_TO_SENSITIVE_FILE = "symlink-to-sensitive-file"
+
+
+def symlink_content_refusal(full: str, root: Path) -> str | None:
+    """Why a symlinked path is not repository content, or ``None`` when its
+    confined target may be read like an ordinary file.
+
+    A link resolving outside the repo is not repo content: reading it would
+    ingest arbitrary host files into evidence (``os.walk``'s
+    ``followlinks=False`` guards dirs, not files). A link with an innocent
+    name pointing at an in-repo sensitive file (``notes.py -> .env``) would
+    otherwise launder its contents into evidence, so the resolved target's
+    name is classified too.
+    """
+    if _resolves_outside_root(full, root):
+        return LINK_ESCAPES_REPOSITORY
+    if is_sensitive(os.path.basename(os.path.realpath(full))):
+        return LINK_TO_SENSITIVE_FILE
+    return None
+
+
 @dataclass
 class CorpusBudget:
     walk_entries: int = 0
@@ -462,17 +488,13 @@ def _classify_files(
             result.other_files += 1
             continue
         if os.path.islink(full):
-            # A symlink resolving outside the repo is not repo content:
-            # reading it would ingest arbitrary host files into evidence
-            # (os.walk's followlinks=False guards dirs, not files).
-            if _resolves_outside_root(full, root):
+            # The name check above sees only the link's own name; the shared
+            # content rule also classifies the resolved target.
+            refusal = symlink_content_refusal(full, root)
+            if refusal == LINK_ESCAPES_REPOSITORY:
                 result.skipped_symlinks.append(rel)
                 continue
-            # The name check above sees only the link's own name; a link
-            # with an ordinary name pointing at an in-repo sensitive file
-            # (notes.py -> .env) would otherwise launder its contents into
-            # evidence. Classify by the resolved target's name too.
-            if is_sensitive(os.path.basename(os.path.realpath(full))):
+            if refusal == LINK_TO_SENSITIVE_FILE:
                 result.skipped_sensitive.append(rel)
                 continue
         try:

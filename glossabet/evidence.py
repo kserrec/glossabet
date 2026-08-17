@@ -20,7 +20,6 @@ from glossabet.artifacts import OUT_DIR, repo_root, write_artifact
 from glossabet.cache import entry_if_valid, load_cache, save_cache
 from glossabet.config import load_config
 from glossabet.coverage import coverage_ledger
-from glossabet.context_sync import strip_managed_context_for_evidence
 from glossabet.display import escape_terminal_text
 from glossabet import git_state
 from glossabet.graphify import (
@@ -29,6 +28,7 @@ from glossabet.graphify import (
     structure_candidates,
 )
 from glossabet.imports import build_imports_section, extract_imports, module_of
+from glossabet.managed_block import strip_managed_context_for_evidence
 from glossabet.importance import build_naming_candidates
 from glossabet.scanner import (
     detect_monorepo,

@@ -21,12 +21,13 @@ import unicodedata
 
 from glossabet.artifacts import READ_OVERSIZED, read_bounded_bytes
 from glossabet.scanner import (
+    LINK_ESCAPES_REPOSITORY,
+    LINK_TO_SENSITIVE_FILE,
     MAX_FILE_BYTES,
     MAX_WALK_ENTRIES,
     SKIPPED_SELF_GLOSSARIES,
-    _resolves_outside_root,
     excluded_paths,
-    is_sensitive,
+    symlink_content_refusal,
 )
 
 REPOSITORY_GLOSSARY_FILE = "GLOSSARY.md"
@@ -43,8 +44,9 @@ MAX_DIVERGENCE_TEXT_CHARS = 2 * MAX_FILE_BYTES
 REASON_TEXT_EXCEEDS_BOUND = "normalized-text-exceeds-bound"
 SUPERSEDED_ALIAS_STATUSES = frozenset({"alias", "discouraged", "deprecated"})
 
-REASON_SYMLINK_ESCAPES = "symlink-escapes-repository"
-REASON_SYMLINK_SENSITIVE = "symlink-to-sensitive-file"
+# The symlink reasons are the scanner's own content-rule vocabulary.
+REASON_SYMLINK_ESCAPES = LINK_ESCAPES_REPOSITORY
+REASON_SYMLINK_SENSITIVE = LINK_TO_SENSITIVE_FILE
 REASON_NOT_REGULAR = "not-a-regular-file"
 REASON_OVERSIZED = "oversized"
 REASON_UNREADABLE = "unreadable"
@@ -103,14 +105,14 @@ def _read_repository_glossary(root: Path) -> tuple[dict, bytes | None]:
     if named_exactly is None:
         return _unreadable(REASON_LISTING_UNCONFIRMED, None), None
     if os.path.islink(full):
-        # Same two rules as walked files: an escaping link is not repository
-        # content, and a link with an innocent name pointing at an in-repo
-        # sensitive file (GLOSSARY.md -> .env) would otherwise be declared
-        # readable — and the skill reads what the engine declares readable.
-        if _resolves_outside_root(full, root):
-            return _unreadable(REASON_SYMLINK_ESCAPES, None), None
-        if is_sensitive(os.path.basename(os.path.realpath(full))):
-            return _unreadable(REASON_SYMLINK_SENSITIVE, None), None
+        # The scanner's content rule, not a re-derivation of it: an escaping
+        # link is not repository content, and a link with an innocent name
+        # pointing at an in-repo sensitive file (GLOSSARY.md -> .env) must
+        # not be declared readable — the skill reads what the engine
+        # declares readable.
+        refusal = symlink_content_refusal(full, root)
+        if refusal is not None:
+            return _unreadable(refusal, None), None
     if not os.path.isfile(full):
         return _unreadable(REASON_NOT_REGULAR, None), None
     read = read_bounded_bytes(full, MAX_REPOSITORY_GLOSSARY_BYTES)

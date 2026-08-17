@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import re
 import stat
 import sys
 from dataclasses import dataclass
@@ -20,33 +19,19 @@ from glossabet.artifacts import repo_root, replace_file_atomic
 from glossabet.brief import build_managed_brief
 from glossabet.display import escape_terminal_text, print_error
 from glossabet.glossary import glossary_sha256, require_glossary
+from glossabet.managed_block import (  # noqa: F401 — re-exported names
+    AGENT_TARGETS,
+    END_MARKER,
+    MANAGED_BLOCK_FORMAT_VERSION,
+    START_MARKER,
+    _BLOCK_RE,
+    _MARKER_PREFIX,
+    _METADATA_RE,
+)
 
 
 MANAGED_CONTEXT_SCHEMA_VERSION = 1
-MANAGED_BLOCK_FORMAT_VERSION = 1
 MAX_HOST_FILE_BYTES = 2_000_000
-
-AGENT_TARGETS = {
-    "codex": "AGENTS.md",
-    "claude": "CLAUDE.md",
-}
-
-START_MARKER = "<!-- glossabet:managed-context:start -->"
-END_MARKER = "<!-- glossabet:managed-context:end -->"
-_MARKER_PREFIX = "<!-- glossabet:managed-context"
-_METADATA_RE = re.compile(
-    r"<!-- glossabet:managed-context "
-    r"format=(?P<format>[0-9]{1,9}) "
-    r"glossary-sha256=(?P<glossary>[0-9a-f]{64}) "
-    r"content-sha256=(?P<content>[0-9a-f]{64}) -->"
-)
-_BLOCK_RE = re.compile(
-    rf"(?m)^{re.escape(START_MARKER)}\r?\n"
-    rf"(?P<metadata>{_METADATA_RE.pattern})\r?\n"
-    rf"(?P<body>.*?)"
-    rf"^{re.escape(END_MARKER)}(?=\r?$)",
-    re.DOTALL,
-)
 
 
 class ContextSyncError(ValueError):
@@ -366,26 +351,6 @@ def print_managed_context_issues(report: dict) -> None:
         status = escape_terminal_text(str(target.get("status", "issue")))
         detail = escape_terminal_text(str(target.get("detail", "")))
         print(f"managed context {path}: {status} — {detail}", file=sys.stderr)
-
-
-def strip_managed_context_for_evidence(relative: str, text: str) -> str:
-    """Remove one exactly bounded managed block from root host-file evidence.
-
-    The surrounding hand-written instructions remain lexical evidence. Even a
-    body whose stamp was edited is removed when its two exact outer markers
-    still define one unambiguous region; malformed marker layouts are left
-    untouched and separately flagged by drift/validate.
-    """
-    if relative not in AGENT_TARGETS.values():
-        return text
-    if text.count(START_MARKER) != 1 or text.count(END_MARKER) != 1:
-        return text
-    start = text.find(START_MARKER)
-    end = text.find(END_MARKER, start + len(START_MARKER))
-    if start < 0 or end < 0:
-        return text
-    end += len(END_MARKER)
-    return text[:start] + text[end:]
 
 
 def sync_context_command(path_arg: str, agent: str, *, force: bool = False) -> int:

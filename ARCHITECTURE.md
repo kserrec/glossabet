@@ -249,8 +249,13 @@ The package is `glossabet/`. Grouped by role:
   any depth, reported as `skipped.self_reports`) is excluded because it is
   derived Glossabet output that must never become evidence for its own next
   run;
-  symlinks whose real target escapes the repo root (`_escapes`) are skipped so a
-  hostile repo can't read outside files. Every such exclusion is one entry in
+  symlinks whose real target escapes the repo root are skipped so a hostile
+  repo can't read outside files, and a confined link whose target has a
+  sensitive name is classified sensitive — both through
+  `symlink_content_refusal()`, the one content rule for symlinked paths that
+  root `GLOSSARY.md` discovery reuses verbatim (its reasons
+  `symlink-escapes-repository` / `symlink-to-sensitive-file` are the
+  scanner's). Every such exclusion is one entry in
   `EXCLUSION_KINDS`, the ledger that owns its `evidence["skipped"]` key, the
   `WalkResult` list that collects it, and the sentence `scan` reports it with
   (`WalkResult.skipped_as_evidence()` emits the section, `exclusion_sentences()`
@@ -388,6 +393,12 @@ The package is `glossabet/`. Grouped by role:
   `install --agent claude` writes beside the skill: manifest, `SessionStart`
   hook running `brief .`, and version-verified resolution of the `glossabet`
   executable the hook names. Pure data out; `installer.py` does the writing.
+- `managed_block.py` — the exact managed block Glossabet may place in a root
+  `AGENTS.md`/`CLAUDE.md`: markers, metadata stamp, block regex, the host →
+  file map (`AGENT_TARGETS`), and `strip_managed_context_for_evidence()`.
+  It sits beneath its two users — `context_sync` writes the block, the
+  scanner's read path in `evidence` strips it — so the aggregation hub never
+  imports a command module.
 - `context_sync.py` — the explicit project-context fallback for hosts without
   a trusted lifecycle hook. `sync-context` selects only root `AGENTS.md`
   (Codex default) or root `CLAUDE.md` (explicit Claude target), renders the
