@@ -4,6 +4,7 @@ derivation, and section renderer that drift and validation share."""
 import pytest
 
 from glossabet.findings import (
+    FindingsDocumentView,
     FINDINGS_CAP,
     capped_section,
     collection_limitations,
@@ -90,7 +91,7 @@ def test_renderer_prints_every_branch_from_a_hand_built_document(capsys):
         "skipped": {"items": [finding("k", "x", certainty="observed")], "skipped": True},
     }
     titles = {"one": "first", "empty": "second", "skipped": "third"}
-    print_sections(document, titles, detail=True)
+    print_sections(FindingsDocumentView(document), titles, detail=True)
     out = capsys.readouterr().out
     assert out == (
         "\n== first ==\n"
@@ -101,7 +102,7 @@ def test_renderer_prints_every_branch_from_a_hand_built_document(capsys):
         "    modules: m\n"
         "... and 2 more not shown\n"
     )
-    print_sections(document, titles, detail=False)
+    print_sections(FindingsDocumentView(document), titles, detail=False)
     assert capsys.readouterr().out == (
         "\n== first ==\nline\\x1b[31m one [signal strong]\n... and 2 more not shown\n"
     )

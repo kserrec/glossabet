@@ -10,8 +10,8 @@ the owner self-testing pause before doing anything.
 vocabulary explicit, canonical, inspectable, and maintainable. Deterministic
 machinery gathers evidence, the LLM reasons, the human decides.
 
-**State on disk:** `dev` is two commits (Phases 36.1–36.2) ahead of `main`;
-the working tree is clean; the full suite (511 tests) is green; wheel and plugin were rebuilt
+**State on disk:** `dev` is three commits (Phases 36.1–36.3) ahead of
+`main`; the working tree is clean; the full suite (513 tests) is green; wheel and plugin were rebuilt
 through `uv build --no-sources` + `scripts/build_plugin.py dist` and
 `scripts/check_distribution.py dist --tag v0.1.0` passes; the CLI at
 `~/.local/bin/glossabet` is the current build. The installed agent skills
@@ -45,17 +45,19 @@ re-run `glossabet install --agent claude` / `glossabet install` if unsure.
   (`open_run` → `Run` | `RunError`), `evidence.persist_evidence`,
   `glossary_commands.py` (`show`/`save`), `repo_root`/`require_glossary`
   deleted, `tests/test_engine_run.py` run contract; both oracles (happy
-  path and error path) identical, 511 tests green. Remaining: 36.3 document
-  accessors, 36.4 managed-context printer direction, 36.5 producer-level
-  drift/validation tests, 36.6 ledger ceremony, 36.7 verification weight
-  onto the skill (needs Kyle). Each sub-phase is one pass under Phase 35
+  path and error path) identical. **36.3 done:** `evidence_view.EvidenceView`,
+  `findings.FindingsDocumentView` + `drift.DriftView` /
+  `reconcile.ValidationView`, `tests/test_document_keys.py` AST ratchet;
+  oracle identical, 513 tests green. Remaining: 36.4 managed-context
+  printer direction, 36.5 producer-level drift/validation tests, 36.6
+  ledger ceremony, 36.7 verification weight onto the skill (needs Kyle). Each sub-phase is one pass under Phase 35
   rules.
 
 **How to resume**
 
 - `$next` / `/next` → the first incomplete phase whose dependencies are
   complete is Phase 33.2 (needs Kyle's authorization to spend usage) or
-  Phase 36.3 (no external needs). Both honour the owner self-testing pause.
+  Phase 36.4 (no external needs). Both honour the owner self-testing pause.
 - Before any Phase 36 sub-phase, rebuild the byte-identical oracle: copy the
   four local fixtures from `evaluation/corpus.json` (`path` sources) to a
   scratch dir, `glossabet save` each source's `glossary`, run every command

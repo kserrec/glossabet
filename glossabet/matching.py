@@ -12,6 +12,7 @@ from collections import Counter
 from collections.abc import Iterable
 
 from glossabet.coverage import coverage_ledger
+from glossabet.evidence_view import EvidenceView
 from glossabet.glossary import path_in_scope, scope_evidence
 from glossabet.imports import module_of
 from glossabet.tokenize import tokenize_identifier, tokenize_term
@@ -19,20 +20,6 @@ from glossabet.tokenize import tokenize_identifier, tokenize_term
 LOCATION_SAMPLE = 5
 COMPOUND_MATCH_START_BUDGET = 250_000
 MAX_COMPOUND_TERM_TOKENS = 32
-
-
-def repository_corpus_complete(evidence: dict) -> bool:
-    """Whether the repository inventory has no scanner-created omissions."""
-    budget = evidence.get("skipped", {}).get("corpus_budget", {})
-    return isinstance(budget, dict) and budget.get("complete") is True
-
-
-def production_corpus_complete(evidence: dict) -> bool:
-    """Whether production vocabulary has no scanner-created omissions."""
-    budget = evidence.get("skipped", {}).get("corpus_budget", {})
-    if not isinstance(budget, dict):
-        return False
-    return budget.get("production_complete", budget.get("complete")) is True
 
 
 def _match_compounds(
@@ -126,11 +113,10 @@ class EvidenceIndex:
     ) -> None:
         if compound_start_budget < 0:
             raise ValueError("compound match budget must be non-negative")
-        self.evidence = evidence
-        vocabulary = evidence["vocabulary"]
-        self.token_section = vocabulary["tokens"]
-        self.identifier_section = vocabulary["identifiers"]
-        self.doc_section = vocabulary["doc_terms"]
+        self.view = EvidenceView(evidence)
+        self.token_section = self.view.vocabulary_table("tokens")
+        self.identifier_section = self.view.vocabulary_table("identifiers")
+        self.doc_section = self.view.vocabulary_table("doc_terms")
         self.token_entries = {
             entry["term"]: entry for entry in self.token_section["items"]
         }
@@ -143,9 +129,11 @@ class EvidenceIndex:
         self.file_paths = {
             item["path"]
             for kind in ("code", "docs")
-            for item in evidence["files"][kind]
+            for item in self.view.file_entries(kind)
         }
-        self.module_paths = {module["path"] for module in evidence["modules"]}
+        self.module_paths = {
+            module["path"] for module in self.view.modules()
+        }
 
         requested: set[tuple[str, ...]] = set()
         for term in terms:
@@ -200,7 +188,7 @@ class EvidenceIndex:
         self, term: str, scope: tuple[str, ...] | None = None
     ) -> dict:
         wanted = tokenize_term(term)
-        corpus_complete = production_corpus_complete(self.evidence)
+        corpus_complete = self.view.production_corpus_complete()
         empty = {
             "term_tokens": wanted,
             "match_kind": "token" if len(wanted) <= 1 else "lexical-unit",
@@ -307,7 +295,7 @@ class EvidenceIndex:
     def code_identifier_occurrence(
         self, name: str, scope: tuple[str, ...] | None = None
     ) -> dict:
-        corpus_complete = production_corpus_complete(self.evidence)
+        corpus_complete = self.view.production_corpus_complete()
         entry = self.identifier_entries.get(name)
         if entry is None:
             complete = (
@@ -347,7 +335,7 @@ class EvidenceIndex:
         self, term: str, scope: tuple[str, ...] | None = None
     ) -> dict:
         wanted = tokenize_term(term)
-        corpus_complete = production_corpus_complete(self.evidence)
+        corpus_complete = self.view.production_corpus_complete()
         if len(wanted) != 1:
             return {
                 "count": 0,

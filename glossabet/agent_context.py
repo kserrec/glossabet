@@ -17,6 +17,7 @@ from glossabet.artifacts import ArtifactError
 from glossabet.coverage import coverage_ledger, coverage_reasons
 from glossabet.engine_run import GLOSSARY_OPTIONAL, open_run
 from glossabet.evidence import persist_evidence
+from glossabet.evidence_view import EvidenceView
 from glossabet.repository_glossary import repository_glossary_section
 from glossabet.imports import module_of
 from glossabet.tokenize import STRUCTURED_IDENTIFIER_STYLES, identifier_style
@@ -226,12 +227,12 @@ def _register_exemplars(
 
 
 def _naming_with_locations(
-    evidence: dict,
+    view: EvidenceView,
     omissions: _ProjectionOmissions,
 ) -> dict:
-    naming = deepcopy(evidence["naming_candidates"])
+    naming = deepcopy(view.naming_candidates())
     token_entries = {
-        item["term"]: item for item in evidence["vocabulary"]["tokens"]["items"]
+        item["term"]: item for item in view.vocabulary_table("tokens")["items"]
     }
     unavailable = 0
     terms = []
@@ -289,47 +290,48 @@ def build_agent_context(
     # section exclusion so context completeness is always literal.
     omissions.record(("imports",), "section_excluded", 1)
 
-    vocabulary = deepcopy(evidence["vocabulary"])
-    terminology = deepcopy(evidence["terminology"])
-    naming_candidates = deepcopy(evidence["naming_candidates"])
+    view = EvidenceView(evidence)
+    vocabulary = deepcopy(view.vocabulary())
+    terminology = deepcopy(view.terminology())
+    naming_candidates = deepcopy(view.naming_candidates())
     if not full:
         vocabulary = {
-            "normalization": deepcopy(evidence["vocabulary"]["normalization"]),
+            "normalization": deepcopy(view.normalization()),
             "tokens": _module_rollup_section(
-                evidence["vocabulary"]["tokens"], "tokens", omissions
+                view.vocabulary_table("tokens"), "tokens", omissions
             ),
             "identifiers": _module_rollup_section(
-                evidence["vocabulary"]["identifiers"], "identifiers", omissions
+                view.vocabulary_table("identifiers"), "identifiers", omissions
             ),
             "doc_terms": _module_rollup_section(
-                evidence["vocabulary"]["doc_terms"], "doc_terms", omissions
+                view.vocabulary_table("doc_terms"), "doc_terms", omissions
             ),
         }
         terminology["register"]["exemplars"] = _register_exemplars(
-            evidence["vocabulary"]["identifiers"], omissions
+            view.vocabulary_table("identifiers"), omissions
         )
-        naming_candidates = _naming_with_locations(evidence, omissions)
+        naming_candidates = _naming_with_locations(view, omissions)
 
     source = {
         "context_schema_version": AGENT_CONTEXT_SCHEMA_VERSION,
-        "evidence_schema_version": evidence["schema_version"],
-        "generator": evidence["generator"],
+        "evidence_schema_version": view.schema_version(),
+        "generator": view.generator(),
         "freshness": {
             "status": "current",
             "basis": "built from repository inputs during this CLI invocation",
         },
-        "repository": evidence["repository"],
-        "configuration": evidence["configuration"],
-        "totals": evidence["totals"],
-        "languages": evidence["languages"],
-        "modules": evidence["modules"],
-        "files": evidence["files"],
+        "repository": view.repository(),
+        "configuration": view.configuration(),
+        "totals": view.totals(),
+        "languages": view.languages(),
+        "modules": view.modules(),
+        "files": view.files(),
         "vocabulary": vocabulary,
         "terminology": terminology,
         "naming_candidates": naming_candidates,
-        "structural_groups": evidence["structural_groups"],
-        "monorepo": evidence["monorepo"],
-        "skipped": evidence["skipped"],
+        "structural_groups": view.structural_groups(),
+        "monorepo": view.monorepo(),
+        "skipped": view.skipped(),
         "glossary": glossary_section,
         "repository_glossary": (
             {"present": False, "nested_ignored": []}

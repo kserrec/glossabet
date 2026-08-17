@@ -265,8 +265,8 @@ The package is `glossabet/`. Grouped by role:
   `EXCLUSION_KINDS`, the ledger that owns its `evidence["skipped"]` key, the
   `WalkResult` list that collects it, and the sentence `scan` reports it with
   (`WalkResult.skipped_as_evidence()` emits the section, `exclusion_sentences()`
-  renders it, `excluded_paths()` reads it) — adding a kind is one entry, and
-  no other module spells the keys. Root `Cargo.toml` and `package.json`
+  renders it, `EvidenceView.skipped_paths()` reads it) — adding a kind is one
+  entry, and no other module spells the keys. Root `Cargo.toml` and `package.json`
   workspace probes use that same symlink boundary and 2 MB limit. Configured
   ignores and generated/vendored paths are pruned and reported. Explicit
   production rules can override a default role, including inside a normally
@@ -303,7 +303,15 @@ The package is `glossabet/`. Grouped by role:
 - `evidence_report.py` — the `scan`/`analyze` command handlers and their
   terminal rendering (walk/graph/cache summary, exclusion sentences, the
   `analyze` terminology report). Rendering only; every number is read back
-  out of the evidence dict.
+  out of the evidence through `EvidenceView`.
+- `evidence_view.py` — `EvidenceView`, the read side of RepositoryEvidence:
+  the named lookups every consumer repeats (`vocabulary_table(name)`,
+  `truncated(name)`, `terminology_section(name)`, `structural_groups()`,
+  `skipped_paths(kind)`, `corpus_budget()`, `git()`, …) plus the two
+  corpus-completeness rules (`repository_corpus_complete()`,
+  `production_corpus_complete()`). `evidence.py` writes the document as a
+  literal; every other module reads it through the view, and
+  `tests/test_document_keys.py` fails on any evidence key spelled elsewhere.
 - `git_state.py` — the filtered Git state of a repository root:
   `repository_git_stamp()` runs `git` with the repo's dangerous config keys
   neutralized (`SAFE_CONFIG` plus per-name filter-driver overrides — see
@@ -464,9 +472,13 @@ The package is `glossabet/`. Grouped by role:
   evidence-limitation derivation that alone reads RepositoryEvidence's
   `vocabulary[*].truncated` markers and the matcher's work ledgers
   (`vocabulary_omission_reasons()`, `matching_reasons()`,
-  `collection_limitations()`), and `print_sections()`, the one terminal
-  renderer of annotated finding lines. `drift` and `reconcile` decide what is
-  a finding; this module owns how findings are shaped, bounded, and printed.
+  `collection_limitations()`), `FindingsDocumentView` (the read side both
+  documents share: totals, coverage, managed context, sections by key —
+  `drift.DriftView` and `reconcile.ValidationView` add each document's own
+  fields, so a document's key spellings live in the module that writes it),
+  and `print_sections()`, the one terminal renderer of annotated finding
+  lines. `drift` and `reconcile` decide what is a finding; this module owns
+  how findings are shaped, bounded, read, and printed.
 - `drift.py` — `build_drift()` compares fresh evidence against the glossary:
   new terms paralleling canonical ones, discouraged/deprecated terms still in
   use, canonical terms fading from code, and canonical terms living in disjoint

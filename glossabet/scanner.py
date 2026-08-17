@@ -285,12 +285,6 @@ def exclusion_sentences(skipped: dict) -> list[str]:
     ]
 
 
-def excluded_paths(skipped: dict, key: str) -> list[str]:
-    """The paths an evidence ``skipped`` section records under one ledger
-    key (``[]`` when the kind is absent), so callers never index the dict."""
-    return list(skipped.get(key, []))
-
-
 @dataclass
 class WalkResult:
     # (repository-relative path, language, configured/default role)

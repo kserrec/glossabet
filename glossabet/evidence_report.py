@@ -10,11 +10,12 @@ import sys
 from glossabet.display import escape_terminal_text
 from glossabet.engine_run import open_run
 from glossabet.evidence import build_evidence, write_evidence
+from glossabet.evidence_view import EvidenceView
 from glossabet.scanner import exclusion_sentences
 
 
-def _print_terminology_report(evidence: dict) -> None:
-    term = evidence["terminology"]
+def _print_terminology_report(view: EvidenceView) -> None:
+    term = view.terminology()
     reg = term["register"]
     print(
         f"\n== house register ({reg['unique_identifiers']} unique identifiers, "
@@ -105,7 +106,7 @@ def _print_terminology_report(evidence: dict) -> None:
     if over["dropped_items"]:
         print(f"... and {over['dropped_items']} more not shown")
 
-    naming = evidence["naming_candidates"]
+    naming = view.naming_candidates()
     print("\n== naming candidates (import graph is best-effort) ==")
     for cand in naming["modules"]:
         path = escape_terminal_text(cand["path"])
@@ -152,7 +153,8 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
         run.root, cache=True, stats=stats, graphify=graphify
     )
     out_path = write_evidence(run.root, evidence)
-    structural = evidence["structural_groups"]
+    view = EvidenceView(evidence)
+    structural = view.structural_groups()
     for warning in structural.get("warnings", []):
         print(
             f"graphify adapter: {escape_terminal_text(warning)}",
@@ -179,18 +181,17 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
             f"cache: reused {stats['reused']} extraction(s), "
             f"re-extracted {stats['extracted']}"
         )
-    totals = evidence["totals"]
+    totals = view.totals()
     print(
         f"scanned {totals['code_files']} code files, "
         f"{totals['doc_files']} doc files "
-        f"({len(evidence['languages'])} languages); terminology scope: "
-        f"{evidence['terminology']['scope']['code_files']} production code "
+        f"({len(view.languages())} languages); terminology scope: "
+        f"{view.terminology_scope()['code_files']} production code "
         f"file(s) -> {escape_terminal_text(str(out_path))}"
     )
-    skipped = evidence["skipped"]
-    for sentence in exclusion_sentences(skipped):
+    for sentence in exclusion_sentences(view.skipped()):
         print(sentence, file=sys.stderr)
-    budget = skipped["corpus_budget"]
+    budget = view.corpus_budget()
     if not budget["complete"]:
         omitted = budget["skipped"]["source_files"]
         details = []
@@ -205,7 +206,7 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
             + "; evidence is partial",
             file=sys.stderr,
         )
-    mono = evidence["monorepo"]
+    mono = view.monorepo()
     if mono["detected"]:
         reasons = "; ".join(
             escape_terminal_text(reason) for reason in mono["reasons"]
@@ -220,7 +221,7 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
             file=sys.stderr,
         )
     if report:
-        _print_terminology_report(evidence)
+        _print_terminology_report(view)
     return 0
 
 

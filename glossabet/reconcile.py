@@ -23,11 +23,13 @@ from glossabet.context_sync import (
     unchecked_managed_context,
 )
 from glossabet.display import escape_terminal_text
-from glossabet.drift import build_drift
+from glossabet.drift import DriftView, build_drift
 from glossabet.engine_run import GLOSSARY_REQUIRED, open_run
 from glossabet.evidence import persist_evidence
+from glossabet.evidence_view import EvidenceView
 from glossabet import findings
 from glossabet.findings import (
+    FindingsDocumentView,
     capped_section,
     finding,
     collection_limitations,
@@ -42,11 +44,7 @@ from glossabet.glossary import (
     scope_evidence,
 )
 from glossabet.repository_glossary import repository_glossary_section
-from glossabet.matching import (
-    EvidenceIndex,
-    production_corpus_complete,
-    repository_corpus_complete,
-)
+from glossabet.matching import EvidenceIndex
 from glossabet.tokenize import tokenize_term
 
 VALIDATION_SCHEMA_VERSION = 8
@@ -91,9 +89,9 @@ def _match_strength_from_tokens(
 
 
 def _resolve_bindings(
-    concept: dict, evidence: dict, matcher: EvidenceIndex
+    concept: dict, matcher: EvidenceIndex
 ) -> list[dict]:
-    inventory_complete = repository_corpus_complete(evidence)
+    inventory_complete = matcher.view.repository_corpus_complete()
     scope = concept_scope(concept)
 
     results = []
@@ -280,7 +278,6 @@ def _structure_findings(
 def _concept_findings(
     canonical: list[dict],
     vocab: dict,
-    evidence: dict,
     matcher: EvidenceIndex,
 ) -> tuple[list, list, list, list[str]]:
     """Direction B: glossary -> evidence.
@@ -294,7 +291,7 @@ def _concept_findings(
         scope = concept_scope(concept)
         term_tokens, _ = vocab[concept["id"]]
         occurrence = matcher.code_term_occurrence(concept["term"], scope)
-        bindings = _resolve_bindings(concept, evidence, matcher)
+        bindings = _resolve_bindings(concept, matcher)
         resolved = [b for b in bindings if b["status"] == "resolved"]
         uncertain = [b for b in bindings if b["status"] == "uncertain"]
         for binding in bindings:
@@ -401,7 +398,7 @@ def build_validation(
     vocab = {c["id"]: _concept_vocab(c) for c in canonical}
     global_canonical = [c for c in canonical if concept_scope(c) is None]
     scoped_canonical = [c for c in canonical if concept_scope(c) is not None]
-    structural = evidence["structural_groups"]
+    structural = EvidenceView(evidence).structural_groups()
     graph_ok = bool(structural.get("available"))
     graph_present = structural.get("present") is True
     groups_dropped = int(structural.get("groups_dropped", 0))
@@ -469,7 +466,7 @@ def build_validation(
         overloaded = mark_incomplete(overloaded, scoped_structure_reason)
 
     orphaned, unresolved, fragmented, fragmentation_reasons = _concept_findings(
-        canonical, vocab, evidence, matcher
+        canonical, vocab, matcher
     )
     drift = build_drift(
         evidence,
@@ -478,8 +475,8 @@ def build_validation(
         managed_context=managed_context,
     )
 
-    production_complete = production_corpus_complete(evidence)
-    inventory_complete = repository_corpus_complete(evidence)
+    production_complete = matcher.view.production_corpus_complete()
+    inventory_complete = matcher.view.repository_corpus_complete()
     production_reasons = [] if production_complete else [
         "production corpus budget omitted accepted source evidence"
     ]
@@ -546,8 +543,8 @@ def build_validation(
                 + fragmentation_reasons
             ),
         ),
-        "vocabulary_drift": drift["parallel_terms"],
-        "concept_collision": drift["canonical_overloaded"],
+        "vocabulary_drift": DriftView(drift).section("parallel_terms"),
+        "concept_collision": DriftView(drift).section("canonical_overloaded"),
     }
     total = sum(
         section["coverage"]["total_items"]
@@ -617,15 +614,36 @@ _TITLES = {
 }
 
 
-def _print_report(validation: dict) -> None:
-    complete = validation.get("total_findings_complete", True)
+class ValidationView(FindingsDocumentView):
+    """The read side of a validation document (`build_validation` writes it)."""
+
+    SECTIONS = tuple(_TITLES)
+
+    def canonical_concepts(self) -> int:
+        return self._d["canonical_concepts"]
+
+    def graph(self) -> dict:
+        """The Graphify adapter state the validation embedded: presence,
+        usability, freshness, warnings, group cap."""
+        return self._d["graph"]
+
+    def scope_summary(self) -> dict:
+        return self._d["scope_summary"]
+
+    def repository_glossary(self) -> dict:
+        return self._d.get("repository_glossary", {})
+
+
+def _print_report(document: dict) -> None:
+    validation = ValidationView(document)
+    complete = validation.total_findings_complete()
     count_label = "finding(s)" if complete else "evaluated finding(s)"
     print(
-        f"validate: {validation['canonical_concepts']} canonical concept(s), "
-        f"{validation['total_findings']} {count_label}"
+        f"validate: {validation.canonical_concepts()} canonical concept(s), "
+        f"{validation.total_findings()} {count_label}"
     )
-    print_managed_context_issues(validation["managed_context"])
-    graph = validation["graph"]
+    print_managed_context_issues(validation.managed_context())
+    graph = validation.graph()
     if graph["usable"]:
         freshness = graph["freshness"] or {
             "status": "unverified",
@@ -648,19 +666,16 @@ def _print_report(validation: dict) -> None:
         )
     else:
         print("graphify: no graph; structural checks skipped")
-    coverage = validation.get("coverage", {})
-    if not coverage.get("production_corpus_complete", True):
+    if not validation.production_corpus_complete():
         print(
             "corpus coverage: partial — absence and low-use findings were "
             "suppressed where the evidence cannot prove them"
         )
-    collection_coverage = coverage.get("collections", {})
     for reason in collection_limitations(
-        collection_coverage,
-        skip=lambda key: bool(validation.get(key, {}).get("skipped")),
+        validation.collections_coverage(), skip=validation.section_skipped,
     ):
         print(f"coverage limitation: {escape_terminal_text(reason)}")
-    scopes = validation["scope_summary"]
+    scopes = validation.scope_summary()
     if scopes["path_scoped"]:
         structural_state = "partial" if graph["usable"] else "unavailable"
         print(
@@ -668,7 +683,7 @@ def _print_report(validation: dict) -> None:
             f"checks are scoped, structural scope coverage is {structural_state}"
         )
     print_sections(validation, _TITLES, detail=False)
-    _print_repository_glossary(validation.get("repository_glossary", {}))
+    _print_repository_glossary(validation.repository_glossary())
     print(
         "\nNo one-to-one community=concept assumption; findings are evidence "
         "for the team, never automatic diagnoses."
@@ -734,7 +749,7 @@ def validate_command(path_arg: str) -> int:
         ),
     )
     write_artifact(run.root, VALIDATION_FILE, validation)
-    for warning in validation["graph"]["warnings"]:
+    for warning in ValidationView(validation).graph()["warnings"]:
         print(
             f"graphify adapter: {escape_terminal_text(warning)}",
             file=sys.stderr,

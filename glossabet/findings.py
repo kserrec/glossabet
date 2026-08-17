@@ -17,6 +17,7 @@ from collections.abc import Iterable
 
 from glossabet.coverage import coverage_ledger, coverage_reasons
 from glossabet.display import escape_terminal_text
+from glossabet.evidence_view import EvidenceView
 
 # Per-section detail cap for every findings document. Totals stay exact;
 # only the listed detail is bounded, and the cap is reported.
@@ -119,13 +120,14 @@ def vocabulary_omission_reasons(
     names: Iterable[str],
     template: str = VOCABULARY_MATCHING_OMISSION,
 ) -> list[str]:
-    """One reason per named ``evidence["vocabulary"]`` collection whose
-    detail was truncated at scan time — the only place a findings producer
-    learns how RepositoryEvidence records that."""
+    """One reason per named evidence vocabulary table whose detail was
+    truncated at scan time — the only place a findings producer learns
+    that RepositoryEvidence records such a thing."""
+    view = EvidenceView(evidence)
     return [
         template.format(name=name)
         for name in names
-        if evidence["vocabulary"][name].get("truncated") is not None
+        if view.truncated(name) is not None
     ]
 
 
@@ -174,37 +176,80 @@ def _print_finding_details(finding_record: dict) -> None:
                 for path in finding_record["scope"]["path_prefixes"]
             )
         )
-    evidence = finding_record.get("evidence", {})
-    if "shared_contexts" in evidence:
+    detail = finding_record.get("evidence", {})
+    if "shared_contexts" in detail:
         print(
             "    shared contexts: "
             + ", ".join(
                 escape_terminal_text(context)
-                for context in evidence["shared_contexts"]
+                for context in detail["shared_contexts"]
             )
         )
-    if "locations" in evidence and evidence["locations"]:
+    if "locations" in detail and detail["locations"]:
         sample = ", ".join(
             escape_terminal_text(location["path"])
-            for location in evidence["locations"][:3]
+            for location in detail["locations"][:3]
         )
         print(f"    e.g. {sample}")
-    if isinstance(evidence.get("modules"), list):
+    if isinstance(detail.get("modules"), list):
         print(
             "    modules: "
             + ", ".join(
                 escape_terminal_text(module["path"])
-                for module in evidence["modules"]
+                for module in detail["modules"]
             )
         )
 
 
-def print_sections(document: dict, titles: dict[str, str], *, detail: bool) -> None:
+class FindingsDocumentView:
+    """The read side every findings document (drift, validation) shares:
+    the headline totals, the coverage ledger, the managed-context report,
+    and the finding sections by key. Each document's own view subclasses
+    this with its extra fields, so the spellings of a document's keys live
+    in the module that writes it."""
+
+    def __init__(self, document: dict) -> None:
+        self._d = document
+
+    def total_findings(self) -> int:
+        return self._d["total_findings"]
+
+    def total_findings_complete(self) -> bool:
+        return self._d.get("total_findings_complete", True)
+
+    def coverage(self) -> dict:
+        return self._d.get("coverage", {})
+
+    def production_corpus_complete(self) -> bool:
+        return self.coverage().get("production_corpus_complete", True)
+
+    def collections_coverage(self) -> dict:
+        """Per-section coverage ledgers keyed by section."""
+        return self.coverage().get("collections", {})
+
+    def managed_context(self) -> dict:
+        return self._d["managed_context"]
+
+    def section(self, key: str) -> dict:
+        """One finding section ``{items, dropped_items, coverage[, skipped]}``."""
+        return self._d[key]
+
+    def section_skipped(self, key: str) -> bool:
+        return bool(self._d.get(key, {}).get("skipped"))
+
+    def items(self, key: str) -> list[dict]:
+        """The finding records one section lists in detail."""
+        return self._d[key]["items"]
+
+
+def print_sections(
+    document: FindingsDocumentView, titles: dict[str, str], *, detail: bool
+) -> None:
     """Print every non-empty, non-skipped section under its title: one
     annotated line per finding (plus scope/context/location/module detail
     when ``detail`` is set) and the not-shown count."""
     for key, title in titles.items():
-        section = document[key]
+        section = document.section(key)
         if section.get("skipped"):
             continue
         if not section["items"] and not section["dropped_items"]:

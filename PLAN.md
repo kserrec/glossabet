@@ -3,7 +3,7 @@
 Status: **phases 0–22, Phases 24–32, Phase 34 (`GLOSSABET.md` report), and
 Phase 35 (deepening refactor) complete; Phase 33 (Claude Code ambient
 parity) in progress; Phase 36 (good-to-great structural debts) in progress —
-36.1–36.2 complete; owner self-testing pause active before the trusted-alpha
+36.1–36.3 complete; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-17.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1869,7 +1869,7 @@ command); the per-command repeats it replaced were deleted (drift no-
 glossary, brief/inspect malformed glossary, cli/evidence missing path).
 Suite 511 green, ~24 s.
 
-#### Phase 36.3 — Accessor layer for the four top-level documents
+#### Phase 36.3 — Accessor layer for the four top-level documents ✅ 2026-08-17
 
 **Problem:** RepositoryEvidence, AgentContext, drift, and validation are
 untyped nested dicts; consumers spell keys, and a typo is a runtime
@@ -1893,6 +1893,26 @@ untyped nested dicts; consumers spell keys, and a typo is a runtime
 
 **Acceptance:** key spellings for each document live in one module; oracle
 identical.
+
+**Completion evidence (2026-08-17):** `evidence_view.py` — `EvidenceView`
+with the repeated lookups (`vocabulary_table`, `truncated`,
+`terminology_section`, `terminology_scope`, `structural_groups`, `skipped`,
+`skipped_paths`, `corpus_budget`, `git`, section getters) and the two
+corpus-completeness rules moved out of `matching`; `EvidenceIndex` carries
+`.view`, and the drift/validation producers take the view or the matcher
+instead of the raw dict. `findings.FindingsDocumentView` (totals, coverage,
+managed context, `section`/`items`/`section_skipped`) with `drift.DriftView`
+and `reconcile.ValidationView` for each document's own fields;
+`print_sections` takes a view; both printers and `evaluation/run.py` read
+through them. `scanner.excluded_paths` deleted (`EvidenceView.skipped_paths`).
+AgentContext gets no view: its only in-repo Python reader is the
+`scripts/agent_eval.py` harness, which deliberately treats the context as
+untrusted input through `_mapping(...).get(...)`; the writer stays the one
+speller. `tests/test_document_keys.py` is the AST ratchet (subscripts and
+`.get` on `evidence`/`cold_evidence`/`drift`/`validation`/`context` outside
+their owners fail; every top-level evidence key has a view method). Oracle
+identical; the local evaluation cases (`--case` × 4) identical apart from
+timings and this repository's self-scan; suite 513 green.
 
 #### Phase 36.4 — Managed-context printer out of the command module
 

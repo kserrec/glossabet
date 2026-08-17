@@ -95,7 +95,11 @@ This first alpha is prepared but has not been published to PyPI.
   `DocumentationVocabulary`; one command preamble (`engine_run.open_run`)
   decides for every command whether a glossary is needed and reports a
   missing directory or bad/absent glossary in one style, and the `show`/
-  `save` commands move out of the glossary model into `glossary_commands`.
+  `save` commands move out of the glossary model into `glossary_commands`;
+  the four documents keep their JSON shapes but gain read-side accessors
+  (`EvidenceView`, `FindingsDocumentView` with `DriftView` /
+  `ValidationView`) so no consumer outside the owning module spells a
+  document key.
 - The pre-release working identity was renamed atomically from Glossarize to
   Glossabet across the package, import, command, skill, artifacts,
   configuration, cache, tests, and documentation. Pre-rename output/cache

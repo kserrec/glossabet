@@ -20,13 +20,13 @@ from pathlib import Path
 import unicodedata
 
 from glossabet.artifacts import READ_OVERSIZED, read_bounded_bytes
+from glossabet.evidence_view import EvidenceView
 from glossabet.scanner import (
     LINK_ESCAPES_REPOSITORY,
     LINK_TO_SENSITIVE_FILE,
     MAX_FILE_BYTES,
     MAX_WALK_ENTRIES,
     SKIPPED_SELF_GLOSSARIES,
-    excluded_paths,
     symlink_content_refusal,
 )
 
@@ -281,7 +281,7 @@ def repository_glossary_section(
         section["divergence"] = repository_glossary_divergence(glossary, payload)
     nested = [
         rel
-        for rel in excluded_paths(evidence["skipped"], SKIPPED_SELF_GLOSSARIES)
+        for rel in EvidenceView(evidence).skipped_paths(SKIPPED_SELF_GLOSSARIES)
         if rel != REPOSITORY_GLOSSARY_FILE
     ]
     section["nested_ignored"] = sorted(nested)

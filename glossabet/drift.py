@@ -23,6 +23,7 @@ from glossabet.display import escape_terminal_text
 from glossabet.engine_run import GLOSSARY_REQUIRED, open_run
 from glossabet.evidence import persist_evidence
 from glossabet.findings import (
+    FindingsDocumentView,
     capped_section,
     finding,
     collection_limitations,
@@ -36,7 +37,8 @@ from glossabet.glossary import (
     scope_evidence,
     scopes_overlap,
 )
-from glossabet.matching import EvidenceIndex, production_corpus_complete
+from glossabet.evidence_view import EvidenceView
+from glossabet.matching import EvidenceIndex
 from glossabet.terminology import OVERLOAD_MIN_DISPERSION, OVERLOAD_MIN_MODULES
 from glossabet.tokenize import tokenize_term
 
@@ -140,7 +142,7 @@ def _suppressed_reason(suppressed: int, name: str) -> list[str]:
 
 
 def _parallel_terms(
-    evidence: dict, canonical: dict, known_scopes: dict, matcher: EvidenceIndex
+    view: EvidenceView, canonical: dict, known_scopes: dict, matcher: EvidenceIndex
 ) -> tuple[list[dict], list[str]]:
     """New prominent terms that behave like an existing canonical term."""
     findings: list[dict] = []
@@ -151,7 +153,7 @@ def _parallel_terms(
     # section partial rather than spinning for minutes.
     comparisons_remaining = PARALLEL_SCOPE_COMPARISON_BUDGET
     budget_exhausted = False
-    for item in evidence["terminology"]["synonym_candidates"]["items"]:
+    for item in view.terminology_section("synonym_candidates")["items"]:
         a_canon = item["a"] in canonical
         b_canon = item["b"] in canonical
         if a_canon == b_canon:
@@ -311,10 +313,10 @@ def _overload_details_complete(item: dict) -> bool:
     )
 
 
-def _canonical_overloaded(evidence: dict, canonical: dict) -> list[dict]:
+def _canonical_overloaded(view: EvidenceView, canonical: dict) -> list[dict]:
     """Canonical terms used across contexts disjoint enough to collide."""
     findings: list[dict] = []
-    for item in evidence["terminology"]["overload_candidates"]["items"]:
+    for item in view.terminology_section("overload_candidates")["items"]:
         if item["term"] not in canonical:
             continue
         module_coverage = item.get("coverage", {}).get("modules", {})
@@ -381,8 +383,8 @@ def _glossary_terms(glossary: dict) -> list[str]:
     ]
 
 
-def _terminology_reasons(evidence: dict, section: str) -> list[str]:
-    candidate = evidence["terminology"][section]
+def _terminology_reasons(view: EvidenceView, section: str) -> list[str]:
+    candidate = view.terminology_section(section)
     ledger = candidate.get("coverage")
     if isinstance(ledger, dict):
         return coverage_reasons(ledger, section)
@@ -391,9 +393,9 @@ def _terminology_reasons(evidence: dict, section: str) -> list[str]:
     return []
 
 
-def _scoped_overload_reasons(evidence: dict, canonical: dict) -> list[str]:
+def _scoped_overload_reasons(view: EvidenceView, canonical: dict) -> list[str]:
     omitted = 0
-    for item in evidence["terminology"]["overload_candidates"]["items"]:
+    for item in view.terminology_section("overload_candidates")["items"]:
         if _overload_details_complete(item):
             continue
         omitted += sum(
@@ -417,8 +419,9 @@ def build_drift(
 ) -> dict:
     canonical, watched, known_scopes = _index_glossary(glossary)
     matcher = matcher or EvidenceIndex(evidence, _glossary_terms(glossary))
+    view = matcher.view
 
-    corpus_complete = production_corpus_complete(evidence)
+    corpus_complete = view.production_corpus_complete()
     corpus_reasons = [] if corpus_complete else [
         "production corpus budget omitted accepted source evidence"
     ]
@@ -428,7 +431,7 @@ def build_drift(
     matching_limits = matching_reasons(matcher)
 
     parallel_findings, parallel_suppressed = _parallel_terms(
-        evidence, canonical, known_scopes, matcher
+        view, canonical, known_scopes, matcher
     )
     watched_findings, watched_suppressed = _watched_in_use(watched, matcher)
     sections = {}
@@ -437,7 +440,7 @@ def build_drift(
             "parallel_terms",
             parallel_findings,
             corpus_reasons
-            + _terminology_reasons(evidence, "synonym_candidates")
+            + _terminology_reasons(view, "synonym_candidates")
             + parallel_suppressed,
         ),
         (
@@ -453,10 +456,10 @@ def build_drift(
         ),
         (
             "canonical_overloaded",
-            _canonical_overloaded(evidence, canonical),
+            _canonical_overloaded(view, canonical),
             corpus_reasons
-            + _terminology_reasons(evidence, "overload_candidates")
-            + _scoped_overload_reasons(evidence, canonical),
+            + _terminology_reasons(view, "overload_candidates")
+            + _scoped_overload_reasons(view, canonical),
         ),
     ):
         sections[name] = capped_section(
@@ -503,24 +506,33 @@ _TITLES = {
 }
 
 
-def _print_report(drift: dict) -> None:
-    complete = drift.get("total_findings_complete", True)
+class DriftView(FindingsDocumentView):
+    """The read side of a drift document (`build_drift` writes it)."""
+
+    SECTIONS = tuple(_TITLES)
+
+    def checked_concepts(self) -> int:
+        return self._d["checked_concepts"]
+
+
+def _print_report(document: dict) -> None:
+    drift = DriftView(document)
+    complete = drift.total_findings_complete()
     count_label = "finding(s)" if complete else "evaluated finding(s)"
     print(
-        f"drift check against {drift['checked_concepts']} glossary "
-        f"concept(s): {drift['total_findings']} {count_label}"
+        f"drift check against {drift.checked_concepts()} glossary "
+        f"concept(s): {drift.total_findings()} {count_label}"
     )
-    print_managed_context_issues(drift["managed_context"])
-    if not drift.get("coverage", {}).get("production_corpus_complete", True):
+    print_managed_context_issues(drift.managed_context())
+    if not drift.production_corpus_complete():
         print(
             "corpus coverage is partial; absence and low-use findings were "
             "suppressed where the evidence cannot prove them"
         )
-    collection_coverage = drift.get("coverage", {}).get("collections", {})
-    for reason in collection_limitations(collection_coverage):
+    for reason in collection_limitations(drift.collections_coverage()):
         print(f"coverage limitation: {escape_terminal_text(reason)}")
     print_sections(drift, _TITLES, detail=True)
-    if drift["total_findings"]:
+    if drift.total_findings():
         print(
             "\nFindings are evidence for the team, not verdicts — "
             "nothing is auto-fixed."
