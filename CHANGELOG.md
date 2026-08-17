@@ -80,6 +80,15 @@ This first alpha is prepared but has not been published to PyPI.
 
 ### Changed
 
+- Internal restructuring with no behaviour change (every command's output on
+  the local corpus fixtures is byte-identical): the hardened Git stamp and
+  freshness pathspec live in `glossabet.git_state`; one bounded read
+  discipline (`read_bounded_json` / `read_bounded_bytes`, `cap + 1` bytes,
+  named outcomes) replaces five stat-then-read copies; the scanner owns an
+  exclusion ledger; the managed host-file block lives beneath both its
+  users; the production identifier vocabulary is one public aggregate
+  (`ProductionVocabulary`) instead of parallel dicts; drift and validation
+  share one findings-document module and renderer.
 - The pre-release working identity was renamed atomically from Glossarize to
   Glossabet across the package, import, command, skill, artifacts,
   configuration, cache, tests, and documentation. Pre-rename output/cache

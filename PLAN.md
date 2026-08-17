@@ -2,8 +2,9 @@
 
 Status: **phases 0–22, Phases 24–32, Phase 34 (`GLOSSABET.md` report), and
 Phase 35 (deepening refactor) complete; Phase 33 (Claude Code ambient
-parity) in progress; owner self-testing pause active before the
-trusted-alpha gate** as of 2026-08-17.
+parity) in progress; Phase 36 (good-to-great structural debts) planned, not
+started; owner self-testing pause active before the trusted-alpha gate** as
+of 2026-08-17.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
 Phases 24–28 were added 2026-08-15 from Kyle's self-testing findings and run
@@ -1766,6 +1767,162 @@ registry, unified installer/context_sync symlink rules. Noted, not changed:
 `drift`/`reconcile` still import `print_managed_context_issues` from the
 `context_sync` command module — same direction smell as the stripper, left
 because it is a printer, not evidence.
+
+### Phase 36 — Good to great: the seven remaining structural debts (added 2026-08-17, not started)
+
+**Goal:** finish what the Phase 35 review left. Kyle's ask (2026-08-17):
+"write into the plan … so this can go from good to great." Each sub-phase
+is one pass under the Phase 35 rules — zero behaviour change, byte-identical
+fixture baseline (rebuild the oracle from the scratchpad harness described
+in Phase 35 first; it lives outside the repo and must be re-captured at the
+start of the session), full suite green, one commit per sub-phase,
+ARCHITECTURE.md module map kept current. Order is by payoff and risk;
+36.1–36.3 are the ones that change how the codebase feels to work in.
+
+#### Phase 36.1 — Split the `evidence.py` hub
+
+**Problem:** 700+ lines doing walk orchestration, cache reuse, extraction,
+the *documentation* fold (`doc_term_counts` / `doc_term_files` /
+`doc_term_modules` — three parallel dicts inline, the exact shape Phase 35.5
+fixed for identifiers), terminology/naming/structural assembly, the evidence
+dict schema, and the `scan`/`analyze` handlers with a 130-line terminal
+report.
+
+**Steps:**
+1. `DocumentationVocabulary` (in `vocabulary.py`, beside
+   `ProductionVocabulary`): the doc-term fold with the same named-view
+   discipline; `build_terminology`/`build_naming_candidates` take it instead
+   of a bare `doc_term_counts` Counter where they need per-file/module views.
+2. `evidence_report.py` (or `analyze.py`): `_print_terminology_report` and
+   the `scan`/`analyze` handlers leave `evidence.py`; `evidence.py` keeps
+   `build_evidence`, `write_evidence`, and the extraction/cache path only.
+3. The extraction step (`_read_source`, `_extract_code_entry`,
+   `_extract_doc_entry`, cache reuse) becomes one named module or class with
+   a two-method interface (extract file → entry; entries → vocabularies), so
+   `build_evidence` reads as assembly, not as a 200-line function.
+
+**Acceptance:** `evidence.py` under ~350 lines; no printer in it; oracle
+identical.
+
+#### Phase 36.2 — One command preamble and one glossary-error style
+
+**Problem:** six commands re-spell resolve-root → require/load glossary →
+build evidence → write → print → exit, with three glossary-error styles
+(`require_glossary` prints and returns `None`; `show`/`brief` catch
+`GlossaryError`; `inspect` re-raises `AgentContextError` for `cli` to
+convert). `save_command` mixes stdin bounding, validation, atomic write,
+and printing.
+
+**Steps:**
+1. `engine_run.py`: `open_run(path_arg, glossary="none|optional|required")`
+   → a run handle (`root`, `glossary`, `evidence` already persisted,
+   `managed_context`) or one user-error outcome that `cli` maps to exit 1
+   with one message style.
+2. `drift_command`, `validate_command`, `sync_context_command`,
+   `inspect_command`, `_scan`, `show_command`, `brief_command` become:
+   open run → build document → write → render. `save_command` splits into
+   read-stdin (bounded, `parse_bounded_json`) → `save_glossary` → print.
+3. Tests: one run-contract test replaces the per-command
+   `main([...]) == 1` + `"no glossary" in err` repeats; each command keeps
+   one end-to-end smoke.
+
+**Acceptance:** exactly one place decides "does this command need a
+glossary" and "how is a bad glossary reported"; oracle identical (stderr
+wording preserved verbatim).
+
+#### Phase 36.3 — Accessor layer for the four top-level documents
+
+**Problem:** RepositoryEvidence, AgentContext, drift, and validation are
+untyped nested dicts; consumers spell keys, and a typo is a runtime
+`KeyError` in a branch a test may not reach. `findings.finding()` and
+`artifacts.BoundedRead` are the only constructors so far.
+
+**Steps:**
+1. Do NOT convert to dataclasses wholesale (JSON round-tripping and
+   schema-versioned artifacts stay dicts). Add one thin read-side accessor
+   per document (`evidence_view.py` or methods on a small wrapper): the
+   dozen lookups every consumer repeats (`vocabulary(name)`,
+   `truncated(name)`, `skipped(kind)`, `production_complete()`,
+   `structural_groups()`, `git()`), so no consumer outside `evidence.py`
+   spells an evidence key.
+2. Same for drift/validation on the read side (`sections()`,
+   `coverage()`, `total_findings()`), consumed by the printers, `reconcile`
+   (which reads drift), and `evaluation/run.py`.
+3. A test that greps `glossabet/` for `evidence["` outside the owning
+   modules and fails on any new spelling — the same trick as
+   `test_module_dependencies.py`.
+
+**Acceptance:** key spellings for each document live in one module; oracle
+identical.
+
+#### Phase 36.4 — Managed-context printer out of the command module
+
+**Problem:** `drift` and `reconcile` import `print_managed_context_issues`
+from `context_sync` (a command module) — the same backwards direction Phase
+35.4 fixed for the stripper.
+
+**Steps:** move `inspect_managed_context` and its printer into
+`managed_block.py` (or a sibling `managed_context.py`); `context_sync`
+imports them; add the pair to `test_module_dependencies.py`.
+
+**Acceptance:** no analysis module imports `context_sync`; oracle identical.
+
+#### Phase 36.5 — Producer-level tests for drift and validation rules
+
+**Problem:** the finding *producers* (`_parallel_terms`, `_watched_in_use`,
+`_canonical_fading`, `_canonical_overloaded`, `_structure_findings`,
+binding/orphan/fragmentation) are exercised almost only end-to-end through
+`build_evidence` + stdout substrings; when a rule breaks, the failing test
+names the command, not the rule.
+
+**Steps:**
+1. Give each producer a test that builds a small `EvidenceIndex`/evidence
+   dict directly (the Phase 35.6 renderer test is the model) and asserts
+   the finding record, not the printed line.
+2. Keep one end-to-end smoke per command; delete stdout-substring tests
+   that the producer tests make redundant (test-audit rule: no theater).
+
+**Acceptance:** every finding kind has a test that names it; suite time
+does not grow.
+
+#### Phase 36.6 — Ledger ceremony
+
+**Problem:** the coverage-ledger philosophy is right, but
+`coverage_ledger(total, included, total_items_exact=…, reasons=…)` appears
+~30 times with the same shape, and each producer hand-assembles
+`{items, dropped_items, coverage}`.
+
+**Steps:** audit every `coverage_ledger`/`capped_collection` call; where the
+call is "cap this list and say so", route it through
+`findings.capped_section` (or a generic `capped_collection` returning the
+section shape); leave the genuinely different ones (work budgets,
+walk-remainder) alone and say why in a comment.
+
+**Acceptance:** ledger construction sites drop by at least a third; no
+ledger semantics change (oracle identical).
+
+#### Phase 36.7 — Verification weight onto the skill
+
+**Problem:** `SKILL.md` (~700 lines of prose) carries the product's
+behaviour and is verified only by string-presence tests plus a Codex
+harness whose recorded `canonical_skill_sha256` is already stale.
+
+**Steps:**
+1. Re-run the installed-agent harness (Phase 22/28 machinery) against the
+   current skill; record per Phase 29 currency rules. **Needs Kyle:**
+   authorization to spend Codex/Claude usage for the batch (state scenario
+   count and token upper bound first).
+2. Add scenarios for the Phase 31–34 behaviours the harness does not yet
+   cover: adoption vs. managed state selection, Step 4½ ordering (baseline
+   before reading `GLOSSARY.md`), Step 7 `GLOSSABET.md` write/refresh with
+   proposed terms kept proposed and no read of a prior report before Step 7.
+3. Turn the strongest string-presence tests in `test_skill.py` into
+   structure tests (section order, step numbering, every engine field the
+   skill names exists in the context — already partly there) and delete
+   the weakest.
+
+**Acceptance:** `--current` verifiers pass for agent results; each Phase
+31–34 skill behaviour has one recorded live scenario.
 
 ### Owner self-testing pause — active, not an implementation phase
 
