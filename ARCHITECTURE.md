@@ -174,7 +174,21 @@ strictly validated optional glossary into the JSON printed by
 `confined_artifact_path()`, performs a fresh scan, atomically refreshes the
 ordinary evidence artifact, and emits no progress text on standard output.
 
-AgentContext v2 is serialized as compact JSON. Its routine projection samples
+The context carries two glossary channels that are never merged. `glossary`
+is the validated structured state from `glossabet-out/glossary.json`.
+`repository_glossary` (`glossabet/repository_glossary.py`) is the repository's
+own hand-maintained root `GLOSSARY.md`, reported as metadata only — presence,
+`readable` with a named `reason` (`symlink-escapes-repository`,
+`not-a-regular-file`, `oversized`, `unreadable`), byte count, the SHA-256 of
+the exact bytes read (the reader takes `MAX_FILE_BYTES + 1` bytes so the bound
+is judged from the bytes, not a racy stat), and `nested_ignored`, the non-root
+`GLOSSARY.md` files the walk excluded (`skipped.self_glossaries` in evidence)
+and never consulted. Its content deliberately never enters the context: that
+is what lets the skill build an independent naming baseline before it reads
+the maintainers' document (Step 4½ of the skill), and it keeps an unreadable
+glossary from ever being mistaken for an absent one.
+
+AgentContext v3 is serialized as compact JSON. Its routine projection samples
 tokens/identifiers/document terms at 100/50/50 items, replaces their repeated
 file-location lists with per-module occurrence rollups, and retains file paths
 only on the naming candidates and register exemplars the skill may inspect.
@@ -259,6 +273,10 @@ The package is `glossabet/`. Grouped by role:
   It loads the optional glossary through the confined validator, builds fresh
   evidence, applies deterministic list/string/output limits, records all
   projection omissions, and prints JSON only.
+- `repository_glossary.py` — safe, content-free discovery of the repository's
+  own root `GLOSSARY.md` (tri-state: absent / present+readable with digest /
+  present+unreadable with reason) for the `repository_glossary` context
+  channel. It is not lexical evidence and not Glossabet state.
 - `brief.py` — the read-only ambient vocabulary projection. It loads no source
   files, reuses the confined glossary validator and hardened Git stamp, and
   emits deterministic plain text capped at 4,096 UTF-8 bytes. The semantic
@@ -601,7 +619,11 @@ creates or edits a target `.gitignore`; it merely reserves the top-level
 `glossary.json` is different: it persists human-governed vocabulary state and
 must be retained unless that state is intentionally discarded or recoverable.
 The human-readable `GLOSSARY.md` remains repository-owned state outside the
-reserved directory and is never excluded from freshness.
+reserved directory and is never excluded from freshness. When a repository
+already has one before Glossabet is ever run, the skill treats it as
+maintainer-owned: it edits it surgically for settled decisions only, re-checks
+its SHA-256 against the inspect-time value before writing, and regenerates it
+wholesale only on the user's literal request.
 
 ## Security and trust boundaries
 

@@ -46,7 +46,7 @@ RESULTS = ROOT / "evaluation" / "agent-results.json"
 HISTORY = ROOT / "evaluation" / "agent-history.json"
 
 
-def test_agent_manifest_covers_every_phase_22_boundary():
+def test_agent_manifest_covers_every_phase_22_and_31_boundary():
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     assert [scenario["id"] for scenario in manifest["scenarios"]] == [
         "fresh",
@@ -58,10 +58,15 @@ def test_agent_manifest_covers_every_phase_22_boundary():
         "partial",
         "monorepo",
         "resumed-glossary",
+        "markdown-glossary",
+        "both-glossaries",
         "sensitive-file",
         "session-hook",
         "missing-cli",
     ]
+    by_id = {scenario["id"]: scenario for scenario in manifest["scenarios"]}
+    assert by_id["markdown-glossary"]["expected_status"] == "adoption"
+    assert by_id["both-glossaries"]["expected_status"] == "resumed"
     sensitive = manifest["scenarios"][-3]
     assert sensitive["accepted_statuses"] == [
         "grounded",

@@ -457,6 +457,21 @@ and wheel SHA-256
 its immutable raw result is
 `evaluation/agent-runs/20260816T183508Z-full-a8775cdb.json`.
 
+Phase 31 (2026-08-17) adds two plugin scenarios for a repository's own
+hand-maintained root `GLOSSARY.md`, which the engine reports as a separate
+metadata-only `repository_glossary` channel: `markdown-glossary` (Markdown
+only, expected status `adoption`) and `both-glossaries` (Markdown plus a valid
+structured glossary, expected `resumed`). Passing requires the context to
+report the structured glossary's presence correctly, the repository glossary
+as present, readable, and identified by the fixture's exact SHA-256 with no
+nested files, the fixture's text canary absent from the context, and agent
+facts that name `GLOSSARY.md` without containing that canary — the agent
+noticed the document at Step 0 without reading it. The committed
+`agent-results.json` predates these scenarios and honestly lags the manifest
+(the Phase 29 two-mode contract): genuineness verification accepts either the
+recorded 12-scenario generation or the current 14-scenario one exactly, never
+a subset; the `--current` release gate demands the 14.
+
 The Phase 28.3 implementation changed the canonical skill and plugin artifact,
 so its separately authorized current-artifact batch is retained at
 `evaluation/agent-runs/20260816T192615Z-full-e73a0e21.json`. It passed 11/12.

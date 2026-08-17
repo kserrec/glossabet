@@ -63,6 +63,18 @@
       "description": "A valid glossary with one canonical and one proposed concept."
     },
     {
+      "id": "markdown-glossary",
+      "delivery": "plugin",
+      "expected_status": "adoption",
+      "description": "A hand-maintained root GLOSSARY.md and no structured glossary: adoption state, reported as metadata only."
+    },
+    {
+      "id": "both-glossaries",
+      "delivery": "plugin",
+      "expected_status": "resumed",
+      "description": "A valid structured glossary alongside a hand-maintained root GLOSSARY.md: resume, with the repository glossary surfaced separately."
+    },
+    {
       "id": "sensitive-file",
       "delivery": "plugin",
       "expected_status": "grounded",

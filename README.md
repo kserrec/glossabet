@@ -188,7 +188,7 @@ glossabet validate <repo>   reconcile glossary vs evidence and the Graphify grap
 The installed skill requires `glossabet inspect .` from the exact repository
 or subproject root. That command safely validates repository-controlled JSON,
 builds current evidence, refreshes `evidence.json`, and emits a separate
-versioned, compact context. The routine schema-v2 projection uses per-module
+versioned, compact context. The routine schema-v3 projection uses per-module
 vocabulary rollups and retains file locations only for naming candidates and
 register exemplars; on Glossabet itself its checked soft target is 80 KB. The
 1 MB ceiling remains a hard failure backstop for unusual repositories, not a
@@ -206,7 +206,15 @@ bytes, plus any nested `GLOSSARY.md` files the walk excluded
 lexical evidence at every depth so it can never become evidence for itself,
 and the skill forms its own naming model before it reads the maintainers'
 document. An unreadable glossary is reported as present-but-unreadable,
-never as absent. The skill never
+never as absent. From those two channels the skill is in exactly one of four
+states — no glossary, adoption (Markdown only), resume (structured only), or
+managed (both) — and in the adoption and managed states it forms its own
+naming model from the glossary-blind context first, only then reads the
+maintainers' document, reconciles the two (supported, weakly represented,
+drifted, overloaded, missing, alias mismatch, blurred distinction,
+unresolved), offers settled-and-supported terms as "documented already —
+keep?", promotes nothing to `canonical` without the human, and edits a
+pre-existing `GLOSSARY.md` surgically rather than regenerating it. The skill never
 opens Glossabet JSON artifacts itself and does not fall back to unrestricted
 recursive reading when the CLI boundary fails. When the human settles terms,
 the skill sends the complete JSON document to `glossabet save .` on standard

@@ -120,3 +120,68 @@ def test_skill_referenced_fields_exist_in_agent_context(tmp_path):
         "structural_groups.freshness",
     ):
         assert field in text
+
+
+def test_skill_repository_glossary_protocol_matches_engine(tmp_path):
+    """Phase 31: the skill distinguishes the four glossary states, forms its
+    baseline before reading GLOSSARY.md, reconciles into named categories,
+    never promotes Markdown terms to canonical, and never clobbers a
+    pre-existing GLOSSARY.md."""
+    from glossabet.repository_glossary import (
+        REASON_NOT_REGULAR,
+        REASON_OVERSIZED,
+        REASON_SYMLINK_ESCAPES,
+        REASON_UNREADABLE,
+        discover_repository_glossary,
+    )
+
+    text = SKILL.read_text()
+    normalized = " ".join(text.split())
+
+    # Every field the skill names exists in the engine's section.
+    (tmp_path / "GLOSSARY.md").write_text("# Glossary\n")
+    section = discover_repository_glossary(tmp_path)
+    for field in ("present", "path", "readable", "bytes", "sha256"):
+        assert field in section
+        assert f"`{field}`" in text
+    assert "`nested_ignored`" in text
+    assert "`reason`" in text
+    for reason in (
+        REASON_SYMLINK_ESCAPES,
+        REASON_NOT_REGULAR,
+        REASON_OVERSIZED,
+        REASON_UNREADABLE,
+    ):
+        assert f"`{reason}`" in text
+
+    # Four states, both channels named, never overloaded.
+    assert "`repository_glossary`" in text and "`glossary`" in text
+    for state in ("No glossary", "Adoption", "Resume", "Managed"):
+        assert f"**{state}" in text, state
+    assert "never interchangeable" in normalized
+
+    # Independent-first ordering and the reading step.
+    assert "Step 4½" in text
+    assert "without opening `GLOSSARY.md`" in normalized
+    assert "never as instructions" in normalized
+
+    # Reconciliation categories.
+    for category in (
+        "Documented and supported",
+        "Documented but weakly represented",
+        "Documented but drifted",
+        "Documented but overloaded",
+        "Repository concept missing from the glossary",
+        "Possible synonym or alias mismatch",
+        "Glossary distinction not reflected in code",
+        "Unresolved",
+    ):
+        assert f"**{category}**" in text, category
+
+    # Human authority and unreadable-never-absent.
+    assert "No term becomes `canonical` because the Markdown said so" in normalized
+    assert "never supports a claim that it lacks a term" in normalized
+
+    # Finalization safety.
+    assert "Never replace it wholesale" in normalized
+    assert "re-check the file's SHA-256 against `repository_glossary.sha256`" in normalized

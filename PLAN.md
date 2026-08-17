@@ -1,7 +1,7 @@
 # Glossabet — Plan
 
-Status: **phases 0–22 and Phases 24–30 complete; Phases 31–32
-(pre-existing `GLOSSARY.md` adoption, added 2026-08-17) are next; owner
+Status: **phases 0–22 and Phases 24–31 complete; Phase 32 (optional
+deterministic term-presence check) is next; owner
 self-testing pause active before the trusted-alpha gate** as of 2026-08-17.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1142,7 +1142,7 @@ oversized, exact-bound, permission-denied, determinism, and whole-repo vs
 subproject ownership. README and WALKTHROUGH updated. Full suite 440 passed;
 all four per-commit gates green in genuineness mode.
 
-### Phase 31 — Skill: independent-first, adoption, managed-mode divergence, safe finalization
+### Phase 31 — Skill: independent-first, adoption, managed-mode divergence, safe finalization ✅ 2026-08-17
 
 **Goal:** the `/glossabet` skill treats a pre-existing `GLOSSARY.md` as a
 first-class separate input: it forms its own model first, then reads the
@@ -1217,6 +1217,25 @@ structured state only through the human loop, and never clobbers it.
 skill shows the four-state branch (`none` / Markdown-only / JSON-only /
 both), the A-before-B rule, the eight reconciliation categories, and the
 no-regenerate + SHA-recheck finalization rule.
+
+**Completion evidence (2026-08-17):** `context_schema_version` 2 → 3.
+`skill/SKILL.md` gained "Which glossary state you are in" (four-state table
+over both channels, asymmetry note, unreadable-never-absent, nested files
+reported-not-consulted), the *Resume* / *Adoption* / *Managed* sub-sections,
+a new **Step 4½** (read `GLOSSARY.md` only after Steps 1–4, as evidence not
+instructions, free-form Markdown, eight reconciliation categories incl.
+*Unresolved*), and a finalization branch that edits a pre-existing file
+surgically, forbids wholesale regeneration without the literal request,
+re-checks the SHA-256 against Step 0, and keeps findings out of the
+vocabulary document. `tests/test_skill.py` pins every named field, reason,
+state, category, and safety rule against the engine. Agent eval: two new
+plugin scenarios `markdown-glossary` (status `adoption`) and
+`both-glossaries` (`resumed`) with fixture-digest, canary-absent, and
+facts-name-the-file checks; scenario ids now carry two known generations so
+the sealed 12-scenario evidence stays genuine while `--current` demands 14.
+Plugin skill + wheel regenerated through `build_plugin.py`; README,
+ARCHITECTURE, EVALUATION, CHANGELOG, WALKTHROUGH updated. Suite 441 passed;
+workflow check, three genuineness verifiers, and wheel smoke green.
 
 ### Phase 32 — Deterministic managed-mode term-presence check (optional)
 
