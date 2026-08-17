@@ -1010,6 +1010,33 @@ each names the evidence or ruling that settles it:
    totals undercount. Settling requires a live multi-turn JSONL sample;
    guessing a summation risks double-counting cumulative values.
 
+### Bughunt round 3 (2026-08-17) — latent items, judged not-live, not fixed
+
+The plural-acronym tokenizer bug found this round was fixed. These remaining
+items are surfaced but were deliberately not fixed because none produces wrong
+output today; recorded so a future bughunt does not re-discover them cold:
+
+1. **`importance.py` and `terminology.py` disagree on an untagged token.**
+   `importance.py:80` drops a token whose origin is unknown (`!= DOMAIN`),
+   while `terminology.py:486` treats an untagged token *as* domain
+   (`.get(term, TOKEN_ORIGIN_DOMAIN)`). Currently unreachable: `evidence.py`
+   populates `token_origins` in lockstep with `token_counts`, so no token is
+   ever untagged. Latent inconsistency, not a live bug. Cheap consistency fix
+   available (make importance use the same default) if a future source can
+   inject an untagged token.
+2. **`totals.source_bytes` vs `totals.source_files` count different
+   populations** when a file is reclassified binary mid-read (`evidence.py`
+   ~497): `source_files` is an inventory count, `source_bytes` mirrors the
+   decremented read-budget. Each is individually correct; only misleads a
+   consumer computing bytes-per-file across the two. The doc side and
+   `code_bytes` share the pattern. Best addressed by documenting the two
+   denominators rather than changing the numbers.
+
+Minor non-bugs also noted and dropped: a dead sub-condition in the
+workspace-manifest hidden-file skip (`scanner.py:370`, provably no effect),
+and three cosmetic wording nits (install message agent word, empty-file
+"appended" vs "created", brief output on a zero-canonical glossary).
+
 ### Owner self-testing pause — active, not an implementation phase
 
 Kyle is keeping the current build to himself while he runs it and performs

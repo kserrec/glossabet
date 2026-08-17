@@ -21,8 +21,20 @@ _KEBAB_IDENTIFIER_RE = re.compile(
 )
 _WORD_HUNK_RE = re.compile(r"\w+")
 _DOC_WORD_RE = re.compile(r"[^\W\d_]+(?:['’][^\W\d_]+)*")
+# Order matters. An acronym run followed by a lone lowercase ``s`` is a plural
+# (``IDs`` -> ``ids``, ``URLs`` -> ``urls``): the ``s`` stays with the run, the
+# same way ordinary plurals keep their ``s``. This alternative must come before
+# the acronym-boundary rule below, which would otherwise orphan the run's last
+# capital (``IDs`` -> ``I`` + ``Ds`` -> the ``I`` is dropped as too short and
+# ``ds`` is a phantom token). It is deliberately ``s``-specific, not "any single
+# lowercase", so acronym-then-CamelWord names like ``XMLId`` still split into
+# ``xml`` + ``id`` rather than merging to ``xmlid``.
 _ASCII_WORD_RE = re.compile(
-    r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+\d*|[A-Z]+\d*|\d+"
+    r"[A-Z]{2,}s(?![a-z])"
+    r"|[A-Z]+(?=[A-Z][a-z])"
+    r"|[A-Z]?[a-z]+\d*"
+    r"|[A-Z]+\d*"
+    r"|\d+"
 )
 
 # Cross-language keywords and near-universal syntax words, filtered from the
@@ -105,10 +117,12 @@ def token_origin(token: str, language: str | None) -> str:
 def tokenize_identifier(name: str) -> list[str]:
     """Split an identifier into normalized lowercase tokens.
 
-    Acronym runs stay intact (``HTTPServer`` -> ``http``, ``server``). A digit
-    run is retained as a suffix of the preceding word (``HTTP2Server`` ->
-    ``http2``, ``server``); standalone numeric hunks are dropped. Unicode is
-    normalized with NFKC and case-folded. Keyword and short tokens are dropped.
+    Acronym runs stay intact (``HTTPServer`` -> ``http``, ``server``). A plural
+    acronym keeps its trailing ``s`` (``IDs`` -> ``ids``, ``URLs`` -> ``urls``)
+    rather than orphaning the run's last capital. A digit run is retained as a
+    suffix of the preceding word (``HTTP2Server`` -> ``http2``, ``server``);
+    standalone numeric hunks are dropped. Unicode is normalized with NFKC and
+    case-folded. Keyword and short tokens are dropped.
     """
     normalized = (
         name if name.isascii() else unicodedata.normalize("NFKC", name)
@@ -176,15 +190,23 @@ def _split_case_and_digits(hunk: str) -> list[str]:
         current_kind = kinds[index]
         previous_kind = kinds[index - 1]
         next_kind = kinds[index + 1] if index + 1 < len(hunk) else None
+        next_next_kind = kinds[index + 2] if index + 2 < len(hunk) else None
         boundary = (
             (
                 current_kind == "upper"
                 and previous_kind in {"lower", "digit", "letter"}
             )
             or (
+                # Acronym run ending before a CamelWord (``ΑΒΓδεζ`` -> ``αβ`` +
+                # ``γδεζ``): split before the run's last capital. But require
+                # the following lowercase run to be *two or more* letters, so a
+                # lone trailing lowercase — an inflectional/plural suffix like
+                # ``ΑΒΓς`` — stays with the run instead of orphaning its last
+                # capital. Mirrors the ``s``-plural rule in the ASCII path.
                 current_kind == "upper"
                 and previous_kind == "upper"
                 and next_kind == "lower"
+                and next_next_kind == "lower"
             )
             or (
                 current_kind in {"upper", "lower", "letter"}
