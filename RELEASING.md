@@ -110,14 +110,16 @@ uv run python evaluation/review.py --verify-results evaluation/reviewer-results.
 uv build --no-sources --out-dir "$release_dir"
 uv run python scripts/build_plugin.py "$release_dir"
 git diff --exit-code -- plugins/glossabet
-uv run python scripts/check_distribution.py "$release_dir" --tag v0.1.0
+uv run python scripts/check_distribution.py "$release_dir" --tag v0.1.0 --current
 uv run python scripts/wheel_smoke.py "$release_dir"
 uv run python scripts/plugin_smoke.py "$release_dir"
 ```
 
 The `--current` flags and the `git diff` step are the release-only currency
 checks: they require the committed evaluation evidence and the checked-in
-plugin artifact to describe the exact source being tagged. Between releases,
+plugin artifact (including its bundled wheel) to describe the exact source
+being tagged. Between releases the checked-in plugin may honestly lag engine
+source; rebuild it with `build_plugin.py` as part of release preparation. Between releases,
 development leaves evidence honestly lagging and only the genuineness form
 (without `--current`) gates ordinary commits. If a currency check fails here,
 regenerate the affected evidence against the release commit — the

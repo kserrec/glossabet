@@ -96,6 +96,11 @@ def test_workflow_policy_rejects_meaningful_gate_weakening():
         ),
         (
             "release.yml",
+            'python scripts/check_distribution.py dist --tag "${{ github.ref_name }}" --current',
+            'python scripts/check_distribution.py dist --tag "${{ github.ref_name }}"',
+        ),
+        (
+            "release.yml",
             "python scripts/build_plugin.py dist",
             "python -c pass",
         ),

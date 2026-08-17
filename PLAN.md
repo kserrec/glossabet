@@ -1145,4 +1145,9 @@ Each finding was verified against the engine's own output on this repository.
     (untampered, internally consistent); currency against the current tree
     is enforced solely at the release gate via `--current` and the plugin
     `git diff` step. Development — refactors included — never requires
-    regenerating witness evidence; releases always do.
+    regenerating witness evidence; releases always do. Extended 2026-08-16
+    at Kyle's direction: the checked-in Codex plugin (including its bundled
+    wheel) follows the same rule — `check_distribution.py` validates its
+    currency only under `--current`, so engine edits no longer require a
+    per-commit plugin rebuild; the release gate and `RELEASING.md` demand
+    the rebuild instead.

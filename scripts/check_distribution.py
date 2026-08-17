@@ -266,7 +266,12 @@ def _check_source_plugin(
 
 
 def _check_sdist(
-    sdist: Path, wheel: Path, version: str, canonical_skill: bytes
+    sdist: Path,
+    wheel: Path,
+    version: str,
+    canonical_skill: bytes,
+    *,
+    current: bool,
 ) -> None:
     prefix = f"glossabet-{version}/"
     with tarfile.open(sdist, mode="r:gz") as archive:
@@ -297,6 +302,12 @@ def _check_sdist(
                 _fail(f"source distribution member is unreadable: {relative}")
             return extracted.read()
 
+        if not current:
+            # The bundled plugin snapshots the checked-in tree, which may
+            # honestly lag engine source between releases; its currency is
+            # a release-gate question (--current), like the plugin git-diff
+            # step.
+            return
         plugin_wheel = member_bytes(
             f"plugins/glossabet/skills/glossabet/assets/"
             f"glossabet-{version}-py3-none-any.whl"
@@ -330,6 +341,14 @@ def main() -> int:
         "--tag",
         help="also require this release tag to equal v<package version>",
     )
+    parser.add_argument(
+        "--current",
+        action="store_true",
+        help=(
+            "additionally require the checked-in plugin to match the "
+            "current source (the release gate)"
+        ),
+    )
     args = parser.parse_args()
 
     dist = args.dist_dir.resolve()
@@ -341,8 +360,9 @@ def main() -> int:
     canonical_skill = (ROOT / "skill" / "SKILL.md").read_bytes()
 
     _check_wheel(wheel, version, canonical_skill)
-    _check_source_plugin(wheel, version, canonical_skill)
-    _check_sdist(sdist, wheel, version, canonical_skill)
+    if args.current:
+        _check_source_plugin(wheel, version, canonical_skill)
+    _check_sdist(sdist, wheel, version, canonical_skill, current=args.current)
 
     for artifact in (wheel, sdist):
         digest = hashlib.sha256(artifact.read_bytes()).hexdigest()

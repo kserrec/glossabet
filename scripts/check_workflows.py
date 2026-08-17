@@ -179,7 +179,7 @@ def validate_workflow_texts(workflows: dict[str, str]) -> list[str]:
             "uv build --no-sources --clear",
             "python scripts/build_plugin.py dist",
             "git diff --exit-code -- plugins/glossabet",
-            'python scripts/check_distribution.py dist --tag "${{ github.ref_name }}"',
+            'python scripts/check_distribution.py dist --tag "${{ github.ref_name }}" --current',
             "python scripts/wheel_smoke.py dist",
             "pypa/gh-action-pypi-publish@",
         ],
