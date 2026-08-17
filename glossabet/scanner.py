@@ -212,6 +212,10 @@ class WalkResult:
     skipped_configured: list[str] = field(default_factory=list)
     skipped_generated: list[str] = field(default_factory=list)
     skipped_vendored: list[str] = field(default_factory=list)
+    # Every GLOSSARY.md the walk saw and excluded (root and nested). Reported
+    # so the self-file exclusion is never silent; the root file's safe
+    # discovery is a separate channel (glossabet.repository_glossary).
+    skipped_self_glossaries: list[str] = field(default_factory=list)
     sub_roots: list[str] = field(default_factory=list)
     workspace_manifests: list[str] = field(default_factory=list)
     corpus_budget: CorpusBudget = field(default_factory=CorpusBudget)
@@ -349,6 +353,7 @@ def _classify_files(
         fname = entry.name
         rel = fname if is_root else f"{rel_dir}/{fname}"
         if fname in SELF_FILES:
+            result.skipped_self_glossaries.append(rel)
             continue
         if result.corpus_budget.walk_entries >= MAX_WALK_ENTRIES:
             result.corpus_budget.truncate_walk(

@@ -188,13 +188,42 @@ glossabet validate <repo>   reconcile glossary vs evidence and the Graphify grap
 The installed skill requires `glossabet inspect .` from the exact repository
 or subproject root. That command safely validates repository-controlled JSON,
 builds current evidence, refreshes `evidence.json`, and emits a separate
-versioned, compact context. The routine schema-v2 projection uses per-module
+versioned, compact context. The routine schema-v3 projection uses per-module
 vocabulary rollups and retains file locations only for naming candidates and
 register exemplars; on Glossabet itself its checked soft target is 80 KB. The
 1 MB ceiling remains a hard failure backstop for unusual repositories, not a
 routine budget. `inspect --full` emits the former detailed collection shape
 for diagnostics. Both modes report scanner omissions under `coverage.corpus`
-and every agent-projection omission under `coverage.context`. The skill never
+and every agent-projection omission under `coverage.context`. The context
+carries two distinct glossary channels that are never merged: `glossary` is
+Glossabet's own structured state (`glossabet-out/glossary.json`), and
+`repository_glossary` describes the repository's hand-maintained root
+`GLOSSARY.md` — presence, safe-read status (`readable` with a named
+`reason` when a symlink escapes the root or points at an in-repo sensitive
+file, the entry is not a regular file, the file exceeds the 2 MB bound, or
+something is there but its exact name could not be confirmed),
+whether the entry is a symlink (readable through, never written through), size, and the SHA-256 of the exact
+bytes, plus any nested `GLOSSARY.md` files the walk excluded
+(`nested_ignored`). Metadata only, never content: `GLOSSARY.md` stays out of
+lexical evidence at every depth so it can never become evidence for itself,
+and the skill forms its own naming model before it reads the maintainers'
+document. An unreadable glossary is reported as present-but-unreadable,
+never as absent. From those two channels the skill is in exactly one of four
+states — no glossary, adoption (Markdown only), resume (structured only), or
+managed (both) — and in the adoption and managed states it forms its own
+naming model from the glossary-blind context first, only then reads the
+maintainers' document, reconciles the two (supported, weakly represented,
+drifted, overloaded, missing, alias mismatch, blurred distinction,
+unresolved), offers settled-and-supported terms as "documented already —
+keep?", promotes nothing to `canonical` without the human, and edits a
+pre-existing `GLOSSARY.md` surgically rather than regenerating it. When both
+files exist and the Markdown was read completely, the context and
+`glossabet validate` also carry one deterministic signal,
+`repository_glossary.divergence`: canonical terms whose folded spelling occurs
+nowhere in the document, and superseded alias terms that still appear while
+their canonical term does not — lexical presence only, capped at 500 terms
+and at 4 M normalized characters with the cap reported, absent (never
+empty) when the check could not run. The skill never
 opens Glossabet JSON artifacts itself and does not fall back to unrestricted
 recursive reading when the CLI boundary fails. When the human settles terms,
 the skill sends the complete JSON document to `glossabet save .` on standard

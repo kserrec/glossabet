@@ -17,7 +17,7 @@ This first alpha is prepared but has not been published to PyPI.
 - Unicode-aware lexical normalization and a reproducible calibration corpus
   with documented limitations and release thresholds.
 - Labelled Graphify structural and truncation fixtures, a blinded
-  second-reviewer lane, and a 12-scenario installed-Codex boundary harness
+  second-reviewer lane, and a 14-scenario installed-Codex boundary harness
   with bounded traces and exact temporary-plugin cleanup.
 - Conservative source-language builtin tagging (currently Python) that retains
   complete lexical evidence while reserving terminology and naming budgets for
@@ -31,6 +31,18 @@ This first alpha is prepared but has not been published to PyPI.
   canonical-name versus disambiguation intent, and carry an exact
   repository-level evaluation gate without making naming decisions for the
   human.
+- Pre-existing `GLOSSARY.md` adoption: the engine discovers a repository's
+  own root `GLOSSARY.md` as a separate metadata-only `repository_glossary`
+  context channel (presence, safe-read status with a named reason, size,
+  SHA-256, nested files reported but never consulted) while keeping it out
+  of lexical evidence at every depth; the skill distinguishes no-glossary /
+  adoption / resume / managed states, forms its own naming baseline before
+  reading the document, reconciles into named categories, promotes nothing
+  to canonical without the human, and never regenerates a maintainer-owned
+  `GLOSSARY.md` wholesale (schema-v3 agent context). With both files present,
+  `inspect` and `validate` (validation schema 8) add a bounded lexical
+  term-presence divergence check — canonical terms absent from the Markdown
+  and superseded aliases still present — never a meaning comparison.
 - A compact schema-v2 routine agent context with vocabulary module rollups,
   file locations only on nomination/read targets, an 80 KB self-repository
   regression target, explicit projection omissions, and `inspect --full` for

@@ -9,7 +9,7 @@ def test_atomic_write_replaces_complete_document_without_temp_files(tmp_path):
     path = write_artifact(tmp_path, "evidence.json", {"state": "first"})
     write_artifact(tmp_path, "evidence.json", {"state": "second"})
 
-    assert path.read_text() == '{\n  "state": "second"\n}\n'
+    assert path.read_text(encoding="utf-8") == '{\n  "state": "second"\n}\n'
     assert not list(path.parent.glob(".evidence.json.*.tmp"))
 
 
@@ -25,5 +25,5 @@ def test_failed_atomic_commit_preserves_existing_document(
     with pytest.raises(ArtifactError, match="simulated replace failure"):
         write_artifact(tmp_path, "evidence.json", {"state": "new"})
 
-    assert path.read_text() == '{\n  "state": "existing"\n}\n'
+    assert path.read_text(encoding="utf-8") == '{\n  "state": "existing"\n}\n'
     assert not list(path.parent.glob(".evidence.json.*.tmp"))

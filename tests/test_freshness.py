@@ -79,7 +79,7 @@ def test_first_scan_of_clean_repo_is_immediately_fresh_without_gitignore_edit(
     assert main(["scan", str(tmp_path)]) == 0
 
     evidence = json.loads(
-        (tmp_path / "glossabet-out" / "evidence.json").read_text()
+        (tmp_path / "glossabet-out" / "evidence.json").read_text(encoding="utf-8")
     )
     assert _is_fresh(evidence["repository"]["git"], _git_stamp(tmp_path))
     assert not (tmp_path / ".gitignore").exists()
@@ -93,7 +93,7 @@ def test_first_scan_of_nested_repository_scope_is_immediately_fresh(tmp_path):
     assert main(["scan", str(service)]) == 0
 
     evidence = json.loads(
-        (service / "glossabet-out" / "evidence.json").read_text()
+        (service / "glossabet-out" / "evidence.json").read_text(encoding="utf-8")
     )
     assert _is_fresh(evidence["repository"]["git"], _git_stamp(service))
 
@@ -102,7 +102,7 @@ def test_user_change_after_scan_makes_evidence_stale(tmp_path):
     _init_repo(tmp_path)
     assert main(["scan", str(tmp_path)]) == 0
     stamped = json.loads(
-        (tmp_path / "glossabet-out" / "evidence.json").read_text()
+        (tmp_path / "glossabet-out" / "evidence.json").read_text(encoding="utf-8")
     )["repository"]["git"]
 
     (tmp_path / "main.py").write_text("changed_after_scan = 1\n")

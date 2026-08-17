@@ -15,7 +15,7 @@ RESULTS = ROOT / "evaluation" / "results.json"
 
 
 def test_manifest_pins_licensed_varied_sources():
-    manifest = json.loads(MANIFEST.read_text())
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     sources = manifest["sources"]
 
     assert manifest["schema_version"] == 5
@@ -89,7 +89,7 @@ def test_local_calibration_case_runs_without_network(tmp_path):
     )
 
     assert proc.returncode == 0, proc.stderr
-    result = json.loads(output.read_text())
+    result = json.loads(output.read_text(encoding="utf-8"))
     assert result["schema_version"] == EVALUATION_SCHEMA_VERSION
     assert result["engine"]["version"] == "0.1.0"
     assert len(result["engine"]["source_sha256"]) == 64
@@ -135,7 +135,7 @@ def test_language_semantics_case_pins_lexical_and_scope_contracts(tmp_path):
     )
 
     assert proc.returncode == 0, proc.stderr
-    result = json.loads(output.read_text())
+    result = json.loads(output.read_text(encoding="utf-8"))
     case = result["cases"][0]
     assert case["lexical"]["passed"] is True
     assert case["lexical"]["checks"] == 15
@@ -162,7 +162,7 @@ def test_structural_cases_pin_findings_provenance_and_truncation(tmp_path):
     )
 
     assert proc.returncode == 0, proc.stderr
-    result = json.loads(output.read_text())
+    result = json.loads(output.read_text(encoding="utf-8"))
     complete, truncated = result["cases"]
     assert result["method"]["graphify_cases"] == 2
     assert complete["structural"]["actual"] == [

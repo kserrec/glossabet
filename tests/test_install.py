@@ -48,7 +48,7 @@ def test_install_refuses_different_existing_skill_without_force(tmp_path, capsys
     target.write_text("user-owned skill\n")
 
     assert main(["install", "--destination", str(destination)]) == EXIT_USER_ERROR
-    assert target.read_text() == "user-owned skill\n"
+    assert target.read_text(encoding="utf-8") == "user-owned skill\n"
     assert "--force" in capsys.readouterr().err
 
 
@@ -68,7 +68,7 @@ def test_force_replaces_only_the_skill_file_and_leaves_no_temporary_file(
     assert target.read_text(encoding="utf-8") == CANONICAL_SKILL.read_text(
         encoding="utf-8"
     )
-    assert neighbor.read_text() == "keep\n"
+    assert neighbor.read_text(encoding="utf-8") == "keep\n"
     assert not list(destination.glob(".SKILL.md.*.tmp"))
     assert "Replaced" in capsys.readouterr().out
 

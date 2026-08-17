@@ -83,7 +83,12 @@ checks whether the evidence is fresh, reads the repository's important files,
 and opens a ranked naming brainstorm. Discuss and settle terms with the agent;
 only an explicit human decision makes a term canonical. When asked to
 finalize, the skill writes `GLOSSARY.md` and
-`glossabet-out/glossary.json`. Thereafter, run `glossabet drift` and
+`glossabet-out/glossary.json`. If the repository already maintains its own
+root `GLOSSARY.md`, the engine reports it separately (presence, safe-read
+status, size, digest) without ever counting its words as vocabulary
+evidence; the skill then forms its own naming model first, reads the
+maintainers' document only afterwards, reconciles the two, and edits the
+existing file surgically — never regenerating it — once the human settles. Thereafter, run `glossabet drift` and
 `glossabet validate` as the code evolves.
 
 Before analyzing confidential code or using an agent host, read

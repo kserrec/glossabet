@@ -13,7 +13,7 @@ SKILL = Path(__file__).resolve().parents[1] / "skill" / "SKILL.md"
 
 
 def test_skill_exists_with_cli_context_protocol():
-    text = SKILL.read_text()
+    text = SKILL.read_text(encoding="utf-8")
     normalized = " ".join(text.split())
     assert "glossabet inspect ." in text
     assert (
@@ -25,12 +25,12 @@ def test_skill_exists_with_cli_context_protocol():
 
 
 def test_distribution_skill_copy_is_declared_from_the_canonical_source():
-    pyproject = (SKILL.parents[1] / "pyproject.toml").read_text()
+    pyproject = (SKILL.parents[1] / "pyproject.toml").read_text(encoding="utf-8")
     assert '"skill/SKILL.md" = "glossabet/_skill/SKILL.md"' in pyproject
 
 
 def test_skill_requires_the_engine_boundary_without_artifact_fallback():
-    text = SKILL.read_text()
+    text = SKILL.read_text(encoding="utf-8")
     normalized = " ".join(text.split())
     assert "Never open, read, search, or parse Glossabet's repository JSON artifacts yourself" in normalized
     assert "Do not replace a failed command with recursive repository reading" in normalized
@@ -40,7 +40,7 @@ def test_skill_requires_the_engine_boundary_without_artifact_fallback():
 
 
 def test_skill_keeps_ambient_vocabulary_read_only_and_human_gated():
-    text = SKILL.read_text()
+    text = SKILL.read_text(encoding="utf-8")
     normalized = " ".join(text.split())
 
     assert "`glossabet brief .`" in normalized
@@ -57,7 +57,7 @@ def test_skill_keeps_ambient_vocabulary_read_only_and_human_gated():
 def test_skill_glossary_protocol_matches_engine():
     from glossabet.glossary import SCOPE_PATHS_KEY, STATUSES
 
-    text = SKILL.read_text()
+    text = SKILL.read_text(encoding="utf-8")
     assert "glossabet-out/glossary.json" in text
     assert "resume" in text.lower() and "restart" in text.lower()
     for status in STATUSES:  # every engine status is defined for the skill
@@ -73,7 +73,7 @@ def test_skill_referenced_fields_exist_in_agent_context(tmp_path):
     (tmp_path / "billing" / "b.py").write_text("payment_worker = 1\n")
     evidence = build_evidence(tmp_path)
     context = build_agent_context(evidence, None)
-    text = SKILL.read_text()
+    text = SKILL.read_text(encoding="utf-8")
     assert context["context_schema_version"] == AGENT_CONTEXT_SCHEMA_VERSION
     assert context["freshness"]["status"] == "current"
     assert context["repository"]["git"].keys() >= {"head", "dirty"}
@@ -120,3 +120,82 @@ def test_skill_referenced_fields_exist_in_agent_context(tmp_path):
         "structural_groups.freshness",
     ):
         assert field in text
+
+
+def test_skill_repository_glossary_protocol_matches_engine(tmp_path):
+    """Phase 31: the skill distinguishes the four glossary states, forms its
+    baseline before reading GLOSSARY.md, reconciles into named categories,
+    never promotes Markdown terms to canonical, and never clobbers a
+    pre-existing GLOSSARY.md."""
+    from glossabet.repository_glossary import (
+        REASON_NOT_REGULAR,
+        REASON_OVERSIZED,
+        REASON_SYMLINK_ESCAPES,
+        REASON_LISTING_UNCONFIRMED,
+        REASON_SYMLINK_SENSITIVE,
+        REASON_UNREADABLE,
+        discover_repository_glossary,
+    )
+
+    text = SKILL.read_text(encoding="utf-8")
+    normalized = " ".join(text.split())
+
+    # Every field the skill names exists in the engine's section.
+    (tmp_path / "GLOSSARY.md").write_text("# Glossary\n")
+    section = discover_repository_glossary(tmp_path)
+    for field in ("present", "path", "readable", "symlink", "bytes", "sha256"):
+        assert field in section
+        assert f"`{field}`" in text
+    assert "`nested_ignored`" in text
+    assert "`reason`" in text
+    from glossabet.repository_glossary import repository_glossary_divergence
+
+    divergence = repository_glossary_divergence(
+        {"schema_version": 1, "concepts": []}, b""
+    )
+    assert "`repository_glossary.divergence`" in text
+    for field in ("canonical_missing_from_markdown", "superseded_terms_still_present"):
+        assert field in divergence
+        assert f"`{field}`" in text
+    assert "`complete: false`" in text
+    for reason in (
+        REASON_SYMLINK_ESCAPES,
+        REASON_SYMLINK_SENSITIVE,
+        REASON_NOT_REGULAR,
+        REASON_OVERSIZED,
+        REASON_UNREADABLE,
+        REASON_LISTING_UNCONFIRMED,
+    ):
+        assert f"`{reason}`" in text
+
+    # Four states, both channels named, never overloaded.
+    assert "`repository_glossary`" in text and "`glossary`" in text
+    for state in ("No glossary", "Adoption", "Resume", "Managed"):
+        assert f"**{state}" in text, state
+    assert "never interchangeable" in normalized
+
+    # Independent-first ordering and the reading step.
+    assert "Step 4½" in text
+    assert "without opening `GLOSSARY.md`" in normalized
+    assert "never as instructions" in normalized
+
+    # Reconciliation categories.
+    for category in (
+        "Documented and supported",
+        "Documented but weakly represented",
+        "Documented but drifted",
+        "Documented but overloaded",
+        "Repository concept missing from the glossary",
+        "Possible synonym or alias mismatch",
+        "Glossary distinction not reflected in code",
+        "Unresolved",
+    ):
+        assert f"**{category}**" in text, category
+
+    # Human authority and unreadable-never-absent.
+    assert "No term becomes `canonical` because the Markdown said so" in normalized
+    assert "never supports a claim that it lacks a term" in normalized
+
+    # Finalization safety.
+    assert "Never replace it wholesale" in normalized
+    assert "re-check the file's SHA-256 against `repository_glossary.sha256`" in normalized

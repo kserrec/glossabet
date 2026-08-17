@@ -45,7 +45,7 @@ from glossabet.tokenize import (
     tokenize_identifier,
 )
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 EVIDENCE_FILE = "evidence.json"
 
@@ -543,6 +543,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
             "configured": sorted(walk.skipped_configured),
             "generated": sorted(walk.skipped_generated),
             "vendored": sorted(walk.skipped_vendored),
+            "self_glossaries": sorted(walk.skipped_self_glossaries),
             "oversized_identifiers": vocabulary.oversized_identifiers,
             "corpus_budget": walk.corpus_budget.as_evidence(),
         },
@@ -759,6 +760,12 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
         print(
             f"excluded {len(skipped['vendored'])} vendored path(s) "
             "from lexical analysis",
+            file=sys.stderr,
+        )
+    if skipped["self_glossaries"]:
+        print(
+            f"excluded {len(skipped['self_glossaries'])} GLOSSARY.md file(s) "
+            "from lexical evidence (never evidence for itself)",
             file=sys.stderr,
         )
     budget = skipped["corpus_budget"]

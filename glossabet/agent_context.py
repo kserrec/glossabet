@@ -17,11 +17,12 @@ from glossabet.artifacts import ArtifactError, repo_root
 from glossabet.coverage import coverage_ledger, coverage_reasons
 from glossabet.evidence import build_evidence, write_evidence
 from glossabet.glossary import GlossaryError, load_glossary
+from glossabet.repository_glossary import repository_glossary_section
 from glossabet.imports import module_of
 from glossabet.tokenize import STRUCTURED_IDENTIFIER_STYLES, identifier_style
 
 
-AGENT_CONTEXT_SCHEMA_VERSION = 2
+AGENT_CONTEXT_SCHEMA_VERSION = 3
 MAX_AGENT_CONTEXT_BYTES = 1_000_000
 ROUTINE_AGENT_CONTEXT_TARGET_BYTES = 80_000
 MAX_AGENT_CONTEXT_STRING_CHARS = 512
@@ -41,6 +42,7 @@ _LIST_LIMITS: dict[tuple[str, ...], int] = {
     ("vocabulary", "doc_terms", "items"): 50,
     ("structural_groups", "groups"): 100,
     ("glossary", "concepts"): 200,
+    ("repository_glossary", "nested_ignored"): 50,
 }
 
 # ``inspect --full`` preserves the detailed pre-Phase-27 collection shape.
@@ -53,6 +55,7 @@ _FULL_LIST_LIMITS: dict[tuple[str, ...], int] = {
     ("vocabulary", "doc_terms", "items"): 200,
     ("structural_groups", "groups"): 100,
     ("glossary", "concepts"): 200,
+    ("repository_glossary", "nested_ignored"): 50,
 }
 
 
@@ -257,9 +260,16 @@ def build_agent_context(
     evidence: dict,
     glossary: dict | None,
     *,
+    repository_glossary: dict | None = None,
     full: bool = False,
 ) -> dict:
-    """Project full engine evidence into the versioned agent-facing shape."""
+    """Project full engine evidence into the versioned agent-facing shape.
+
+    ``glossary`` is Glossabet-managed structured state (glossary.json);
+    ``repository_glossary`` is the discovery record for the repository's own
+    root GLOSSARY.md (metadata only, never content). They are two distinct
+    channels and are never merged or overloaded.
+    """
     glossary_section: dict = {"present": glossary is not None}
     if glossary is not None:
         glossary_section.update(
@@ -321,6 +331,11 @@ def build_agent_context(
         "monorepo": evidence["monorepo"],
         "skipped": evidence["skipped"],
         "glossary": glossary_section,
+        "repository_glossary": (
+            {"present": False, "nested_ignored": []}
+            if repository_glossary is None
+            else repository_glossary
+        ),
     }
     context = _bounded_copy(source, (), omissions, list_limits)
     context["coverage"] = {
@@ -365,6 +380,13 @@ def inspect_command(
         raise AgentContextError(str(exc)) from exc
     evidence = build_evidence(root, cache=True, graphify=graphify)
     write_evidence(root, evidence)
-    context = build_agent_context(evidence, glossary, full=full)
+    context = build_agent_context(
+        evidence,
+        glossary,
+        repository_glossary=repository_glossary_section(
+            root, evidence, glossary
+        ),
+        full=full,
+    )
     print(serialize_agent_context(context), end="")
     return 0

@@ -54,8 +54,8 @@ def test_absent_glossary_is_none(tmp_path):
 
 
 def test_save_is_deterministic(tmp_path):
-    first = save_glossary(tmp_path, GLOSSARY).read_text()
-    second = save_glossary(tmp_path, GLOSSARY).read_text()
+    first = save_glossary(tmp_path, GLOSSARY).read_text(encoding="utf-8")
+    second = save_glossary(tmp_path, GLOSSARY).read_text(encoding="utf-8")
     assert first == second
 
 
@@ -224,7 +224,7 @@ def test_save_normalizes_scope_order_and_show_reports_it(tmp_path, capsys):
     }
 
     path = save_glossary(tmp_path, glossary)
-    saved = json.loads(path.read_text())
+    saved = json.loads(path.read_text(encoding="utf-8"))
     payment = next(c for c in saved["concepts"] if c["id"] == "payment")
     assert payment["scope"]["path_prefixes"] == [
         "packages/payments", "src/payments"
@@ -649,4 +649,4 @@ def test_save_command_cannot_follow_a_glossary_symlink(
     assert main(["save", str(repo)]) == 1
 
     assert "symlinked artifact paths are not trusted" in capsys.readouterr().err
-    assert outside.read_text() == "do not replace"
+    assert outside.read_text(encoding="utf-8") == "do not replace"

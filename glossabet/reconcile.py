@@ -31,6 +31,7 @@ from glossabet.glossary import (
     require_glossary,
     scope_evidence,
 )
+from glossabet.repository_glossary import repository_glossary_section
 from glossabet.matching import (
     EvidenceIndex,
     production_corpus_complete,
@@ -38,7 +39,7 @@ from glossabet.matching import (
 )
 from glossabet.tokenize import tokenize_term
 
-VALIDATION_SCHEMA_VERSION = 7
+VALIDATION_SCHEMA_VERSION = 8
 VALIDATION_FILE = "validation.json"
 
 FINDINGS_CAP = 10
@@ -452,6 +453,7 @@ def build_validation(
     glossary: dict,
     *,
     managed_context: dict | None = None,
+    repository_glossary: dict | None = None,
 ) -> dict:
     canonical = [
         c for c in glossary["concepts"] if c["status"] == "canonical"
@@ -656,6 +658,15 @@ def build_validation(
         "total_findings": total,
         "total_findings_complete": total_complete,
         "managed_context": managed_context or unchecked_managed_context(),
+        # The repository's own root GLOSSARY.md (Phase 30–32): discovery
+        # record plus, when structured state exists and the file was read
+        # completely, the lexical term-presence divergence. Not a findings
+        # section: it is one deterministic signal, never a diagnosis.
+        "repository_glossary": (
+            repository_glossary
+            if repository_glossary is not None
+            else {"checked": False}
+        ),
         **sections,
     }
 
@@ -746,10 +757,55 @@ def _print_report(validation: dict) -> None:
             print(f"{summary} [{safe_annotation}]")
         if section["dropped_items"]:
             print(f"... and {section['dropped_items']} more not shown")
+    _print_repository_glossary(validation.get("repository_glossary", {}))
     print(
         "\nNo one-to-one community=concept assumption; findings are evidence "
         "for the team, never automatic diagnoses."
     )
+
+
+def _print_repository_glossary(section: dict) -> None:
+    if not section.get("present"):
+        return
+    if not section.get("readable"):
+        print(
+            "\nrepository GLOSSARY.md: present but not read "
+            f"({escape_terminal_text(str(section.get('reason')))}); "
+            "no absence claims about it are possible"
+        )
+        return
+    divergence = section.get("divergence")
+    if divergence is None:
+        return
+    missing = divergence["canonical_missing_from_markdown"]
+    superseded = divergence["superseded_terms_still_present"]
+    if not missing and not superseded and divergence["complete"]:
+        return
+    print("\n== repository GLOSSARY.md divergence (lexical presence only) ==")
+    for term in missing:
+        print(
+            f"canonical term {escape_terminal_text(term)} does not appear "
+            "in GLOSSARY.md"
+        )
+    for item in superseded:
+        print(
+            f"{item['status']} term {escape_terminal_text(item['term'])} "
+            "appears in GLOSSARY.md while its canonical term "
+            f"{escape_terminal_text(item['canonical_term'])} does not"
+        )
+    if not divergence["complete"]:
+        reason = divergence.get("reason")
+        if reason:
+            print(
+                "... term-presence check not run: normalized GLOSSARY.md text "
+                f"exceeds {divergence['text_cap']} characters; "
+                f"{divergence['skipped_terms']} term(s) not checked"
+            )
+        else:
+            print(
+                f"... term-presence check capped at {divergence['term_cap']} "
+                f"terms; {divergence['skipped_terms']} not checked"
+            )
 
 
 def validate_command(path_arg: str) -> int:
@@ -766,6 +822,9 @@ def validate_command(path_arg: str) -> int:
         evidence,
         glossary,
         managed_context=managed_context,
+        repository_glossary=repository_glossary_section(
+            root, evidence, glossary
+        ),
     )
     write_artifact(root, VALIDATION_FILE, validation)
     for warning in validation["graph"]["warnings"]:

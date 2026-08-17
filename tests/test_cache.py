@@ -54,7 +54,7 @@ def test_fully_warm_scan_extracts_nothing(tmp_path):
 def test_generator_version_change_invalidates_everything(tmp_path):
     root = make_repo(tmp_path)
     build_evidence(root, cache=True)
-    cached = json.loads(cache_path(root).read_text())
+    cached = json.loads(cache_path(root).read_text(encoding="utf-8"))
     cached["generator_version"] = "0.0.0-older"
     cache_path(root).write_text(json.dumps(cached))
     assert load_cache(root) is None  # a version mismatch is a full miss
@@ -66,7 +66,7 @@ def test_generator_version_change_invalidates_everything(tmp_path):
 def test_ascii_tokenizer_cache_version_is_invalidated(tmp_path):
     root = make_repo(tmp_path)
     build_evidence(root, cache=True)
-    cached = json.loads(cache_path(root).read_text())
+    cached = json.loads(cache_path(root).read_text(encoding="utf-8"))
     cached["cache_version"] = 2
     cache_path(root).write_text(json.dumps(cached))
 
@@ -89,7 +89,7 @@ def test_corrupt_cache_is_a_miss_not_an_error(tmp_path):
 def test_touched_but_identical_content_still_correct(tmp_path):
     root = make_repo(tmp_path)
     build_evidence(root, cache=True)
-    content = (root / "a.py").read_text()
+    content = (root / "a.py").read_text(encoding="utf-8")
     (root / "a.py").write_text(content)  # new mtime, same bytes
     stats = {}
     warm = build_evidence(root, cache=True, stats=stats)

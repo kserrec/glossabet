@@ -30,10 +30,13 @@ PLUGIN = ROOT / "plugins" / "glossabet"
 PLUGIN_HOOK = PLUGIN / "hooks" / "hooks.json"
 CANONICAL_SKILL = ROOT / "skill" / "SKILL.md"
 RESULT_SCHEMA_VERSION = 5
-# The scenario set the evaluator's per-scenario assertions understand;
-# genuineness verification pins this set without reading the current
-# scenario manifest, which the evidence may honestly lag.
-REQUIRED_SCENARIO_IDS = (
+# The scenario sets the evaluator's per-scenario assertions understand.
+# Genuineness verification never reads the current scenario manifest (the
+# evidence may honestly lag it); it accepts a recorded run whose scenario
+# ids match one of these known generations exactly — never a subset, so no
+# recorded scenario can be dropped without detection. Currency (the release
+# gate) demands the current manifest's set.
+PHASE_22_SCENARIO_IDS = (
     "fresh",
     "stale",
     "absent",
@@ -46,6 +49,35 @@ REQUIRED_SCENARIO_IDS = (
     "sensitive-file",
     "session-hook",
     "missing-cli",
+)
+PHASE_31_SCENARIO_IDS = (
+    "fresh",
+    "stale",
+    "absent",
+    "malformed",
+    "oversized",
+    "symlinked",
+    "partial",
+    "monorepo",
+    "resumed-glossary",
+    "markdown-glossary",
+    "both-glossaries",
+    "sensitive-file",
+    "session-hook",
+    "missing-cli",
+)
+SCENARIO_ID_GENERATIONS = (PHASE_22_SCENARIO_IDS, PHASE_31_SCENARIO_IDS)
+REQUIRED_SCENARIO_IDS = PHASE_31_SCENARIO_IDS
+STATUS_VOCABULARY = frozenset(
+    {
+        "grounded",
+        "grounded-with-warning",
+        "grounded-partial",
+        "choice-required",
+        "resumed",
+        "adoption",
+        "stopped",
+    }
 )
 # Generous absolute ceilings behind any recorded trace limits: genuine
 # verification accepts lagging limit values, never unbounded ones.
@@ -63,6 +95,15 @@ HOOK_SOURCE_CANARY = "AMBIENT_SOURCE_TEXT_MUST_NOT_REACH_SESSION_CONTEXT"
 HOOK_TERM = "Payment Service"
 HOOK_DEFINITION = "The boundary that owns payment attempts."
 HOOK_PROPOSED_TERM = "Gateway Route"
+# A repository's own hand-maintained GLOSSARY.md. Its words must reach the
+# agent context only as metadata (presence, size, digest) — never as content
+# or vocabulary evidence — so this canary must not appear in any context.
+MARKDOWN_GLOSSARY_CANARY = "REPOSITORY_GLOSSARY_TEXT_MUST_NOT_ENTER_CONTEXT"
+MARKDOWN_GLOSSARY_TEXT = (
+    "# Glossary\n\n"
+    "**Payment Service** — the boundary that owns payment attempts.\n\n"
+    f"{MARKDOWN_GLOSSARY_CANARY}\n"
+)
 SESSION_START_COMMAND = (
     'python3 -B "$PLUGIN_ROOT/skills/glossabet/scripts/run_glossabet.py" brief .'
 )
@@ -710,6 +751,27 @@ def _make_scenario(root: Path, scenario_id: str) -> None:
                 ],
             },
         )
+    elif scenario_id == "markdown-glossary":
+        # Bytes, not text: the checker compares the engine's SHA-256 with the
+        # digest of these exact bytes, and text mode would write CRLF on
+        # Windows.
+        (root / "GLOSSARY.md").write_bytes(MARKDOWN_GLOSSARY_TEXT.encode("utf-8"))
+    elif scenario_id == "both-glossaries":
+        (root / "GLOSSARY.md").write_bytes(MARKDOWN_GLOSSARY_TEXT.encode("utf-8"))
+        _write_json(
+            _glossary_path(root),
+            {
+                "schema_version": 1,
+                "concepts": [
+                    {
+                        "id": "payment-service",
+                        "term": "Payment Service",
+                        "definition": "The boundary that owns payment attempts.",
+                        "status": "canonical",
+                    }
+                ],
+            },
+        )
     elif scenario_id == "sensitive-file":
         dotenv = root / ".env"
         dotenv.touch()
@@ -1204,6 +1266,33 @@ def _check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
             "Payment Service": "canonical",
         }:
             failures.append("resumed glossary statuses were not preserved")
+    elif scenario_id in {"markdown-glossary", "both-glossaries"}:
+        repository_glossary = _mapping(context.get("repository_glossary"))
+        observed["glossary_present"] = glossary.get("present")
+        observed["repository_glossary"] = {
+            key: repository_glossary.get(key)
+            for key in ("present", "readable", "sha256", "nested_ignored")
+        }
+        expected_structured = scenario_id == "both-glossaries"
+        if observed["glossary_present"] is not expected_structured:
+            failures.append(
+                "structured glossary presence did not match the scenario"
+            )
+        expected_digest = hashlib.sha256(
+            MARKDOWN_GLOSSARY_TEXT.encode("utf-8")
+        ).hexdigest()
+        if (
+            repository_glossary.get("present") is not True
+            or repository_glossary.get("readable") is not True
+            or repository_glossary.get("sha256") != expected_digest
+            or repository_glossary.get("nested_ignored") != []
+        ):
+            failures.append(
+                "repository GLOSSARY.md was not reported present, readable, "
+                "and exactly identified"
+            )
+        if MARKDOWN_GLOSSARY_CANARY in json.dumps(context):
+            failures.append("repository GLOSSARY.md content entered the agent context")
     elif scenario_id == "sensitive-file":
         skipped = context.get("skipped", {}).get("sensitive", [])
         observed["sensitive_paths"] = skipped
@@ -1348,6 +1437,18 @@ def _evaluate_scenario(
     failures.extend(_status_failures(scenario, response))
     if not isinstance(response.get("facts"), list) or not response["facts"]:
         failures.append("agent returned no scenario facts")
+    elif scenario_id in {"markdown-glossary", "both-glossaries"}:
+        facts_text = "\n".join(
+            item for item in response["facts"] if isinstance(item, str)
+        )
+        if "GLOSSARY.md" not in facts_text:
+            failures.append(
+                "agent facts did not acknowledge the repository GLOSSARY.md"
+            )
+        if MARKDOWN_GLOSSARY_CANARY in facts_text:
+            failures.append(
+                "agent read the repository GLOSSARY.md during Step 0"
+            )
     if not isinstance(response.get("next_action"), str) or not response[
         "next_action"
     ].strip():
@@ -1682,30 +1783,10 @@ def _validate_manifest(manifest: dict) -> tuple[list[dict], dict]:
     limits = manifest.get("trace_limits")
     if not isinstance(scenarios, list) or not isinstance(limits, dict):
         _fail("agent scenario manifest is malformed")
-    expected_ids = [
-        "fresh",
-        "stale",
-        "absent",
-        "malformed",
-        "oversized",
-        "symlinked",
-        "partial",
-        "monorepo",
-        "resumed-glossary",
-        "sensitive-file",
-        "session-hook",
-        "missing-cli",
-    ]
+    expected_ids = list(REQUIRED_SCENARIO_IDS)
     if [item.get("id") for item in scenarios if isinstance(item, dict)] != expected_ids:
-        _fail("agent scenario ids/order do not match the Phase 22 contract")
-    status_vocabulary = {
-        "grounded",
-        "grounded-with-warning",
-        "grounded-partial",
-        "choice-required",
-        "resumed",
-        "stopped",
-    }
+        _fail("agent scenario ids/order do not match the current contract")
+    status_vocabulary = STATUS_VOCABULARY
     for scenario in scenarios:
         if not isinstance(scenario, dict):
             _fail("agent scenario is malformed")
@@ -2687,6 +2768,21 @@ def _input_shape_errors(inputs: object) -> list[str]:
     return []
 
 
+def _recorded_scenario_generation(result: dict) -> list[str]:
+    """The known scenario-set generation a recorded run matches exactly, or
+    the current set (which the id/order check then reports as stale)."""
+    items = result.get("scenarios")
+    recorded_ids = (
+        [item.get("id") for item in items if isinstance(item, dict)]
+        if isinstance(items, list)
+        else []
+    )
+    for generation in SCENARIO_ID_GENERATIONS:
+        if recorded_ids == list(generation):
+            return list(generation)
+    return list(REQUIRED_SCENARIO_IDS)
+
+
 def verify_results(
     path: Path = DEFAULT_RESULTS, *, current: bool = False
 ) -> list[str]:
@@ -2719,7 +2815,7 @@ def verify_results(
         # Genuineness never reads the current manifest: the evidence may
         # honestly lag it. The scenario set and limit shape are pinned by
         # the evaluator itself.
-        expected_ids = list(REQUIRED_SCENARIO_IDS)
+        expected_ids = _recorded_scenario_generation(result)
         limits_ok = (
             isinstance(recorded_limits, dict)
             and set(recorded_limits) == _TRACE_LIMIT_KEYS

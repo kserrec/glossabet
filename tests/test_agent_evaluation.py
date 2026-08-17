@@ -46,7 +46,7 @@ RESULTS = ROOT / "evaluation" / "agent-results.json"
 HISTORY = ROOT / "evaluation" / "agent-history.json"
 
 
-def test_agent_manifest_covers_every_phase_22_boundary():
+def test_agent_manifest_covers_every_phase_22_and_31_boundary():
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     assert [scenario["id"] for scenario in manifest["scenarios"]] == [
         "fresh",
@@ -58,10 +58,15 @@ def test_agent_manifest_covers_every_phase_22_boundary():
         "partial",
         "monorepo",
         "resumed-glossary",
+        "markdown-glossary",
+        "both-glossaries",
         "sensitive-file",
         "session-hook",
         "missing-cli",
     ]
+    by_id = {scenario["id"]: scenario for scenario in manifest["scenarios"]}
+    assert by_id["markdown-glossary"]["expected_status"] == "adoption"
+    assert by_id["both-glossaries"]["expected_status"] == "resumed"
     sensitive = manifest["scenarios"][-3]
     assert sensitive["accepted_statuses"] == [
         "grounded",
@@ -822,3 +827,21 @@ def test_trace_summary_redacts_home_and_repo_paths():
     blob = json.dumps(summary)
     assert home not in blob
     assert "<REPO>" in summary["command"] or "<HOME>" in summary["command"]
+
+
+def test_markdown_glossary_fixtures_match_the_digest_the_checker_expects(tmp_path):
+    """The scenario checker compares the engine's SHA-256 with the digest of
+    MARKDOWN_GLOSSARY_TEXT's UTF-8 bytes; the fixture must therefore write
+    those exact bytes on every platform (text mode would write CRLF on
+    Windows)."""
+    import hashlib
+
+    from scripts.agent_eval import MARKDOWN_GLOSSARY_TEXT
+
+    expected = hashlib.sha256(MARKDOWN_GLOSSARY_TEXT.encode("utf-8")).hexdigest()
+    for scenario_id in ("markdown-glossary", "both-glossaries"):
+        root = tmp_path / scenario_id
+        _make_scenario(root, scenario_id)
+        written = (root / "GLOSSARY.md").read_bytes()
+        assert hashlib.sha256(written).hexdigest() == expected
+        assert b"\r\n" not in written
