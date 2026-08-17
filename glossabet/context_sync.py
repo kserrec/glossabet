@@ -13,14 +13,13 @@ import os
 import re
 import stat
 import sys
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from glossabet.artifacts import repo_root
-from glossabet.brief import build_managed_brief, glossary_sha256
-from glossabet.display import escape_terminal_text
-from glossabet.glossary import require_glossary
+from glossabet.artifacts import repo_root, replace_file_atomic
+from glossabet.brief import build_managed_brief
+from glossabet.display import escape_terminal_text, print_error
+from glossabet.glossary import glossary_sha256, require_glossary
 
 
 MANAGED_CONTEXT_SCHEMA_VERSION = 1
@@ -86,7 +85,7 @@ def _render_block(glossary: dict, *, newline: str = "\n") -> str:
     return block if newline == "\n" else block.replace("\n", newline)
 
 
-def _parse_text(text: str, glossary: dict) -> _Analysis:
+def _analyze_managed_block(text: str, glossary: dict) -> _Analysis:
     if _MARKER_PREFIX not in text:
         return _Analysis("absent", "no Glossabet managed context block")
     if text.count(START_MARKER) != 1 or text.count(END_MARKER) != 1:
@@ -222,15 +221,7 @@ def _write_bytes_atomic(
     *,
     expected: bytes | None,
 ) -> None:
-    fd, temporary = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
-    )
-    try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(temporary, mode)
+    def _require_unchanged_target() -> None:
         current, current_mode = _read_regular_target(path)
         if current != expected or (
             expected is not None and current_mode != mode
@@ -238,13 +229,10 @@ def _write_bytes_atomic(
             raise ContextSyncError(
                 f"{path.name} changed during synchronization; no update was made"
             )
-        os.replace(temporary, path)
-    except BaseException:
-        try:
-            Path(temporary).unlink()
-        except OSError:
-            pass
-        raise
+
+    replace_file_atomic(
+        path, payload, mode=mode, before_replace=_require_unchanged_target
+    )
 
 
 def _append_block(text: str, block: str, newline: str) -> str:
@@ -289,7 +277,7 @@ def sync_context(
         except UnicodeError as exc:
             raise ContextSyncError(f"{filename} is not valid UTF-8") from exc
 
-    analysis = _parse_text(existing, glossary)
+    analysis = _analyze_managed_block(existing, glossary)
     newline = _detect_newline(existing)
     block = _render_block(glossary, newline=newline)
 
@@ -341,7 +329,7 @@ def _inspect_target(path: Path, glossary: dict) -> dict:
         except UnicodeError:
             analysis = _Analysis("uninspectable", "host-context file is not valid UTF-8")
         else:
-            analysis = _parse_text(text, glossary)
+            analysis = _analyze_managed_block(text, glossary)
     return {"path": path.name, "status": analysis.status, "detail": analysis.detail}
 
 
@@ -410,7 +398,7 @@ def sync_context_command(path_arg: str, agent: str, *, force: bool = False) -> i
     try:
         path, outcome = sync_context(root, glossary, agent, force=force)
     except ContextSyncError as exc:
-        print("glossabet: " + escape_terminal_text(str(exc)), file=sys.stderr)
+        print_error(exc)
         return 1
     verbs = {
         "created": "Created",

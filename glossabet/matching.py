@@ -35,10 +35,51 @@ def production_corpus_complete(evidence: dict) -> bool:
     return budget.get("production_complete", budget.get("complete")) is True
 
 
-def _contains_sequence(unit: list[str], wanted: list[str]) -> bool:
-    width = len(wanted)
-    return any(unit[index:index + width] == wanted
-               for index in range(len(unit) - width + 1))
+def _match_compounds(
+    units: list[tuple[dict, list[str]]],
+    supported: set[tuple[str, ...]],
+    start_budget: int,
+) -> tuple[dict[tuple[str, ...], list[dict]], int, int]:
+    """One bounded trie pass mapping each supported compound to its entries.
+
+    Returns (matches, processed starts, total starts). A start is one
+    identifier position where a compound could begin; the budget caps how
+    many are examined across the whole index.
+    """
+    matches: dict[tuple[str, ...], list[dict]] = {
+        wanted: [] for wanted in supported
+    }
+    total_starts = sum(len(unit) for _, unit in units) if supported else 0
+    processed_starts = 0
+
+    trie: dict = {}
+    terminal = object()
+    for wanted in supported:
+        node = trie
+        for token in wanted:
+            node = node.setdefault(token, {})
+        node.setdefault(terminal, []).append(wanted)
+
+    exhausted = False
+    for entry, unit in (units if supported else []):
+        matched: set[tuple[str, ...]] = set()
+        for start in range(len(unit)):
+            if processed_starts >= start_budget:
+                exhausted = True
+                break
+            processed_starts += 1
+            node = trie
+            for token in unit[start:start + MAX_COMPOUND_TERM_TOKENS]:
+                child = node.get(token)
+                if child is None:
+                    break
+                node = child
+                matched.update(node.get(terminal, ()))
+        for wanted in matched:
+            matches[wanted].append(entry)
+        if exhausted:
+            break
+    return matches, processed_starts, total_starts
 
 
 def _matching_locations(entry: dict, scope: tuple[str, ...]) -> list[dict]:
@@ -116,9 +157,6 @@ class EvidenceIndex:
             if len(wanted) <= MAX_COMPOUND_TERM_TOKENS
         }
         self._unsupported_compounds = requested - supported
-        self._compound_matches: dict[tuple[str, ...], list[dict]] = {
-            wanted: [] for wanted in supported
-        }
 
         units = []
         for entry in self.identifier_section["items"]:
@@ -126,38 +164,9 @@ class EvidenceIndex:
             if not isinstance(unit, list):
                 unit = tokenize_identifier(entry["name"])
             units.append((entry, unit))
-        total_starts = sum(len(unit) for _, unit in units) if supported else 0
-        processed_starts = 0
-
-        trie: dict = {}
-        terminal = object()
-        for wanted in supported:
-            node = trie
-            for token in wanted:
-                node = node.setdefault(token, {})
-            node.setdefault(terminal, []).append(wanted)
-
-        exhausted = False
-        for entry, unit in (units if supported else []):
-            matched: set[tuple[str, ...]] = set()
-            for start in range(len(unit)):
-                if processed_starts >= compound_start_budget:
-                    exhausted = True
-                    break
-                processed_starts += 1
-                node = trie
-                for token in unit[
-                    start:start + MAX_COMPOUND_TERM_TOKENS
-                ]:
-                    child = node.get(token)
-                    if child is None:
-                        break
-                    node = child
-                    matched.update(node.get(terminal, ()))
-            for wanted in matched:
-                self._compound_matches[wanted].append(entry)
-            if exhausted:
-                break
+        self._compound_matches, processed_starts, total_starts = (
+            _match_compounds(units, supported, compound_start_budget)
+        )
 
         work_reasons = []
         if processed_starts < total_starts:
@@ -368,210 +377,3 @@ class EvidenceIndex:
             "scope": scope_evidence(scope),
         }
 
-
-def code_term_occurrence(
-    evidence: dict,
-    term: str,
-    scope: tuple[str, ...] | None = None,
-    *,
-    index: EvidenceIndex | None = None,
-) -> dict:
-    """Return rule-proven lexical occurrences and completeness metadata."""
-    if index is not None:
-        return index.code_term_occurrence(term, scope)
-    wanted = tokenize_term(term)
-    corpus_complete = production_corpus_complete(evidence)
-    empty = {
-        "term_tokens": wanted,
-        "match_kind": "token" if len(wanted) <= 1 else "lexical-unit",
-        "count": 0,
-        "count_complete": corpus_complete,
-        "files": 0,
-        "files_complete": corpus_complete,
-        "modules": 0,
-        "locations": [],
-        "locations_truncated": False,
-        "scope": scope_evidence(scope),
-    }
-    if not wanted:
-        return empty
-
-    vocabulary = evidence["vocabulary"]
-    if len(wanted) == 1:
-        section = vocabulary["tokens"]
-        entry = next(
-            (item for item in section["items"] if item["term"] == wanted[0]),
-            None,
-        )
-        if entry is None:
-            return {
-                **empty,
-                "count_complete": (
-                    section.get("truncated") is None and corpus_complete
-                ),
-                "files_complete": (
-                    section.get("truncated") is None and corpus_complete
-                ),
-            }
-        if scope is not None:
-            return {
-                "term_tokens": wanted,
-                "match_kind": "token",
-                **_scoped_entry_occurrence(entry, scope, corpus_complete),
-                "scope": scope_evidence(scope),
-            }
-        return {
-            "term_tokens": wanted,
-            "match_kind": "token",
-            "count": entry["count"],
-            "count_complete": corpus_complete,
-            "files": entry["files"],
-            "files_complete": corpus_complete,
-            "modules": entry["modules"],
-            "locations": list(entry["locations"]),
-            "locations_truncated": entry["locations_truncated"],
-            "scope": scope_evidence(scope),
-        }
-
-    section = vocabulary["identifiers"]
-    count = 0
-    locations: Counter = Counter()
-    locations_truncated = False
-    scoped_count_complete = True
-    files_complete = (
-        section.get("truncated") is None and corpus_complete
-    )
-    for entry in section["items"]:
-        unit = entry.get("tokens")
-        if not isinstance(unit, list):
-            unit = tokenize_identifier(entry["name"])
-        if not _contains_sequence(unit, wanted):
-            continue
-        entry_locations = entry.get("locations", [])
-        if scope is None:
-            count += entry["count"]
-        else:
-            entry_locations = _matching_locations(entry, scope)
-            count += sum(location["count"] for location in entry_locations)
-        for location in entry_locations:
-            locations[location["path"]] += location["count"]
-        if entry.get("locations_truncated"):
-            locations_truncated = True
-            files_complete = False
-            if scope is not None:
-                scoped_count_complete = False
-
-    ranked_locations = sorted(
-        locations.items(), key=lambda item: (-item[1], item[0])
-    )
-    kept = ranked_locations[:LOCATION_SAMPLE]
-    if len(ranked_locations) > len(kept):
-        locations_truncated = True
-        files_complete = False
-    modules = {module_of(path) for path in locations}
-    return {
-        "term_tokens": wanted,
-        "match_kind": "lexical-unit",
-        "count": count,
-        "count_complete": (
-            section.get("truncated") is None
-            and scoped_count_complete
-            and corpus_complete
-        ),
-        "files": len(locations),
-        "files_complete": files_complete,
-        "modules": len(modules),
-        "locations": [
-            {"path": path, "count": uses} for path, uses in kept
-        ],
-        "locations_truncated": locations_truncated,
-        "scope": scope_evidence(scope),
-    }
-
-
-def code_identifier_occurrence(
-    evidence: dict,
-    name: str,
-    scope: tuple[str, ...] | None = None,
-    *,
-    index: EvidenceIndex | None = None,
-) -> dict:
-    """Exact identifier occurrence used to resolve stable symbol bindings."""
-    if index is not None:
-        return index.code_identifier_occurrence(name, scope)
-    section = evidence["vocabulary"]["identifiers"]
-    corpus_complete = production_corpus_complete(evidence)
-    entry = next((item for item in section["items"] if item["name"] == name), None)
-    if entry is None:
-        complete = section.get("truncated") is None and corpus_complete
-        return {
-            "count": 0,
-            "count_complete": complete,
-            "files": 0,
-            "files_complete": complete,
-            "modules": 0,
-            "locations": [],
-            "locations_truncated": False,
-            "scope": scope_evidence(scope),
-        }
-    if scope is not None:
-        return {
-            **_scoped_entry_occurrence(entry, scope, corpus_complete),
-            "scope": scope_evidence(scope),
-        }
-    return {
-        "count": entry["count"],
-        "count_complete": corpus_complete,
-        "files": entry["files"],
-        "files_complete": corpus_complete,
-        "modules": len({
-            module_of(location["path"]) for location in entry.get("locations", [])
-        }),
-        "locations": list(entry.get("locations", [])),
-        "locations_truncated": entry.get("locations_truncated", False),
-        "scope": scope_evidence(scope),
-    }
-
-
-def doc_term_occurrence(
-    evidence: dict,
-    term: str,
-    scope: tuple[str, ...] | None = None,
-    *,
-    index: EvidenceIndex | None = None,
-) -> dict:
-    """Exact one-token documentation occurrence with the same scope contract."""
-    if index is not None:
-        return index.doc_term_occurrence(term, scope)
-    wanted = tokenize_term(term)
-    section = evidence["vocabulary"]["doc_terms"]
-    corpus_complete = production_corpus_complete(evidence)
-    if len(wanted) != 1:
-        return {
-            "count": 0,
-            "count_complete": False,
-            "scope": scope_evidence(scope),
-        }
-    entry = next(
-        (item for item in section["items"] if item["term"] == wanted[0]), None
-    )
-    if entry is None:
-        return {
-            "count": 0,
-            "count_complete": (
-                section.get("truncated") is None and corpus_complete
-            ),
-            "scope": scope_evidence(scope),
-        }
-    if scope is None:
-        return {
-            "count": entry["count"],
-            "count_complete": corpus_complete,
-            "scope": scope_evidence(scope),
-        }
-    scoped = _scoped_entry_occurrence(entry, scope, corpus_complete)
-    return {
-        "count": scoped["count"],
-        "count_complete": scoped["count_complete"],
-        "scope": scope_evidence(scope),
-    }

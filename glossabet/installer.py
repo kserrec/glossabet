@@ -12,16 +12,12 @@ different existing skill unless the user explicitly supplies ``--force``.
 
 from __future__ import annotations
 
-import os
-import sys
-import tempfile
 from importlib import resources
 from pathlib import Path
 
-from glossabet.cli import EXIT_OK, EXIT_USER_ERROR
-from glossabet.display import escape_terminal_text
+from glossabet.artifacts import replace_file_atomic
+from glossabet.display import escape_terminal_text, print_error
 
-AGENTS = ("codex", "claude")
 _DESTINATIONS = {
     "codex": Path(".agents") / "skills" / "glossabet",
     "claude": Path(".claude") / "skills" / "glossabet",
@@ -66,25 +62,6 @@ def _reject_symlink_components(path: Path) -> None:
             )
 
 
-def _write_text_atomic(path: Path, text: str) -> None:
-    fd, temporary = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(text)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(temporary, 0o644)
-        os.replace(temporary, path)
-    except BaseException:
-        try:
-            Path(temporary).unlink()
-        except OSError:
-            pass
-        raise
-
-
 def install_skill(destination: Path, *, force: bool = False) -> tuple[Path, str]:
     """Install the canonical skill and return ``(path, outcome)``.
 
@@ -119,7 +96,7 @@ def install_skill(destination: Path, *, force: bool = False) -> tuple[Path, str]
         destination.mkdir(parents=True, exist_ok=True)
         _reject_symlink_components(target)
         outcome = "replaced" if target.exists() else "installed"
-        _write_text_atomic(target, text)
+        replace_file_atomic(target, text.encode("utf-8"), mode=0o644)
     except InstallError:
         raise
     except OSError as exc:
@@ -141,11 +118,8 @@ def install_command(
     try:
         path, outcome = install_skill(destination, force=force)
     except InstallError as exc:
-        print(
-            "glossabet: " + escape_terminal_text(str(exc)),
-            file=sys.stderr,
-        )
-        return EXIT_USER_ERROR
+        print_error(exc)
+        return 1
 
     verbs = {
         "installed": "Installed",
@@ -155,4 +129,4 @@ def install_command(
     safe_agent = escape_terminal_text(agent)
     safe_path = escape_terminal_text(str(path))
     print(f"{verbs[outcome]} Glossabet skill for {safe_agent}: {safe_path}")
-    return EXIT_OK
+    return 0

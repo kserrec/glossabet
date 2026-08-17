@@ -78,10 +78,16 @@ def test_skill_referenced_fields_exist_in_agent_context(tmp_path):
     assert context["freshness"]["status"] == "current"
     assert context["repository"]["git"].keys() >= {"head", "dirty"}
     assert "`repository.git`" in text
-    # Top-level sections the protocol feeds into Steps 1-3:
+    # Top-level sections the protocol feeds into Steps 1-3. A bare English
+    # word does not count as a field reference: the skill must name the
+    # field itself, backticked or as a dotted path.
     for key in ("totals", "languages", "modules", "files", "vocabulary", "monorepo"):
         assert key in context, key
-        assert f"`{key}`" in text or f"`monorepo.{key}" in text or key in text, key
+        assert (
+            f"`{key}`" in text
+            or f"`{key}." in text
+            or f"{key}." in text
+        ), key
     for vocab_key in ("identifiers", "tokens", "doc_terms"):
         assert vocab_key in context["vocabulary"]
         assert f"vocabulary.{vocab_key}" in text

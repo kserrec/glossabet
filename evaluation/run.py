@@ -25,7 +25,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from glossabet import __version__  # noqa: E402
+from glossabet.artifacts import MAX_JSON_BYTES  # noqa: E402
 from glossabet.cache import CACHE_ROOT_ENV  # noqa: E402
+from glossabet.config import CONFIG_FILE  # noqa: E402
 from glossabet.drift import (  # noqa: E402
     DRIFT_SCHEMA_VERSION,
     build_drift,
@@ -44,15 +46,42 @@ from glossabet.reconcile import (  # noqa: E402
     VALIDATION_SCHEMA_VERSION,
     build_validation,
 )
-from glossabet.terminology import (  # noqa: E402
-    REGISTER_STYLED_IDENTIFIERS,
+from glossabet.tokenize import (  # noqa: E402
+    STRUCTURED_IDENTIFIER_STYLES,
 )
 
 EVALUATION_SCHEMA_VERSION = 6
 DEFAULT_MANIFEST = PROJECT_ROOT / "evaluation" / "corpus.json"
 DEFAULT_RESULTS = PROJECT_ROOT / "evaluation" / "results.json"
 RELEASE_RUNTIME_RUNS = 5
-GIT_SAFE_CONFIG = ("-c", "core.fsmonitor=", "-c", "core.hooksPath=/dev/null")
+# Every metric the evaluator can gate on. Genuineness verification pins this
+# exact set so a tampered artifact cannot simply drop the checks it fails;
+# which targets those checks carry is verified against the manifest at the
+# release gate.
+RELEASE_THRESHOLD_NAMES = frozenset({
+    "terminology_precision_min",
+    "drift_precision_min",
+    "drift_recall_min",
+    "structural_precision_min",
+    "structural_recall_min",
+    "reviewer_usefulness_min",
+    "false_alarms_per_1000_max",
+    "cold_seconds_per_1000_source_files_max",
+    "corpus_budget_truncations_max",
+    "minimum_cache_reuse_min",
+    "lexical_contract_min",
+    "register_accuracy_min",
+    "nomination_quality_min",
+    "structural_contract_min",
+})
+# Neutralize repo-config code-execution surfaces and, critically, the ext::
+# remote helper: a corpus url like `ext::sh -c '<payload>'` otherwise runs a
+# shell at fetch time. The manifest validator additionally requires https.
+GIT_SAFE_CONFIG = (
+    "-c", "core.fsmonitor=",
+    "-c", "core.hooksPath=/dev/null",
+    "-c", "protocol.ext.allow=never",
+)
 DRIFT_SECTIONS = (
     "parallel_terms",
     "watched_terms_in_use",
@@ -90,6 +119,43 @@ def _dotenv_part(name: str) -> bool:
         or name.startswith(".env.")
         or ".env." in name
     )
+
+
+def _hex_digest(value: object) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def _is_safe_relative(value: object) -> bool:
+    """A manifest-supplied path that cannot escape the base it is joined onto.
+
+    `corpus.json` is contributor-editable (a pull request adds a repo to the
+    eval corpus), so `checkout_dir`/`path` are attacker-controlled. Joining an
+    absolute path or one containing `..` onto the temp checkout root (or the
+    project root) escapes it and lets a poisoned manifest create/overwrite
+    files anywhere the maintainer can write. Require a non-empty relative path
+    with no parent traversal, drive letters, or NUL.
+    """
+    if not isinstance(value, str) or not value or "\x00" in value:
+        return False
+    # OS-agnostic on purpose: Path.is_absolute() is not — on Windows
+    # Path("/tmp/pwn").is_absolute() is False (no drive), so a POSIX absolute
+    # path would slip through when the harness runs on Windows. Reject every
+    # absolute/traversal form regardless of the running platform.
+    if value[0] in "/\\":  # POSIX-absolute or a leading path separator
+        return False
+    if "\\" in value:  # backslash: Windows separator, never in a relative spec
+        return False
+    if len(value) >= 2 and value[1] == ":":  # Windows drive, e.g. C:\ or C:foo
+        return False
+    if ".." in value.split("/"):  # parent traversal
+        return False
+    return True
+
+
+def _is_commit_sha(value: object) -> bool:
+    """git object name: 40 hex (SHA-1) or 64 hex (SHA-256). Rejects a value
+    starting with `-` that git would parse as an option in a refspec slot."""
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}", value) is not None
 
 
 def _digest_paths(root: Path, relative_paths: list[str]) -> str:
@@ -150,7 +216,7 @@ def _corpus_identity(root: Path, evidence: dict, *, graphify: bool = False) -> d
         for item in evidence["files"][kind]
     ]
     if evidence.get("configuration", {}).get("present"):
-        paths.append("glossabet.json")
+        paths.append(CONFIG_FILE)
     if graphify and (root / GRAPH_PATH).is_file():
         paths.append(GRAPH_PATH)
     return {
@@ -160,6 +226,10 @@ def _corpus_identity(root: Path, evidence: dict, *, graphify: bool = False) -> d
 
 
 def _read_manifest(path: Path) -> tuple[dict, str]:
+    if path.stat().st_size > MAX_JSON_BYTES:
+        raise EvaluationError(
+            f"{path}: manifest exceeds {MAX_JSON_BYTES} bytes — refusing to load"
+        )
     raw = path.read_bytes()
     try:
         manifest = json.loads(raw)
@@ -177,7 +247,7 @@ def _read_manifest(path: Path) -> tuple[dict, str]:
         files = source.get("corpus_files")
         if (
             not isinstance(digest, str)
-            or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+            or not _hex_digest(digest)
             or not isinstance(files, int)
             or isinstance(files, bool)
             or files < 0
@@ -189,6 +259,30 @@ def _read_manifest(path: Path) -> tuple[dict, str]:
             raise EvaluationError(
                 f"{path}: {source['id']} needs a register expectation"
             )
+        if source.get("kind") == "local":
+            if not _is_safe_relative(source.get("path")):
+                raise EvaluationError(
+                    f"{path}: {source['id']} path must be a safe relative path"
+                )
+        else:
+            url = source.get("url")
+            if not isinstance(url, str) or not url.startswith("https://"):
+                # A non-https url (e.g. `ext::sh -c ...`) reaches
+                # `git remote add` and can execute a shell at fetch time.
+                raise EvaluationError(
+                    f"{path}: {source['id']} url must be an https:// URL"
+                )
+            if not _is_safe_relative(source.get("checkout_dir")):
+                # Joined onto the temp checkout root; `..`/absolute escapes it.
+                raise EvaluationError(
+                    f"{path}: {source['id']} checkout_dir must be a safe "
+                    "relative path"
+                )
+            if not _is_commit_sha(source.get("commit")):
+                raise EvaluationError(
+                    f"{path}: {source['id']} commit must be a 40- or 64-char "
+                    "hex object name"
+                )
     if not isinstance(manifest.get("self_register"), dict):
         raise EvaluationError(f"{path}: self_register must be an object")
     if not isinstance(manifest.get("self_nominations"), dict):
@@ -219,12 +313,20 @@ def _git(args: list[str], cwd: Path, timeout: int = 120) -> str:
 
 def _fetch(source: dict, repositories_root: Path) -> Path:
     destination = repositories_root / source["checkout_dir"]
+    # Defense in depth: _read_manifest already rejects unsafe checkout_dir, but
+    # never let a resolved destination escape its base even if that changes.
+    try:
+        destination.resolve().relative_to(repositories_root.resolve())
+    except ValueError as exc:
+        raise EvaluationError(
+            f"{source['id']}: checkout_dir escapes the checkout root"
+        ) from exc
     if destination.exists():
         raise EvaluationError(f"refusing to replace existing {destination}")
     destination.mkdir(parents=True)
     _git(["init", "-q"], destination)
-    _git(["remote", "add", "origin", source["url"]], destination)
-    _git(["fetch", "--depth", "1", "origin", source["commit"]], destination)
+    _git(["remote", "add", "origin", "--", source["url"]], destination)
+    _git(["fetch", "--depth", "1", "origin", "--", source["commit"]], destination)
     _git(["checkout", "--detach", "--force", "FETCH_HEAD"], destination)
     return destination
 
@@ -232,9 +334,25 @@ def _fetch(source: dict, repositories_root: Path) -> Path:
 def _source_root(source: dict, repositories_root: Path | None,
                  fetch: bool) -> Path:
     if source.get("kind") == "local":
-        return (PROJECT_ROOT / source["path"]).resolve()
+        resolved = (PROJECT_ROOT / source["path"]).resolve()
+        try:
+            resolved.relative_to(PROJECT_ROOT.resolve())
+        except ValueError as exc:
+            raise EvaluationError(
+                f"{source['id']}: local path escapes the project root"
+            ) from exc
+        return resolved
     if repositories_root is None:
         raise EvaluationError("external sources require --fetch or --repositories-root")
+    if not fetch:
+        # --repositories-root branch: same escape guard as _fetch.
+        pre = (repositories_root / source["checkout_dir"]).resolve()
+        try:
+            pre.relative_to(repositories_root.resolve())
+        except ValueError as exc:
+            raise EvaluationError(
+                f"{source['id']}: checkout_dir escapes the checkout root"
+            ) from exc
     root = (
         _fetch(source, repositories_root)
         if fetch else repositories_root / source["checkout_dir"]
@@ -289,16 +407,7 @@ def _timed_build(
 
 
 def _terminology_keys(evidence: dict) -> set[str]:
-    terminology = evidence["terminology"]
-    keys = {
-        "synonym:" + ":".join(sorted((item["a"], item["b"])))
-        for item in terminology["synonym_candidates"]["items"]
-    }
-    keys.update(
-        f"overload:{item['term']}"
-        for item in terminology["overload_candidates"]["items"]
-    )
-    return keys
+    return set(_terminology_items(evidence))
 
 
 def _terminology_items(evidence: dict) -> dict[str, tuple[str, dict]]:
@@ -334,10 +443,7 @@ def _drift_key(section: str, finding: dict) -> tuple[str, str]:
 
 def _drift_keys(drift: dict) -> dict[str, str]:
     return {
-        key: kind
-        for section in DRIFT_SECTIONS
-        for finding in drift[section]["items"]
-        for kind, key in [_drift_key(section, finding)]
+        key: kind for key, (kind, _) in _drift_items(drift).items()
     }
 
 
@@ -470,8 +576,10 @@ def _lexical_score(evidence: dict, expectation: object) -> dict:
     if (
         not isinstance(required, list)
         or not all(isinstance(token, str) for token in required)
+        or len(set(required)) != len(required)
         or not isinstance(forbidden, list)
         or not all(isinstance(token, str) for token in forbidden)
+        or len(set(forbidden)) != len(forbidden)
         or not isinstance(identifiers, dict)
         or not all(
             isinstance(name, str)
@@ -518,7 +626,7 @@ def _register_score(evidence: dict, expectation: object) -> dict:
         raise EvaluationError("register expectations must be an object")
     expected_style = expectation.get("dominant_style")
     expected_multi_word = expectation.get("predominantly_multi_word")
-    if expected_style not in REGISTER_STYLED_IDENTIFIERS:
+    if expected_style not in STRUCTURED_IDENTIFIER_STYLES:
         raise EvaluationError(
             "register dominant_style must name a structurally styled form"
         )
@@ -1039,6 +1147,11 @@ def _aggregate(
         event["surface"] == "corpus_budget"
         for case in cases for event in case["truncations"]
     )
+    known_reuse = [
+        case["cache"]["reuse_rate"]
+        for case in cases
+        if case["cache"]["reuse_rate"] is not None
+    ]
     return {
         "cases": len(cases),
         "source_files": source_files,
@@ -1093,8 +1206,10 @@ def _aggregate(
             "all_warm_outputs_match_cold": all(
                 case["cache"]["warm_output_matches_cold"] for case in cases
             ),
-            "minimum_reuse_rate": min(
-                case["cache"]["reuse_rate"] for case in cases
+            # An empty corpus has no measurable reuse rate (None); it must
+            # not crash the aggregate or masquerade as a measured minimum.
+            "minimum_reuse_rate": (
+                min(known_reuse) if known_reuse else None
             ),
         },
         "truncation": {
@@ -1174,10 +1289,6 @@ _ENGINE_METADATA_KEYS = {
 }
 
 
-def _hex_digest(value: object) -> bool:
-    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
-
-
 def _stored_threshold_targets(thresholds: object) -> dict | None:
     """Recover the threshold configuration recorded inside the results."""
     if not isinstance(thresholds, dict):
@@ -1246,7 +1357,8 @@ def _genuineness_errors(results: dict) -> list[str]:
                 f"{case.get('id', '<unknown>')}: corpus digest metadata is malformed"
             )
 
-    method = results.get("method", {})
+    method = results.get("method")
+    method = method if isinstance(method, dict) else {}
     if method.get("runtime_runs_per_case") != RELEASE_RUNTIME_RUNS:
         errors.append(
             "evaluation results do not contain the required five-run sample"
@@ -1282,6 +1394,10 @@ def _genuineness_errors(results: dict) -> list[str]:
     stored_targets = _stored_threshold_targets(thresholds)
     if stored_targets is None:
         errors.append("evaluation release metrics are malformed")
+    elif set(stored_targets) != RELEASE_THRESHOLD_NAMES:
+        errors.append(
+            "evaluation release thresholds are missing required checks"
+        )
     else:
         expected_thresholds = None
         try:
@@ -1387,7 +1503,9 @@ def _currency_errors(results: dict, manifest_path: Path) -> list[str]:
         source.get("expectations", {}).get("structural") is not None
         for source in manifest["sources"]
     )
-    if results.get("method", {}).get("graphify_cases") != expected_graphify_cases:
+    method = results.get("method")
+    method = method if isinstance(method, dict) else {}
+    if method.get("graphify_cases") != expected_graphify_cases:
         errors.append("evaluation Graphify case count is stale")
 
     aggregate = results.get("aggregate")
@@ -1416,6 +1534,11 @@ def verify_results(
     corpora, not an earlier state of the repository.
     """
     try:
+        if results_path.stat().st_size > MAX_JSON_BYTES:
+            raise EvaluationError(
+                f"{results_path}: results exceed {MAX_JSON_BYTES} bytes — "
+                "refusing to load"
+            )
         results = json.loads(results_path.read_bytes())
     except (OSError, ValueError, RecursionError) as exc:
         raise EvaluationError(
@@ -1531,6 +1654,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.current and args.verify_results is None:
         parser.error("--current requires --verify-results")
+    if args.case and args.check:
+        parser.error(
+            "--check gates release thresholds, which a partial --case run "
+            "never computes; drop --case or --check"
+        )
+    if args.case and args.output == DEFAULT_RESULTS:
+        parser.error(
+            "--case writes a partial document; pass an explicit --output "
+            "so the committed release evidence is not overwritten"
+        )
     if args.verify_results is not None:
         try:
             errors = verify_results(

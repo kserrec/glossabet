@@ -46,6 +46,9 @@ def test_plugin_manifest_and_sources_are_version_coupled():
     assert manifest["hooks"] == "./hooks/hooks.json"
     assert manifest["license"] == "Apache-2.0"
     assert manifest["author"]["name"] == "Kyle Serrecchia"
+    # The marketplace UI links these; they must track the renamed repo.
+    assert manifest["homepage"] == "https://github.com/kserrec/glossabet"
+    assert manifest["repository"] == "https://github.com/kserrec/glossabet"
     assert PLUGIN_SKILL.read_bytes() == SKILL.read_bytes()
 
     skill_text = SKILL.read_text(encoding="utf-8")
@@ -255,3 +258,34 @@ def test_plugin_runner_rejects_a_manifest_version_mismatch(tmp_path):
 
     assert result.returncode == 2
     assert "manifest version '9.9.9' does not match" in result.stderr
+
+
+def test_plugin_runner_rejects_a_tampered_wheel(tmp_path):
+    import shutil
+    import subprocess
+    import sys
+
+    staged = tmp_path / "glossabet"
+    shutil.copytree(PLUGIN, staged)
+    wheel = next((staged / "skills" / "glossabet" / "assets").glob("*.whl"))
+    wheel.write_bytes(wheel.read_bytes() + b"\x00tampered")
+    runner = staged / "skills" / "glossabet" / "scripts" / "run_glossabet.py"
+
+    result = subprocess.run(
+        [sys.executable, "-B", str(runner), "--version"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 2
+    assert "integrity check" in result.stderr
+
+
+def test_plugin_runner_pins_the_bundled_wheel_digest():
+    import hashlib
+    import re
+
+    runner = (PLUGIN / "skills" / "glossabet" / "scripts"
+              / "run_glossabet.py").read_text(encoding="utf-8")
+    match = re.search(r'EXPECTED_WHEEL_SHA256 = \(\s*"([0-9a-f]{64})"', runner)
+    assert match is not None
+    wheel = next((PLUGIN / "skills" / "glossabet" / "assets").glob("*.whl"))
+    assert match.group(1) == hashlib.sha256(wheel.read_bytes()).hexdigest()

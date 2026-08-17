@@ -12,36 +12,46 @@ from collections import Counter
 
 _PATTERNS: dict[str, list[re.Pattern]] = {
     "python": [
-        re.compile(r"^\s*import\s+([\w.]+)", re.M),
-        re.compile(r"^\s*from\s+([\w.]+)\s+import", re.M),
+        re.compile(r"^[ \t]*import\s+([\w.]+)", re.M),
+        re.compile(r"^[ \t]*from[ \t]+([\w.]+)[ \t]+import", re.M),
     ],
+    # Match the module-string clauses directly rather than scanning forward
+    # from `import`/`export` across the binding list for a `from` that may be
+    # absent. A lazy `[^'"]*?from` scan reruns at every `import` keyword and is
+    # O(n^2) on a file full of `import ` tokens; matching `from '...'` (and the
+    # bare `import '...'` / `require(...)` forms) instead has no forward scan
+    # and is linear. `from '...'` covers `import ... from`, `export ... from`,
+    # and `export * from` in one pattern.
     "javascript": [
-        re.compile(r"""import\s+(?:[^'"]*?from\s+)?['"]([^'"]+)['"]"""),
-        re.compile(r"""require\(\s*['"]([^'"]+)['"]\s*\)"""),
-        re.compile(r"""export\s+[^'"]*?from\s+['"]([^'"]+)['"]"""),
+        re.compile(r"""\bfrom\s*['"]([^'"]+)['"]"""),
+        re.compile(r"""\bimport\s*['"]([^'"]+)['"]"""),
+        re.compile(r"""\brequire\(\s*['"]([^'"]+)['"]\s*\)"""),
     ],
     "go": [
-        re.compile(r'^\s*import\s+(?:\w+\s+)?"([^"]+)"', re.M),
+        re.compile(r'^[ \t]*import\s+(?:\w+\s+)?"([^"]+)"', re.M),
     ],
     "rust": [
-        re.compile(r"^\s*(?:pub\s+)?use\s+([\w:]+)", re.M),
+        re.compile(r"^[ \t]*(?:pub\s+)?use\s+([\w:]+)", re.M),
     ],
     "ocaml": [
-        re.compile(r"^\s*open\s+([\w.]+)", re.M),
-        re.compile(r"^\s*include\s+([\w.]+)", re.M),
+        re.compile(r"^[ \t]*open\s+([\w.]+)", re.M),
+        re.compile(r"^[ \t]*include\s+([\w.]+)", re.M),
     ],
-    "java": [re.compile(r"^\s*import\s+(?:static\s+)?([\w.]+)", re.M)],
-    "kotlin": [re.compile(r"^\s*import\s+([\w.]+)", re.M)],
+    "java": [re.compile(r"^[ \t]*import\s+(?:static\s+)?([\w.]+)", re.M)],
+    "kotlin": [re.compile(r"^[ \t]*import\s+([\w.]+)", re.M)],
     "c": [re.compile(r'#include\s+["<]([^">]+)[">]')],
     "cpp": [re.compile(r'#include\s+["<]([^">]+)[">]')],
     "ruby": [
-        re.compile(r"""^\s*require(?:_relative)?\s+['"]([^'"]+)['"]""", re.M),
+        re.compile(r"""^[ \t]*require(?:_relative)?\s+['"]([^'"]+)['"]""", re.M),
     ],
 }
 _PATTERNS["typescript"] = _PATTERNS["javascript"]
 
-_GO_BLOCK = re.compile(r"import\s*\(([^)]*)\)", re.S)
-_GO_BLOCK_LINE = re.compile(r'^\s*(?:\w+\s+)?"([^"]+)"', re.M)
+# Exclude `(` from the block body so an unclosed `import(` cannot scan forward
+# past the next parenthesis — otherwise `[^)]*` reruns to end-of-file at every
+# `import(` token, O(n^2). Real Go import paths never contain a parenthesis.
+_GO_BLOCK = re.compile(r"import\s*\(([^)(]*)\)", re.S)
+_GO_BLOCK_LINE = re.compile(r'^[ \t]*(?:\w+\s+)?"([^"]+)"', re.M)
 
 _JS_SUFFIXES = ("", ".js", ".ts", ".tsx", ".jsx", ".mjs", ".cjs",
                 "/index.js", "/index.ts")
@@ -104,36 +114,8 @@ class Resolver:
         language: str,
     ) -> tuple[str, str | None]:
         """Return ("internal", module) or ("external", top-level name)."""
-        if spec.startswith("."):  # relative (js/ts/python style)
-            base = module_of(importer_rel)
-            segments = base.split("/") if base != "." else []
-            if language == "python":
-                level = len(spec) - len(spec.lstrip("."))
-                for _ in range(max(0, level - 1)):
-                    segments = segments[:-1]
-                remainder = spec[level:]
-                if remainder:
-                    segments.extend(remainder.split("."))
-            else:
-                parts = spec.replace("\\", "/").split("/")
-                for part in parts:
-                    if part in ("", "."):
-                        continue
-                    if part == "..":
-                        segments = segments[:-1]
-                    else:
-                        segments.append(part)
-            joined = "/".join(segments)
-            for suffix in _JS_SUFFIXES:
-                candidate = joined + suffix
-                if candidate in self.paths or candidate.rsplit(".", 1)[0] in self.by_slug:
-                    hit = candidate if candidate in self.paths else self.by_slug[
-                        candidate.rsplit(".", 1)[0]
-                    ]
-                    return "internal", module_of(hit)
-            if joined in self.dirs:  # a package itself, not a file in one
-                return "internal", joined
-            return "internal", module_of(joined) if joined else None
+        if spec.startswith("."):
+            return self._resolve_relative(spec, importer_rel, language)
 
         # File-with-extension specs (C-family includes): by_name keys always
         # contain a dot, so bare module specs ("os", "lodash") can't match.
@@ -152,6 +134,43 @@ class Resolver:
         if first.lower() in self.top_level:
             return "internal", first.lower()
         return "external", first or None
+
+    def _resolve_relative(
+        self,
+        spec: str,
+        importer_rel: str,
+        language: str,
+    ) -> tuple[str, str | None]:
+        """Resolve a relative (js/ts/python style) spec against the importer."""
+        base = module_of(importer_rel)
+        segments = base.split("/") if base != "." else []
+        if language == "python":
+            level = len(spec) - len(spec.lstrip("."))
+            for _ in range(max(0, level - 1)):
+                segments = segments[:-1]
+            remainder = spec[level:]
+            if remainder:
+                segments.extend(remainder.split("."))
+        else:
+            parts = spec.replace("\\", "/").split("/")
+            for part in parts:
+                if part in ("", "."):
+                    continue
+                if part == "..":
+                    segments = segments[:-1]
+                else:
+                    segments.append(part)
+        joined = "/".join(segments)
+        for suffix in _JS_SUFFIXES:
+            candidate = joined + suffix
+            if candidate in self.paths or candidate.rsplit(".", 1)[0] in self.by_slug:
+                hit = candidate if candidate in self.paths else self.by_slug[
+                    candidate.rsplit(".", 1)[0]
+                ]
+                return "internal", module_of(hit)
+        if joined in self.dirs:  # a package itself, not a file in one
+            return "internal", joined
+        return "internal", module_of(joined) if joined else None
 
 
 def build_imports_section(file_imports: list[tuple[str, str, list[str]]],

@@ -43,7 +43,7 @@ jobs:
       - run: uv build --no-sources --clear
       - run: python scripts/build_plugin.py dist
       - run: git diff --exit-code -- plugins/glossabet
-      - run: python scripts/check_distribution.py dist --tag "${{ github.ref_name }}"
+      - run: python scripts/check_distribution.py dist --tag "${{ github.ref_name }}" --current
       - run: python scripts/wheel_smoke.py dist
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2

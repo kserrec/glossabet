@@ -58,14 +58,14 @@ def _inline_list(block: str, key: str) -> list[str] | None:
 
 def _requires_in_order(block: str, fragments: list[str], errors: list[str],
                        label: str) -> None:
+    # Each search starts past the previous fragment, so an out-of-order
+    # fragment is reported as missing.
     cursor = -1
     for fragment in fragments:
         position = block.find(fragment, cursor + 1)
         if position < 0:
             errors.append(f"{label} is missing required step {fragment!r}")
             continue
-        if position < cursor:
-            errors.append(f"{label} runs {fragment!r} out of order")
         cursor = position
 
 
@@ -179,7 +179,7 @@ def validate_workflow_texts(workflows: dict[str, str]) -> list[str]:
             "uv build --no-sources --clear",
             "python scripts/build_plugin.py dist",
             "git diff --exit-code -- plugins/glossabet",
-            'python scripts/check_distribution.py dist --tag "${{ github.ref_name }}"',
+            'python scripts/check_distribution.py dist --tag "${{ github.ref_name }}" --current',
             "python scripts/wheel_smoke.py dist",
             "pypa/gh-action-pypi-publish@",
         ],

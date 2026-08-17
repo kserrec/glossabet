@@ -2,11 +2,12 @@
 only changed files may be re-extracted, and every doubt (version change,
 corruption) must read as a miss, never as stale data."""
 
+import hashlib
 import json
 import os
 
 from glossabet import __version__
-from glossabet.cache import cache_path, load_cache
+from glossabet.cache import CACHE_VERSION, cache_path, load_cache
 from glossabet.evidence import build_evidence
 
 
@@ -155,18 +156,23 @@ def test_repository_supplied_legacy_cache_is_never_trusted(tmp_path):
     root = make_repo(tmp_path)
     legacy = root / ".glossabet"
     legacy.mkdir()
+    # Every field is deliberately valid for the CURRENT cache schema —
+    # correct version, identity, digest, and size — so the only thing
+    # standing between the fabricated identifier and the evidence is that
+    # the engine must never read a repository-supplied cache location.
+    content = (root / "a.py").read_bytes()
     (legacy / "cache.json").write_text(json.dumps({
-        "cache_version": 2,
+        "cache_version": CACHE_VERSION,
         "generator_version": __version__,
-        "repository": str(root.resolve()),
+        "repository": os.path.normcase(str(root.resolve())),
         "files": {
             "a.py": {
                 "kind": "code",
                 "language": "python",
                 "identifiers": {"fabricated_identifier": 999},
                 "imports": [],
-                "content_sha256": "0" * 64,
-                "size": 1,
+                "content_sha256": hashlib.sha256(content).hexdigest(),
+                "size": len(content),
             }
         },
     }))

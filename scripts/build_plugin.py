@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import shutil
@@ -46,6 +47,16 @@ def _check_wheel(wheel: Path, version: str, skill: bytes) -> None:
     expected_dist_info = f"glossabet-{version}.dist-info"
     with zipfile.ZipFile(wheel) as archive:
         names = set(archive.namelist())
+        # Every member must live under the package or its dist-info, so the
+        # runner's sys.path entry can never carry a top-level module that
+        # would shadow the stdlib once imported.
+        stray = sorted(
+            name for name in names
+            if not name.startswith("glossabet/")
+            and not name.startswith(f"{expected_dist_info}/")
+        )
+        if stray:
+            _fail(f"wheel carries unexpected top-level members: {stray}")
         metadata_name = f"{expected_dist_info}/METADATA"
         skill_name = "glossabet/_skill/SKILL.md"
         if metadata_name not in names or skill_name not in names:
@@ -59,7 +70,7 @@ def _check_wheel(wheel: Path, version: str, skill: bytes) -> None:
             _fail("wheel skill differs from canonical skill/SKILL.md")
 
 
-def _check_sources(version: str) -> tuple[Path, Path, bytes]:
+def _check_sources(version: str) -> tuple[Path, bytes]:
     manifest_path = PLUGIN_ROOT / ".codex-plugin" / "plugin.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("name") != "glossabet" or manifest.get("version") != version:
@@ -98,12 +109,14 @@ def _check_sources(version: str) -> tuple[Path, Path, bytes]:
     runner_text = runner.read_text(encoding="utf-8")
     if f'EXPECTED_VERSION = "{version}"' not in runner_text:
         _fail("plugin runner version does not match the source package")
+    if not re.search(r'EXPECTED_WHEEL_SHA256 = \(\s*"[0-9a-f]{64}"', runner_text):
+        _fail("plugin runner does not pin an expected wheel digest")
 
     skill_path = ROOT / "skill" / "SKILL.md"
     skill = skill_path.read_bytes()
     if f"matching Glossabet {version} engine".encode() not in skill:
         _fail("canonical skill does not declare the source package version")
-    return skill_path, runner, skill
+    return skill_path, skill
 
 
 def main() -> int:
@@ -113,7 +126,7 @@ def main() -> int:
 
     version = _source_version()
     wheel = _one_wheel(args.dist_dir)
-    skill_path, _runner, skill = _check_sources(version)
+    skill_path, skill = _check_sources(version)
     _check_wheel(wheel, version, skill)
 
     skill_root = PLUGIN_ROOT / "skills" / "glossabet"
@@ -127,6 +140,20 @@ def main() -> int:
         if old_wheel.name != expected_name:
             old_wheel.unlink()
     shutil.copyfile(wheel, assets / expected_name)
+
+    # Pin the runner's integrity constant to the exact bundled wheel.
+    runner = skill_root / "scripts" / "run_glossabet.py"
+    digest = hashlib.sha256((assets / expected_name).read_bytes()).hexdigest()
+    runner_text = runner.read_text(encoding="utf-8")
+    updated = re.sub(
+        r'(EXPECTED_WHEEL_SHA256 = \(\s*")[0-9a-f]{64}(")',
+        rf'\g<1>{digest}\g<2>',
+        runner_text,
+        count=1,
+    )
+    if updated == runner_text and f'"{digest}"' not in runner_text:
+        _fail("could not update the runner's expected wheel digest")
+    runner.write_text(updated, encoding="utf-8")
 
     print(f"assembled Glossabet plugin {version}: {PLUGIN_ROOT}")
     return 0

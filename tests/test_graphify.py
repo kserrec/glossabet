@@ -441,3 +441,30 @@ def test_scan_cli_surfaces_unusable_graph_warning(tmp_path, capsys):
     captured = capsys.readouterr()
     assert "present, but no usable structural groups" in captured.out
     assert "no community structure" in captured.err
+
+
+def test_non_finite_and_bool_cohesion_never_enter_artifacts(tmp_path):
+    graph = {
+        "nodes": [
+            {"id": "a", "label": "Payment Service", "file_type": "code"},
+            {"id": "b", "label": "Billing Guide", "file_type": "doc"},
+        ],
+        "links": [],
+        "communities": [
+            {"id": 1, "label": "Payments", "cohesion": float("nan"),
+             "nodes": ["a"]},
+            {"id": 2, "label": "Billing", "cohesion": True, "nodes": ["b"]},
+        ],
+    }
+    root = make_repo(tmp_path, None)
+    # json.loads accepts the bare NaN token, matching a hostile or odd
+    # graph.json on disk.
+    # json.dumps emits the bare NaN token by default, matching a hostile
+    # or odd graph.json on disk.
+    (root / "graphify-out" / "graph.json").write_text(json.dumps(graph))
+    structural = build_structural_groups(
+        root, {"head": "a" * 40, "dirty": False}
+    )
+
+    assert [group["cohesion"] for group in structural["groups"]] == [None, None]
+    assert "NaN" not in json.dumps(structural)

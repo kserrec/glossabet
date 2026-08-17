@@ -23,6 +23,22 @@ from glossabet.tokenize import (
         ("HTTPServer", ["http", "server"]),
         ("parseJSON2XML", ["parse", "json2", "xml"]),
         ("getUserByID", ["get", "user", "id"]),  # "by" is prose glue
+        # Plural acronyms keep their trailing "s" instead of losing the
+        # acronym to a phantom token (was: IDs -> ["ds"], APIs -> ["ap"]).
+        ("IDs", ["ids"]),
+        ("URLs", ["urls"]),
+        ("APIs", ["apis"]),
+        ("userIDs", ["user", "ids"]),
+        ("numCPUs", ["num", "cpus"]),
+        # ...but an acronym immediately followed by a Capitalized word must
+        # still split, not merge — the plural rule is "s"-specific for exactly
+        # this reason.
+        ("XMLId", ["xml", "id"]),
+        ("parseHTMLElement", ["parse", "html", "element"]),
+        # Non-Latin sibling of the same fix: a lone trailing lowercase (a
+        # plural/inflection) stays with the acronym run rather than orphaning
+        # its last capital.
+        ("ΑΒΓς", ["αβγσ"]),
         ("return_value", ["value"]),  # keywords dropped
         ("utf8", ["utf8"]),
         ("ÜberHTTP2Server", ["über", "http2", "server"]),

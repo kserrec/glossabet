@@ -24,6 +24,69 @@ SESSION_START_COMMAND_WINDOWS = (
 )
 
 
+# Version-independent files every published source distribution must carry.
+SDIST_REQUIRED_RELATIVE = frozenset({
+    ".github/workflows/quality.yml",
+    "CHANGELOG.md",
+    "DISTRIBUTION.md",
+    "LICENSE",
+    "NAME-CLEARANCE.md",
+    "PRIVACY.md",
+    "README.md",
+    "RELEASING.md",
+    "SECURITY.md",
+    "docs/WALKTHROUGH.md",
+    "examples/payment-service/glossabet-out/glossary.json",
+    "examples/payment-service/src/payment_service.py",
+    "evaluation/agent-history.json",
+    "evaluation/agent-prompt.md",
+    "evaluation/agent-response-schema.json",
+    "evaluation/agent-results.json",
+    "evaluation/agent-scenarios.json",
+    "evaluation/fixtures/structural-complete/README.md",
+    "evaluation/fixtures/structural-complete/core.py",
+    "evaluation/fixtures/structural-complete/graphify-out/graph.json",
+    "evaluation/fixtures/structural-complete/tenant_a/code.py",
+    "evaluation/fixtures/structural-complete/tenant_b/code.py",
+    "evaluation/fixtures/structural-complete/tenant_c/code.py",
+    "evaluation/fixtures/structural-complete/tenant_d/code.py",
+    "evaluation/fixtures/structural-complete/tenant_e/code.py",
+    "evaluation/fixtures/structural-truncation/README.md",
+    "evaluation/fixtures/structural-truncation/graphify-out/graph.json",
+    "evaluation/fixtures/structural-truncation/main.py",
+    "evaluation/review.py",
+    "evaluation/reviewer-packet.json",
+    "evaluation/reviewer-prompt.md",
+    "evaluation/reviewer-response-schema.json",
+    "evaluation/reviewer-results.json",
+    "evaluation/results.json",
+    "evaluation/run.py",
+    "glossabet/context_sync.py",
+    "glossabet/installer.py",
+    "plugins/glossabet/.codex-plugin/plugin.json",
+    "plugins/glossabet/hooks/hooks.json",
+    "plugins/glossabet/skills/glossabet/scripts/run_glossabet.py",
+    "plugins/glossabet/skills/glossabet/SKILL.md",
+    "pyproject.toml",
+    "scripts/check_distribution.py",
+    "scripts/check_workflows.py",
+    "scripts/agent_eval.py",
+    "scripts/build_plugin.py",
+    "scripts/plugin_smoke.py",
+    "scripts/run_walkthrough.py",
+    "scripts/wheel_smoke.py",
+    "skill/SKILL.md",
+    "tests/test_context_sync.py",
+    "tests/test_install.py",
+    "tests/test_agent_evaluation.py",
+    "tests/test_evaluation.py",
+    "tests/test_plugin.py",
+    "tests/test_release.py",
+    "tests/test_reviewer_evaluation.py",
+    "tests/test_walkthrough.py",
+})
+
+
 def _fail(message: str) -> None:
     raise SystemExit(f"distribution check failed: {message}")
 
@@ -50,6 +113,32 @@ def _check_names(names: list[str], label: str) -> None:
             _fail(f"{label} contains an unsafe member path: {name}")
         if any(_dotenv_part(part) for part in path.parts):
             _fail(f"{label} contains a forbidden dotenv path: {name}")
+
+
+# A published artifact must never carry a local absolute home path: those leak
+# a username and the maintainer's directory layout permanently on PyPI. The
+# username segment must be path-like (word chars), so this pattern's own
+# source text (which contains the literal "/home/") is not a match. The
+# superuser home directory on Linux (where a CI or container build may run)
+# has no separate username segment, so it is matched as a whole path element;
+# a negative lookbehind keeps an ordinary nested directory of that name (for
+# example "/usr/<name>/") from matching, and its spelling is split across two
+# byte-literals so this file does not flag itself when the sdist (which ships
+# scripts/) is scanned.
+_LOCAL_PATH_RE = re.compile(
+    rb"(?:/home/|/Users/)[\w.-]+/"
+    rb"|(?<![\w/.-])/roo" rb"t/"
+    rb"|[A-Za-z]:\\Users\\[\w.-]+"
+)
+
+
+def _check_no_local_paths(data: bytes, member: str, label: str) -> None:
+    match = _LOCAL_PATH_RE.search(data)
+    if match is not None:
+        _fail(
+            f"{label} member {member} leaks a local home path: "
+            f"{match.group().decode('utf-8', 'replace')!r}"
+        )
 
 
 def _source_version() -> str:
@@ -122,13 +211,16 @@ def _check_plugin_bundle(
     version: str,
     canonical_skill: bytes,
     label: str,
+    current: bool = True,
 ) -> None:
     try:
         manifest = json.loads(manifest_bytes)
     except (UnicodeError, ValueError, RecursionError) as exc:
         _fail(f"{label} plugin manifest is invalid JSON: {exc}")
-    if manifest.get("name") != "glossabet" or manifest.get("version") != version:
-        _fail(f"{label} plugin manifest does not match package name/version")
+    if manifest.get("name") != "glossabet":
+        _fail(f"{label} plugin manifest does not match the package name")
+    if current and manifest.get("version") != version:
+        _fail(f"{label} plugin manifest does not match the package version")
     if manifest.get("skills") != "./skills/":
         _fail(f"{label} plugin manifest does not expose its skills directory")
     if manifest.get("hooks") != HOOK_PATH:
@@ -159,26 +251,46 @@ def _check_plugin_bundle(
         or handlers != [expected_handler]
     ):
         _fail(f"{label} plugin SessionStart hook is stale or unbounded")
-    if skill_bytes != canonical_skill:
+    if current and skill_bytes != canonical_skill:
         _fail(f"{label} plugin skill differs from canonical skill/SKILL.md")
-    expected_runner = f'EXPECTED_VERSION = "{version}"'.encode()
-    if expected_runner not in runner_bytes:
-        _fail(f"{label} plugin runner does not match the package version")
+    if current:
+        expected_runner = f'EXPECTED_VERSION = "{version}"'.encode()
+        if expected_runner not in runner_bytes:
+            _fail(f"{label} plugin runner does not match the package version")
+    # The runner refuses to execute a wheel whose bytes do not match this
+    # pinned digest; the shipped runner and wheel must therefore agree. This
+    # binding is self-consistent within the artifact, so it holds in both
+    # modes.
+    pinned = re.search(
+        rb'EXPECTED_WHEEL_SHA256 = \(\s*"([0-9a-f]{64})"', runner_bytes
+    )
+    if pinned is None:
+        _fail(f"{label} plugin runner does not pin an expected wheel digest")
+    elif pinned.group(1).decode() != hashlib.sha256(wheel_bytes).hexdigest():
+        _fail(f"{label} plugin runner's pinned wheel digest does not match the wheel")
 
     with zipfile.ZipFile(io.BytesIO(wheel_bytes)) as archive:
-        metadata_name = f"glossabet-{version}.dist-info/METADATA"
+        metadata_names = [
+            name
+            for name in archive.namelist()
+            if name.endswith(".dist-info/METADATA")
+        ]
+        if len(metadata_names) != 1:
+            _fail(f"{label} plugin wheel has ambiguous metadata")
         try:
             metadata = BytesParser(policy=policy.default).parsebytes(
-                archive.read(metadata_name)
+                archive.read(metadata_names[0])
             )
             bundled_skill = archive.read("glossabet/_skill/SKILL.md")
         except KeyError as exc:
             _fail(f"{label} plugin wheel is missing {exc}")
-        if metadata["Name"] != "glossabet" or metadata["Version"] != version:
-            _fail(f"{label} plugin wheel has the wrong package name/version")
+        if metadata["Name"] != "glossabet":
+            _fail(f"{label} plugin wheel has the wrong package name")
+        if current and metadata["Version"] != version:
+            _fail(f"{label} plugin wheel has the wrong package version")
         if metadata.get_all("Requires-Dist", []) != []:
             _fail(f"{label} plugin wheel declares a runtime dependency")
-        if bundled_skill != canonical_skill:
+        if current and bundled_skill != canonical_skill:
             _fail(f"{label} plugin wheel embeds a mismatched skill")
 
 
@@ -203,7 +315,12 @@ def _check_source_plugin(
 
 
 def _check_sdist(
-    sdist: Path, wheel: Path, version: str, canonical_skill: bytes
+    sdist: Path,
+    wheel: Path,
+    version: str,
+    canonical_skill: bytes,
+    *,
+    current: bool,
 ) -> None:
     prefix = f"glossabet-{version}/"
     with tarfile.open(sdist, mode="r:gz") as archive:
@@ -213,68 +330,14 @@ def _check_sdist(
         for member in members:
             if member.issym() or member.islnk() or member.isdev():
                 _fail(f"source distribution contains a link/device: {member.name}")
+            if member.isfile():
+                handle = archive.extractfile(member)
+                if handle is not None:
+                    _check_no_local_paths(
+                        handle.read(), member.name, "source distribution"
+                    )
 
-        required_relative = {
-            ".github/workflows/quality.yml",
-            "CHANGELOG.md",
-            "DISTRIBUTION.md",
-            "LICENSE",
-            "NAME-CLEARANCE.md",
-            "PRIVACY.md",
-            "README.md",
-            "RELEASING.md",
-            "SECURITY.md",
-            "docs/WALKTHROUGH.md",
-            "examples/payment-service/glossabet-out/glossary.json",
-            "examples/payment-service/src/payment_service.py",
-            "evaluation/agent-history.json",
-            "evaluation/agent-prompt.md",
-            "evaluation/agent-response-schema.json",
-            "evaluation/agent-results.json",
-            "evaluation/agent-scenarios.json",
-            "evaluation/fixtures/structural-complete/README.md",
-            "evaluation/fixtures/structural-complete/core.py",
-            "evaluation/fixtures/structural-complete/graphify-out/graph.json",
-            "evaluation/fixtures/structural-complete/tenant_a/code.py",
-            "evaluation/fixtures/structural-complete/tenant_b/code.py",
-            "evaluation/fixtures/structural-complete/tenant_c/code.py",
-            "evaluation/fixtures/structural-complete/tenant_d/code.py",
-            "evaluation/fixtures/structural-complete/tenant_e/code.py",
-            "evaluation/fixtures/structural-truncation/README.md",
-            "evaluation/fixtures/structural-truncation/graphify-out/graph.json",
-            "evaluation/fixtures/structural-truncation/main.py",
-            "evaluation/review.py",
-            "evaluation/reviewer-packet.json",
-            "evaluation/reviewer-prompt.md",
-            "evaluation/reviewer-response-schema.json",
-            "evaluation/reviewer-results.json",
-            "evaluation/results.json",
-            "evaluation/run.py",
-            "glossabet/context_sync.py",
-            "glossabet/installer.py",
-            "plugins/glossabet/.codex-plugin/plugin.json",
-            "plugins/glossabet/hooks/hooks.json",
-            f"plugins/glossabet/skills/glossabet/assets/glossabet-{version}-py3-none-any.whl",
-            "plugins/glossabet/skills/glossabet/scripts/run_glossabet.py",
-            "plugins/glossabet/skills/glossabet/SKILL.md",
-            "pyproject.toml",
-            "scripts/check_distribution.py",
-            "scripts/check_workflows.py",
-            "scripts/agent_eval.py",
-            "scripts/build_plugin.py",
-            "scripts/plugin_smoke.py",
-            "scripts/run_walkthrough.py",
-            "scripts/wheel_smoke.py",
-            "skill/SKILL.md",
-            "tests/test_context_sync.py",
-            "tests/test_install.py",
-            "tests/test_agent_evaluation.py",
-            "tests/test_evaluation.py",
-            "tests/test_plugin.py",
-            "tests/test_release.py",
-            "tests/test_reviewer_evaluation.py",
-            "tests/test_walkthrough.py",
-        }
+        required_relative = SDIST_REQUIRED_RELATIVE
         required = {prefix + name for name in required_relative}
         missing = sorted(required - set(names))
         if missing:
@@ -292,10 +355,28 @@ def _check_sdist(
                 _fail(f"source distribution member is unreadable: {relative}")
             return extracted.read()
 
-        plugin_wheel = member_bytes(
-            f"plugins/glossabet/skills/glossabet/assets/"
-            f"glossabet-{version}-py3-none-any.whl"
-        )
+        asset_prefix = prefix + "plugins/glossabet/skills/glossabet/assets/"
+        asset_names = [
+            name
+            for name in names
+            if name.startswith(asset_prefix + "glossabet-")
+            and name.endswith("-py3-none-any.whl")
+        ]
+        if len(asset_names) != 1:
+            _fail(
+                "source distribution must bundle exactly one plugin wheel, "
+                f"found {len(asset_names)}"
+            )
+        if current and asset_names[0] != (
+            asset_prefix + f"glossabet-{version}-py3-none-any.whl"
+        ):
+            _fail("source-distribution plugin wheel does not match the version")
+        # The bundled plugin snapshots the checked-in tree, which may
+        # honestly lag engine source between releases: its structure and
+        # contracts are always validated, while equality with the current
+        # source and release wheel is a release-gate question (--current),
+        # like the plugin git-diff step.
+        plugin_wheel = member_bytes(asset_names[0][len(prefix):])
         _check_plugin_bundle(
             manifest_bytes=member_bytes(
                 "plugins/glossabet/.codex-plugin/plugin.json"
@@ -313,8 +394,9 @@ def _check_sdist(
             version=version,
             canonical_skill=canonical_skill,
             label="source distribution",
+            current=current,
         )
-        if plugin_wheel != wheel.read_bytes():
+        if current and plugin_wheel != wheel.read_bytes():
             _fail("source-distribution plugin wheel differs from the release wheel")
 
 
@@ -324,6 +406,14 @@ def main() -> int:
     parser.add_argument(
         "--tag",
         help="also require this release tag to equal v<package version>",
+    )
+    parser.add_argument(
+        "--current",
+        action="store_true",
+        help=(
+            "additionally require the checked-in plugin to match the "
+            "current source (the release gate)"
+        ),
     )
     args = parser.parse_args()
 
@@ -336,8 +426,9 @@ def main() -> int:
     canonical_skill = (ROOT / "skill" / "SKILL.md").read_bytes()
 
     _check_wheel(wheel, version, canonical_skill)
-    _check_source_plugin(wheel, version, canonical_skill)
-    _check_sdist(sdist, wheel, version, canonical_skill)
+    if args.current:
+        _check_source_plugin(wheel, version, canonical_skill)
+    _check_sdist(sdist, wheel, version, canonical_skill, current=args.current)
 
     for artifact in (wheel, sdist):
         digest = hashlib.sha256(artifact.read_bytes()).hexdigest()

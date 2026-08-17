@@ -18,8 +18,10 @@ from glossabet.coverage import (
     coverage_reasons,
 )
 from glossabet.tokenize import (
+    STRUCTURED_IDENTIFIER_STYLES,
     TOKEN_ORIGIN_DOMAIN,
     TOKEN_ORIGIN_LANGUAGE,
+    identifier_style,
     tokenize_identifier,
 )
 
@@ -43,25 +45,6 @@ MODULE_CONTEXT_SAMPLE = 5
 MODULE_CONTEXT_ANALYSIS_CAP = 30
 REGISTER_AFFIX_CAP = 8
 LAYER_CAP = 10
-REGISTER_STYLED_IDENTIFIERS = frozenset({
-    "snake_case",
-    "camelCase",
-    "PascalCase",
-    "UPPER_SNAKE",
-})
-
-
-def _classify_style(name: str) -> str:
-    core = name.strip("_")
-    if "_" in core:
-        return "UPPER_SNAKE" if core.isupper() else "snake_case"
-    if core.isupper():
-        return "upper"
-    if core[:1].isupper():
-        return "PascalCase" if any(c.islower() for c in core) else "upper"
-    if any(c.isupper() for c in core):
-        return "camelCase"
-    return "flat"
 
 
 def _register(
@@ -88,14 +71,14 @@ def _register(
             suffixes[tokens[-1]] += 1
             prefixes[tokens[0]] += 1
 
-    for name, code_presence in identifier_counts.items():
+    for name, code_count in identifier_counts.items():
         tokens = tokenize_identifier(name)
         if not tokens:
             excluded_by_reason["no_lexical_tokens"] += 1
             continue
 
-        style = _classify_style(name)
-        if style in REGISTER_STYLED_IDENTIFIERS and len(tokens) >= 2:
+        style = identifier_style(name)
+        if style in STRUCTURED_IDENTIFIER_STYLES and len(tokens) >= 2:
             # These spellings carry code structure in the spelling itself;
             # a multi-token snake/camel/Pascal spelling cannot be ordinary
             # prose. A one-token capitalized or uppercase word remains flat
@@ -119,11 +102,11 @@ def _register(
         # A multi-token flat form (for example a language-specific hyphenated
         # name) uses the strongest constituent document count rather than the
         # sum, so one prose occurrence is not multiplied by token count.
-        doc_presence = max(
+        doc_count = max(
             (doc_term_counts.get(token, 0) for token in set(tokens)),
             default=0,
         )
-        if doc_presence > code_presence:
+        if doc_count > code_count:
             excluded_by_reason["prose_dominated_flat"] += 1
             continue
 

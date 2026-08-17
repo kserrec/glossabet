@@ -231,6 +231,19 @@ def test_genuineness_verifier_catches_internal_tampering_without_currency(
         for error in verify_results(thresholds_path, MANIFEST)
     )
 
+    dropped_check = deepcopy(original)
+    dropped_check["release_thresholds"]["checks"] = [
+        check
+        for check in dropped_check["release_thresholds"]["checks"]
+        if check["name"] != "terminology_precision_min"
+    ]
+    dropped_path = tmp_path / "dropped-check.json"
+    dropped_path.write_text(json.dumps(dropped_check), encoding="utf-8")
+    assert any(
+        "thresholds are missing required checks" in error
+        for error in verify_results(dropped_path, MANIFEST)
+    )
+
     malformed_engine = deepcopy(original)
     malformed_engine["engine"]["source_sha256"] = "not-a-digest"
     engine_path = tmp_path / "malformed-engine.json"
@@ -238,6 +251,15 @@ def test_genuineness_verifier_catches_internal_tampering_without_currency(
     assert any(
         "engine identity metadata is malformed" in error
         for error in verify_results(engine_path, MANIFEST)
+    )
+
+    method_as_list = deepcopy(original)
+    method_as_list["method"] = ["not", "a", "mapping"]
+    method_path = tmp_path / "method-as-list.json"
+    method_path.write_text(json.dumps(method_as_list), encoding="utf-8")
+    assert any(
+        "required five-run sample" in error
+        for error in verify_results(method_path, MANIFEST)
     )
 
 
@@ -295,3 +317,136 @@ def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path):
             expected in error
             for error in verify_results(path, MANIFEST, current=True)
         )
+
+
+def test_partial_case_runs_refuse_check_and_default_output(tmp_path):
+    base = [sys.executable, str(ROOT / "evaluation" / "run.py")]
+
+    with_check = subprocess.run(
+        [*base, "--case", "calibration-fixture", "--runs", "1", "--check",
+         "--output", str(tmp_path / "r.json")],
+        cwd=ROOT, capture_output=True, text=True, timeout=30,
+    )
+    assert with_check.returncode == 2
+    assert "--check gates release thresholds" in with_check.stderr
+
+    default_output = subprocess.run(
+        [*base, "--case", "calibration-fixture", "--runs", "1"],
+        cwd=ROOT, capture_output=True, text=True, timeout=30,
+    )
+    assert default_output.returncode == 2
+    assert "committed release evidence" in default_output.stderr
+    committed = (ROOT / "evaluation" / "results.json").read_bytes()
+    assert b'"runtime_runs_per_case": 5' in committed
+
+
+def test_aggregate_tolerates_an_empty_corpus_reuse_rate():
+    from copy import deepcopy
+
+    from evaluation.run import _aggregate
+
+    results = json.loads(RESULTS.read_text(encoding="utf-8"))
+    cases = deepcopy(results["cases"])
+    cases[0]["cache"]["reuse_rate"] = None
+
+    aggregate = _aggregate(
+        cases, results["self_register"], results["self_nominations"]
+    )
+    others = [
+        case["cache"]["reuse_rate"] for case in cases[1:]
+    ]
+    assert aggregate["cache"]["minimum_reuse_rate"] == min(others)
+
+
+def test_manifest_rejects_non_https_corpus_url(tmp_path):
+    from copy import deepcopy
+
+    from evaluation.run import EvaluationError, _read_manifest
+
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    poisoned = deepcopy(manifest)
+    for source in poisoned["sources"]:
+        if source.get("kind") != "local":
+            source["url"] = "ext::sh -c 'touch /tmp/pwn'"
+            break
+    path = tmp_path / "corpus.json"
+    path.write_text(json.dumps(poisoned), encoding="utf-8")
+
+    try:
+        _read_manifest(path)
+        assert False, "an ext:: corpus url was accepted"
+    except EvaluationError as exc:
+        assert "url must be an https" in str(exc)
+
+
+def _poison_first_source(overrides: dict, drop: tuple[str, ...] = ()) -> dict:
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    for source in manifest["sources"]:
+        if source.get("kind") != "local":
+            for key in drop:
+                source.pop(key, None)
+            source.update(overrides)
+            break
+    return manifest
+
+
+def test_manifest_rejects_escaping_checkout_dir(tmp_path):
+    # corpus.json is contributor-editable; a `..`/absolute checkout_dir joined
+    # onto the temp checkout root writes attacker files outside the sandbox.
+    from evaluation.run import EvaluationError, _read_manifest
+
+    for bad in ("../../pwn", "/tmp/pwn", "a/../../pwn"):
+        poisoned = _poison_first_source({"checkout_dir": bad})
+        path = tmp_path / "corpus.json"
+        path.write_text(json.dumps(poisoned), encoding="utf-8")
+        try:
+            _read_manifest(path)
+            assert False, f"escaping checkout_dir accepted: {bad}"
+        except EvaluationError as exc:
+            assert "checkout_dir" in str(exc)
+
+
+def test_manifest_rejects_escaping_local_path(tmp_path):
+    from evaluation.run import EvaluationError, _read_manifest
+
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    manifest["sources"] = [{
+        "id": "evil", "kind": "local", "path": "../../../etc",
+        "corpus_sha256": "0" * 64, "corpus_files": 1,
+        "expectations": {"register": {}},
+    }]
+    path = tmp_path / "corpus.json"
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    try:
+        _read_manifest(path)
+        assert False, "escaping local path accepted"
+    except EvaluationError as exc:
+        assert "path must be a safe relative path" in str(exc)
+
+
+def test_manifest_rejects_non_hex_commit(tmp_path):
+    # A commit beginning with `-` is parsed by git as an option in a refspec
+    # slot; require a 40/64-char hex object name.
+    from evaluation.run import EvaluationError, _read_manifest
+
+    poisoned = _poison_first_source({"commit": "--upload-pack=touch /tmp/pwn"})
+    path = tmp_path / "corpus.json"
+    path.write_text(json.dumps(poisoned), encoding="utf-8")
+    try:
+        _read_manifest(path)
+        assert False, "a non-hex commit was accepted"
+    except EvaluationError as exc:
+        assert "commit must be" in str(exc)
+
+
+def test_manifest_rejects_oversized_file(tmp_path):
+    from evaluation.run import EvaluationError, _read_manifest
+    from glossabet.artifacts import MAX_JSON_BYTES
+
+    path = tmp_path / "corpus.json"
+    path.write_bytes(b'{"x":' + b" " * (MAX_JSON_BYTES + 10) + b"1}")
+    try:
+        _read_manifest(path)
+        assert False, "an oversized manifest was accepted"
+    except EvaluationError as exc:
+        assert "exceeds" in str(exc)

@@ -102,7 +102,10 @@ def test_claude_target_preserves_crlf_surrounding_bytes_and_file_mode(
     assert updated.startswith(original + b"\r\n" + START_MARKER.encode())
     assert b"\r\n" in updated
     assert b"\n" not in updated.replace(b"\r\n", b"")
-    assert stat.S_IMODE(target.stat().st_mode) == 0o640
+    if os.name != "nt":
+        # Windows chmod cannot represent 0o640, so the mode-preservation
+        # contract is POSIX-only; the CRLF and byte assertions still run.
+        assert stat.S_IMODE(target.stat().st_mode) == 0o640
     assert not (tmp_path / "AGENTS.md").exists()
     report = inspect_managed_context(tmp_path, load_glossary(tmp_path))
     assert _target(report, "CLAUDE.md")["status"] == "current"

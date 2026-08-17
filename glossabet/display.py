@@ -83,6 +83,11 @@ def escape_terminal_text(text: str, *, preserve_line_feeds: bool = False) -> str
     return "".join(rendered)
 
 
+def print_error(error: object) -> None:
+    """Print one command error to stderr with unsafe characters escaped."""
+    print("glossabet: " + escape_terminal_text(str(error)), file=sys.stderr)
+
+
 class _SafeTerminalStream:
     """Text stream proxy that neutralizes controls in every write."""
 

@@ -136,6 +136,25 @@ def test_invalid_config_is_a_user_error(tmp_path, capsys):
     assert "glossabet.json" in capsys.readouterr().err
 
 
+def test_glob_in_a_config_path_is_a_user_error_not_a_literal_prefix(tmp_path, capsys):
+    # Config paths are literal repository-relative prefixes, never globs. A
+    # glob metacharacter must be a clean user error, not silently accepted as a
+    # literal prefix that then matches nothing. Guards both path fields.
+    for field, value in (
+        ("ignore_paths", ["src/*"]),
+        ("path_roles", {"test": ["fixtures/**"]}),
+    ):
+        (tmp_path / "glossabet.json").write_text(json.dumps({
+            "schema_version": 1,
+            field: value,
+        }))
+        _write(tmp_path / "main.py")
+
+        assert main(["scan", str(tmp_path)]) == 1
+        err = capsys.readouterr().err
+        assert "glossabet.json" in err and "not a glob" in err
+
+
 def test_symlinked_config_is_rejected_without_reading_target(tmp_path, capsys):
     outside = tmp_path / "outside.json"
     outside.write_text(json.dumps({"schema_version": 1}))

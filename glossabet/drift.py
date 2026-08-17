@@ -28,12 +28,7 @@ from glossabet.glossary import (
     scope_evidence,
     scopes_overlap,
 )
-from glossabet.matching import (
-    EvidenceIndex,
-    code_term_occurrence,
-    doc_term_occurrence,
-    production_corpus_complete,
-)
+from glossabet.matching import EvidenceIndex, production_corpus_complete
 from glossabet.terminology import OVERLOAD_MIN_DISPERSION, OVERLOAD_MIN_MODULES
 from glossabet.tokenize import tokenize_term
 
@@ -42,6 +37,8 @@ DRIFT_FILE = "drift.json"
 
 FINDINGS_PER_KIND_CAP = 10
 FADING_MAX_COUNT = 2
+# Cap on owner-scope overlap comparisons in _parallel_terms.
+PARALLEL_SCOPE_COMPARISON_BUDGET = 500_000
 
 _WATCHED_STATUSES = {"discouraged", "deprecated"}
 
@@ -77,6 +74,14 @@ def _index_glossary(glossary: dict):
                     "concept_id": concept["id"], "tokens": alias_tokens,
                     "scope": scope,
                 })
+    # Distinct owner scopes only. A hostile glossary can register tens of
+    # thousands of aliases mapping one token to the same scope; the overlap
+    # scan below is otherwise O(owners), so deduplication removes that
+    # amplification while preserving every distinct ownership.
+    known_scopes = {
+        token: list(dict.fromkeys(scopes))
+        for token, scopes in known_scopes.items()
+    }
     return canonical, watched, known_scopes
 
 
@@ -88,10 +93,57 @@ def _known_in_scope(
     return any(scopes_overlap(scope, owner) for owner in known_scopes.get(token, []))
 
 
-def _parallel_terms(evidence: dict, canonical: dict,
-                    known_scopes: dict, matcher: EvidenceIndex) -> list[dict]:
+def _overlap_cost(
+    scope: tuple[str, ...] | None,
+    owners: "list[tuple[str, ...] | None] | tuple[tuple[str, ...] | None, ...]",
+) -> int:
+    """Prefix-pair work `_known_in_scope` will perform for this term.
+
+    `scopes_overlap` is O(len(scope) x len(owner)) when both sides are
+    path-scoped; a repository-wide (None) side short-circuits in O(1). The
+    budget must be charged this real product, not the owner count, or a single
+    concept carrying tens of thousands of prefixes hides a 100M+ comparison
+    behind a charge of 1 and the ceiling never trips.
+    """
+    left = len(scope) if scope is not None else 1
+    return sum(
+        left * (len(owner) if owner is not None else 1) for owner in owners
+    )
+
+
+def _sampled_to_zero(occurrence: dict) -> bool:
+    """Whether a zero count reflects a clipped location sample, not absence.
+
+    Scoped counts are summed over an entry's retained location sample; when
+    that sample was truncated, zero proves nothing and the check must be
+    reported as suppressed rather than silently passing as complete.
+    """
+    return occurrence["count"] == 0 and occurrence.get(
+        "locations_truncated", False
+    )
+
+
+def _suppressed_reason(suppressed: int, name: str) -> list[str]:
+    if not suppressed:
+        return []
+    return [
+        f"{suppressed} {name} check(s) suppressed because scoped occurrence "
+        "evidence retains only a location sample"
+    ]
+
+
+def _parallel_terms(
+    evidence: dict, canonical: dict, known_scopes: dict, matcher: EvidenceIndex
+) -> tuple[list[dict], list[str]]:
     """New prominent terms that behave like an existing canonical term."""
     findings: list[dict] = []
+    suppressed = 0
+    # Owner-scope overlap is O(concepts x owner-scopes); a hostile glossary
+    # can push that product into the hundreds of millions within the accepted
+    # concept/alias ceilings. Bound the total comparisons and report the
+    # section partial rather than spinning for minutes.
+    comparisons_remaining = PARALLEL_SCOPE_COMPARISON_BUDGET
+    budget_exhausted = False
     for item in evidence["terminology"]["synonym_candidates"]["items"]:
         a_canon = item["a"] in canonical
         b_canon = item["b"] in canonical
@@ -101,15 +153,23 @@ def _parallel_terms(evidence: dict, canonical: dict,
         canon_token = item["a"] if a_canon else item["b"]
         for concept in canonical[canon_token]:
             scope = concept_scope(concept)
+            owners = known_scopes.get(new_term, ())
+            cost = _overlap_cost(scope, owners)
+            if cost > comparisons_remaining:
+                budget_exhausted = True
+                break
+            comparisons_remaining -= cost
             if _known_in_scope(new_term, scope, known_scopes):
                 continue
-            canonical_occurrence = code_term_occurrence(
-                evidence, concept["term"], scope, index=matcher
+            canonical_occurrence = matcher.code_term_occurrence(
+                concept["term"], scope
             )
-            new_occurrence = code_term_occurrence(
-                evidence, new_term, scope, index=matcher
-            )
+            new_occurrence = matcher.code_term_occurrence(new_term, scope)
             if not canonical_occurrence["count"] or not new_occurrence["count"]:
+                if _sampled_to_zero(canonical_occurrence) or _sampled_to_zero(
+                    new_occurrence
+                ):
+                    suppressed += 1
                 continue
             similarity = item["similarity"]
             signal_strength = (
@@ -135,22 +195,31 @@ def _parallel_terms(evidence: dict, canonical: dict,
                     f"'{concept['term']}' (similarity {similarity})"
                 ),
             })
+        if budget_exhausted:
+            break
     findings.sort(key=lambda f: (
         -f["evidence"]["similarity"], f["new_term"], f["concept_id"]
     ))
-    return findings
+    reasons = _suppressed_reason(suppressed, "parallel-term")
+    if budget_exhausted:
+        reasons.append(
+            "parallel-term scope checks reached their comparison budget; "
+            "results are partial"
+        )
+    return findings, reasons
 
 
 def _watched_in_use(
-    watched: list[dict], evidence: dict, matcher: EvidenceIndex
-) -> list[dict]:
+    watched: list[dict], matcher: EvidenceIndex
+) -> tuple[list[dict], list[str]]:
     """Discouraged or deprecated terms still present in the code."""
     findings: list[dict] = []
+    suppressed = 0
     for entry in watched:
-        occurrence = code_term_occurrence(
-            evidence, entry["term"], entry["scope"], index=matcher
-        )
+        occurrence = matcher.code_term_occurrence(entry["term"], entry["scope"])
         if occurrence["count"] == 0:
+            if _sampled_to_zero(occurrence):
+                suppressed += 1
             continue
         count = occurrence["count"]
         quantity = f"at least {count}" if not occurrence["count_complete"] else str(count)
@@ -168,11 +237,11 @@ def _watched_in_use(
             ),
         })
     findings.sort(key=lambda f: (-f["evidence"]["count"], f["term"]))
-    return findings
+    return findings, _suppressed_reason(suppressed, "watched-term")
 
 
 def _canonical_fading(
-    glossary: dict, evidence: dict, matcher: EvidenceIndex
+    glossary: dict, matcher: EvidenceIndex
 ) -> list[dict]:
     """Canonical terms absent from code or barely hanging on."""
     findings: list[dict] = []
@@ -183,17 +252,13 @@ def _canonical_fading(
         if not tokens:
             continue
         scope = concept_scope(concept)
-        occurrence = code_term_occurrence(
-            evidence, concept["term"], scope, index=matcher
-        )
+        occurrence = matcher.code_term_occurrence(concept["term"], scope)
         if not occurrence["count_complete"]:
             continue  # capped evidence cannot prove absence or low use
         count = occurrence["count"]
         # The current document index proves only one-token mentions. Separate
         # prose words are not treated as a compound occurrence.
-        doc_occurrence = doc_term_occurrence(
-            evidence, concept["term"], scope, index=matcher
-        )
+        doc_occurrence = matcher.doc_term_occurrence(concept["term"], scope)
         doc_mentions = doc_occurrence["count"] if len(tokens) == 1 else None
         if count == 0:
             signal_strength, state = "strong", "absent from code"
@@ -225,6 +290,24 @@ def _canonical_fading(
     return findings
 
 
+def _overload_details_complete(item: dict) -> bool:
+    """Whether the retained module/context details cover the whole candidate.
+
+    A capped display cannot be reinterpreted as an exhaustive scoped sample;
+    the scoped-overload check and its omission report must agree on this.
+    """
+    module_coverage = item.get("coverage", {}).get("modules", {})
+    return (
+        module_coverage.get("complete", True)
+        and all(
+            module.get("coverage", {}).get("contexts", {}).get(
+                "complete", True
+            )
+            for module in item["modules"]
+        )
+    )
+
+
 def _canonical_overloaded(evidence: dict, canonical: dict) -> list[dict]:
     """Canonical terms used across contexts disjoint enough to collide."""
     findings: list[dict] = []
@@ -232,15 +315,7 @@ def _canonical_overloaded(evidence: dict, canonical: dict) -> list[dict]:
         if item["term"] not in canonical:
             continue
         module_coverage = item.get("coverage", {}).get("modules", {})
-        scope_details_complete = (
-            module_coverage.get("complete", True)
-            and all(
-                module.get("coverage", {}).get("contexts", {}).get(
-                    "complete", True
-                )
-                for module in item["modules"]
-            )
-        )
+        scope_details_complete = _overload_details_complete(item)
         for concept in canonical[item["term"]]:
             scope = concept_scope(concept)
             modules = [
@@ -339,17 +414,7 @@ def _terminology_reasons(evidence: dict, section: str) -> list[str]:
 def _scoped_overload_reasons(evidence: dict, canonical: dict) -> list[str]:
     omitted = 0
     for item in evidence["terminology"]["overload_candidates"]["items"]:
-        module_coverage = item.get("coverage", {}).get("modules", {})
-        details_complete = (
-            module_coverage.get("complete", True)
-            and all(
-                module.get("coverage", {}).get("contexts", {}).get(
-                    "complete", True
-                )
-                for module in item["modules"]
-            )
-        )
-        if details_complete:
+        if _overload_details_complete(item):
             continue
         omitted += sum(
             concept_scope(concept) is not None
@@ -389,22 +454,28 @@ def build_drift(
         for reason in coverage_reasons(ledger, f"matching.{name}")
     ]
 
+    parallel_findings, parallel_suppressed = _parallel_terms(
+        evidence, canonical, known_scopes, matcher
+    )
+    watched_findings, watched_suppressed = _watched_in_use(watched, matcher)
     sections = {}
     for name, findings, reasons in (
         (
             "parallel_terms",
-            _parallel_terms(evidence, canonical, known_scopes, matcher),
+            parallel_findings,
             corpus_reasons
-            + _terminology_reasons(evidence, "synonym_candidates"),
+            + _terminology_reasons(evidence, "synonym_candidates")
+            + parallel_suppressed,
         ),
         (
             "watched_terms_in_use",
-            _watched_in_use(watched, evidence, matcher),
-            corpus_reasons + vocabulary_reasons + matching_reasons,
+            watched_findings,
+            corpus_reasons + vocabulary_reasons + matching_reasons
+            + watched_suppressed,
         ),
         (
             "canonical_fading",
-            _canonical_fading(glossary, evidence, matcher),
+            _canonical_fading(glossary, matcher),
             corpus_reasons + vocabulary_reasons + matching_reasons,
         ),
         (

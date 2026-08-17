@@ -11,6 +11,7 @@ support (PLAN principle 3). Graphify's artifacts are read, never written.
 from __future__ import annotations
 
 import json
+import math
 import unicodedata
 from collections import Counter
 from pathlib import Path, PurePosixPath
@@ -36,9 +37,9 @@ _DOCUMENT_SUFFIXES = frozenset({".md", ".rst", ".txt", ".pdf"})
 _GLOSSARY_OUTPUT_DIRS = frozenset({"glossabet-out", "glossarize-out"})
 
 
-def _first(d: dict, keys, types=None):
+def _first_value(mapping: dict, keys, types=None):
     for key in keys:
-        value = d.get(key)
+        value = mapping.get(key)
         if value is not None and (types is None or isinstance(value, types)):
             return value
     return None
@@ -117,13 +118,13 @@ def _normalized_source(value: str) -> str:
 
 
 def _provenance(node: dict) -> str:
-    source = _first(
+    source = _first_value(
         node, ("source_file", "source", "file", "path", "origin"), str
     ) or ""
     normalized_source = _normalized_source(source)
     source_parts = PurePosixPath(normalized_source).parts
     ntype = unicodedata.normalize(
-        "NFKC", _first(node, ("file_type", "type", "kind"), str) or ""
+        "NFKC", _first_value(node, ("file_type", "type", "kind"), str) or ""
     ).strip().casefold()
     if (
         ntype in _GLOSSARY_TYPES
@@ -210,15 +211,15 @@ def _normalize_nodes(graph: dict) -> dict[str, dict]:
     for raw in graph["nodes"]:
         if not isinstance(raw, dict):
             continue
-        node_id = _first(raw, ("id", "name"))
+        node_id = _first_value(raw, ("id", "name"))
         if node_id is None:
             continue
         node_id = str(node_id)
         nodes[node_id] = {
-            "label": str(_first(raw, ("label", "name", "id"))),
+            "label": str(_first_value(raw, ("label", "name", "id"))),
             "prov": _provenance(raw),
             "community": raw.get("community"),
-            "community_name": _first(raw, ("community_name",), str),
+            "community_name": _first_value(raw, ("community_name",), str),
         }
     return nodes
 
@@ -230,12 +231,12 @@ def _edge_summary(
 ) -> tuple[Counter, int]:
     degree: Counter = Counter()
     edge_count = 0
-    links = _first(graph, ("links", "edges"), list) or []
+    links = _first_value(graph, ("links", "edges"), list) or []
     for edge in links:
         if not isinstance(edge, dict):
             continue
-        source = _first(edge, ("source", "from", "a"))
-        target = _first(edge, ("target", "to", "b"))
+        source = _first_value(edge, ("source", "from", "a"))
+        target = _first_value(edge, ("target", "to", "b"))
         if source is None or target is None:
             continue
         source, target = str(source), str(target)
@@ -256,40 +257,61 @@ def _extract_groups(
     nodes: dict[str, dict],
     warnings: list[str],
 ) -> dict[str, dict]:
-    groups: dict[str, dict] = {}
     communities = graph.get("communities")
     if isinstance(communities, list) and communities:
-        for index, community in enumerate(communities):
-            if not isinstance(community, dict):
-                continue
-            group_id_value = _first(community, ("id", "label", "name"))
-            # Zero is a valid Graphify community id, so only None falls back.
-            group_id = str(
-                index if group_id_value is None else group_id_value
-            )
-            raw_members = community.get("nodes")
-            if not isinstance(raw_members, list):
-                # Tolerate unknown community shapes; the caller reports when
-                # no usable structure remains after normalization.
-                continue
-            members = [
-                str(member)
-                for member in raw_members
-                if str(member) in nodes
-            ]
-            cohesion = community.get("cohesion")
-            groups[group_id] = {
-                "label": str(
-                    _first(community, ("label", "name"))
-                    or f"community {group_id}"
-                ),
-                "cohesion": (
-                    cohesion if isinstance(cohesion, (int, float)) else None
-                ),
-                "members": members,
-            }
-        return groups
+        return _groups_from_communities(communities, nodes)
+    return _groups_from_node_attributes(nodes, warnings)
 
+
+def _groups_from_communities(
+    communities: list, nodes: dict[str, dict]
+) -> dict[str, dict]:
+    """Explicit communities list: each entry names its own members."""
+    groups: dict[str, dict] = {}
+    for index, community in enumerate(communities):
+        if not isinstance(community, dict):
+            continue
+        group_id_value = _first_value(community, ("id", "label", "name"))
+        # Zero is a valid Graphify community id, so only None falls back.
+        group_id = str(
+            index if group_id_value is None else group_id_value
+        )
+        raw_members = community.get("nodes")
+        if not isinstance(raw_members, list):
+            # Tolerate unknown community shapes; the caller reports when
+            # no usable structure remains after normalization.
+            continue
+        members = [
+            str(member)
+            for member in raw_members
+            if str(member) in nodes
+        ]
+        cohesion = community.get("cohesion")
+        # json.loads accepts bare NaN/Infinity and bool passes isinstance
+        # (int); neither is a usable cohesion and NaN would poison scores
+        # and emit non-conformant JSON downstream.
+        usable_cohesion = (
+            isinstance(cohesion, (int, float))
+            and not isinstance(cohesion, bool)
+            and math.isfinite(cohesion)
+        )
+        groups[group_id] = {
+            "label": str(
+                _first_value(community, ("label", "name"))
+                or f"community {group_id}"
+            ),
+            "cohesion": cohesion if usable_cohesion else None,
+            "members": members,
+        }
+    return groups
+
+
+def _groups_from_node_attributes(
+    nodes: dict[str, dict], warnings: list[str]
+) -> dict[str, dict]:
+    """Fallback: fold per-node community attributes into groups."""
+    groups: dict[str, dict] = {}
+    label_counts: dict[str, Counter] = {}
     for node_id, node in sorted(nodes.items()):
         community = node["community"]
         if community is None:
@@ -301,14 +323,15 @@ def _extract_groups(
                 "label": f"community {group_id}",
                 "cohesion": None,
                 "members": [],
-                "label_counts": Counter(),
             },
         )
         group["members"].append(node_id)
         if node["community_name"]:
-            group["label_counts"][node["community_name"]] += 1
+            label_counts.setdefault(group_id, Counter())[
+                node["community_name"]
+            ] += 1
     for group_id, group in groups.items():
-        labels = group.pop("label_counts")
+        labels = label_counts.get(group_id)
         if not labels:
             continue
         group["label"] = sorted(

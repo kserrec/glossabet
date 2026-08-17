@@ -37,9 +37,9 @@ DOC_EXTENSIONS = {".md", ".rst", ".txt", ".adoc"}
 _SENSITIVE_RES = [
     re.compile(p) for p in (
         r"^\.env$", r"\.env$", r"^\.env\.", r"\.env\.",
-        r"\.(pem|key|p12|pfx|jks|keystore|der)$",
+        r"\.(pem|key|p12|pfx|jks|keystore|der|p8|ppk|kdbx|asc|gpg|pgp)$",
         r"^id_(rsa|dsa|ecdsa|ed25519)$",
-        r"^\.(netrc|npmrc|pypirc|htpasswd)$",
+        r"^\.(netrc|npmrc|pypirc|htpasswd|dockercfg)$",
         r"secret", r"credential",
     )
 ]
@@ -88,7 +88,7 @@ def is_sensitive(name: str) -> bool:
     return any(p.search(lower) for p in _SENSITIVE_RES)
 
 
-def _escapes(full: str, root: Path) -> bool:
+def _resolves_outside_root(full: str, root: Path) -> bool:
     """True if the path's real target lies outside the repo root."""
     try:
         Path(os.path.realpath(full)).relative_to(root)
@@ -129,6 +129,24 @@ class CorpusBudget:
             self.skipped_production_source_files += 1
         if len(self.skipped_sample) < BUDGET_PATH_SAMPLE:
             self.skipped_sample.append({"path": relative, "reason": reason})
+
+    def reclassify_unread(
+        self,
+        relative: str,
+        size: int,
+        reason: str,
+        *,
+        production: bool,
+    ) -> None:
+        """Move one walk-admitted file to the skipped ledger.
+
+        The walk admits files by stat alone; a later read failure means the
+        file never actually joined the corpus. Keeping it on both sides
+        would make used + skipped exceed the inventory.
+        """
+        self.source_files -= 1
+        self.source_bytes -= size
+        self.skip_source(relative, size, reason, production=production)
 
     def truncate_walk(
         self, relative: str, minimum_omitted: int, reason: str
@@ -233,156 +251,207 @@ def _bounded_directory_entries(
     return sorted(entries, key=lambda entry: entry.name)
 
 
+def _partition_entries(
+    entries: list[os.DirEntry],
+) -> tuple[list[tuple[os.DirEntry, bool]], list[os.DirEntry]]:
+    """Split one directory snapshot into (directories, files).
+
+    Directories carry whether they are reached through a symlink; symlinked
+    directories are classified but never descended into.
+    """
+    directories: list[tuple[os.DirEntry, bool]] = []
+    files: list[os.DirEntry] = []
+    for entry in entries:
+        try:
+            is_directory = entry.is_dir(follow_symlinks=False)
+            is_directory_symlink = (
+                entry.is_symlink() and entry.is_dir(follow_symlinks=True)
+            )
+        except OSError:
+            is_directory = is_directory_symlink = False
+        if is_directory or is_directory_symlink:
+            directories.append((entry, is_directory_symlink))
+        else:
+            files.append(entry)
+    return directories, files
+
+
+def _classify_directories(
+    directories: list[tuple[os.DirEntry, bool]],
+    file_count: int,
+    rel_dir: str,
+    is_root: bool,
+    config: RepositoryConfig,
+    result: WalkResult,
+) -> tuple[list[tuple[Path, str]], bool]:
+    """Classify one snapshot's subdirectories.
+
+    Returns the subdirectories to descend into and whether the repository
+    walk-entry budget was exhausted mid-snapshot.
+    """
+    kept: list[tuple[Path, str]] = []
+    for index, (entry, is_directory_symlink) in enumerate(directories):
+        name = entry.name
+        relative = name if is_root else f"{rel_dir}/{name}"
+        # Generated tool namespaces are not repository evidence. Prune
+        # them before charging the cross-repository walk counter so the
+        # first scan and later scans remain identical after Glossabet
+        # creates its own output directory. The enclosing directory's
+        # bounded scandir snapshot still limits the work needed to find
+        # these fixed names.
+        if name in SELF_DIRS:
+            continue
+        if result.corpus_budget.walk_entries >= MAX_WALK_ENTRIES:
+            result.corpus_budget.truncate_walk(
+                rel_dir,
+                len(directories) - index + file_count,
+                "walk-entry-limit",
+            )
+            return kept, True
+        result.corpus_budget.walk_entries += 1
+        # After fixed tool namespaces, sensitive classification precedes
+        # every repository-controlled prune so the exclusion is reported,
+        # never silent (mirrors the file rule).
+        if is_sensitive(name):
+            result.skipped_sensitive.append(relative)
+            continue
+        if config.is_ignored(relative):
+            result.skipped_configured.append(relative)
+            continue
+        if name.startswith("."):
+            continue
+        role = config.role_for(relative, is_dir=True)
+        if (
+            role in EXCLUDED_CONTENT_ROLES
+            and not config.has_explicit_descendant(relative)
+        ):
+            _record_role_skip(result, relative, role)
+            continue
+        if not is_directory_symlink:
+            kept.append((Path(entry.path), relative))
+    return kept, False
+
+
+def _classify_files(
+    files: list[os.DirEntry],
+    rel_dir: str,
+    is_root: bool,
+    root: Path,
+    config: RepositoryConfig,
+    result: WalkResult,
+) -> bool:
+    """Route one snapshot's files into the walk result.
+
+    Returns whether the repository walk-entry budget was exhausted
+    mid-snapshot.
+    """
+    for index, entry in enumerate(files):
+        fname = entry.name
+        rel = fname if is_root else f"{rel_dir}/{fname}"
+        if fname in SELF_FILES:
+            continue
+        if result.corpus_budget.walk_entries >= MAX_WALK_ENTRIES:
+            result.corpus_budget.truncate_walk(
+                rel_dir,
+                len(files) - index,
+                "walk-entry-limit",
+            )
+            return True
+        result.corpus_budget.walk_entries += 1
+        # After the fixed glossary filename, sensitive classification
+        # precedes the hidden-file skip so exclusions are reported rather
+        # than silently dropped.
+        if is_sensitive(fname):
+            result.skipped_sensitive.append(rel)
+            continue
+        if config.is_ignored(rel):
+            result.skipped_configured.append(rel)
+            continue
+        if fname.startswith(".") and fname not in WORKSPACE_MANIFESTS:
+            continue
+        role = config.role_for(rel)
+        if role in EXCLUDED_CONTENT_ROLES:
+            _record_role_skip(result, rel, role)
+            continue
+        if is_root and fname in WORKSPACE_MANIFESTS:
+            result.workspace_manifests.append(fname)
+        ext = os.path.splitext(fname)[1].lower()
+        full = entry.path
+        if ext not in CODE_LANGUAGES and ext not in DOC_EXTENSIONS:
+            result.other_files += 1
+            continue
+        if os.path.islink(full):
+            # A symlink resolving outside the repo is not repo content:
+            # reading it would ingest arbitrary host files into evidence
+            # (os.walk's followlinks=False guards dirs, not files).
+            if _resolves_outside_root(full, root):
+                result.skipped_symlinks.append(rel)
+                continue
+            # The name check above sees only the link's own name; a link
+            # with an ordinary name pointing at an in-repo sensitive file
+            # (notes.py -> .env) would otherwise launder its contents into
+            # evidence. Classify by the resolved target's name too.
+            if is_sensitive(os.path.basename(os.path.realpath(full))):
+                result.skipped_sensitive.append(rel)
+                continue
+        try:
+            size = os.path.getsize(full)
+        except OSError:
+            continue
+        if size > MAX_FILE_BYTES:
+            result.skipped_oversized.append(rel)
+            result.corpus_budget.skip_source(
+                rel,
+                size,
+                "file-size-limit",
+                production=role == "production",
+            )
+            continue
+        if result.corpus_budget.source_files >= MAX_SOURCE_FILES:
+            result.corpus_budget.skip_source(
+                rel,
+                size,
+                "source-file-limit",
+                production=role == "production",
+            )
+            continue
+        if result.corpus_budget.source_bytes + size > MAX_SOURCE_BYTES:
+            result.corpus_budget.skip_source(
+                rel,
+                size,
+                "source-byte-limit",
+                production=role == "production",
+            )
+            continue
+        result.corpus_budget.include_source(size)
+        if ext in CODE_LANGUAGES:
+            result.code_files.append((rel, CODE_LANGUAGES[ext], role))
+        else:
+            result.doc_files.append((rel, role))
+    return False
+
+
 def walk_repository(root: Path, config: RepositoryConfig) -> WalkResult:
     result = WalkResult()
     root = root.resolve()
     pending: list[tuple[Path, str]] = [(root, ".")]
-    stop_walk = False
-    while pending and not stop_walk:
+    while pending:
         dirpath, rel_dir = pending.pop()
         entries = _bounded_directory_entries(dirpath, rel_dir, result.corpus_budget)
         if entries is None:
             continue
         is_root = rel_dir == "."
-        directories = []
-        files = []
-        for entry in entries:
-            try:
-                is_directory = entry.is_dir(follow_symlinks=False)
-                is_directory_symlink = (
-                    entry.is_symlink() and entry.is_dir(follow_symlinks=True)
-                )
-            except OSError:
-                is_directory = is_directory_symlink = False
-            if is_directory or is_directory_symlink:
-                directories.append((entry, is_directory_symlink))
-            else:
-                files.append(entry)
-
-        kept_dirs: list[tuple[Path, str]] = []
-        for index, (entry, is_directory_symlink) in enumerate(directories):
-            d = entry.name
-            relative = d if is_root else f"{rel_dir}/{d}"
-            # Generated tool namespaces are not repository evidence. Prune
-            # them before charging the cross-repository walk counter so the
-            # first scan and later scans remain identical after Glossabet
-            # creates its own output directory. The enclosing directory's
-            # bounded scandir snapshot still limits the work needed to find
-            # these fixed names.
-            if d in SELF_DIRS:
-                continue
-            if result.corpus_budget.walk_entries >= MAX_WALK_ENTRIES:
-                result.corpus_budget.truncate_walk(
-                    rel_dir,
-                    len(directories) - index + len(files),
-                    "walk-entry-limit",
-                )
-                stop_walk = True
-                break
-            result.corpus_budget.walk_entries += 1
-            # After fixed tool namespaces, sensitive classification precedes
-            # every repository-controlled prune so the exclusion is reported,
-            # never silent (mirrors the file rule).
-            if is_sensitive(d):
-                result.skipped_sensitive.append(relative)
-                continue
-            if config.is_ignored(relative):
-                result.skipped_configured.append(relative)
-                continue
-            if d.startswith("."):
-                continue
-            role = config.role_for(relative, is_dir=True)
-            if (
-                role in EXCLUDED_CONTENT_ROLES
-                and not config.has_explicit_descendant(relative)
-            ):
-                _record_role_skip(result, relative, role)
-                continue
-            if not is_directory_symlink:
-                kept_dirs.append((Path(entry.path), relative))
-        if stop_walk:
+        directories, files = _partition_entries(entries)
+        kept_dirs, exhausted = _classify_directories(
+            directories, len(files), rel_dir, is_root, config, result
+        )
+        if exhausted:
             break
         filenames = [entry.name for entry in files]
-        if not is_root and any(
-            m in filenames for m in PACKAGE_MANIFESTS
-        ):
+        if not is_root and any(m in filenames for m in PACKAGE_MANIFESTS):
             result.sub_roots.append(rel_dir)
-        for index, entry in enumerate(files):
-            fname = entry.name
-            rel = fname if is_root else f"{rel_dir}/{fname}"
-            if fname in SELF_FILES:
-                continue
-            if result.corpus_budget.walk_entries >= MAX_WALK_ENTRIES:
-                result.corpus_budget.truncate_walk(
-                    rel_dir,
-                    len(files) - index,
-                    "walk-entry-limit",
-                )
-                stop_walk = True
-                break
-            result.corpus_budget.walk_entries += 1
-            # After the fixed glossary filename, sensitive classification
-            # precedes the hidden-file skip so exclusions are reported rather
-            # than silently dropped.
-            if is_sensitive(fname):
-                result.skipped_sensitive.append(rel)
-                continue
-            if config.is_ignored(rel):
-                result.skipped_configured.append(rel)
-                continue
-            if fname.startswith(".") and fname not in WORKSPACE_MANIFESTS:
-                continue
-            role = config.role_for(rel)
-            if role in EXCLUDED_CONTENT_ROLES:
-                _record_role_skip(result, rel, role)
-                continue
-            if is_root and fname in WORKSPACE_MANIFESTS:
-                result.workspace_manifests.append(fname)
-            ext = os.path.splitext(fname)[1].lower()
-            full = entry.path
-            if ext in CODE_LANGUAGES or ext in DOC_EXTENSIONS:
-                # A symlink resolving outside the repo is not repo content:
-                # reading it would ingest arbitrary host files into evidence
-                # (os.walk's followlinks=False guards dirs, not files).
-                if os.path.islink(full) and _escapes(full, root):
-                    result.skipped_symlinks.append(rel)
-                    continue
-                try:
-                    size = os.path.getsize(full)
-                except OSError:
-                    continue
-                if size > MAX_FILE_BYTES:
-                    result.skipped_oversized.append(rel)
-                    result.corpus_budget.skip_source(
-                        rel,
-                        size,
-                        "file-size-limit",
-                        production=role == "production",
-                    )
-                    continue
-                if result.corpus_budget.source_files >= MAX_SOURCE_FILES:
-                    result.corpus_budget.skip_source(
-                        rel,
-                        size,
-                        "source-file-limit",
-                        production=role == "production",
-                    )
-                    continue
-                if result.corpus_budget.source_bytes + size > MAX_SOURCE_BYTES:
-                    result.corpus_budget.skip_source(
-                        rel,
-                        size,
-                        "source-byte-limit",
-                        production=role == "production",
-                    )
-                    continue
-                result.corpus_budget.include_source(size)
-                if ext in CODE_LANGUAGES:
-                    result.code_files.append((rel, CODE_LANGUAGES[ext], role))
-                else:
-                    result.doc_files.append((rel, role))
-            else:
-                result.other_files += 1
+        if _classify_files(files, rel_dir, is_root, root, config, result):
+            break
         pending.extend(reversed(kept_dirs))
     return result
 
@@ -398,7 +467,7 @@ def _read_root_manifest(
         | set(walk.skipped_vendored)
     ):
         return None
-    if path.is_symlink() and _escapes(str(path), root):
+    if path.is_symlink() and _resolves_outside_root(str(path), root):
         if rel not in walk.skipped_symlinks:
             walk.skipped_symlinks.append(rel)
         return None

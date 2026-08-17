@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import subprocess
 import sys
 from collections import Counter, defaultdict
@@ -44,9 +45,15 @@ from glossabet.tokenize import (
     tokenize_identifier,
 )
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 EVIDENCE_FILE = "evidence.json"
+
+# Beyond this, a spelling is not a real identifier. Per-identifier pattern and
+# co-occurrence analysis is quadratic in token count, so this bounds a hostile
+# single-identifier file from exhausting CPU/memory. Real identifiers use a
+# handful of tokens; the pinned evaluation corpus never approaches this.
+MAX_IDENTIFIER_TOKENS = 64
 
 
 @dataclass(frozen=True)
@@ -61,8 +68,19 @@ class Limits:
 # execute (core.fsmonitor runs on `git status`, hooks on many operations). We
 # only read HEAD and dirty state from an untrusted repo, so we override these
 # to empty on every call: a hostile .git/config must not achieve code
-# execution. Command-line -c beats repo-local config.
+# execution. Command-line -c beats repo-local config. Content filter drivers
+# (filter.<name>.clean/smudge/process) are a third such surface — `git status`
+# runs them during content conversion — but their names are attacker-chosen,
+# so they are enumerated from the repository's effective config (with
+# include.path/includeIf directives resolved, exactly as `git status` sees
+# them) and cleared per-name in _filter_driver_overrides.
 _GIT_SAFE_CONFIG = ("-c", "core.fsmonitor=", "-c", "core.hooksPath=/dev/null")
+
+
+def _resolve_git() -> str:
+    """Absolute git path so a repo-shipped git.exe on the cwd search path
+    (Windows resolves the current directory before PATH) cannot be run."""
+    return shutil.which("git") or "git"
 
 # Freshness describes repository inputs, not Glossabet's own output. Keep the
 # pathspec here literal and mirrored in skill/SKILL.md: the whole top-level
@@ -84,11 +102,44 @@ _GIT_FRESHNESS_STATUS_ARGS = (
 )
 
 
+def _filter_driver_overrides(git_exe: str, root: Path) -> tuple[str, ...]:
+    """`-c filter.<name>.<op>=` for every content-filter driver the repository
+    defines, so `git status` cannot execute an attacker-named clean/smudge/
+    process command during content conversion. Reading config runs no filter.
+    """
+    try:
+        # Enumerate the way `git status` will resolve config: WITHOUT --local,
+        # so `include.path`/`includeIf` directives are followed. A hostile repo
+        # can define its filter driver in an included file that --local never
+        # reads, then trip it during status content conversion. Reading config
+        # runs no filter. Clearing the user's own global/system filter names as
+        # a side effect is harmless: this probe never wants any filter to run.
+        proc = subprocess.run(
+            [git_exe, *_GIT_SAFE_CONFIG, "-C", str(root),
+             "config", "--name-only", "--get-regexp", r"^filter\."],
+            capture_output=True, text=True, timeout=30,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ()
+    if proc.returncode not in (0, 1):  # 1 == no matching keys
+        return ()
+    overrides: list[str] = []
+    for key in proc.stdout.split():
+        if key.startswith("filter.") and key.count(".") >= 2:
+            overrides.extend(("-c", f"{key}="))
+    return tuple(overrides)
+
+
 def _git_stamp(root: Path) -> dict:
+    git_exe = _resolve_git()
+    filter_overrides = _filter_driver_overrides(git_exe, root)
+
     def git(*args: str) -> str | None:
         try:
             proc = subprocess.run(
-                ["git", *_GIT_SAFE_CONFIG, "-C", str(root), *args],
+                [git_exe, *_GIT_SAFE_CONFIG, *filter_overrides,
+                 "-C", str(root), *args],
                 capture_output=True, text=True, timeout=30,
                 env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
             )
@@ -134,13 +185,14 @@ def _location_sample(per_file: Counter, cap: int) -> tuple[list[dict], bool]:
     )
 
 
-def _read_source(path: Path) -> tuple[bytes, str] | None:
+def _read_source(path: Path) -> tuple[bytes, str] | str:
+    """Content and digest, or the corpus-budget skip reason when unreadable."""
     try:
         content = path.read_bytes()
     except OSError:
-        return None
+        return "unreadable"
     if b"\0" in content[:1024]:  # binary despite its extension
-        return None
+        return "binary-content"
     return content, hashlib.sha256(content).hexdigest()
 
 
@@ -185,6 +237,7 @@ class _Vocabulary:
         self.module_neighbor_truncated: set[tuple[str, str]] = set()
         self.identifier_counts: Counter = Counter()
         self.identifier_files: dict[str, Counter] = defaultdict(Counter)
+        self.oversized_identifiers = 0
 
     def fold(
         self,
@@ -198,6 +251,14 @@ class _Vocabulary:
             self.identifier_counts[name] += count
             self.identifier_files[name][rel] += count
             tokens = tokenize_identifier(name)
+            if len(tokens) > MAX_IDENTIFIER_TOKENS:
+                # A real identifier has a handful of tokens. The pattern and
+                # co-occurrence structures below are O(t^2) in token count, so
+                # a single pathological spelling (permitted up to the 2 MB file
+                # cap) would otherwise exhaust CPU and memory. Bound the
+                # per-identifier token work and record the truncation.
+                tokens = tokens[:MAX_IDENTIFIER_TOKENS]
+                self.oversized_identifiers += 1
             uniq = sorted(set(tokens))
             for token in tokens:
                 self.token_counts[token] += count
@@ -264,10 +325,22 @@ def build_evidence(root: Path, limits: Limits = Limits(),
     analyzed_production_doc_files = 0
     code_bytes = 0
 
-    def fetch_entry(rel: str, kind: str, extractor) -> dict | None:
+    def fetch_entry(rel: str, kind: str, role: str, extractor) -> dict | None:
         nonlocal reused, extracted
         source = _read_source(root / rel)
-        if source is None:
+        if isinstance(source, str):
+            # An inventoried file the build could not read is an omission
+            # the artifact must confess: silence here would let capped or
+            # broken evidence read as complete. The walk already admitted
+            # the file, so reclassify it from used to skipped rather than
+            # counting it on both sides of the ledger.
+            try:
+                size = os.path.getsize(root / rel)
+            except OSError:
+                size = 0
+            walk.corpus_budget.reclassify_unread(
+                rel, size, source, production=role == "production"
+            )
             return None
         content, content_sha256 = source
         entry = entry_if_valid(cached, rel, kind, content_sha256)
@@ -287,7 +360,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
 
     for rel, language, role in walk.code_files:
         entry = fetch_entry(
-            rel, "code", lambda text: _extract_code_entry(text, language)
+            rel, "code", role, lambda text: _extract_code_entry(text, language)
         )
         if entry is None:
             continue
@@ -309,8 +382,11 @@ def build_evidence(root: Path, limits: Limits = Limits(),
     doc_entries = []
     doc_word_total = 0
     for rel, role in walk.doc_files:
-        entry = fetch_entry(rel, "doc", _extract_doc_entry)
+        entry = fetch_entry(rel, "doc", role, _extract_doc_entry)
         if entry is None:
+            # Keep the inventory consistent with totals: the file exists and
+            # is counted; the budget skip above names why no words were read.
+            doc_entries.append({"path": rel, "role": role, "words": 0})
             continue
         doc_word_total += entry["word_total"]
         if role == "production":
@@ -467,6 +543,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
             "configured": sorted(walk.skipped_configured),
             "generated": sorted(walk.skipped_generated),
             "vendored": sorted(walk.skipped_vendored),
+            "oversized_identifiers": vocabulary.oversized_identifiers,
             "corpus_budget": walk.corpus_budget.as_evidence(),
         },
     }
@@ -692,8 +769,10 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
             details.append(f"excluded {omitted} source file(s)")
         if budget["walk_remainder"]["truncated"]:
             details.append("directory walk omitted an inexact remainder")
+        # Skips cover budget caps and read failures alike; the sample
+        # entries name each file's reason.
         print(
-            "corpus budget reached: " + "; ".join(details)
+            "corpus coverage incomplete: " + "; ".join(details)
             + "; evidence is partial",
             file=sys.stderr,
         )

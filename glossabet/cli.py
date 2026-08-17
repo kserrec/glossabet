@@ -12,7 +12,11 @@ import traceback
 from typing import NoReturn as _NoReturn
 
 from glossabet import __version__
-from glossabet.display import escape_terminal_text, safe_terminal_streams
+from glossabet.display import (
+    escape_terminal_text,
+    print_error,
+    safe_terminal_streams,
+)
 
 EXIT_OK = 0
 EXIT_USER_ERROR = 1
@@ -227,10 +231,7 @@ def _main(argv: list[str] | None = None) -> int:
         from glossabet.artifacts import ArtifactError
 
         if isinstance(exc, ArtifactError):
-            print(
-                "glossabet: " + escape_terminal_text(str(exc)),
-                file=sys.stderr,
-            )
+            print_error(exc)
             return EXIT_USER_ERROR
         print(escape_terminal_text(traceback.format_exc()), file=sys.stderr)
         print(

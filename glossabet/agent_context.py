@@ -18,6 +18,7 @@ from glossabet.coverage import coverage_ledger, coverage_reasons
 from glossabet.evidence import build_evidence, write_evidence
 from glossabet.glossary import GlossaryError, load_glossary
 from glossabet.imports import module_of
+from glossabet.tokenize import STRUCTURED_IDENTIFIER_STYLES, identifier_style
 
 
 AGENT_CONTEXT_SCHEMA_VERSION = 2
@@ -187,33 +188,14 @@ def _module_rollup_section(
     return projected
 
 
-def _identifier_style(name: str) -> str:
-    core = name.strip("_")
-    if "_" in core:
-        return "UPPER_SNAKE" if core.isupper() else "snake_case"
-    if core.isupper():
-        return "upper"
-    if core[:1].isupper():
-        return (
-            "PascalCase"
-            if any(character.islower() for character in core)
-            else "upper"
-        )
-    if any(character.isupper() for character in core):
-        return "camelCase"
-    return "flat"
-
-
 def _register_exemplars(
     identifier_section: dict,
     omissions: _ProjectionOmissions,
 ) -> dict:
     eligible = []
     for item in identifier_section["items"]:
-        style = _identifier_style(item["name"])
-        if len(item["tokens"]) < 2 or style not in {
-            "snake_case", "camelCase", "PascalCase", "UPPER_SNAKE",
-        }:
+        style = identifier_style(item["name"])
+        if len(item["tokens"]) < 2 or style not in STRUCTURED_IDENTIFIER_STYLES:
             continue
         eligible.append({**deepcopy(item), "style": style})
     kept = eligible[:REGISTER_EXEMPLAR_LIMIT]
@@ -356,6 +338,7 @@ def serialize_agent_context(context: dict) -> str:
         context,
         separators=(",", ":"),
         sort_keys=True,
+        allow_nan=False,
     ) + "\n"
     size = len(serialized.encode("utf-8"))
     if size > MAX_AGENT_CONTEXT_BYTES:

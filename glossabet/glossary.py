@@ -10,6 +10,7 @@ subsystems; an omitted scope retains the original repository-wide meaning.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 import unicodedata
@@ -24,7 +25,11 @@ from glossabet.artifacts import (
     repo_root,
     write_artifact,
 )
-from glossabet.display import contains_terminal_control, escape_terminal_text
+from glossabet.display import (
+    contains_terminal_control,
+    escape_terminal_text,
+    print_error,
+)
 
 GLOSSARY_SCHEMA_VERSION = 1
 GLOSSARY_FILE = "glossary.json"
@@ -65,6 +70,17 @@ MAX_VALIDATION_ERRORS = 100
 
 class GlossaryError(ValueError):
     """The glossary file exists but is not usable as written."""
+
+
+def glossary_sha256(glossary: dict) -> str:
+    """Return the semantic digest used to bind every vocabulary projection."""
+    canonical = json.dumps(
+        glossary,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
 
 
 def _fold_vocabulary(term: str) -> str:
@@ -520,10 +536,6 @@ def validate_glossary(glossary: object) -> list[str]:
     return errors.finish()
 
 
-def glossary_path(root: Path) -> Path:
-    return root / OUT_DIR / GLOSSARY_FILE
-
-
 def load_glossary(root: Path) -> dict | None:
     """Return the validated glossary, None if absent, GlossaryError if bad."""
     try:
@@ -576,10 +588,7 @@ def require_glossary(root: Path, missing: str) -> dict | None:
     try:
         glossary = load_glossary(root)
     except GlossaryError as exc:
-        print(
-            "glossabet: " + escape_terminal_text(str(exc)),
-            file=sys.stderr,
-        )
+        print_error(exc)
         return None
     if glossary is None:
         safe_missing = escape_terminal_text(missing)
@@ -599,10 +608,7 @@ def show_command(path_arg: str) -> int:
     try:
         glossary = load_glossary(root)
     except GlossaryError as exc:
-        print(
-            "glossabet: " + escape_terminal_text(str(exc)),
-            file=sys.stderr,
-        )
+        print_error(exc)
         return 1
     if glossary is None:
         print(
@@ -693,10 +699,7 @@ def save_command(path_arg: str) -> int:
     try:
         path = save_glossary(root, glossary)
     except (GlossaryError, ArtifactError) as exc:
-        print(
-            "glossabet: " + escape_terminal_text(str(exc)),
-            file=sys.stderr,
-        )
+        print_error(exc)
         return 1
     print("saved glossary: " + escape_terminal_text(str(path)))
     return 0

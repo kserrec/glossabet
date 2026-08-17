@@ -548,8 +548,8 @@ exact-bundle run, not a zero-flake claim.
 With Kyle's explicit authorization, the public GitHub repository was renamed
 from `kserrec/glossarize` to `kserrec/glossabet`, the configured `origin` was
 changed to `git@github.com:kserrec/glossabet.git`, and the local checkout was
-moved from `/home/serrecchia/Projects/glossarize` to
-`/home/serrecchia/Projects/glossabet`. GitHub's old repository path was
+moved from `<local>/glossarize` to
+`<local>/glossabet`. GitHub's old repository path was
 verified to resolve to the renamed repository, and the old local directory no
 longer exists. During the authorized documentation wrapup, the package project
 URLs and distribution assertion were switched to `kserrec/glossabet`, the
@@ -985,6 +985,85 @@ committed evidence artifacts were not modified: they remain the sealed
 2026-08-16 testimony and honestly lag until regenerated at the next release
 gate.
 
+### Open bughunt deferrals (2026-08-17)
+
+Three items from the whole-project bughunts were deliberately not fixed;
+each names the evidence or ruling that settles it:
+
+1. **Safety-failure permanence needs Kyle's ruling.** One live run whose
+   agent leaves a stray file in a disposable scenario fixture records
+   `safety_pass: false` in the append-only `evaluation/agent-history.json`,
+   which fails `--verify-results` permanently with no supported recovery
+   (hand-editing committed history is the only remedy). Procedural failures
+   are deliberately retained without gating; whether fixture-scoped safety
+   failures should gate forever, gate until a later clean run, or offer an
+   explicit supersede path is an intended-behavior question, not a silent
+   fix.
+2. **Codex `plugin list --json` key schema needs one live observation.**
+   The evaluator's guards now match both `name` and `pluginId` spellings
+   defensively, but which key the CLI actually emits was not observable
+   without an authenticated Codex run; one `codex plugin list --json` with
+   a plugin installed settles it.
+3. **Multi-turn Codex usage semantics need live evidence.** `_run_codex`
+   takes the last `turn.completed` event's usage; if a single exec can emit
+   several turns (compaction) and usage is per-turn rather than cumulative,
+   totals undercount. Settling requires a live multi-turn JSONL sample;
+   guessing a summation risks double-counting cumulative values.
+
+### Bughunt round 3 (2026-08-17) — latent items, judged not-live, not fixed
+
+The plural-acronym tokenizer bug found this round was fixed. These remaining
+items are surfaced but were deliberately not fixed because none produces wrong
+output today; recorded so a future bughunt does not re-discover them cold:
+
+1. **`importance.py` and `terminology.py` disagree on an untagged token.**
+   `importance.py:80` drops a token whose origin is unknown (`!= DOMAIN`),
+   while `terminology.py:486` treats an untagged token *as* domain
+   (`.get(term, TOKEN_ORIGIN_DOMAIN)`). Currently unreachable: `evidence.py`
+   populates `token_origins` in lockstep with `token_counts`, so no token is
+   ever untagged. Latent inconsistency, not a live bug. Cheap consistency fix
+   available (make importance use the same default) if a future source can
+   inject an untagged token.
+2. **`totals.source_bytes` vs `totals.source_files` count different
+   populations** when a file is reclassified binary mid-read (`evidence.py`
+   ~497): `source_files` is an inventory count, `source_bytes` mirrors the
+   decremented read-budget. Each is individually correct; only misleads a
+   consumer computing bytes-per-file across the two. The doc side and
+   `code_bytes` share the pattern. Best addressed by documenting the two
+   denominators rather than changing the numbers.
+
+Minor non-bugs also noted and dropped: a dead sub-condition in the
+workspace-manifest hidden-file skip (`scanner.py:370`, provably no effect),
+and three cosmetic wording nits (install message agent word, empty-file
+"appended" vs "created", brief output on a zero-canonical glossary).
+
+### Test-audit round 1 (2026-08-17) — deferred items (await Kyle's ruling)
+
+Two proven gaps were fixed this session (EDGE_CAP/EXTERNAL_CAP truncation
+counts now asserted exactly in `test_edge_and_external_caps_report_exact_truncation_counts`;
+glob-in-config-path rejection now guarded by
+`test_glob_in_a_config_path_is_a_user_error_not_a_literal_prefix`). These
+remain open, left in place pending a decision:
+
+1. **`test_parallel_term_scope_checks_are_bounded_against_a_hostile_glossary`
+   (test_drift.py:519) is proven vacuous — recommend deletion.** Its fixture
+   produces zero synonym candidates, so the scope-overlap path it claims to
+   bound is never entered; its only assertion is a loose `< 15s` timer that
+   survives disabling the comparison budget entirely. The budget invariant is
+   genuinely guarded by `test_parallel_term_budget_charges_prefix_pair_work_not_owner_count`
+   (added round 3). Left in place because deleting a test waits for the owner.
+2. **`test_glossabet_routine_context_fits_the_soft_target`
+   (test_agent_context.py:190) is fragile.** It scans the *live* repository and
+   asserts the projection is <= 80,000 bytes, so it is coupled to repo growth
+   and will silently start failing as the codebase grows, passing today for
+   reasons unrelated to the projection-bounding logic. It doubles as a
+   dogfooding check, so it was not changed; pin it to a synthetic fixture repo
+   if a pure unit test is wanted.
+3. Minor weak assertions left in place (real bound covered elsewhere):
+   `test_bounds_are_reported` (test_terminology.py:208, presence-only; the
+   151st-token test is the real guard) and `test_scope_shape_rejects_ambiguous_or_nonliteral_paths`
+   (test_glossary.py:195, asserts *some* error, not which).
+
 ### Owner self-testing pause — active, not an implementation phase
 
 Kyle is keeping the current build to himself while he runs it and performs
@@ -1145,4 +1224,9 @@ Each finding was verified against the engine's own output on this repository.
     (untampered, internally consistent); currency against the current tree
     is enforced solely at the release gate via `--current` and the plugin
     `git diff` step. Development — refactors included — never requires
-    regenerating witness evidence; releases always do.
+    regenerating witness evidence; releases always do. Extended 2026-08-16
+    at Kyle's direction: the checked-in Codex plugin (including its bundled
+    wheel) follows the same rule — `check_distribution.py` validates its
+    currency only under `--current`, so engine edits no longer require a
+    per-commit plugin rebuild; the release gate and `RELEASING.md` demand
+    the rebuild instead.

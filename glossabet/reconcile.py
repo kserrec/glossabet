@@ -33,8 +33,6 @@ from glossabet.glossary import (
 )
 from glossabet.matching import (
     EvidenceIndex,
-    code_identifier_occurrence,
-    code_term_occurrence,
     production_corpus_complete,
     repository_corpus_complete,
 )
@@ -67,27 +65,6 @@ def _concept_vocab(concept: dict) -> tuple[set[str], set[str]]:
     return term_tokens, binding_tokens
 
 
-def _match_strength(group: dict, term_tokens: set[str],
-                    binding_tokens: set[str]) -> int:
-    label_tokens = _tokens(group["label"])
-    raw_member_tokens = group.get("member_tokens")
-    if isinstance(raw_member_tokens, list):
-        member_tokens = {
-            token for token in raw_member_tokens if isinstance(token, str)
-        }
-    else:
-        # Compatibility for evidence produced before RepositoryEvidence v7.
-        # Validation marks this fallback partial; it never treats the display
-        # sample as complete structural coverage.
-        member_tokens = set()
-        for member in group.get("members_sample", []):
-            member_tokens |= _tokens(member)
-    return _match_strength_from_tokens(
-        label_tokens, label_tokens | member_tokens,
-        term_tokens, binding_tokens,
-    )
-
-
 def _match_strength_from_tokens(
     label_tokens: set[str],
     combined: set[str],
@@ -113,12 +90,8 @@ def _resolve_bindings(
     for binding in concept.get("bindings", []):
         kind, _, value = binding["ref"].partition(":")
         if kind == "symbol":
-            scoped = code_identifier_occurrence(
-                evidence, value, scope, index=matcher
-            )
-            global_occurrence = code_identifier_occurrence(
-                evidence, value, index=matcher
-            )
+            scoped = matcher.code_identifier_occurrence(value, scope)
+            global_occurrence = matcher.code_identifier_occurrence(value)
             if scoped["count"]:
                 status = "resolved"
             elif not scoped["count_complete"]:
@@ -330,20 +303,23 @@ def _structure_findings(
     )
 
 
-def _concept_findings(canonical: list[dict], vocab: dict,
-                      evidence: dict,
-                      matcher: EvidenceIndex) -> tuple[list, list, list]:
+def _concept_findings(
+    canonical: list[dict],
+    vocab: dict,
+    evidence: dict,
+    matcher: EvidenceIndex,
+) -> tuple[list, list, list, list[str]]:
     """Direction B: glossary -> evidence.
 
-    Returns (orphaned concepts, unresolved bindings, fragmentation).
+    Returns (orphaned concepts, unresolved bindings, fragmentation,
+    fragmentation incompleteness reasons).
     """
     orphaned, unresolved, fragmented = [], [], []
+    fragmentation_suppressed = 0
     for concept in canonical:
         scope = concept_scope(concept)
         term_tokens, _ = vocab[concept["id"]]
-        occurrence = code_term_occurrence(
-            evidence, concept["term"], scope, index=matcher
-        )
+        occurrence = matcher.code_term_occurrence(concept["term"], scope)
         bindings = _resolve_bindings(concept, evidence, matcher)
         resolved = [b for b in bindings if b["status"] == "resolved"]
         uncertain = [b for b in bindings if b["status"] == "uncertain"]
@@ -405,6 +381,19 @@ def _concept_findings(canonical: list[dict], vocab: dict,
                     ),
                 })
         spread = occurrence["modules"]
+        # A scoped single-token occurrence counts modules over the entry's
+        # retained location sample, so a clipped sample undercounts spread:
+        # a value that still clears the threshold is a valid lower bound,
+        # one below it proves nothing. For that path locations_truncated is
+        # exactly the entry-level clip. Compound occurrences also fold the
+        # final display clip into the same flag, which does not reduce the
+        # module set — treating it as sampling would cry wolf on ordinary
+        # repositories, so compound spread stays a best-effort lower bound.
+        modules_sampled = (
+            scope is not None
+            and occurrence["match_kind"] == "token"
+            and occurrence["locations_truncated"]
+        )
         if spread >= FRAGMENTATION_MIN_MODULES:
             fragmented.append({
                 "kind": "fragmentation",
@@ -417,12 +406,20 @@ def _concept_findings(canonical: list[dict], vocab: dict,
                     "legitimately cross-cutting or problematically scattered"
                 ),
             })
+        elif modules_sampled:
+            fragmentation_suppressed += 1
     orphaned.sort(key=lambda f: f["concept_id"])
     unresolved.sort(key=lambda f: (f["concept_id"], f["ref"]))
     fragmented.sort(
         key=lambda f: (-f["evidence"]["module_spread"], f["concept_id"])
     )
-    return orphaned, unresolved, fragmented
+    fragmentation_reasons = []
+    if fragmentation_suppressed:
+        fragmentation_reasons.append(
+            f"{fragmentation_suppressed} fragmentation check(s) suppressed "
+            "because scoped occurrence evidence retains only a location sample"
+        )
+    return orphaned, unresolved, fragmented, fragmentation_reasons
 
 
 def _capped(items: list, name: str, incomplete_reasons: list[str]) -> dict:
@@ -529,7 +526,7 @@ def build_validation(
         boundary = _mark_incomplete(boundary, scoped_structure_reason)
         overloaded = _mark_incomplete(overloaded, scoped_structure_reason)
 
-    orphaned, unresolved, fragmented = _concept_findings(
+    orphaned, unresolved, fragmented, fragmentation_reasons = _concept_findings(
         canonical, vocab, evidence, matcher
     )
     drift = build_drift(
@@ -610,7 +607,8 @@ def build_validation(
         "fragmentation": _capped(
             fragmented,
             "fragmentation",
-            production_reasons + code_vocabulary_reasons + matching_reasons,
+            production_reasons + code_vocabulary_reasons + matching_reasons
+            + fragmentation_reasons,
         ),
         "vocabulary_drift": drift["parallel_terms"],
         "concept_collision": drift["canonical_overloaded"],

@@ -22,6 +22,7 @@ from evaluation.run import (  # noqa: E402
     EvaluationError,
     verify_results as verify_engine_results,
 )
+from glossabet.artifacts import MAX_JSON_BYTES  # noqa: E402
 
 PACKET_SCHEMA_VERSION = 1
 REVIEW_SCHEMA_VERSION = 2
@@ -30,6 +31,15 @@ DEFAULT_REVIEW_RESULTS = PROJECT_ROOT / "evaluation" / "reviewer-results.json"
 PROMPT_PATH = PROJECT_ROOT / "evaluation" / "reviewer-prompt.md"
 RESPONSE_SCHEMA_PATH = PROJECT_ROOT / "evaluation" / "reviewer-response-schema.json"
 SECONDARY_USEFULNESS_THRESHOLD = 0.8
+# Generous absolute ceilings behind any recorded trace limits: genuine
+# verification accepts lagging limit values, never unbounded ones.
+TRACE_LIMIT_CEILINGS = {
+    "jsonl_bytes": 100_000_000,
+    "events": 10_000,
+    "commands": 100,
+    "stored_command_characters": 100_000,
+    "stored_output_characters": 100_000,
+}
 TRACE_LIMITS = {
     "jsonl_bytes": 4_000_000,
     "events": 100,
@@ -41,6 +51,10 @@ TRACE_LIMITS = {
 
 def _read_json(path: Path, label: str) -> dict:
     try:
+        if path.stat().st_size > MAX_JSON_BYTES:
+            raise EvaluationError(
+                f"{label} exceeds {MAX_JSON_BYTES} bytes — refusing to load"
+            )
         value = json.loads(path.read_bytes())
     except (OSError, ValueError, RecursionError) as exc:
         raise EvaluationError(f"{label} is unreadable: {exc}") from exc
@@ -87,6 +101,13 @@ def _codex_version(codex: str) -> str:
 
 def _bounded_text(text: str, workspace: Path, limit: int) -> str:
     normalized = text.replace(str(workspace), "<REVIEW_WORKSPACE>")
+    # Mirror agent_eval._normalize_text: the reviewer may echo absolute
+    # interpreter/shell paths the workspace replacement never anticipated, so
+    # scrub the repo root and home directory too, keeping the committed public
+    # reviewer-results.json from leaking the maintainer's username or layout.
+    # Repo root first (more specific than home).
+    normalized = normalized.replace(str(PROJECT_ROOT), "<REPO>")
+    normalized = normalized.replace(str(Path.home()), "<HOME>")
     if len(normalized) <= limit:
         return normalized
     return normalized[:limit] + "…"
@@ -341,6 +362,8 @@ def _review_results(
 ) -> dict:
     expected_keys = [item["review_key"] for item in packet["findings"]]
     judgments = _normalized_judgments(response, expected_keys)
+    if not judgments:
+        raise EvaluationError("review results need at least one judgment")
     comparisons = []
     disagreements = []
     secondary_useful = 0
@@ -579,25 +602,57 @@ def verify_results(
             == {"evaluator_sha256", "prompt_sha256", "response_schema_sha256"}
             and all(_hex_digest(value) for value in identity.values())
         )
+    recorded_limits = (
+        execution.get("trace_limits") if isinstance(execution, dict) else None
+    )
+    if current:
+        limits_ok = recorded_limits == TRACE_LIMITS
+    else:
+        # Genuineness validates the recorded limits' shape only; the exact
+        # values are the evaluator's to demand at the release gate, so an
+        # evaluator constant edit does not invalidate lagging evidence.
+        limits_ok = (
+            isinstance(recorded_limits, dict)
+            and set(recorded_limits) == set(TRACE_LIMITS)
+            and all(
+                isinstance(value, int)
+                and not isinstance(value, bool)
+                and 0 < value <= TRACE_LIMIT_CEILINGS[key]
+                for key, value in recorded_limits.items()
+            )
+        )
+    if not limits_ok:
+        recorded_limits = None
+    bounds = recorded_limits or {
+        "commands": 0,
+        "stored_command_characters": 0,
+        "stored_output_characters": 0,
+    }
     if (
         not isinstance(reviewer, dict)
         or reviewer.get("kind") != "codex-exec"
         or reviewer.get("blinded_to_primary_labels") is not True
         or not isinstance(reviewer.get("codex_version"), str)
         or not identity_ok
-        or execution != {
+        or not limits_ok
+        or not isinstance(execution, dict)
+        or {
+            key: value
+            for key, value in execution.items()
+            if key != "trace_limits"
+        }
+        != {
             "ephemeral": True,
             "sandbox": "read-only",
             "approval_policy": "never",
             "repository_available": False,
-            "trace_limits": TRACE_LIMITS,
         }
     ):
         errors.append("reviewer identity or blinding metadata is malformed")
     if (
         not isinstance(trace, list)
         or not trace
-        or len(trace) > TRACE_LIMITS["commands"]
+        or len(trace) > bounds["commands"]
     ):
         errors.append("second-reviewer trace is missing or unbounded")
     else:
@@ -608,9 +663,9 @@ def verify_results(
                     command.get("command", "")
                 ).casefold()
                 or len(str(command.get("command", "")))
-                > TRACE_LIMITS["stored_command_characters"] + 1
+                > bounds["stored_command_characters"] + 1
                 or len(str(command.get("output_preview", "")))
-                > TRACE_LIMITS["stored_output_characters"] + 1
+                > bounds["stored_output_characters"] + 1
                 or command.get("exit_code") != 0
             ):
                 errors.append("second-reviewer trace is missing or unbounded")
