@@ -10,8 +10,8 @@ the owner self-testing pause before doing anything.
 vocabulary explicit, canonical, inspectable, and maintainable. Deterministic
 machinery gathers evidence, the LLM reasons, the human decides.
 
-**State on disk:** `dev` and `main` carry the same commits; the working tree
-is clean; the full suite (493 tests) is green; wheel and plugin were rebuilt
+**State on disk:** `dev` is one commit (Phase 36.1) ahead of `main`; the
+working tree is clean; the full suite (494 tests) is green; wheel and plugin were rebuilt
 through `uv build --no-sources` + `scripts/build_plugin.py dist` and
 `scripts/check_distribution.py dist --tag v0.1.0` passes; the CLI at
 `~/.local/bin/glossabet` is the current build. The installed agent skills
@@ -37,17 +37,22 @@ re-run `glossabet install --agent claude` / `glossabet install` if unsure.
   `tests/test_module_dependencies.py`. Every step was verified byte-identical
   against a 76-file oracle of every command's output on the four local
   corpus fixtures with their glossaries.
-- **Phase 36 planned, not started** — the seven remaining structural debts
-  from the post-refactor review (evidence.py hub split, one command
-  preamble, document accessors, managed-context printer direction,
-  producer-level drift/validation tests, ledger ceremony, verification
-  weight onto the skill). Each sub-phase is one pass under Phase 35 rules.
+- **Phase 36 in progress** — the seven remaining structural debts from the
+  post-refactor review. **36.1 done:** `evidence.py` split into assembly
+  (`evidence.py`, 287 lines), `extraction.py` (`SourceExtractor` + read/
+  extract functions), `evidence_report.py` (`scan`/`analyze` handlers and
+  printer), plus `DocumentationVocabulary`; oracle byte-identical, 494
+  tests green. Remaining: 36.2 one command preamble, 36.3 document
+  accessors, 36.4 managed-context printer direction, 36.5 producer-level
+  drift/validation tests, 36.6 ledger ceremony, 36.7 verification weight
+  onto the skill (needs Kyle). Each sub-phase is one pass under Phase 35
+  rules.
 
 **How to resume**
 
 - `$next` / `/next` → the first incomplete phase whose dependencies are
   complete is Phase 33.2 (needs Kyle's authorization to spend usage) or
-  Phase 36.1 (no external needs). Both honour the owner self-testing pause.
+  Phase 36.2 (no external needs). Both honour the owner self-testing pause.
 - Before any Phase 36 sub-phase, rebuild the byte-identical oracle: copy the
   four local fixtures from `evaluation/corpus.json` (`path` sources) to a
   scratch dir, `glossabet save` each source's `glossary`, run every command

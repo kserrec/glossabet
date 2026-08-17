@@ -175,12 +175,12 @@ def _run(argv: list[str] | None) -> int:
         return EXIT_USER_ERROR
 
     if args.command == "scan":
-        from glossabet.evidence import scan_command
+        from glossabet.evidence_report import scan_command
 
         return scan_command(args.path, graphify=not args.no_graphify)
 
     if args.command == "analyze":
-        from glossabet.evidence import analyze_command
+        from glossabet.evidence_report import analyze_command
 
         return analyze_command(args.path, graphify=not args.no_graphify)
 

@@ -2,9 +2,9 @@
 
 Status: **phases 0–22, Phases 24–32, Phase 34 (`GLOSSABET.md` report), and
 Phase 35 (deepening refactor) complete; Phase 33 (Claude Code ambient
-parity) in progress; Phase 36 (good-to-great structural debts) planned, not
-started; owner self-testing pause active before the trusted-alpha gate** as
-of 2026-08-17.
+parity) in progress; Phase 36 (good-to-great structural debts) in progress —
+36.1 complete; owner self-testing pause active before the trusted-alpha
+gate** as of 2026-08-17.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
 Phases 24–28 were added 2026-08-15 from Kyle's self-testing findings and run
@@ -1768,7 +1768,7 @@ registry, unified installer/context_sync symlink rules. Noted, not changed:
 `context_sync` command module — same direction smell as the stripper, left
 because it is a printer, not evidence.
 
-### Phase 36 — Good to great: the seven remaining structural debts (added 2026-08-17, not started)
+### Phase 36 — Good to great: the seven remaining structural debts (added 2026-08-17, in progress)
 
 **Goal:** finish what the Phase 35 review left. Kyle's ask (2026-08-17):
 "write into the plan … so this can go from good to great." Each sub-phase
@@ -1779,7 +1779,7 @@ start of the session), full suite green, one commit per sub-phase,
 ARCHITECTURE.md module map kept current. Order is by payoff and risk;
 36.1–36.3 are the ones that change how the codebase feels to work in.
 
-#### Phase 36.1 — Split the `evidence.py` hub
+#### Phase 36.1 — Split the `evidence.py` hub ✅ 2026-08-17
 
 **Problem:** 700+ lines doing walk orchestration, cache reuse, extraction,
 the *documentation* fold (`doc_term_counts` / `doc_term_files` /
@@ -1803,6 +1803,24 @@ report.
 
 **Acceptance:** `evidence.py` under ~350 lines; no printer in it; oracle
 identical.
+
+**Completion evidence (2026-08-17):** `evidence.py` 589 → 287 lines and
+holds only assembly, the evidence schema, and `write_evidence`. New
+`extraction.py` (`read_source`, `extract_code_entry`, `extract_doc_entry`,
+`SourceExtractor` — cache reuse, managed-block stripping, corpus-budget
+confession, reused/extracted counts); new `evidence_report.py` (the
+`scan`/`analyze` handlers and the terminology printer, imported by `cli`);
+`DocumentationVocabulary` in `vocabulary.py` replaces the two inline doc
+dicts (the plan's "three parallel dicts" was two — no per-module doc view
+existed, and none was invented). `build_terminology`/`build_naming_candidates`
+still take the doc-term `Counter` because they need only counts; passing
+the aggregate would be pass-through for one field. Dependency test pins
+`evidence` ↛ `evidence_report` and `extraction`/`vocabulary` ↛
+`evidence`/`scanner`. Oracle (48 commands × 4 fixtures, stdout/stderr/rc,
+every `glossabet-out/*.json`, both host files) byte-identical; suite 494
+green. Oracle harness for the rest of Phase 36 lives in this session's
+scratchpad (`oracle.py`: `setup`, `capture NAME`, then `diff -r out/base
+out/NAME`).
 
 #### Phase 36.2 — One command preamble and one glossary-error style
 

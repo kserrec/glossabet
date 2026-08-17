@@ -1,6 +1,8 @@
 """Dependency directions the architecture relies on (Phase 35.4).
 
-`evidence` is the aggregation hub and must not import a command module;
+`evidence` is the aggregation hub and must not import a command module (its
+own printer/handlers live above it in `evidence_report`); `extraction` and
+`vocabulary` sit beneath the hub and never look back up at it;
 `brief` loads no source files and must not drag the scanner in; the managed
 block lives beneath both its users; the scanner never depends on the
 discovery channel that depends on it."""
@@ -26,7 +28,12 @@ def _imports(module: str) -> set[str]:
 
 def test_forbidden_dependency_directions():
     forbidden = {
-        "evidence": {"glossabet.context_sync", "glossabet.brief", "glossabet.cli"},
+        "evidence": {
+            "glossabet.context_sync", "glossabet.brief", "glossabet.cli",
+            "glossabet.evidence_report",
+        },
+        "extraction": {"glossabet.evidence", "glossabet.scanner"},
+        "vocabulary": {"glossabet.evidence", "glossabet.scanner"},
         "brief": {"glossabet.evidence", "glossabet.scanner"},
         "managed_block": {"glossabet.context_sync", "glossabet.evidence"},
         "scanner": {"glossabet.repository_glossary", "glossabet.evidence"},

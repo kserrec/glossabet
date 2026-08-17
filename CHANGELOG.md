@@ -88,7 +88,11 @@ This first alpha is prepared but has not been published to PyPI.
   exclusion ledger; the managed host-file block lives beneath both its
   users; the production identifier vocabulary is one public aggregate
   (`ProductionVocabulary`) instead of parallel dicts; drift and validation
-  share one findings-document module and renderer.
+  share one findings-document module and renderer; the evidence hub is
+  split into assembly (`evidence`), per-file extraction with cache reuse
+  (`extraction`), and the `scan`/`analyze` handlers and printer
+  (`evidence_report`), with production doc words folded into a
+  `DocumentationVocabulary`.
 - The pre-release working identity was renamed atomically from Glossarize to
   Glossabet across the package, import, command, skill, artifacts,
   configuration, cache, tests, and documentation. Pre-rename output/cache

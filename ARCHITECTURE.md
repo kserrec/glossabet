@@ -281,13 +281,23 @@ The package is `glossabet/`. Grouped by role:
   syntax.
 
 **The aggregation hub**
-- `evidence.py` — `build_evidence()` orchestrates everything: walk the repo,
-  read each included production/test/fixture file (via the cache when valid),
-  fold only production identifiers into a `ProductionVocabulary`, read
-  production docs into the terminology layer, then assemble the evidence
-  dict. Identifier entries retain normalized tokens and bounded locations so
-  compound matching can prove one lexical unit rather than infer from aggregate
-  words. Also holds the `scan`/`analyze` command handlers.
+- `evidence.py` — `build_evidence()` is assembly: walk the repo, hand each
+  inventoried file to a `SourceExtractor`, fold production identifiers into
+  a `ProductionVocabulary` and production doc words into a
+  `DocumentationVocabulary`, then build the imports/structural/terminology/
+  naming sections and the evidence dict. It owns the evidence schema
+  (`SCHEMA_VERSION`, `Limits`, the capped vocabulary tables with their
+  location samples) and `write_evidence()`; no printer lives here.
+- `extraction.py` — per-file extraction beneath the hub: `read_source()`
+  (bytes + digest, or the corpus-budget skip reason), `extract_code_entry()`
+  / `extract_doc_entry()`, and `SourceExtractor`, which reuses a valid cache
+  entry instead of re-extracting, strips the managed block from docs before
+  word extraction, confesses unreadable files to the corpus budget, and
+  keeps the reused/extracted counts and the entries for the next cache save.
+- `evidence_report.py` — the `scan`/`analyze` command handlers and their
+  terminal rendering (walk/graph/cache summary, exclusion sentences, the
+  `analyze` terminology report). Rendering only; every number is read back
+  out of the evidence dict.
 - `git_state.py` — the filtered Git state of a repository root:
   `repository_git_stamp()` runs `git` with the repo's dangerous config keys
   neutralized (`SAFE_CONFIG` plus per-name filter-driver overrides — see
@@ -316,15 +326,18 @@ The package is `glossabet/`. Grouped by role:
   omitted canonical concept or truncated entry.
 
 **Analysis over the evidence**
-- `vocabulary.py` — `ProductionVocabulary`, the identifier vocabulary of one
-  scan as one aggregate: `fold()` takes each production file's identifier
+- `vocabulary.py` — the scan's vocabularies as aggregates with named views.
+  `ProductionVocabulary`: `fold()` takes each production file's identifier
   counts and keeps every view in step (token counts, per-file/per-module
   counts, positional compound patterns, domain/language origins, in-identifier
   neighbors, capped per-module neighbor sets with their truncation record,
   raw identifier counts/files, and the `MAX_IDENTIFIER_TOKENS` cut count).
-  `build_terminology(vocabulary, doc_term_counts)` and
-  `build_naming_candidates(…, vocabulary, …)` take the aggregate, never its
-  views as parallel arguments; tests build one with `from_files()`.
+  `DocumentationVocabulary`: `fold()` takes each production doc's word counts
+  and keeps `term_counts` / `term_files` in step (docs are not
+  module-attributed). `build_terminology(vocabulary, doc_term_counts)` and
+  `build_naming_candidates(…, vocabulary, …)` take the production aggregate,
+  never its views as parallel arguments, and only the documentation
+  vocabulary's `term_counts`; tests build one with `from_files()`.
 - `imports.py` — best-effort, regex-level import extraction per language
   (`extract_imports`) and a `Resolver` that maps import strings to internal
   modules or external dependencies. Explicitly lossy and tagged `lossy: true`;
@@ -557,11 +570,13 @@ given, preserves different existing content unless `--force` is present, and
 atomically writes only `SKILL.md`. It does not inspect a repository or contact
 an agent host.
 
-**`scan` / `analyze`** (`cli.py` → `evidence._scan` → `build_evidence`).
+**`scan` / `analyze`** (`cli.py` → `evidence_report._scan` → `evidence.build_evidence`).
 `build_evidence` loads `glossabet.json`, walks and role-classifies the repo
 (`scanner.walk_repository`), reads each included code/doc file and hashes its
-bytes, reuses cached extraction only when that digest matches, folds production
-identifiers into a `ProductionVocabulary`, extracts production imports, optionally builds
+bytes (`extraction.SourceExtractor`), reuses cached extraction only when that
+digest matches, folds production identifiers into a `ProductionVocabulary` and
+production doc words into a `DocumentationVocabulary`, extracts production
+imports, optionally builds
 structural groups from Graphify, computes naming candidates and terminology,
 and returns the evidence dict, which is atomically written to
 `glossabet-out/evidence.json`. `analyze` additionally prints a human-readable

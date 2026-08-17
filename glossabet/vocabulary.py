@@ -1,5 +1,9 @@
-"""ProductionVocabulary: the identifier vocabulary of one scan, as one
-aggregate with named views, and the fold that keeps those views consistent."""
+"""The vocabularies of one scan as aggregates with named views.
+
+``ProductionVocabulary`` is the identifier vocabulary of production code;
+``DocumentationVocabulary`` is the prose vocabulary of production docs. Each
+owns the fold that keeps its views consistent, so callers take the aggregate
+and never carry its insides around as parallel dicts."""
 
 from __future__ import annotations
 
@@ -12,9 +16,6 @@ from glossabet.tokenize import (
     tokenize_identifier,
 )
 
-# Per-(token, module) neighbor sets are capped so the context-dispersion
-# analysis stays bounded; every set that hit the cap is recorded.
-MODULE_CONTEXT_ANALYSIS_CAP = 30
 # Per-(token, module) neighbor sets are capped so the context-dispersion
 # analysis stays bounded; every set that hit the cap is recorded.
 MODULE_CONTEXT_ANALYSIS_CAP = 30
@@ -120,3 +121,26 @@ class ProductionVocabulary:
         for rel, module, language, identifiers in files:
             vocabulary.fold(identifiers, rel, module, language)
         return vocabulary
+
+
+class DocumentationVocabulary:
+    """The production documentation vocabulary of one scan.
+
+    Built by folding each production doc file's word counts in (``fold``);
+    read through its named views, both keyed by the doc term as
+    ``tokenize.doc_words`` normalized it: ``term_counts`` total mentions ·
+    ``term_files`` per-file mention counts. Docs are not module-attributed,
+    so there is no per-module view. The terminology and naming analyses need
+    only ``term_counts``; the evidence artifact's ``doc_terms`` table also
+    reads ``term_files`` for its location samples.
+    """
+
+    def __init__(self) -> None:
+        self.term_counts: Counter = Counter()
+        self.term_files: dict[str, Counter] = defaultdict(Counter)
+
+    def fold(self, words: dict[str, int], rel: str) -> None:
+        """Fold one doc file's word counts into every view."""
+        self.term_counts.update(words)
+        for term, count in words.items():
+            self.term_files[term][rel] += count

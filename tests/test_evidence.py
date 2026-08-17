@@ -5,7 +5,8 @@ import json
 import os
 
 from glossabet.cli import main
-from glossabet.evidence import Limits, build_evidence, scan_command, write_evidence
+from glossabet.evidence import Limits, build_evidence, write_evidence
+from glossabet.evidence_report import scan_command
 
 
 def make_repo(tmp_path):
@@ -508,16 +509,16 @@ def test_oserror_during_read_is_confessed_as_unreadable(tmp_path, monkeypatch):
     (tmp_path / "core.py").write_text("core_service = 1\n")
     (tmp_path / "gone.py").write_text("vanished_service = 1\n")
 
-    import glossabet.evidence as evidence_module
+    import glossabet.extraction as extraction_module
 
-    real_read = evidence_module._read_source
+    real_read = extraction_module.read_source
 
     def failing_read(path):
         if path.name == "gone.py":
             return "unreadable"
         return real_read(path)
 
-    monkeypatch.setattr(evidence_module, "_read_source", failing_read)
+    monkeypatch.setattr(extraction_module, "read_source", failing_read)
     evidence = build_evidence(tmp_path)
 
     budget = evidence["skipped"]["corpus_budget"]
@@ -594,3 +595,22 @@ def test_exclusion_ledger_owns_every_skipped_key_and_sentence(tmp_path):
         "excluded 1 GLOSSARY.md file(s) from lexical evidence "
         "(never evidence for itself)",
     ]
+
+
+def test_documentation_vocabulary_views_stay_in_step():
+    # The doc-term table reads counts and per-file locations from the same
+    # aggregate; a fold that updated one view and not the other would let
+    # ``files`` disagree with ``count`` in evidence.
+    from glossabet.vocabulary import DocumentationVocabulary
+
+    documentation = DocumentationVocabulary()
+    documentation.fold({"tenant": 2, "ledger": 1}, "README.md")
+    documentation.fold({"tenant": 3}, "docs/guide.md")
+
+    assert documentation.term_counts == {"tenant": 5, "ledger": 1}
+    assert documentation.term_files["tenant"] == {
+        "README.md": 2, "docs/guide.md": 3,
+    }
+    assert documentation.term_files["ledger"] == {"README.md": 1}
+    for term, total in documentation.term_counts.items():
+        assert sum(documentation.term_files[term].values()) == total
