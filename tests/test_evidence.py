@@ -476,6 +476,15 @@ def test_hostile_git_filter_driver_via_config_include_does_not_execute(tmp_path)
     sp.run(["git", "config", "user.email", "t@t.t"], cwd=repo, check=True)
     sp.run(["git", "config", "user.name", "t"], cwd=repo, check=True)
     marker = tmp_path / "PWNED_INCLUDE"
+    # Commit BEFORE the filter driver exists, so `git add` itself never runs
+    # the attacker command (which assumes a POSIX `sh`/`touch` and would fail
+    # the staging on Windows). Only our freshness probe should encounter it.
+    (repo / "main.py").write_text("x = 1\n")
+    (repo / ".gitattributes").write_text("* filter=evil\n")
+    sp.run(["git", "add", "-A"], cwd=repo, check=True)
+    sp.run(["git", "-c", "commit.gpgsign=false", "commit", "-qm", "i"],
+           cwd=repo, check=True)
+    # Now define the driver via include.path (not directly in .git/config).
     include_file = repo / ".git" / "evil-include"
     include_file.write_text(
         "[filter \"evil\"]\n"
@@ -483,11 +492,6 @@ def test_hostile_git_filter_driver_via_config_include_does_not_execute(tmp_path)
         f"\tsmudge = sh -c 'touch {marker}; cat'\n"
     )
     sp.run(["git", "config", "include.path", str(include_file)],
-           cwd=repo, check=True)
-    (repo / "main.py").write_text("x = 1\n")
-    (repo / ".gitattributes").write_text("* filter=evil\n")
-    sp.run(["git", "add", "-A"], cwd=repo, check=True)
-    sp.run(["git", "-c", "commit.gpgsign=false", "commit", "-qm", "i"],
            cwd=repo, check=True)
     os.utime(repo / "main.py", (0, 0))  # racy-old forces the re-hash path
 

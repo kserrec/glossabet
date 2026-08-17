@@ -137,12 +137,19 @@ def _is_safe_relative(value: object) -> bool:
     """
     if not isinstance(value, str) or not value or "\x00" in value:
         return False
-    candidate = Path(value)
-    return not (
-        candidate.is_absolute()
-        or ".." in candidate.parts
-        or (len(value) >= 2 and value[1] == ":")  # Windows drive, e.g. C:\
-    )
+    # OS-agnostic on purpose: Path.is_absolute() is not — on Windows
+    # Path("/tmp/pwn").is_absolute() is False (no drive), so a POSIX absolute
+    # path would slip through when the harness runs on Windows. Reject every
+    # absolute/traversal form regardless of the running platform.
+    if value[0] in "/\\":  # POSIX-absolute or a leading path separator
+        return False
+    if "\\" in value:  # backslash: Windows separator, never in a relative spec
+        return False
+    if len(value) >= 2 and value[1] == ":":  # Windows drive, e.g. C:\ or C:foo
+        return False
+    if ".." in value.split("/"):  # parent traversal
+        return False
+    return True
 
 
 def _is_commit_sha(value: object) -> bool:
