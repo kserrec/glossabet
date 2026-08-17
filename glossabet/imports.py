@@ -15,10 +15,17 @@ _PATTERNS: dict[str, list[re.Pattern]] = {
         re.compile(r"^[ \t]*import\s+([\w.]+)", re.M),
         re.compile(r"^[ \t]*from[ \t]+([\w.]+)[ \t]+import", re.M),
     ],
+    # Match the module-string clauses directly rather than scanning forward
+    # from `import`/`export` across the binding list for a `from` that may be
+    # absent. A lazy `[^'"]*?from` scan reruns at every `import` keyword and is
+    # O(n^2) on a file full of `import ` tokens; matching `from '...'` (and the
+    # bare `import '...'` / `require(...)` forms) instead has no forward scan
+    # and is linear. `from '...'` covers `import ... from`, `export ... from`,
+    # and `export * from` in one pattern.
     "javascript": [
-        re.compile(r"""import\s+(?:[^'"]*?from\s+)?['"]([^'"]+)['"]"""),
-        re.compile(r"""require\(\s*['"]([^'"]+)['"]\s*\)"""),
-        re.compile(r"""export\s+[^'"]*?from\s+['"]([^'"]+)['"]"""),
+        re.compile(r"""\bfrom\s*['"]([^'"]+)['"]"""),
+        re.compile(r"""\bimport\s*['"]([^'"]+)['"]"""),
+        re.compile(r"""\brequire\(\s*['"]([^'"]+)['"]\s*\)"""),
     ],
     "go": [
         re.compile(r'^[ \t]*import\s+(?:\w+\s+)?"([^"]+)"', re.M),
@@ -40,7 +47,10 @@ _PATTERNS: dict[str, list[re.Pattern]] = {
 }
 _PATTERNS["typescript"] = _PATTERNS["javascript"]
 
-_GO_BLOCK = re.compile(r"import\s*\(([^)]*)\)", re.S)
+# Exclude `(` from the block body so an unclosed `import(` cannot scan forward
+# past the next parenthesis — otherwise `[^)]*` reruns to end-of-file at every
+# `import(` token, O(n^2). Real Go import paths never contain a parenthesis.
+_GO_BLOCK = re.compile(r"import\s*\(([^)(]*)\)", re.S)
 _GO_BLOCK_LINE = re.compile(r'^[ \t]*(?:\w+\s+)?"([^"]+)"', re.M)
 
 _JS_SUFFIXES = ("", ".js", ".ts", ".tsx", ".jsx", ".mjs", ".cjs",

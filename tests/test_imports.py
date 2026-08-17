@@ -26,6 +26,47 @@ def test_import_extraction_is_linear_on_blank_line_bomb():
         assert elapsed < 1.0, f"{language}: {elapsed:.2f}s — quadratic backtracking"
 
 
+def test_import_extraction_is_linear_on_keyword_repeat_bomb():
+    # Sibling of the blank-line bomb: the JS/TS `import`/`export` lazy
+    # `[^'"]*?from` scan and the Go `import(` block `[^)]*` scan reran a
+    # forward search at every keyword occurrence — O(n^2) on a file full of
+    # `import `/`export `/`import(` tokens (hours at the 2 MB cap, within every
+    # ceiling). Matching the module clause directly / excluding the paren makes
+    # them linear. Each ~1.4 MB keyword-repeat file must finish effectively
+    # instantly.
+    cases = [
+        ("javascript", "import " * 200_000),
+        ("javascript", "export " * 200_000),
+        ("javascript", "from " * 200_000),
+        ("typescript", "import " * 200_000),
+        ("go", "import(" * 200_000),
+    ]
+    for language, blob in cases:
+        start = time.perf_counter()
+        extract_imports(blob, language)
+        elapsed = time.perf_counter() - start
+        assert elapsed < 1.0, f"{language}: {elapsed:.2f}s — quadratic scan"
+
+
+def test_javascript_import_forms_are_extracted_linearly():
+    # The linear from-based extraction must still capture every real form.
+    assert extract_imports("import 'lodash'\n", "javascript") == ["lodash"]
+    assert extract_imports(
+        "import React, { useState } from 'react'\n", "javascript"
+    ) == ["react"]
+    assert extract_imports(
+        "import {\n a,\n b,\n} from './util'\n", "javascript"
+    ) == ["./util"]
+    assert extract_imports("export * from 'mod'\n", "javascript") == ["mod"]
+    assert extract_imports(
+        "const x = require('dep')\n", "javascript"
+    ) == ["dep"]
+    # Go import block still resolves every path.
+    assert extract_imports(
+        'import (\n\t"fmt"\n\t"corp/pkg"\n)\n', "go"
+    ) == ["fmt", "corp/pkg"]
+
+
 def test_import_extraction_still_matches_indented_statements():
     # The anchor fix must keep matching leading-whitespace import lines.
     assert extract_imports("    import os\n\tfrom a.b import c\n", "python") == [
@@ -231,6 +272,29 @@ def test_bounds_reported(tmp_path):
             "total_items", "included_items", "dropped_items",
             "total_items_exact", "complete", "reasons",
         }
+
+
+def test_edge_and_external_caps_report_exact_truncation_counts():
+    # "Bounded work with logged truncation": when the internal-edge list is
+    # capped at EDGE_CAP and externals at EXTERNAL_CAP, the dropped counts must
+    # be reported exactly, so a consumer can never read a capped list as the
+    # complete dependency graph. Guards against a truncation counter stuck at 0
+    # (which `test_bounds_reported` — a shape-only check — does not catch).
+    from glossabet.imports import build_imports_section, EDGE_CAP, EXTERNAL_CAP
+
+    extra_edges, extra_externals = 51, 10
+    code_files = [("hub/f.py", "")] + [
+        (f"m{i}/f.py", "") for i in range(EDGE_CAP + extra_edges)
+    ]
+    specs = [f"m{i}.f" for i in range(EDGE_CAP + extra_edges)] + [
+        f"extlib{i}" for i in range(EXTERNAL_CAP + extra_externals)
+    ]
+    section = build_imports_section([("hub/f.py", "python", specs)], code_files)
+
+    assert len(section["internal_edges"]) == EDGE_CAP
+    assert section["edges_truncated"] == extra_edges
+    assert len(section["external_top"]) == EXTERNAL_CAP
+    assert section["external_truncated"] == extra_externals
 
 
 def test_bare_relative_import_creates_no_phantom_root_edge(tmp_path):

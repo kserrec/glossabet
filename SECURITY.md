@@ -453,9 +453,14 @@ the opt-in developer/release operations that do use the network.
   path-prefix-pair work each overlap performs (not the owner count, which
   would let one concept carrying tens of thousands of prefixes hide a
   hundred-million-comparison overlap behind a charge of one), and reports its
-  section partial when reached. Import extraction is anchored so its
-  line-oriented patterns cannot backtrack across blank lines into quadratic
-  work. Real code never approaches either bound; both exist to keep a hostile
+  section partial when reached. Import extraction performs no unbounded
+  forward scan: the line-oriented patterns are anchored so they cannot
+  backtrack across blank lines, the JavaScript/TypeScript patterns match the
+  module clause directly instead of scanning from a keyword for a possibly
+  absent `from`, and the Go import-block body excludes parentheses so it
+  cannot run past the next one — each is linear in file size rather than
+  quadratic in the count of `import` tokens. Real code never approaches either
+  bound; both exist to keep a hostile
   glossary or source file from exhausting CPU/memory.
 - A symlink whose own name is ordinary but whose in-repository target has a
   sensitive name (for example `notes.py -> .env`) is classified sensitive by
