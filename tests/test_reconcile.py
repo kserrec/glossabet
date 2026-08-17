@@ -363,7 +363,7 @@ def test_validation_total_includes_dropped_items(tmp_path, monkeypatch):
         ],
     }
     (tmp_path / "main.py").write_text("ordinary_name = 1\n")
-    monkeypatch.setattr("glossabet.reconcile.FINDINGS_CAP", 1)
+    monkeypatch.setattr("glossabet.findings.FINDINGS_CAP", 1)
 
     validation = build_validation(build_evidence(tmp_path), glossary)
 

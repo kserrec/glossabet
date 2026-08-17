@@ -195,7 +195,7 @@ def test_total_findings_includes_dropped_items(tmp_path, monkeypatch):
         }],
     }
     (tmp_path / "terms.py").write_text("alpha = 1\nbeta = 2\ngamma = 3\n")
-    monkeypatch.setattr("glossabet.drift.FINDINGS_PER_KIND_CAP", 1)
+    monkeypatch.setattr("glossabet.findings.FINDINGS_CAP", 1)
 
     drift = build_drift(build_evidence(tmp_path), glossary)
 

@@ -16,7 +16,7 @@ from collections import defaultdict
 from itertools import combinations, islice
 
 from glossabet.artifacts import repo_root, write_artifact
-from glossabet.coverage import coverage_ledger, coverage_reasons
+from glossabet.coverage import coverage_ledger
 from glossabet.context_sync import (
     inspect_managed_context,
     print_managed_context_issues,
@@ -25,6 +25,16 @@ from glossabet.context_sync import (
 from glossabet.display import escape_terminal_text
 from glossabet.drift import build_drift
 from glossabet.evidence import build_evidence, write_evidence
+from glossabet import findings
+from glossabet.findings import (
+    capped_section,
+    finding,
+    collection_limitations,
+    mark_incomplete,
+    matching_reasons,
+    print_sections,
+    vocabulary_omission_reasons,
+)
 from glossabet.glossary import (
     concept_scope,
     path_in_scope,
@@ -42,7 +52,6 @@ from glossabet.tokenize import tokenize_term
 VALIDATION_SCHEMA_VERSION = 8
 VALIDATION_FILE = "validation.json"
 
-FINDINGS_CAP = 10
 FRAGMENTATION_MIN_MODULES = 5
 OVERLOADED_MIN_CONCEPTS = 3
 STRUCTURAL_MATCH_BUDGET = 50_000
@@ -127,33 +136,6 @@ def _resolve_bindings(
     return results
 
 
-def _covered_section(
-    items: list[dict],
-    total_items: int,
-    name: str,
-    *,
-    total_items_exact: bool,
-    incomplete_reasons: list[str],
-) -> dict:
-    kept = items[:FINDINGS_CAP]
-    reasons = list(incomplete_reasons)
-    if total_items > len(kept):
-        reasons.append(
-            f"{name} finding detail cap is {FINDINGS_CAP} items"
-        )
-    coverage = coverage_ledger(
-        total_items,
-        len(kept),
-        total_items_exact=total_items_exact,
-        reasons=reasons,
-    )
-    return {
-        "items": kept,
-        "dropped_items": coverage["dropped_items"],
-        "coverage": coverage,
-    }
-
-
 def _structure_findings(
     structural: dict,
     canonical: list[dict],
@@ -221,46 +203,37 @@ def _structure_findings(
             if strength >= 2
         )
         if group_complete and max(strengths.values(), default=0) == 0:
-            unnamed.append({
-                "kind": "unnamed-structure",
-                "signal_strength": "strong" if group["size"] >= 5 else "moderate",
-                "group": group["label"],
-                "evidence": {
-                    "size": group["size"],
-                    "members_sample": group["members_sample"],
-                },
-                "summary": (
-                    f"structural group '{group['label']}' "
-                    f"({group['size']} nodes) matches no canonical concept"
-                ),
-            })
+            unnamed.append(finding(
+                "unnamed-structure",
+                f"structural group '{group['label']}' "
+                f"({group['size']} nodes) matches no canonical concept",
+                {"size": group["size"], "members_sample": group["members_sample"]},
+                signal_strength="strong" if group["size"] >= 5 else "moderate",
+                group=group["label"],
+            ))
         group_pair_total = len(strong) * (len(strong) - 1) // 2
         boundary_total += group_pair_total
-        detail_slots = max(0, FINDINGS_CAP - len(boundary))
+        detail_slots = max(0, findings.FINDINGS_CAP - len(boundary))
         for a, b in islice(combinations(strong, 2), detail_slots):
-            boundary.append({
-                "kind": "boundary-mismatch",
-                "signal_strength": "moderate",
-                "concepts": [a, b],
-                "group": group["label"],
-                "evidence": {"members_sample": group["members_sample"]},
-                "summary": (
-                    f"'{a}' and '{b}' are distinct in the glossary but "
-                    f"both strongly match group '{group['label']}'"
-                ),
-            })
+            boundary.append(finding(
+                "boundary-mismatch",
+                f"'{a}' and '{b}' are distinct in the glossary but "
+                f"both strongly match group '{group['label']}'",
+                {"members_sample": group["members_sample"]},
+                signal_strength="moderate",
+                concepts=[a, b],
+                group=group["label"],
+            ))
         if len(strong) >= OVERLOADED_MIN_CONCEPTS:
-            overloaded.append({
-                "kind": "overloaded-structural-region",
-                "signal_strength": "moderate",
-                "group": group["label"],
-                "concepts": strong,
-                "evidence": {"members_sample": group["members_sample"]},
-                "summary": (
-                    f"group '{group['label']}' matches "
-                    f"{len(strong)} distinct canonical concepts"
-                ),
-            })
+            overloaded.append(finding(
+                "overloaded-structural-region",
+                f"group '{group['label']}' matches "
+                f"{len(strong)} distinct canonical concepts",
+                {"members_sample": group["members_sample"]},
+                signal_strength="moderate",
+                group=group["label"],
+                concepts=strong,
+            ))
     unnamed.sort(key=lambda f: (-f["evidence"]["size"], f["group"]))
     overloaded.sort(key=lambda f: f["group"])
 
@@ -288,16 +261,16 @@ def _structure_findings(
         reasons=work_reasons,
     )
     return (
-        _covered_section(
-            unnamed, len(unnamed), "unnamed structure",
+        capped_section(
+            unnamed, "unnamed structure",
             total_items_exact=exact, incomplete_reasons=reasons,
         ),
-        _covered_section(
-            boundary, boundary_total, "boundary mismatch",
+        capped_section(
+            boundary, "boundary mismatch", total_items=boundary_total,
             total_items_exact=exact, incomplete_reasons=reasons,
         ),
-        _covered_section(
-            overloaded, len(overloaded), "overloaded structural region",
+        capped_section(
+            overloaded, "overloaded structural region",
             total_items_exact=exact, incomplete_reasons=reasons,
         ),
         work_coverage,
@@ -327,25 +300,21 @@ def _concept_findings(
         for binding in bindings:
             if binding["status"] in {"unresolved", "out-of-scope"}:
                 out_of_scope = binding["status"] == "out-of-scope"
-                unresolved.append({
-                    "kind": (
-                        "binding-out-of-scope" if out_of_scope
-                        else "binding-unresolved"
+                unresolved.append(finding(
+                    "binding-out-of-scope" if out_of_scope
+                    else "binding-unresolved",
+                    f"'{concept['term']}' binding {binding['ref']} "
+                    + (
+                        "resolves outside the concept scope"
+                        if out_of_scope
+                        else "no longer resolves — drift signal, not an error"
                     ),
-                    "certainty": "observed",
-                    "concept_id": concept["id"],
-                    "ref": binding["ref"],
-                    "scope": scope_evidence(scope),
-                    "binding_status": binding["status"],
-                    "summary": (
-                        f"'{concept['term']}' binding {binding['ref']} "
-                        + (
-                            "resolves outside the concept scope"
-                            if out_of_scope
-                            else "no longer resolves — drift signal, not an error"
-                        )
-                    ),
-                })
+                    certainty="observed",
+                    scope=scope_evidence(scope),
+                    concept_id=concept["id"],
+                    ref=binding["ref"],
+                    binding_status=binding["status"],
+                ))
         if (
             term_tokens
             and occurrence["count_complete"]
@@ -369,18 +338,16 @@ def _concept_findings(
                 if len(term_tokens) == 1:
                     token = next(iter(term_tokens))
                     finding_evidence["token_counts"] = {token: count}
-                orphaned.append({
-                    "kind": "orphaned-concept",
-                    "signal_strength": signal_strength,
-                    "concept_id": concept["id"],
-                    "scope": scope_evidence(scope),
-                    "evidence": finding_evidence,
-                    "summary": (
-                        f"canonical '{concept['term']}' has weak "
-                        "implementation evidence (stale term, aspiration, "
-                        "or deliberately diffuse?)"
-                    ),
-                })
+                orphaned.append(finding(
+                    "orphaned-concept",
+                    f"canonical '{concept['term']}' has weak "
+                    "implementation evidence (stale term, aspiration, "
+                    "or deliberately diffuse?)",
+                    finding_evidence,
+                    signal_strength=signal_strength,
+                    scope=scope_evidence(scope),
+                    concept_id=concept["id"],
+                ))
         spread = occurrence["modules"]
         # A scoped single-token occurrence counts modules over the entry's
         # retained location sample, so a clipped sample undercounts spread:
@@ -396,17 +363,15 @@ def _concept_findings(
             and occurrence["locations_truncated"]
         )
         if spread >= FRAGMENTATION_MIN_MODULES:
-            fragmented.append({
-                "kind": "fragmentation",
-                "signal_strength": "weak",
-                "concept_id": concept["id"],
-                "scope": scope_evidence(scope),
-                "evidence": {"module_spread": spread},
-                "summary": (
-                    f"'{concept['term']}' spans {spread} modules — may be "
-                    "legitimately cross-cutting or problematically scattered"
-                ),
-            })
+            fragmented.append(finding(
+                "fragmentation",
+                f"'{concept['term']}' spans {spread} modules — may be "
+                "legitimately cross-cutting or problematically scattered",
+                {"module_spread": spread},
+                signal_strength="weak",
+                scope=scope_evidence(scope),
+                concept_id=concept["id"],
+            ))
         elif modules_sampled:
             fragmentation_suppressed += 1
     orphaned.sort(key=lambda f: f["concept_id"])
@@ -421,31 +386,6 @@ def _concept_findings(
             "because scoped occurrence evidence retains only a location sample"
         )
     return orphaned, unresolved, fragmented, fragmentation_reasons
-
-
-def _capped(items: list, name: str, incomplete_reasons: list[str]) -> dict:
-    return _covered_section(
-        items,
-        len(items),
-        name,
-        total_items_exact=not incomplete_reasons,
-        incomplete_reasons=incomplete_reasons,
-    )
-
-
-def _mark_incomplete(section: dict, reason: str) -> dict:
-    ledger = section["coverage"]
-    coverage = coverage_ledger(
-        ledger["total_items"],
-        ledger["included_items"],
-        total_items_exact=False,
-        reasons=[*ledger["reasons"], reason],
-    )
-    return {
-        **section,
-        "dropped_items": coverage["dropped_items"],
-        "coverage": coverage,
-    }
 
 
 def build_validation(
@@ -525,8 +465,8 @@ def build_validation(
             "items": [], "dropped_items": 0, "coverage": coverage
         }
     if scoped_canonical and graph_ok:
-        boundary = _mark_incomplete(boundary, scoped_structure_reason)
-        overloaded = _mark_incomplete(overloaded, scoped_structure_reason)
+        boundary = mark_incomplete(boundary, scoped_structure_reason)
+        overloaded = mark_incomplete(overloaded, scoped_structure_reason)
 
     orphaned, unresolved, fragmented, fragmentation_reasons = _concept_findings(
         canonical, vocab, evidence, matcher
@@ -546,19 +486,14 @@ def build_validation(
     inventory_reasons = [] if inventory_complete else [
         "repository corpus budget omitted accepted inventory evidence"
     ]
-    code_vocabulary_reasons = [
-        f"vocabulary.{name} omitted entries needed for exact matching"
-        for name in ("tokens", "identifiers")
-        if evidence["vocabulary"][name].get("truncated") is not None
-    ]
-    identifier_reasons = [
-        "vocabulary.identifiers omitted entries needed for binding resolution"
-    ] if evidence["vocabulary"]["identifiers"].get("truncated") is not None else []
-    matching_reasons = [
-        reason
-        for name, ledger in matcher.coverage.items()
-        for reason in coverage_reasons(ledger, f"matching.{name}")
-    ]
+    code_vocabulary_reasons = vocabulary_omission_reasons(
+        evidence, ("tokens", "identifiers")
+    )
+    identifier_reasons = vocabulary_omission_reasons(
+        evidence, ("identifiers",),
+        "vocabulary.{name} omitted entries needed for binding resolution",
+    )
+    matching_limits = matching_reasons(matcher)
 
     def structural_partial(section: dict) -> tuple[bool, str | None]:
         ledger = section["coverage"]
@@ -596,21 +531,20 @@ def build_validation(
             "partial": overloaded_partial,
             "partial_reason": overloaded_partial_reason,
         },
-        "orphaned_concepts": _capped(
-            orphaned,
-            "orphaned concept",
-            production_reasons + code_vocabulary_reasons + matching_reasons,
+        "orphaned_concepts": capped_section(
+            orphaned, "orphaned concept", incomplete_reasons=(
+                production_reasons + code_vocabulary_reasons + matching_limits
+            ),
         ),
-        "unresolved_bindings": _capped(
-            unresolved,
-            "unresolved binding",
-            inventory_reasons + identifier_reasons,
+        "unresolved_bindings": capped_section(
+            unresolved, "unresolved binding",
+            incomplete_reasons=inventory_reasons + identifier_reasons,
         ),
-        "fragmentation": _capped(
-            fragmented,
-            "fragmentation",
-            production_reasons + code_vocabulary_reasons + matching_reasons
-            + fragmentation_reasons,
+        "fragmentation": capped_section(
+            fragmented, "fragmentation", incomplete_reasons=(
+                production_reasons + code_vocabulary_reasons + matching_limits
+                + fragmentation_reasons
+            ),
         ),
         "vocabulary_drift": drift["parallel_terms"],
         "concept_collision": drift["canonical_overloaded"],
@@ -721,17 +655,10 @@ def _print_report(validation: dict) -> None:
             "suppressed where the evidence cannot prove them"
         )
     collection_coverage = coverage.get("collections", {})
-    limitations = list(dict.fromkeys(
-        reason
-        for key, ledger in collection_coverage.items()
-        if (
-            isinstance(ledger, dict)
-            and not ledger.get("total_items_exact", True)
-            and not validation.get(key, {}).get("skipped")
-        )
-        for reason in ledger.get("reasons", [])
-    ))
-    for reason in limitations:
+    for reason in collection_limitations(
+        collection_coverage,
+        skip=lambda key: bool(validation.get(key, {}).get("skipped")),
+    ):
         print(f"coverage limitation: {escape_terminal_text(reason)}")
     scopes = validation["scope_summary"]
     if scopes["path_scoped"]:
@@ -740,23 +667,7 @@ def _print_report(validation: dict) -> None:
             f"scopes: {scopes['path_scoped']} path-scoped concept(s); lexical "
             f"checks are scoped, structural scope coverage is {structural_state}"
         )
-    for key, title in _TITLES.items():
-        section = validation[key]
-        if section.get("skipped"):
-            continue
-        if not section["items"] and not section["dropped_items"]:
-            continue
-        print(f"\n== {title} ==")
-        for finding in section["items"]:
-            if "certainty" in finding:
-                annotation = f"certainty {finding['certainty']}"
-            else:
-                annotation = f"signal {finding['signal_strength']}"
-            summary = escape_terminal_text(finding["summary"])
-            safe_annotation = escape_terminal_text(annotation)
-            print(f"{summary} [{safe_annotation}]")
-        if section["dropped_items"]:
-            print(f"... and {section['dropped_items']} more not shown")
+    print_sections(validation, _TITLES, detail=False)
     _print_repository_glossary(validation.get("repository_glossary", {}))
     print(
         "\nNo one-to-one community=concept assumption; findings are evidence "

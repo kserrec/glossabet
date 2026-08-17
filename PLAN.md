@@ -1,8 +1,9 @@
 # Glossabet — Plan
 
-Status: **phases 0–22, Phases 24–32, and Phase 34 (`GLOSSABET.md` report)
-complete; Phase 33 (Claude Code ambient parity) in progress; owner
-self-testing pause active before the trusted-alpha gate** as of 2026-08-17.
+Status: **phases 0–22, Phases 24–32, Phase 34 (`GLOSSABET.md` report), and
+Phase 35 (deepening refactor) complete; Phase 33 (Claude Code ambient
+parity) in progress; owner self-testing pause active before the
+trusted-alpha gate** as of 2026-08-17.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
 Phases 24–28 were added 2026-08-15 from Kyle's self-testing findings and run
@@ -1694,7 +1695,7 @@ composition stays with the skill (the deterministic `scan` invents no
 agent-level judgment); the agent contract grew only the additive
 `skipped.self_reports` list. Full suite green after rebuild.
 
-### Phase 35 — Deepening refactor (zero behaviour change) — in progress 2026-08-17
+### Phase 35 — Deepening refactor (zero behaviour change) ✅ 2026-08-17
 
 **Goal:** apply the accepted findings of the 2026-08-17 architecture review
 (Matt Pocock's `improve-codebase-architecture` skill, verified by hand):
@@ -1748,6 +1749,23 @@ symlink rules (they differ on purpose).
 **Acceptance:** baseline diff empty after every step; full suite green;
 ARCHITECTURE.md module map updated for the new modules; wheel/plugin
 rebuilt through the existing process at the end.
+
+**Completion evidence (2026-08-17):** six commits (35.1–35.6), one per
+step. Byte-identical baseline (76 captured outputs across the four local
+corpus fixtures with their glossaries: every command's stdout/stderr and
+every `glossabet-out/*.json`, plus sync-context targets and cache-warm
+rescans) after every step; the self-scan of this repository was excluded
+from the oracle because the refactor changes the very source it reads. New
+modules: `git_state.py`, `managed_block.py`, `vocabulary.py`,
+`findings.py`; new tests: `test_git_state.py` (moved), `test_findings.py`,
+`test_module_dependencies.py`, reader/ledger cases in `test_artifacts.py`/
+`test_evidence.py`. `build_terminology` 10 → 2 parameters,
+`build_naming_candidates` 9 → 5. Not done, by decision: engine-run preamble
+module, single occurrence record, named terminal-escaping policy, agent-host
+registry, unified installer/context_sync symlink rules. Noted, not changed:
+`drift`/`reconcile` still import `print_managed_context_issues` from the
+`context_sync` command module — same direction smell as the stripper, left
+because it is a printer, not evidence.
 
 ### Owner self-testing pause — active, not an implementation phase
 

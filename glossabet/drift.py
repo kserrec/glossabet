@@ -13,7 +13,7 @@ from __future__ import annotations
 from itertools import combinations
 
 from glossabet.artifacts import repo_root, write_artifact
-from glossabet.coverage import capped_collection, coverage_reasons
+from glossabet.coverage import coverage_reasons
 from glossabet.context_sync import (
     inspect_managed_context,
     print_managed_context_issues,
@@ -21,6 +21,14 @@ from glossabet.context_sync import (
 )
 from glossabet.display import escape_terminal_text
 from glossabet.evidence import build_evidence, write_evidence
+from glossabet.findings import (
+    capped_section,
+    finding,
+    collection_limitations,
+    matching_reasons,
+    print_sections,
+    vocabulary_omission_reasons,
+)
 from glossabet.glossary import (
     concept_scope,
     path_in_scope,
@@ -35,7 +43,6 @@ from glossabet.tokenize import tokenize_term
 DRIFT_SCHEMA_VERSION = 6
 DRIFT_FILE = "drift.json"
 
-FINDINGS_PER_KIND_CAP = 10
 FADING_MAX_COUNT = 2
 # Cap on owner-scope overlap comparisons in _parallel_terms.
 PARALLEL_SCOPE_COMPARISON_BUDGET = 500_000
@@ -177,24 +184,22 @@ def _parallel_terms(
                 else "moderate" if similarity >= 0.55
                 else "weak"
             )
-            findings.append({
-                "kind": "parallel-term",
-                "signal_strength": signal_strength,
-                "new_term": new_term,
-                "canonical_term": concept["term"],
-                "concept_id": concept["id"],
-                "scope": scope_evidence(scope),
-                "evidence": {
+            findings.append(finding(
+                "parallel-term",
+                f"new term '{new_term}' parallels canonical "
+                f"'{concept['term']}' (similarity {similarity})",
+                {
                     "similarity": similarity,
                     "shared_contexts": item["shared_contexts"],
                     "canonical_occurrence": canonical_occurrence,
                     "new_occurrence": new_occurrence,
                 },
-                "summary": (
-                    f"new term '{new_term}' parallels canonical "
-                    f"'{concept['term']}' (similarity {similarity})"
-                ),
-            })
+                signal_strength=signal_strength,
+                scope=scope_evidence(scope),
+                new_term=new_term,
+                canonical_term=concept["term"],
+                concept_id=concept["id"],
+            ))
         if budget_exhausted:
             break
     findings.sort(key=lambda f: (
@@ -223,19 +228,17 @@ def _watched_in_use(
             continue
         count = occurrence["count"]
         quantity = f"at least {count}" if not occurrence["count_complete"] else str(count)
-        findings.append({
-            "kind": "watched-term-in-use",
-            "certainty": "observed",
-            "term": entry["term"],
-            "status": entry["status"],
-            "concept_id": entry["concept_id"],
-            "scope": scope_evidence(entry["scope"]),
-            "evidence": occurrence,
-            "summary": (
-                f"{entry['status']} term '{entry['term']}' still in use: "
-                f"{quantity} lexical occurrence(s)"
-            ),
-        })
+        findings.append(finding(
+            "watched-term-in-use",
+            f"{entry['status']} term '{entry['term']}' still in use: "
+            f"{quantity} lexical occurrence(s)",
+            occurrence,
+            certainty="observed",
+            scope=scope_evidence(entry["scope"]),
+            term=entry["term"],
+            status=entry["status"],
+            concept_id=entry["concept_id"],
+        ))
     findings.sort(key=lambda f: (-f["evidence"]["count"], f["term"]))
     return findings, _suppressed_reason(suppressed, "watched-term")
 
@@ -277,15 +280,15 @@ def _canonical_fading(
         }
         if len(tokens) == 1:
             finding_evidence["token_counts"] = {tokens[0]: count}
-        findings.append({
-            "kind": "canonical-fading",
-            "signal_strength": signal_strength,
-            "term": concept["term"],
-            "concept_id": concept["id"],
-            "scope": scope_evidence(scope),
-            "evidence": finding_evidence,
-            "summary": f"canonical '{concept['term']}' is {state}",
-        })
+        findings.append(finding(
+            "canonical-fading",
+            f"canonical '{concept['term']}' is {state}",
+            finding_evidence,
+            signal_strength=signal_strength,
+            scope=scope_evidence(scope),
+            term=concept["term"],
+            concept_id=concept["id"],
+        ))
     findings.sort(key=lambda f: f["term"])
     return findings
 
@@ -347,47 +350,24 @@ def _canonical_overloaded(evidence: dict, canonical: dict) -> list[dict]:
                 if dispersion < OVERLOAD_MIN_DISPERSION:
                     continue
                 module_count = len(modules)
-            findings.append({
-                "kind": "canonical-overloaded",
-                "signal_strength": (
-                    "strong" if dispersion >= 0.95 else "moderate"
-                ),
-                "term": concept["term"],
-                "concept_id": concept["id"],
-                "scope": scope_evidence(scope),
-                "evidence": {
+            findings.append(finding(
+                "canonical-overloaded",
+                f"canonical '{concept['term']}' used in disjoint contexts "
+                f"across {module_count} module(s)",
+                {
                     "dispersion": dispersion,
                     "modules": modules,
                     "modules_coverage": module_coverage,
                 },
-                "summary": (
-                    f"canonical '{concept['term']}' used in disjoint contexts "
-                    f"across {module_count} module(s)"
-                ),
-            })
+                signal_strength="strong" if dispersion >= 0.95 else "moderate",
+                scope=scope_evidence(scope),
+                term=concept["term"],
+                concept_id=concept["id"],
+            ))
     findings.sort(key=lambda f: (
         -f["evidence"]["dispersion"], f["term"], f["concept_id"]
     ))
     return findings
-
-
-def _capped(
-    findings: list[dict], name: str, incomplete_reasons: list[str]
-) -> dict:
-    kept, coverage = capped_collection(
-        findings,
-        FINDINGS_PER_KIND_CAP,
-        cap_reason=(
-            f"{name} finding detail cap is {FINDINGS_PER_KIND_CAP} items"
-        ),
-        total_items_exact=not incomplete_reasons,
-        incomplete_reasons=incomplete_reasons,
-    )
-    return {
-        "items": kept,
-        "dropped_items": coverage["dropped_items"],
-        "coverage": coverage,
-    }
 
 
 def _glossary_terms(glossary: dict) -> list[str]:
@@ -442,17 +422,10 @@ def build_drift(
     corpus_reasons = [] if corpus_complete else [
         "production corpus budget omitted accepted source evidence"
     ]
-    vocabulary_reasons = []
-    for name in ("tokens", "identifiers", "doc_terms"):
-        if evidence["vocabulary"][name].get("truncated") is not None:
-            vocabulary_reasons.append(
-                f"vocabulary.{name} omitted entries needed for exact matching"
-            )
-    matching_reasons = [
-        reason
-        for name, ledger in matcher.coverage.items()
-        for reason in coverage_reasons(ledger, f"matching.{name}")
-    ]
+    vocabulary_reasons = vocabulary_omission_reasons(
+        evidence, ("tokens", "identifiers", "doc_terms")
+    )
+    matching_limits = matching_reasons(matcher)
 
     parallel_findings, parallel_suppressed = _parallel_terms(
         evidence, canonical, known_scopes, matcher
@@ -470,13 +443,13 @@ def build_drift(
         (
             "watched_terms_in_use",
             watched_findings,
-            corpus_reasons + vocabulary_reasons + matching_reasons
+            corpus_reasons + vocabulary_reasons + matching_limits
             + watched_suppressed,
         ),
         (
             "canonical_fading",
             _canonical_fading(glossary, matcher),
-            corpus_reasons + vocabulary_reasons + matching_reasons,
+            corpus_reasons + vocabulary_reasons + matching_limits,
         ),
         (
             "canonical_overloaded",
@@ -486,7 +459,9 @@ def build_drift(
             + _scoped_overload_reasons(evidence, canonical),
         ),
     ):
-        sections[name] = _capped(findings, name, reasons)
+        sections[name] = capped_section(
+            findings, name, incomplete_reasons=reasons,
+        )
 
     total = sum(
         section["coverage"]["total_items"] for section in sections.values()
@@ -520,6 +495,14 @@ def build_drift(
     }
 
 
+_TITLES = {
+    "parallel_terms": "new terms paralleling canonical vocabulary",
+    "watched_terms_in_use": "discouraged/deprecated terms still in use",
+    "canonical_fading": "canonical terms fading from code",
+    "canonical_overloaded": "canonical terms in disjoint contexts",
+}
+
+
 def _print_report(drift: dict) -> None:
     complete = drift.get("total_findings_complete", True)
     count_label = "finding(s)" if complete else "evaluated finding(s)"
@@ -534,66 +517,9 @@ def _print_report(drift: dict) -> None:
             "suppressed where the evidence cannot prove them"
         )
     collection_coverage = drift.get("coverage", {}).get("collections", {})
-    limitations = list(dict.fromkeys(
-        reason
-        for ledger in collection_coverage.values()
-        if isinstance(ledger, dict) and not ledger.get("total_items_exact", True)
-        for reason in ledger.get("reasons", [])
-    ))
-    for reason in limitations:
+    for reason in collection_limitations(collection_coverage):
         print(f"coverage limitation: {escape_terminal_text(reason)}")
-    titles = {
-        "parallel_terms": "new terms paralleling canonical vocabulary",
-        "watched_terms_in_use": "discouraged/deprecated terms still in use",
-        "canonical_fading": "canonical terms fading from code",
-        "canonical_overloaded": "canonical terms in disjoint contexts",
-    }
-    for key, title in titles.items():
-        section = drift[key]
-        if not section["items"] and not section["dropped_items"]:
-            continue
-        print(f"\n== {title} ==")
-        for finding in section["items"]:
-            if "certainty" in finding:
-                annotation = f"certainty {finding['certainty']}"
-            else:
-                annotation = f"signal {finding['signal_strength']}"
-            summary = escape_terminal_text(finding["summary"])
-            safe_annotation = escape_terminal_text(annotation)
-            print(f"{summary} [{safe_annotation}]")
-            if finding.get("scope", {}).get("kind") == "path-prefixes":
-                print(
-                    "    scope: "
-                    + ", ".join(
-                        escape_terminal_text(path)
-                        for path in finding["scope"]["path_prefixes"]
-                    )
-                )
-            evidence = finding["evidence"]
-            if "shared_contexts" in evidence:
-                print(
-                    "    shared contexts: "
-                    + ", ".join(
-                        escape_terminal_text(context)
-                        for context in evidence["shared_contexts"]
-                    )
-                )
-            if "locations" in evidence and evidence["locations"]:
-                sample = ", ".join(
-                    escape_terminal_text(location["path"])
-                    for location in evidence["locations"][:3]
-                )
-                print(f"    e.g. {sample}")
-            if isinstance(evidence.get("modules"), list):
-                print(
-                    "    modules: "
-                    + ", ".join(
-                        escape_terminal_text(module["path"])
-                        for module in evidence["modules"]
-                    )
-                )
-        if section["dropped_items"]:
-            print(f"... and {section['dropped_items']} more not shown")
+    print_sections(drift, _TITLES, detail=True)
     if drift["total_findings"]:
         print(
             "\nFindings are evidence for the team, not verdicts — "

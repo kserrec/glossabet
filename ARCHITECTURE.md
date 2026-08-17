@@ -436,6 +436,16 @@ The package is `glossabet/`. Grouped by role:
   Every object rejects unknown fields; accepted concepts, aliases, bindings,
   scope paths, strings, and diagnostics have semantic ceilings. Vocabulary
   ownership uses a per-term path-prefix trie rather than pairwise owner scans.
+- `findings.py` — the findings document drift and validation share:
+  `finding()` (exactly one of `certainty` / `signal_strength`, the status
+  the renderer keys on), `capped_section()` with the shared coverage ledger
+  and reported cap (`FINDINGS_CAP`), `mark_incomplete()`, the
+  evidence-limitation derivation that alone reads RepositoryEvidence's
+  `vocabulary[*].truncated` markers and the matcher's work ledgers
+  (`vocabulary_omission_reasons()`, `matching_reasons()`,
+  `collection_limitations()`), and `print_sections()`, the one terminal
+  renderer of annotated finding lines. `drift` and `reconcile` decide what is
+  a finding; this module owns how findings are shaped, bounded, and printed.
 - `drift.py` — `build_drift()` compares fresh evidence against the glossary:
   new terms paralleling canonical ones, discouraged/deprecated terms still in
   use, canonical terms fading from code, and canonical terms living in disjoint
