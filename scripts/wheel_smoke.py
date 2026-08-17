@@ -38,15 +38,25 @@ def _capture(
     input_text: str | None = None,
 ) -> str:
     print(f"$ {' '.join(command)}", flush=True)
-    result = subprocess.run(
-        command,
-        cwd=cwd,
-        env=env,
-        input=input_text,
-        text=True,
-        capture_output=True,
-        check=True,
-    )
+    try:
+        result = subprocess.run(
+            command,
+            cwd=cwd,
+            env=env,
+            input=input_text,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        # check=True raises before the echo below; without this the child's
+        # diagnostic dies with its temp dir and only the exit status is
+        # ever seen.
+        if exc.stdout:
+            print(exc.stdout, end="", flush=True)
+        if exc.stderr:
+            print(exc.stderr, end="", file=sys.stderr, flush=True)
+        raise
     if result.stdout:
         print(result.stdout, end="", flush=True)
     if result.stderr:

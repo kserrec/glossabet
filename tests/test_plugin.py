@@ -46,6 +46,9 @@ def test_plugin_manifest_and_sources_are_version_coupled():
     assert manifest["hooks"] == "./hooks/hooks.json"
     assert manifest["license"] == "Apache-2.0"
     assert manifest["author"]["name"] == "Kyle Serrecchia"
+    # The marketplace UI links these; they must track the renamed repo.
+    assert manifest["homepage"] == "https://github.com/kserrec/glossabet"
+    assert manifest["repository"] == "https://github.com/kserrec/glossabet"
     assert PLUGIN_SKILL.read_bytes() == SKILL.read_bytes()
 
     skill_text = SKILL.read_text(encoding="utf-8")

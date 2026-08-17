@@ -6,8 +6,8 @@
     "name": "Kyle Serrecchia",
     "url": "https://github.com/kserrec"
   },
-  "homepage": "https://github.com/kserrec/glossarize",
-  "repository": "https://github.com/kserrec/glossarize",
+  "homepage": "https://github.com/kserrec/glossabet",
+  "repository": "https://github.com/kserrec/glossabet",
   "license": "Apache-2.0",
   "keywords": ["code-quality", "glossary", "terminology"],
   "skills": "./skills/",

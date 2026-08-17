@@ -32,6 +32,7 @@ def _run(
     command: list[str], *, cwd: Path, parse_json: bool = False,
     echo_stdout: bool = True,
     timeout: int = 120,
+    env: dict | None = None,
 ) -> str | dict:
     print(f"$ {' '.join(command)}", flush=True)
     result = subprocess.run(
@@ -40,6 +41,7 @@ def _run(
         text=True,
         capture_output=True,
         timeout=timeout,
+        env=env,
     )
     if result.stdout and echo_stdout:
         print(result.stdout, end="", flush=True)
@@ -100,7 +102,10 @@ def _extract_sdist(sdist: Path, destination: Path) -> Path:
                 _fail(f"source distribution has link/device: {member.name}")
             if any(_dotenv_part(part) for part in path.parts):
                 _fail(f"source distribution has forbidden dotenv path: {member.name}")
-        archive.extractall(destination)
+        try:
+            archive.extractall(destination, filter="data")
+        except TypeError:  # interpreters predating the extraction filter
+            archive.extractall(destination)
     roots = [path for path in destination.iterdir() if path.is_dir()]
     return _one(roots, "extracted source root")
 
@@ -199,6 +204,7 @@ def _verify_install(
     data: dict,
     version: str,
     canonical_skill: bytes,
+    source_hook_bytes: bytes,
     probe_root: Path,
     marketplace_name: str,
 ) -> Path:
@@ -219,11 +225,10 @@ def _verify_install(
         _fail("installed skill differs from canonical source")
     runner = skill_root / "scripts" / "run_glossabet.py"
     installed_hook = installed / "hooks" / "hooks.json"
-    source_hook = PLUGIN / "hooks" / "hooks.json"
     if (
         installed_hook.is_symlink()
         or not installed_hook.is_file()
-        or installed_hook.read_bytes() != source_hook.read_bytes()
+        or installed_hook.read_bytes() != source_hook_bytes
     ):
         _fail("installed session-start hook differs from source")
     output = _run([sys.executable, str(runner), "--version"], cwd=ROOT)
@@ -237,7 +242,7 @@ def _verify_install(
         encoding="utf-8",
     )
     glossary = sample / "glossabet-out" / "glossary.json"
-    glossary.parent.mkdir()
+    glossary.parent.mkdir(exist_ok=True)
     glossary.write_text(
         json.dumps(
             {
@@ -265,6 +270,7 @@ def _verify_install(
         [sys.executable, str(runner), "inspect", str(sample), "--no-graphify"],
         cwd=ROOT,
         echo_stdout=False,
+        env={**os.environ, "GLOSSABET_CACHE_DIR": str(probe_root / "cache")},
     )
     context = json.loads(str(context_text))
     if context.get("generator") != {"name": "glossabet", "version": version}:
@@ -276,7 +282,11 @@ def _verify_install(
     hook_result = subprocess.run(
         hook_command,
         cwd=sample,
-        env={**os.environ, "PLUGIN_ROOT": str(installed)},
+        env={
+            **os.environ,
+            "PLUGIN_ROOT": str(installed),
+            "GLOSSABET_CACHE_DIR": str(probe_root / "cache"),
+        },
         text=True,
         capture_output=True,
         shell=True,
@@ -380,6 +390,7 @@ def main() -> int:
                 installed_data,
                 version,
                 canonical_skill,
+                (PLUGIN / "hooks" / "hooks.json").read_bytes(),
                 workspace,
                 marketplace_name,
             )
@@ -402,6 +413,7 @@ def main() -> int:
                 updated_data,
                 next_version,
                 (updated_plugin / "skills" / "glossabet" / "SKILL.md").read_bytes(),
+                (updated_plugin / "hooks" / "hooks.json").read_bytes(),
                 workspace,
                 marketplace_name,
             )
@@ -430,16 +442,27 @@ def main() -> int:
                 except Exception as exc:
                     cleanup_errors.append(str(exc))
             if installed_market_cache is not None and installed_market_cache.exists():
-                remaining = list(installed_market_cache.iterdir())
-                if remaining:
-                    cleanup_errors.append(
-                        f"Codex removal left cache content: {remaining!r}"
-                    )
-                else:
-                    installed_market_cache.rmdir()
-
-        if cleanup_errors:
-            _fail("; ".join(cleanup_errors))
+                try:
+                    remaining = list(installed_market_cache.iterdir())
+                    if remaining:
+                        cleanup_errors.append(
+                            f"Codex removal left cache content: {remaining!r}"
+                        )
+                    else:
+                        installed_market_cache.rmdir()
+                except OSError as exc:
+                    cleanup_errors.append(str(exc))
+            if cleanup_errors:
+                message = "; ".join(cleanup_errors)
+                if sys.exc_info()[0] is None:
+                    _fail(message)
+                # A primary failure is already propagating; report the
+                # cleanup problems without replacing it.
+                print(
+                    f"plugin smoke cleanup: {message}",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
         marketplaces = _run(
             ["codex", "plugin", "marketplace", "list", "--json"],

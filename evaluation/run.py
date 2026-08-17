@@ -26,6 +26,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from glossabet import __version__  # noqa: E402
 from glossabet.cache import CACHE_ROOT_ENV  # noqa: E402
+from glossabet.config import CONFIG_FILE  # noqa: E402
 from glossabet.drift import (  # noqa: E402
     DRIFT_SCHEMA_VERSION,
     build_drift,
@@ -174,7 +175,7 @@ def _corpus_identity(root: Path, evidence: dict, *, graphify: bool = False) -> d
         for item in evidence["files"][kind]
     ]
     if evidence.get("configuration", {}).get("present"):
-        paths.append("glossabet.json")
+        paths.append(CONFIG_FILE)
     if graphify and (root / GRAPH_PATH).is_file():
         paths.append(GRAPH_PATH)
     return {
@@ -1053,6 +1054,11 @@ def _aggregate(
         event["surface"] == "corpus_budget"
         for case in cases for event in case["truncations"]
     )
+    known_reuse = [
+        case["cache"]["reuse_rate"]
+        for case in cases
+        if case["cache"]["reuse_rate"] is not None
+    ]
     return {
         "cases": len(cases),
         "source_files": source_files,
@@ -1107,8 +1113,10 @@ def _aggregate(
             "all_warm_outputs_match_cold": all(
                 case["cache"]["warm_output_matches_cold"] for case in cases
             ),
-            "minimum_reuse_rate": min(
-                case["cache"]["reuse_rate"] for case in cases
+            # An empty corpus has no measurable reuse rate (None); it must
+            # not crash the aggregate or masquerade as a measured minimum.
+            "minimum_reuse_rate": (
+                min(known_reuse) if known_reuse else None
             ),
         },
         "truncation": {
@@ -1548,6 +1556,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.current and args.verify_results is None:
         parser.error("--current requires --verify-results")
+    if args.case and args.check:
+        parser.error(
+            "--check gates release thresholds, which a partial --case run "
+            "never computes; drop --case or --check"
+        )
+    if args.case and args.output == DEFAULT_RESULTS:
+        parser.error(
+            "--case writes a partial document; pass an explicit --output "
+            "so the committed release evidence is not overwritten"
+        )
     if args.verify_results is not None:
         try:
             errors = verify_results(

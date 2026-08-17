@@ -317,3 +317,42 @@ def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path):
             expected in error
             for error in verify_results(path, MANIFEST, current=True)
         )
+
+
+def test_partial_case_runs_refuse_check_and_default_output(tmp_path):
+    base = [sys.executable, str(ROOT / "evaluation" / "run.py")]
+
+    with_check = subprocess.run(
+        [*base, "--case", "calibration-fixture", "--runs", "1", "--check",
+         "--output", str(tmp_path / "r.json")],
+        cwd=ROOT, capture_output=True, text=True, timeout=30,
+    )
+    assert with_check.returncode == 2
+    assert "--check gates release thresholds" in with_check.stderr
+
+    default_output = subprocess.run(
+        [*base, "--case", "calibration-fixture", "--runs", "1"],
+        cwd=ROOT, capture_output=True, text=True, timeout=30,
+    )
+    assert default_output.returncode == 2
+    assert "committed release evidence" in default_output.stderr
+    committed = (ROOT / "evaluation" / "results.json").read_bytes()
+    assert b'"runtime_runs_per_case": 5' in committed
+
+
+def test_aggregate_tolerates_an_empty_corpus_reuse_rate():
+    from copy import deepcopy
+
+    from evaluation.run import _aggregate
+
+    results = json.loads(RESULTS.read_text(encoding="utf-8"))
+    cases = deepcopy(results["cases"])
+    cases[0]["cache"]["reuse_rate"] = None
+
+    aggregate = _aggregate(
+        cases, results["self_register"], results["self_nominations"]
+    )
+    others = [
+        case["cache"]["reuse_rate"] for case in cases[1:]
+    ]
+    assert aggregate["cache"]["minimum_reuse_rate"] == min(others)
