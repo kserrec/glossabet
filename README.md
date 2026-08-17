@@ -9,10 +9,26 @@ vocabulary healthy as the code evolves. Deterministic machinery gathers
 lexical and structural evidence; an agent skill (`/glossabet`) brainstorms
 names grounded in that evidence; **the human decides what becomes canonical**.
 
-**Glossabet is the project and product name.** Its human-facing Markdown
-document is still a glossary: `GLOSSARY.md`. The machine-readable companion is
-`glossabet-out/glossary.json`; together they preserve the reasoning for people
-and the validated state used by the engine.
+**Glossabet is the project and product name.** It keeps three different
+things separate:
+
+- `GLOSSARY.md` — the vocabulary humans have agreed to use.
+- `GLOSSABET.md` — Glossabet's human-readable analysis of the health and
+  alignment of that vocabulary: gaps, overloads, suspected synonyms, drift,
+  glossary/code disagreement, proposals, open questions, coverage limits.
+- `glossabet-out/glossary.json` — structured vocabulary state used for
+  resumption, drift detection, validation, scopes, aliases, and bindings.
+
+The glossary tells the team what the words mean; the Glossabet report tells
+the team whether those words still match the codebase. `GLOSSABET.md` is not
+a better glossary and never replaces `GLOSSARY.md` — its value is precisely
+that it lets `GLOSSARY.md` remain a glossary. The `/glossabet` skill writes
+the report at the scan root when it finalizes, or on request when a session
+ends with open findings; it clearly marks proposed and unresolved items as
+non-canonical, is refreshed as one report rather than appended to, and is
+derived output — safe to regenerate, excluded from lexical evidence so it can
+never become evidence for its own next run, and excluded from the freshness
+stamp so regenerating it never makes evidence look stale.
 
 Optionally, Glossabet consumes [Graphify](https://github.com/Graphify-Labs/graphify)
 output as richer structural evidence and can reconcile the settled glossary
@@ -305,18 +321,29 @@ have two different lifecycles:
   is intentionally being discarded or is recoverable from version control.
   For a shared team glossary, commit both `GLOSSARY.md` and
   `glossabet-out/glossary.json`.
+- Root `GLOSSABET.md`, the vocabulary-health report the skill writes next to
+  `GLOSSARY.md`, is a derived Glossabet artifact outside that directory: not
+  the authoritative machine state (`glossary.json` is) and not the
+  authoritative human vocabulary (`GLOSSARY.md` is). It is safe to delete
+  and regenerate — deleting it changes no canonical state — and teams may
+  commit it so findings are visible in review; its role stays derived.
+  A nested `GLOSSABET.md` belongs to the subproject scan that wrote it.
 
 The evidence freshness stamp records the commit and worktree state
 with live Git state while excluding only that top-level `glossabet-out/`
-directory. This makes a clean repository immediately fresh after its first
+directory and the scan root's own `GLOSSABET.md` — both are Glossabet-owned
+output, so regenerating them does not make the inputs they were built from
+look stale. This makes a clean repository immediately fresh after its first
 scan, whether generated output is tracked or untracked. Changes elsewhere
-inside the scanned root — including `GLOSSARY.md` and `graphify-out/` — remain
+inside the scanned root — including `GLOSSARY.md` (human-governed vocabulary,
+deliberately *not* treated as output despite the similar name), a nested
+subproject's `GLOSSABET.md`, and `graphify-out/` — remain
 visible. Pre-rename `.glossarize/` and `glossarize-out/` paths stay excluded so
 old tool artifacts cannot contaminate a new scan. A subproject scan uses that
 subproject, not an enclosing Git worktree, as its scope. The freshness check
 still treats cache and pre-rename paths like ordinary Git state unless Git
-ignores them; only the top-level current `glossabet-out/` is filtered from Git
-status. Git-ignored files follow Git's normal
+ignores them; only the top-level current `glossabet-out/` and root
+`GLOSSABET.md` are filtered from Git status. Git-ignored files follow Git's normal
 semantics and therefore cannot make the stamp dirty; a repository without a
 readable `HEAD` is reported as unverified. The skill does not reimplement this
 check: `inspect` builds its bounded context from live inputs in that same CLI

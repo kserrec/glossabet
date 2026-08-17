@@ -10,6 +10,14 @@ This first alpha is prepared but has not been published to PyPI.
 
 ### Added
 
+- `GLOSSABET.md`, the repository vocabulary-health report: the skill writes
+  Glossabet's analysis (gaps, overloads, suspected synonyms, drift,
+  glossary/code disagreement, structural findings, proposals, open
+  questions, coverage limits) at the scan root as one refreshed report,
+  separate from the canonical `GLOSSARY.md` and the structured
+  `glossabet-out/glossary.json`. The engine excludes it from lexical
+  evidence at any depth (`skipped.self_reports`) and from the freshness
+  stamp at the root; `GLOSSARY.md` stays visible to freshness.
 - Claude Code ambient parity: `glossabet install --agent claude` makes the
   personal skill folder a skills-directory plugin with a `SessionStart` hook
   that runs `brief .`, writing nothing outside that folder; `--skill-only`

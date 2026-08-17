@@ -14,6 +14,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from glossabet.artifacts import REPORT_FILE
 from glossabet.config import EXCLUDED_CONTENT_ROLES, RepositoryConfig
 
 CODE_LANGUAGES = {
@@ -60,6 +61,14 @@ SELF_DIRS = frozenset({
 # Excluded at any depth: a monorepo sub-project's settled glossary echoes
 # through evidence exactly like the root one would.
 SELF_FILES = frozenset({"GLOSSARY.md"})
+# Also excluded at any depth, for a different reason: GLOSSARY.md is
+# maintainer-authored and is kept out so Glossabet can validate it
+# independently; GLOSSABET.md is Glossabet's own derived vocabulary-health
+# report (written by the skill at the scan root), kept out because a report's
+# proposed names, explanations, and open questions must never count as
+# repository vocabulary for the report's next run. Neither is a Glossabet
+# machine-state file: deleting either changes no canonical state.
+SELF_REPORT_FILES = frozenset({REPORT_FILE})
 
 MAX_FILE_BYTES = 2_000_000
 # Phase 15 calibration: 84 source files / 659,141 bytes took a 0.32-second
@@ -216,6 +225,9 @@ class WalkResult:
     # so the self-file exclusion is never silent; the root file's safe
     # discovery is a separate channel (glossabet.repository_glossary).
     skipped_self_glossaries: list[str] = field(default_factory=list)
+    # Every GLOSSABET.md the walk saw and excluded (root and nested): derived
+    # Glossabet report output, reported so the exclusion is never silent.
+    skipped_self_reports: list[str] = field(default_factory=list)
     sub_roots: list[str] = field(default_factory=list)
     workspace_manifests: list[str] = field(default_factory=list)
     corpus_budget: CorpusBudget = field(default_factory=CorpusBudget)
@@ -354,6 +366,9 @@ def _classify_files(
         rel = fname if is_root else f"{rel_dir}/{fname}"
         if fname in SELF_FILES:
             result.skipped_self_glossaries.append(rel)
+            continue
+        if fname in SELF_REPORT_FILES:
+            result.skipped_self_reports.append(rel)
             continue
         if result.corpus_budget.walk_entries >= MAX_WALK_ENTRIES:
             result.corpus_budget.truncate_walk(

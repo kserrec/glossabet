@@ -96,7 +96,13 @@ root `GLOSSARY.md`, the engine reports it separately (presence, safe-read
 status, size, digest) without ever counting its words as vocabulary
 evidence; the skill then forms its own naming model first, reads the
 maintainers' document only afterwards, reconciles the two, and edits the
-existing file surgically — never regenerating it — once the human settles. Thereafter, run `glossabet drift` and
+existing file surgically — never regenerating it — once the human settles.
+Alongside, the skill writes `GLOSSABET.md` at the same root: Glossabet's
+vocabulary-health report (gaps, overloads, suspected synonyms, drift,
+glossary/code disagreement, proposals marked as proposed, open questions,
+coverage limits). It is analysis, not the glossary — derived output that is
+excluded from evidence and freshness, safe to regenerate, and refreshed as
+one report rather than appended to. Thereafter, run `glossabet drift` and
 `glossabet validate` as the code evolves.
 
 Before analyzing confidential code or using an agent host, read

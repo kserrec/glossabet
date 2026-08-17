@@ -25,7 +25,8 @@ equivalent installed-host probe and are not called supported.
 
 Both routes leave analyzed repositories alone during package/plugin removal.
 `glossabet-out/glossary.json` is human-governed project state, derived reports
-share that output directory, and the platform cache is a disposable
+share that output directory, root `GLOSSABET.md` is a derived vocabulary-health
+report the skill can regenerate, and the platform cache is a disposable
 performance optimization. Their ownership and cleanup rules are independent
 from software installation.
 

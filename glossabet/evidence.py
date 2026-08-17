@@ -18,7 +18,7 @@ from itertools import combinations
 from pathlib import Path
 
 from glossabet import __version__
-from glossabet.artifacts import OUT_DIR, repo_root, write_artifact
+from glossabet.artifacts import OUT_DIR, REPORT_FILE, repo_root, write_artifact
 from glossabet.cache import entry_if_valid, load_cache, save_cache
 from glossabet.config import load_config
 from glossabet.coverage import coverage_ledger
@@ -83,9 +83,15 @@ def _resolve_git() -> str:
     return shutil.which("git") or "git"
 
 # Freshness describes repository inputs, not Glossabet's own output. Keep the
-# pathspec here literal and mirrored in skill/SKILL.md: the whole top-level
-# output directory is Glossabet-owned, whether its files are tracked or
-# untracked. The pathspec is relative to `git -C root`, not Git's top level,
+# pathspec here literal and documented in ARCHITECTURE.md/README: the whole
+# top-level output directory and the root GLOSSABET.md vocabulary-health
+# report are Glossabet-owned derived output, whether tracked or untracked, so
+# regenerating them never makes the inputs they were generated from look
+# stale. GLOSSARY.md is deliberately NOT excluded: it is human-governed
+# vocabulary, and a change to it is meaningful repository state. Only the
+# scan root's GLOSSABET.md is excluded; a nested subproject's report is that
+# subproject's output, not this scan's, and stays visible like any other
+# path. The pathspec is relative to `git -C root`, not Git's top level,
 # because a supported per-subproject scan may start inside a larger worktree.
 # --no-renames ensures a move across that ownership boundary still exposes the
 # changed non-output path. Git-ignored paths retain Git's ordinary status
@@ -99,6 +105,7 @@ _GIT_FRESHNESS_STATUS_ARGS = (
     ".",
     f":(exclude){OUT_DIR}",
     f":(exclude){OUT_DIR}/**",
+    f":(exclude){REPORT_FILE}",
 )
 
 
@@ -544,6 +551,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
             "generated": sorted(walk.skipped_generated),
             "vendored": sorted(walk.skipped_vendored),
             "self_glossaries": sorted(walk.skipped_self_glossaries),
+            "self_reports": sorted(walk.skipped_self_reports),
             "oversized_identifiers": vocabulary.oversized_identifiers,
             "corpus_budget": walk.corpus_budget.as_evidence(),
         },
@@ -766,6 +774,12 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
         print(
             f"excluded {len(skipped['self_glossaries'])} GLOSSARY.md file(s) "
             "from lexical evidence (never evidence for itself)",
+            file=sys.stderr,
+        )
+    if skipped["self_reports"]:
+        print(
+            f"excluded {len(skipped['self_reports'])} GLOSSABET.md report(s) "
+            "from lexical evidence (derived Glossabet output)",
             file=sys.stderr,
         )
     budget = skipped["corpus_budget"]

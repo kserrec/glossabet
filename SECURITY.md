@@ -82,6 +82,13 @@ sequences or reorder the displayed result.
   `test_walk_work_budget_marks_unknown_remainder`, and
   `test_overfull_directory_is_skipped_whole_to_preserve_determinism`.
 
+- **Glossabet's own `GLOSSABET.md` report is never ingested.** The
+  vocabulary-health report the skill writes at the scan root is excluded
+  from lexical evidence at any depth (`SELF_REPORT_FILES`) and from the
+  freshness stamp (root only), so its proposed names and explanations cannot
+  become evidence or fake documentation support for its own next run, and
+  no command reads it as glossary state.
+
 - **A repository's own root `GLOSSARY.md` is discovered, never ingested.**
   `glossabet/repository_glossary.py` reads at most `MAX_FILE_BYTES + 1`
   bytes of the exact-named root entry and reports presence, safe-read

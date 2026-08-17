@@ -1,8 +1,8 @@
 # Glossabet — Plan
 
-Status: **phases 0–22 and Phases 24–32 complete; Phase 33 (Claude Code
-ambient parity) in progress; owner self-testing pause active before the
-trusted-alpha gate** as of 2026-08-17.
+Status: **phases 0–22, Phases 24–32, and Phase 34 (`GLOSSABET.md` report)
+complete; Phase 33 (Claude Code ambient parity) in progress; owner
+self-testing pause active before the trusted-alpha gate** as of 2026-08-17.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
 Phases 24–28 were added 2026-08-15 from Kyle's self-testing findings and run
@@ -1638,6 +1638,61 @@ retouching artifacts; all temporary host state is verified removed.
 
 **Acceptance:** no document claims Claude Code ambient behaviour beyond what
 33.2 measured; every remaining unverified host is named.
+
+### Phase 34 — `GLOSSABET.md`, the repository vocabulary-health report ✅ 2026-08-17
+
+**Goal:** give Glossabet's analysis its own recognizable human-facing
+artifact so `GLOSSARY.md` can stay a glossary. Three artifacts, kept
+separate: `GLOSSARY.md` answers "what words have we agreed to use?";
+`GLOSSABET.md` answers "what has Glossabet discovered about the health and
+alignment of that vocabulary?"; `glossabet-out/glossary.json` remains the
+structured human-governed state. The report is derived Glossabet output —
+never a replacement glossary, never machine state, never evidence for its
+own next run — and the two Markdown files must not become competing versions
+of one artifact. (Kyle's spec, 2026-08-17: "The glossary tells the team what
+the words mean. The Glossabet report tells the team whether those words
+still match the codebase.")
+
+**Steps:**
+
+1. Engine: `artifacts.REPORT_FILE = "GLOSSABET.md"`; `scanner.SELF_REPORT_FILES`
+   excludes it at any depth (a subproject's report would otherwise count in
+   a whole-repo scan) and reports it as `skipped.self_reports`, distinct from
+   `self_glossaries` because the reason differs (`GLOSSARY.md` is kept out so
+   it can be validated independently; `GLOSSABET.md` because it is derived
+   output). Freshness pathspec adds `:(exclude)GLOSSABET.md` for the scan
+   root only; `GLOSSARY.md` stays visible; a nested subproject's report is
+   that subproject's output and stays visible. `context_schema_version`
+   stays 3 (additive `skipped` key the skill does not require).
+2. Skill: a "Three artifacts, kept separate" section; the report is not
+   opened during Steps 0–5; Step 4½ findings and Step 6's non-decisions
+   route to it; new Step 7 writes/refreshes it as the last part of finalize,
+   or on request / at an unfinished session's end with the user's yes.
+   Stable section order, empty sections omitted, provenance from the Step 0
+   context, proposals always marked **Proposed**, refresh-not-append,
+   content rules and exclusions as specified.
+3. Docs: README (three-artifact model, ownership/freshness), ARCHITECTURE,
+   WALKTHROUGH, PRIVACY, SECURITY, DISTRIBUTION, CLAUDE.md, CHANGELOG.
+   Plugin skill copy and bundled wheel rebuilt through the existing
+   `uv build --no-sources` + `scripts/build_plugin.py` process.
+4. Tests (`tests/test_report.py`): one shared name across scanner and
+   freshness and disjoint from `SELF_FILES`; report content never enters
+   evidence or the inspect context (root and nested), while a lookalike
+   `GLOSSABET-notes.md` still counts; tracked/untracked report changes and
+   deletion do not dirty freshness while `GLOSSARY.md` changes and a nested
+   report do; a source file moved onto the report name stays visible; report
+   content never becomes glossary state through `show`/`inspect`/`drift`/
+   `validate`, proposed stays proposed, and deleting the report leaves
+   `glossary.json` byte-identical.
+
+**Acceptance:** all of the above proven by the test suite; the skill spec
+carries the report protocol; no document presents `GLOSSABET.md` as a better
+or replacement glossary.
+
+**Completion evidence (2026-08-17):** implemented as specified; the report's
+composition stays with the skill (the deterministic `scan` invents no
+agent-level judgment); the agent contract grew only the additive
+`skipped.self_reports` list. Full suite green after rebuild.
 
 ### Owner self-testing pause — active, not an implementation phase
 

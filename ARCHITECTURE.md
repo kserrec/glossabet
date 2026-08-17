@@ -31,8 +31,10 @@ finalizes vocabulary and never renames code.
   human decides ────────────────────────────────────┐
         ▲                                             │
         │ brainstorms names from evidence             │ approves vocabulary;
-  /glossabet skill (skill/SKILL.md)                  │ skill writes GLOSSARY.md,
-        │                                             │ CLI saves glossary.json
+  /glossabet skill (skill/SKILL.md)                  │ skill writes GLOSSARY.md
+        │                                             │ and the GLOSSABET.md
+        │                                             │ health report; CLI saves
+        │                                             │ glossary.json
         ▲                                             ▼
         │ runs `glossabet inspect .`; parses bounded JSON stdout
   ┌─────┴──────────────────────────────────────────────────────┐
@@ -237,7 +239,11 @@ The package is `glossabet/`. Grouped by role:
   load-bearing exclusions live: sensitive files and directories
   (`is_sensitive`, by pattern — `.env`, keys, anything named secret/credential)
   are never read; Glossabet's own outputs and `GLOSSARY.md` (at any depth) are
-  excluded so the glossary can't echo back into evidence (contamination);
+  excluded so the glossary can't echo back into evidence (contamination), and
+  the skill-written `GLOSSABET.md` vocabulary-health report (`SELF_REPORT_FILES`,
+  any depth, reported as `skipped.self_reports`) is excluded because it is
+  derived Glossabet output that must never become evidence for its own next
+  run;
   symlinks whose real target escapes the repo root (`_escapes`) are skipped so a
   hostile repo can't read outside files. Root `Cargo.toml` and `package.json`
   workspace probes use that same symlink boundary and 2 MB limit. Configured
@@ -604,6 +610,7 @@ disabled, and these scanned-root-relative pathspecs:
 .
 :(exclude)glossabet-out
 :(exclude)glossabet-out/**
+:(exclude)GLOSSABET.md
 ```
 
 The engine runs Git from the selected repository directory. The skill no
@@ -614,7 +621,12 @@ modifier so a subproject scan inside a larger worktree excludes the
 subproject's output rather than an unrelated checkout-root path. They apply
 whether output is tracked or untracked. Disabling rename detection ensures a
 move across the ownership boundary still reports the changed non-output path.
-No other path inside the scanned root is filtered: source, `GLOSSARY.md`,
+The third pathspec is the scan root's own `GLOSSABET.md` vocabulary-health
+report — derived Glossabet output like the directory, so regenerating it never
+makes the inputs it was built from look stale; a nested subproject's report is
+that subproject's output and stays visible here. No other path inside the
+scanned root is filtered: source, `GLOSSARY.md` (human-governed vocabulary —
+deliberately not treated as output despite the similar name),
 Graphify output, and the legacy repository-local cache path all retain normal
 Git status behavior. `AGENTS.md` and `CLAUDE.md` are likewise normal Git state:
 an uncommitted synchronized block makes a tracked or untracked target visible
@@ -631,7 +643,15 @@ creates or edits a target `.gitignore`; it merely reserves the top-level
 `glossary.json` is different: it persists human-governed vocabulary state and
 must be retained unless that state is intentionally discarded or recoverable.
 The human-readable `GLOSSARY.md` remains repository-owned state outside the
-reserved directory and is never excluded from freshness. When a repository
+reserved directory and is never excluded from freshness. `GLOSSABET.md`, also
+at the root, is the third artifact and the opposite case: the skill's
+human-readable analysis of vocabulary health (gaps, overloads, suspected
+synonyms, drift, glossary/code disagreement, structural mismatches, proposals
+marked as proposed, open questions, coverage limits), written at Step 7 of the
+skill, refreshed as one report rather than appended to, never machine state
+(deleting it changes nothing canonical), never lexical evidence, and never a
+freshness input. The engine neither reads nor writes it; `artifacts.REPORT_FILE`
+is the one spelling the scanner exclusion and the freshness pathspec share. When a repository
 already has one before Glossabet is ever run, the skill treats it as
 maintainer-owned: it edits it surgically for settled decisions only, re-checks
 its SHA-256 against the inspect-time value before writing, and regenerates it

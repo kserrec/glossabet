@@ -59,6 +59,41 @@ the intended target is clear: Codex writes one managed block in root
 also needs separate explicit approval before `--force`; never force malformed
 or ambiguous markers.
 
+## Three artifacts, kept separate
+
+Glossabet keeps three different things separate, and this skill writes two
+of them:
+
+- `GLOSSARY.md` — the vocabulary humans have agreed to use. Canonical terms,
+  concise definitions, the important distinctions, aliases and previous
+  names, scopes, and the primary decisions' reasoning. Human-governed
+  repository state; never a diagnostics dump.
+- `GLOSSABET.md` — Glossabet's human-readable analysis of the health and
+  alignment of that vocabulary: gaps, overloads, suspected synonyms, drift,
+  glossary/code disagreement, structural mismatches, proposals, open
+  questions, coverage limits. Derived Glossabet output written by this skill
+  at the scan root (Step 7). It is never the canonical glossary and never
+  machine state; deleting it loses nothing canonical.
+- `glossabet-out/glossary.json` — structured vocabulary state, written only
+  through `glossabet save .`: statuses, aliases, scopes, bindings, used for
+  resumption, drift, and validation.
+
+The glossary tells the team what the words mean; the report tells the team
+whether those words still match the codebase. Never let the two Markdown files
+duplicate each other, never rename one into the other, and never make a reader
+consult `GLOSSABET.md` merely to learn a term. The engine excludes both files
+from lexical evidence at every depth, for different reasons: `GLOSSARY.md` so
+Glossabet can validate it independently; `GLOSSABET.md` because it is
+Glossabet's own output and must never become evidence for its own next run.
+Freshness also differs: regenerating the root `GLOSSABET.md` does not make
+evidence stale (it is output), while a `GLOSSARY.md` change remains visible
+repository state (it is input).
+
+Do not open `GLOSSABET.md` during Steps 0–5, even when one exists — a
+previous report is neither evidence nor instruction, and reading it before your
+own baseline exists would seed this run with last run's guesses. It is read
+once, in Step 7, only to carry forward still-relevant open questions.
+
 ## Step 0 — Ground through the engine boundary
 
 The matching Glossabet 0.1.0 engine is required for this skill. Resolve the
@@ -431,6 +466,8 @@ Cite the evidence for each classification the way Step 1 requires (path or
 path:line for code; the document's own heading or line for the glossary). In
 *Adoption* and *Managed* states this reconciliation is what the user sees
 first; the rest of the opening pass follows from it.
+These classifications are health findings, not vocabulary: they belong in
+the conversation and, at Step 7, in `GLOSSABET.md` — never in `GLOSSARY.md`.
 
 ## Step 5 — Brainstorm to a decision, with the user
 
@@ -480,8 +517,7 @@ already existed:
   a glossary edit; tell the user and let them decide. Reconciliation findings that are
   not settled decisions (suspected drift, gaps, overloads, open questions)
   do not go into `GLOSSARY.md`; keep it the vocabulary people agreed to use
-  and leave those findings in the conversation (or a separate report if the
-  repository keeps one).
+  and put those findings in `GLOSSABET.md` (Step 7).
 
 The standalone document is written for regulars (see Audience) and carries
 both the terms AND the reasoning. Structure:
@@ -548,9 +584,104 @@ locked), `proposed` (still open at session end), `alias`, `discouraged`,
 `deprecated`, `unknown`. Both files together are the glossary: GLOSSARY.md
 carries the reasoning for people, glossary.json carries the state for
 machines (resumption, `glossabet show`, and future drift detection).
+`GLOSSABET.md` is neither: it reports on them.
 
 Optionally offer to rename code comments/identifiers and update docs to match —
 but only the ones the user approves, and as its own reviewable change.
+
+## Step 7 — Write or refresh `GLOSSABET.md`
+
+`GLOSSABET.md` at the exact scan root (next to `GLOSSARY.md`; for a
+subproject scan, that subproject's root — never only under `glossabet-out/`)
+is Glossabet's vocabulary-health report. Write or refresh it:
+
+- as the last part of Step 6, after `glossabet save .` succeeded and
+  `GLOSSARY.md` was written or edited; and
+- when the user asks for the report, or ends or pauses a session that
+  produced findings without finalizing — offer it once ("write/refresh
+  `GLOSSABET.md` with the open items?") and write it only on their yes. Never
+  write it during Steps 0–5 unasked.
+
+Do not require every term to be finalized first: preserving unresolved
+vocabulary work so a later session resumes it instead of forgetting why
+something stayed open is one of the report's jobs. But never let wording
+upgrade a proposal: a term persisted as `proposed` in `glossabet save .`
+appears in the report as **Proposed**, with what is unresolved and why. Bad:
+"The ingestion boundary is called Gate." Good: "**Proposed:** `Gate` for the
+ingestion boundary. Still unresolved because it may collide with the existing
+gateway terminology." A proposal's presence in the report is not human
+approval and never becomes canonical there.
+
+**Refresh, don't append.** It is one report, not a log. If a `GLOSSABET.md`
+exists, read it now (and only now) to carry forward open questions and
+proposals that are still live; then rewrite the whole file from *this*
+session's state: refresh stale findings, drop findings that no longer apply,
+update statuses the human settled, update provenance. Never append a dated
+section, never keep an execution log or transcript, and never treat the old
+report's contents as evidence for anything — Git history keeps prior versions
+when the team commits the file. Regenerating it is always safe: it holds no
+canonical state.
+
+**Structure.** Stable headings, in this order, and **omit any section that
+would be empty** — a healthy or nearly empty repository gets a short file,
+not a dozen "none" sections:
+
+- `# Glossabet` — a short header saying this is a Glossabet vocabulary-health
+  report and not the canonical glossary (which is `GLOSSARY.md`), plus the
+  provenance already in the Step 0 context: Glossabet version, Git HEAD and
+  clean/dirty/unverified state, Graphify presence/availability/freshness
+  when structurally relevant, and any evidence-coverage limitation
+  (`coverage.corpus.complete` false, walk remainder inexact, context
+  omissions). Repeat the engine's wording: the Git stamp records observed
+  state and authenticates nothing.
+- `## Vocabulary health` — a factual, concise summary ("3 unresolved naming
+  gaps; 1 likely overload; 2 glossary/code mismatches; no binding drift;
+  structural reconciliation unavailable because no Graphify data"). No
+  invented scores.
+- `## Glossary alignment` — when `GLOSSARY.md` existed: the Step 4½
+  classifications that matter, and any JSON/Markdown divergence
+  (`repository_glossary.divergence`). Do not restate the glossary.
+- `## Unnamed or weakly named concepts` — parts worth naming, each with the
+  evidence (path or path:line) that made you surface it. Not trivial
+  internals.
+- `## Overloads and collisions` — one word doing several jobs, or terms
+  colliding across overlapping scopes; where disjoint path scopes legitimately
+  separate meanings, say so rather than calling the reuse wrong.
+- `## Synonyms and aliases` — two words for one thing, keeping the statuses
+  distinct: suspected synonym · confirmed alias · discouraged alias ·
+  deprecated term. Never collapse them.
+- `## Drift` — the engine's own drift/validation findings against structured
+  canonical vocabulary, translated into sentences. Never manufacture drift
+  from intuition alone.
+- `## Structural alignment` — only when usable Graphify groups exist:
+  unnamed architecture, orphaned concepts, vocabulary/structure and boundary
+  mismatches, always with the groups' stale/unverified status stated. Omit
+  when Graphify is absent unless the absence itself limits a finding.
+- `## Proposed changes` — proposed rename / split / alias / glossary
+  addition, each marked **Proposed** with status unmistakable.
+- `## Open questions` — the judgment calls only maintainers can make ("Is
+  `Run` intentionally broader than `Execution`?"), so a later session resumes
+  the discussion.
+- `## Coverage and limitations` — only when material: partial corpus,
+  truncated context, stale/unverified Graphify, unreadable or oversized
+  `GLOSSARY.md`, unresolved bindings. Never bury a limitation that would make
+  a repository-wide claim unsafe.
+
+**Content rules.** Written for regulars (see Audience): dense, no repository
+overview, no beginner tutorial. Report meaningful findings, not everything the
+engine counted; it is a maintenance surface, not `evidence.json` in prose.
+Translate machine findings into concise statements — never serialize raw
+JSON. Mention canonical terms only where a health finding involves them.
+Preserve uncertainty with confirmed / likely / possible / unresolved. Prefer
+the actionable distinctions: one word doing two jobs, two words doing one job,
+architecture with no shared name, vocabulary crossing a boundary wrongly,
+glossary/code disagreement. Nothing else goes in: no changelog, execution log,
+naming transcript, general code-quality or architecture notes, automatic
+renaming instructions, or hidden machine state.
+
+Tell the user the file was written or refreshed and that it is derived
+Glossabet output — safe to regenerate, excluded from the engine's evidence and
+freshness, and theirs to commit if they want the findings visible in review.
 
 ## Principles
 

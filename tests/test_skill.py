@@ -199,3 +199,44 @@ def test_skill_repository_glossary_protocol_matches_engine(tmp_path):
     # Finalization safety.
     assert "Never replace it wholesale" in normalized
     assert "re-check the file's SHA-256 against `repository_glossary.sha256`" in normalized
+
+
+def test_skill_report_protocol_keeps_the_three_artifacts_separate():
+    """Phase 34: GLOSSABET.md is the skill's derived vocabulary-health report —
+    written at Step 7 (finalize, or on request), never opened during the
+    baseline steps, refreshed rather than appended, with proposals never
+    worded as canonical, empty sections omitted, and the same three-artifact
+    model the engine enforces (excluded from evidence at any depth, excluded
+    from freshness at the root, GLOSSARY.md still visible to freshness)."""
+    from glossabet.artifacts import REPORT_FILE
+
+    text = SKILL.read_text(encoding="utf-8")
+    normalized = " ".join(text.split())
+
+    assert "## Three artifacts, kept separate" in text
+    assert "## Step 7 — Write or refresh `GLOSSABET.md`" in text
+    assert f"`{REPORT_FILE}`" in text
+    for phrase in (
+        "never the canonical glossary",
+        "Do not open `GLOSSABET.md` during Steps 0–5",
+        "Never write it during Steps 0–5 unasked",
+        "**Refresh, don't append.**",
+        "omit any section that would be empty",
+        "A proposal's presence in the report is not human approval",
+        "regenerating the root `GLOSSABET.md` does not make evidence stale",
+        "a `GLOSSARY.md` change remains visible repository state",
+        "never make a reader consult `GLOSSABET.md` merely to learn a term",
+        "put those findings in `GLOSSABET.md` (Step 7)",
+        "never only under `glossabet-out/`",
+    ):
+        assert phrase in normalized, phrase
+    for heading in (
+        "## Vocabulary health", "## Glossary alignment",
+        "## Unnamed or weakly named concepts", "## Overloads and collisions",
+        "## Synonyms and aliases", "## Drift", "## Structural alignment",
+        "## Proposed changes", "## Open questions",
+        "## Coverage and limitations",
+    ):
+        assert f"`{heading}`" in text, heading
+    # Statuses are kept distinct in the report, not collapsed.
+    assert "suspected synonym · confirmed alias · discouraged alias · deprecated term" in normalized

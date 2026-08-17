@@ -22,7 +22,12 @@ never diluted by machinery.
   and cheap import edges only. It must not grow into a static analyzer or a
   Graphify clone; rich structure comes from optional adapters.
 - **No contamination.** Evidence gathering excludes `glossabet-out/`,
-  `.glossabet/`, and `GLOSSARY.md`, always.
+  `.glossabet/`, `GLOSSARY.md`, and the derived `GLOSSABET.md` report, always.
+- **Three artifacts, kept separate.** `GLOSSARY.md` is the vocabulary humans
+  agreed to use; `GLOSSABET.md` is Glossabet's derived vocabulary-health
+  report (excluded from evidence and freshness, safe to regenerate, never
+  canonical); `glossabet-out/glossary.json` is structured machine state.
+  They never duplicate or replace one another.
 - **Explicit production scope.** Root `glossabet.json` may add literal ignored
   prefixes or path roles. Tests/fixtures stay inventoried but do not steer
   lexical signals; generated/vendored content is not read. Every effective

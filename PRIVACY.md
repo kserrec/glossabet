@@ -14,7 +14,8 @@ For `scan`, `analyze`, `inspect`, `drift`, and `validate`, the CLI may read:
 
 - ordinary source and documentation files under the selected repository;
 - root `glossabet.json` and Glossabet-owned JSON artifacts when the selected
-  command needs them (`GLOSSARY.md` is deliberately excluded from analysis);
+  command needs them (`GLOSSARY.md` and the derived `GLOSSABET.md` report
+  are deliberately excluded from analysis);
 - optional `graphify-out/graph.json` as repository-controlled structural
   evidence; and
 - local Git commit and worktree status through a constrained `git` subprocess.

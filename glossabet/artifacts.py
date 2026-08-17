@@ -19,6 +19,12 @@ from pathlib import Path
 from glossabet.display import escape_terminal_text
 
 OUT_DIR = "glossabet-out"
+# The human-readable vocabulary-health report the /glossabet skill writes at
+# the scan root (next to GLOSSARY.md, so a repository browser finds it). It is
+# derived Glossabet output: never machine state, never lexical evidence, never
+# a freshness input. The engine does not read or write it; the name lives here
+# so the scanner exclusion and the freshness pathspec spell it identically.
+REPORT_FILE = "GLOSSABET.md"
 
 # Directly-read repository JSON (graph.json and glossary.json) is bounded like
 # every walked file (scanner.MAX_FILE_BYTES): an untrusted repo must not be
