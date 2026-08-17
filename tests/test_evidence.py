@@ -491,7 +491,9 @@ def test_hostile_git_filter_driver_via_config_include_does_not_execute(tmp_path)
         f"\tclean = sh -c 'touch {marker}; cat'\n"
         f"\tsmudge = sh -c 'touch {marker}; cat'\n"
     )
-    sp.run(["git", "config", "include.path", str(include_file)],
+    # Forward-slash path: git config treats backslash as an escape, so a
+    # Windows-native path here would not resolve the include.
+    sp.run(["git", "config", "include.path", include_file.as_posix()],
            cwd=repo, check=True)
     os.utime(repo / "main.py", (0, 0))  # racy-old forces the re-hash path
 
