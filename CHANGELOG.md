@@ -10,6 +10,10 @@ This first alpha is prepared but has not been published to PyPI.
 
 ### Added
 
+- Claude Code ambient parity: `glossabet install --agent claude` makes the
+  personal skill folder a skills-directory plugin with a `SessionStart` hook
+  that runs `brief .`, writing nothing outside that folder; `--skill-only`
+  opts out.
 - Deterministic lexical repository evidence with explicit scope, budgets,
   Git freshness, incremental caching, and optional Graphify structure.
 - Terminology nominations, persistent human-governed glossaries, vocabulary

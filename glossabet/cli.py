@@ -130,13 +130,27 @@ def build_parser() -> argparse.ArgumentParser:
     install = sub.add_parser(
         "install",
         help="install the canonical agent skill (Codex by default)",
-        description="Install the canonical agent skill (Codex by default).",
+        description=(
+            "Install the canonical agent skill (Codex by default). "
+            "With --agent claude the skill folder also becomes a Claude Code "
+            "skills-directory plugin whose session-start hook runs "
+            "`glossabet brief .` in every session; nothing outside that "
+            "folder is written."
+        ),
     )
     install.add_argument(
         "--agent",
         choices=("codex", "claude"),
         default="codex",
         help="agent host whose personal skill location should be used (default: codex)",
+    )
+    install.add_argument(
+        "--skill-only",
+        action="store_true",
+        help=(
+            "with --agent claude, install only SKILL.md and no session-start "
+            "hook (no ambient glossary loading)"
+        ),
     )
     install.add_argument(
         "--destination",
@@ -213,7 +227,10 @@ def _run(argv: list[str] | None) -> int:
         from glossabet.installer import install_command
 
         return install_command(
-            args.agent, args.destination, force=args.force
+            args.agent,
+            args.destination,
+            force=args.force,
+            skill_only=args.skill_only,
         )
 
     parser.error(f"unknown command {args.command!r}")

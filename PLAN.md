@@ -1,7 +1,8 @@
 # Glossabet — Plan
 
-Status: **phases 0–22 and Phases 24–32 complete; owner
-self-testing pause active before the trusted-alpha gate** as of 2026-08-17.
+Status: **phases 0–22 and Phases 24–32 complete; Phase 33 (Claude Code
+ambient parity) in progress; owner self-testing pause active before the
+trusted-alpha gate** as of 2026-08-17.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
 Phases 24–28 were added 2026-08-15 from Kyle's self-testing findings and run
@@ -1453,6 +1454,190 @@ remain open, left in place pending a decision:
    `test_bounds_are_reported` (test_terminology.py:208, presence-only; the
    151st-token test is the real guard) and `test_scope_shape_rejects_ambiguous_or_nonliteral_paths`
    (test_glossary.py:195, asserts *some* error, not which).
+
+### Phase 33 — Claude Code ambient parity (added 2026-08-17)
+
+**Goal:** the ambient-consumption steady state of Phase 28 works for Claude
+Code exactly as it does for Codex, from the one simple command a user already
+runs. After `glossabet install --agent claude`, every later Claude Code
+session in a repository with a finalized glossary reads the canonical
+vocabulary at startup, resume, clear, and compaction with no user mention of
+Glossabet — same `brief` payload, same "no glossary → nothing added" rule,
+same human-gated writes. (Depends on Phase 28. Kyle, 2026-08-17: "users
+should be able to just run the simple glossabet query for it to work for
+both.")
+
+**Why this was a gap, not a decision.** Phase 21 chose the Codex plugin as
+the preferred distribution route and Phase 28.2 built the session-start hook
+into that plugin's manifest. The "do not advertise unsupported host behavior"
+rule then kept Claude Code labelled *unverified*, but no phase ever scheduled
+the Claude Code equivalent. The mechanism is not Codex-specific: `brief` is
+host-agnostic and Claude Code has the same `SessionStart` lifecycle event.
+
+**Host facts this phase relies on (Claude Code 2.1.234, official docs,
+verified 2026-08-17):**
+
+- Any folder under a skills directory that contains
+  `.claude-plugin/plugin.json` is loaded as plugin `<name>@skills-dir` on the
+  next session — no marketplace, no install step, no copy into a plugin
+  cache; deleting the folder removes it. Under `~/.claude/skills/` (personal
+  scope) it loads in every project with none of the project-scope trust
+  restrictions. `claude plugin init` scaffolds exactly this shape and keeps
+  the folder's own root `SKILL.md` as a skill via `"skills": ["./"]`.
+- Plugin hooks live at `hooks/hooks.json` under the plugin root (default
+  discovery; a manifest `hooks` field pointing at the same file would load it
+  twice, so the manifest omits it). `SessionStart` matchers are `startup`,
+  `resume`, `clear`, `compact`, `fork`; a command hook's plain stdout on exit
+  0 becomes context the model sees; stdout is capped at 10,000 characters
+  (`brief` is bounded at 4,096 bytes); `timeout` is in seconds;
+  `statusMessage` is supported; `commandWindows` and `additionalContextLimit`
+  are Codex fields with no Claude Code meaning. Non-zero exit shows stderr to
+  the user as a non-blocking notice and the session proceeds — a broken hook
+  is loud, never silent.
+- `claude plugin validate <dir>` validates a plugin folder offline.
+- SessionStart hooks fire in headless (`claude -p`) sessions, so a live
+  probe can be scripted like the Codex batches.
+
+**Design (binding for the sub-phases):**
+
+- The Claude Code personal install directory `~/.claude/skills/glossabet/`
+  — already the only user-state path `install --agent claude` writes —
+  becomes a skills-directory plugin: `SKILL.md` (unchanged path),
+  `.claude-plugin/plugin.json` (`name`, `version` = package version,
+  `description`, `skills: ["./"]`, author/homepage/license as in the Codex
+  manifest), and `hooks/hooks.json` with one `SessionStart` hook matching
+  `^(startup|resume|clear|compact)$` that runs `brief .` with `timeout` 30
+  and the same status message as the Codex hook. `fork` is deliberately
+  excluded: a fork inherits its parent's context, which already holds the
+  brief.
+- **Nothing outside that folder is written.** `~/.claude/settings.json` is
+  never touched; there is no marketplace and no publication. This keeps the
+  Phase 28.3 invariant: the only project-owned host-instruction write remains
+  the explicit `sync-context` command, and the only user-state write remains
+  the explicit `install` command into its own folder.
+- The hook command names the absolute path of the `glossabet` executable
+  that ran `install`, resolved at install time and verified by executing
+  `<path> --version` and matching the package version — never a bare name
+  that depends on the hook shell's `PATH`. If no such executable exists (an
+  in-process test, a source checkout without an entry point), the skill is
+  still installed and the hook is refused with the reason printed; the
+  command exits non-zero so a caller cannot mistake it for a full install.
+  A moved or uninstalled CLI produces a loud per-session notice, fixed by
+  re-running `install --agent claude`; a user who removes Glossabet is told
+  to delete the folder (or `claude plugin disable glossabet@skills-dir`).
+- Idempotency and consent follow the existing skill contract: each of the
+  three files is compared byte-for-byte; unchanged → `current`; a *different*
+  existing file is never replaced without `--force`; symlinked components are
+  refused; writes are atomic. `--skill-only` installs `SKILL.md` alone for a
+  user who does not want ambient context. The success message states exactly
+  which files were written and that a session-start hook will run
+  `<path> brief .` in every Claude Code session.
+- `install` (Codex default) is unchanged: Codex's ambient route is the
+  plugin, and no verified Codex skills-directory hook mechanism exists. The
+  message says so plainly rather than implying parity that was not built.
+- Windows: no `commandWindows` equivalent exists in Claude Code; the hook
+  writes the same absolute-path command and Windows behaviour is documented
+  as unverified.
+
+Phase 33 is oversized for one pass and splits into three sub-phases with
+their own acceptance and commit: 33.1 is deterministic engine/CLI work
+provable offline; 33.2 is host-lifecycle evidence that spends Kyle's Claude
+account and needs his explicit authorization; 33.3 flips documentation only
+after 33.2 has evidence.
+
+#### Phase 33.1 — Claude Code skills-directory plugin install ✅ 2026-08-17
+
+**Steps:**
+
+1. `installer.py`: `install --agent claude` writes the three-file plugin
+   described above into the personal skill directory; add `--skill-only`;
+   resolve and verify the executable path; extend outcome reporting to name
+   every file and its outcome (`installed` / `current` / `replaced`).
+2. Share the manifest metadata and hook shape with the Codex plugin build
+   where the fields coincide, so a version bump or status-message change
+   cannot diverge between hosts.
+3. Tests: exact bytes of manifest and hook for a synthetic home; idempotent
+   second run; refusal of a different existing manifest/hook without
+   `--force`; refusal of symlinked components for the new files; no write
+   outside the skill folder (snapshot the synthetic home before/after);
+   `--skill-only` writes only `SKILL.md`; hook refused (skill still written,
+   non-zero exit) when the executable cannot be verified; the written hook
+   command, executed from a fixture repository with a canonical glossary,
+   prints exactly `build_brief` output and writes nothing; with no glossary
+   it prints nothing; Codex `install` output is byte-identical to before.
+   When the `claude` CLI is on `PATH`, one test runs
+   `claude plugin validate` on the installed folder and requires success;
+   otherwise it is skipped with the reason.
+4. Docs: README install section, DISTRIBUTION.md parity table (Claude Code
+   column changes from "no automatic host integration" to the hook, still
+   marked *unverified live* until 33.2), `glossabet install --help`.
+
+**Acceptance:** on a synthetic home, `glossabet install --agent claude`
+yields a folder that `claude plugin validate` accepts, whose hook prints the
+canonical brief from a glossary-bearing repository and nothing otherwise,
+with zero writes outside `~/.claude/skills/glossabet/`; the Codex install path
+is byte-for-byte unchanged; hostile-path tests pass.
+
+**Completion evidence (2026-08-17):** `glossabet/installer.py` writes
+`SKILL.md`, `.claude-plugin/plugin.json` (`skills: ["./"]`, no `hooks`
+field), and `hooks/hooks.json` (one `SessionStart` hook,
+`^(startup|resume|clear|compact)$`, `"<abs glossabet>" brief .`, timeout 30,
+shared status message) through one atomic, symlink-refusing, byte-compared
+`_install_file` path; the executable is `sys.argv[0]` or `PATH`, verified by
+`--version`; failure to resolve leaves the skill installed and exits 1 with
+the reason; `--skill-only` opts out; Codex output is byte-identical to before.
+Fourteen new tests in `tests/test_install.py` cover exact bytes, idempotency,
+refusal without `--force` for hook and manifest, symlinked hook directory,
+no writes outside the folder, `--skill-only`, unresolvable executable,
+shell-significant paths, metadata pinned to the Codex plugin manifest and
+hook, version-verified resolution, the written hook printing exactly the
+brief from a fixture glossary and nothing without one while writing nothing,
+and `claude plugin validate` acceptance (skipped when the CLI is absent).
+On this machine (Claude Code 2.1.234, Linux) `claude plugin details
+glossabet@skills-dir` against a synthetic config dir reports `Status: ✔
+loaded` and `Hooks (1) SessionStart`; its inventory lists root-level skills
+as 0 for the official `claude plugin init` scaffold too, so the plugin
+docs' statement that a root `SKILL.md` with `skills: ["./"]` loads under its
+frontmatter name is relied on and re-checked live in 33.2. Full suite: 474
+passed. README, DISTRIBUTION, CHANGELOG, WALKTHROUGH, ARCHITECTURE updated;
+Claude Code stays labelled unverified until 33.2.
+
+#### Phase 33.2 — Live Claude Code session-start evidence
+
+**Steps:**
+
+1. Add a Claude Code evaluator alongside `scripts/agent_eval.py`'s Codex
+   batches: an isolated `CLAUDE_CONFIG_DIR`/`HOME` holding only the 33.1
+   install, a fixture repository with a finalized glossary, headless
+   `claude -p` sessions whose prompts omit Glossabet and every expected term,
+   and the same checks as Phase 28.2 — exact canonical term and definition
+   returned from hook context, zero commands run, no proposed-term or source
+   canary, no repository write, no glossary → no vocabulary in context;
+   plus one scenario proving the folder's root `SKILL.md` is still invocable
+   as the `glossabet` skill once the manifest makes the folder a plugin.
+   Record the Claude Code version, OS, raw transcripts, and SHA-256s under
+   `evaluation/agent-runs/` per the Phase 29 currency rules.
+2. **Needs from Kyle before running:** explicit authorization to spend usage
+   on his Claude account for one bounded batch (state the scenario count and
+   an upper estimate of tokens before the run), and confirmation that the
+   probe may create and then delete a temporary config directory under the
+   scratchpad. Nothing in his real `~/.claude` is touched.
+
+**Acceptance:** one authorized batch on a named Claude Code version passes
+every scenario, or its misses are recorded in the reliability ledger without
+retouching artifacts; all temporary host state is verified removed.
+
+#### Phase 33.3 — Documentation and status flip
+
+**Steps:**
+
+1. README, DISTRIBUTION.md, CHANGELOG, `docs/`: Claude Code moves from
+   "experimental / unverified" to verified for the exact version and OS
+   probed; other versions and operating systems stay explicitly unverified.
+2. Update Settled decision 12 and the CLI-surface table.
+
+**Acceptance:** no document claims Claude Code ambient behaviour beyond what
+33.2 measured; every remaining unverified host is named.
 
 ### Owner self-testing pause — active, not an implementation phase
 

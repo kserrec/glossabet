@@ -82,7 +82,8 @@ uv tool install . --reinstall
 ```
 
 Install the wheel-bundled canonical skill for Codex (or pass
-`--agent claude` for Claude Code):
+`--agent claude` for Claude Code, which also installs the session-start
+`brief` hook as a skills-directory plugin — see `glossabet/installer.py`):
 
 ```
 glossabet install

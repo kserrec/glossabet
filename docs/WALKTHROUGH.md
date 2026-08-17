@@ -48,11 +48,19 @@ Install it for Claude Code at `~/.claude/skills` with:
 glossabet install --agent claude
 ```
 
-Use `--destination DIR` to write `SKILL.md` into a different explicit
-directory. Installation is idempotent. If a different `SKILL.md` already
-exists, Glossabet preserves it and exits with a user error; `--force`
-replaces only that file and should be used only when replacement is intended.
-Symlinked destination components are refused.
+For Claude Code that command also writes `.claude-plugin/plugin.json` and
+`hooks/hooks.json` beside `SKILL.md`, so Claude Code loads the folder as the
+plugin `glossabet@skills-dir` and runs `glossabet brief .` at session start,
+resume, clear, and compaction (nothing with no glossary; nothing written
+outside that folder). Pass `--skill-only` to install the skill without the
+hook.
+
+Use `--destination DIR` to write into a different explicit directory.
+Installation is idempotent. If a different `SKILL.md` (or, for Claude Code, a
+different manifest or hook file) already exists, Glossabet preserves it and
+exits with a user error; `--force` replaces only that file and should be used
+only when replacement is intended. Symlinked destination components are
+refused.
 
 For a host without a trusted session-start hook, persist canonical vocabulary
 in the selected repository only when that project change is intended:

@@ -153,11 +153,27 @@ glossabet install
 ```
 
 Codex currently loads personal skills from `~/.agents/skills`; Claude Code
-users can instead run `glossabet install --agent claude`, which targets
-`~/.claude/skills`. That Claude route is experimental until an installed
-Claude Code session is directly tested. The wheel carries the exact canonical
-[`skill/SKILL.md`](skill/SKILL.md), and installation refuses to overwrite a
-different skill unless `--force` is explicit. The locations follow the
+users run `glossabet install --agent claude` instead, which targets
+`~/.claude/skills/glossabet/`. For Claude Code that one command also makes the
+skill folder a
+[skills-directory plugin](https://code.claude.com/docs/en/plugins-reference#skills-directory-plugins):
+beside `SKILL.md` it writes `.claude-plugin/plugin.json` and a
+`hooks/hooks.json` whose `SessionStart` hook runs `glossabet brief .` at
+startup, resume, clear, and compaction — the same ambient vocabulary
+delivery the Codex plugin provides. Claude Code loads the folder as
+`glossabet@skills-dir` from the next session; with no glossary the hook adds
+nothing. Nothing outside that folder is written (`~/.claude/settings.json` is
+never touched); `--skill-only` installs the skill without the hook, and
+deleting the folder (or `claude plugin disable glossabet@skills-dir`) removes
+it. The hook names the exact `glossabet` executable that ran `install`, so a
+moved or removed CLI produces a visible per-session notice rather than
+silence — rerun `glossabet install --agent claude` after reinstalling. The
+folder is validated offline against `claude plugin validate`; a live
+installed Claude Code session has not yet been probed the way the Codex
+plugin has (PLAN Phase 33.2), so that route is still labelled unverified.
+The wheel carries the exact canonical [`skill/SKILL.md`](skill/SKILL.md), and
+installation refuses to overwrite a different skill, manifest, or hook unless
+`--force` is explicit. The locations follow the
 [official OpenAI Codex documentation](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills)
 and [official Claude Code documentation](https://code.claude.com/docs/en/skills#where-skills-live).
 
@@ -172,6 +188,7 @@ The full explanation and expected result are in
 
 ```
 glossabet install           install the canonical agent skill (Codex default)
+glossabet install --agent claude  skill + session-start hook as a Claude Code plugin
 glossabet scan <repo>       deterministic, git-stamped evidence (cached, incremental)
 glossabet analyze <repo>    scan + terminology report (register, overlaps, overloads)
 glossabet inspect <repo>    fresh, lean JSON context for the agent skill

@@ -18,7 +18,7 @@ equivalent installed-host probe and are not called supported.
 | --- | --- | --- |
 | Engine | A pure-Python wheel inside the plugin. The skill runs it through `scripts/run_glossabet.py`; no executable is added to `PATH`. | The package manager owns an isolated environment and the `glossabet` executable on `PATH`. |
 | Skill | Codex owns the skill inside the same versioned plugin cache entry. | `glossabet install` makes a separate copy at the selected agent skill directory. |
-| Ambient context | After the user trusts the plugin hook, Codex runs the bundled `brief .` command at session startup, resume, clear, and compaction. Canonical glossary text becomes developer context; no glossary means no added text. | No automatic host integration. Run `glossabet brief .` and deliberately supply its output, or explicitly run `glossabet sync-context .` to persist one managed block in root `AGENTS.md` (`--agent claude` selects root `CLAUDE.md`). |
+| Ambient context | After the user trusts the plugin hook, Codex runs the bundled `brief .` command at session startup, resume, clear, and compaction. Canonical glossary text becomes developer context; no glossary means no added text. | **Claude Code:** `glossabet install --agent claude` also writes `.claude-plugin/plugin.json` and `hooks/hooks.json` beside the skill, so Claude Code loads the folder as the plugin `glossabet@skills-dir` and runs `<installed glossabet> brief .` at session startup, resume, clear, and compaction; no glossary means no added text; nothing outside the skill folder is written. Validated offline with `claude plugin validate`; not yet probed in a live Claude Code session (PLAN Phase 33.2). **Codex standalone:** no automatic host integration. Either host: run `glossabet brief .` and deliberately supply its output, or explicitly run `glossabet sync-context .` to persist one managed block in root `AGENTS.md` (`--agent claude` selects root `CLAUDE.md`). |
 | Version coupling | Plugin manifest, skill instructions, runner constant, nested wheel metadata, and wheel-embedded skill must all match. Tests and distribution checks fail on any mismatch. | The wheel version and wheel-embedded skill are built together. The skill checks the CLI's exact version before analysis. |
 | Upgrade | Installing the same plugin identifier from a refreshed marketplace snapshot replaces the cached version. Codex 0.147.0 removed the prior version during the direct 0.1.0 → synthetic 0.1.1 probe. | Reinstall or upgrade the wheel, then run `glossabet install`. If a prior Glossabet-owned skill differs, inspect that exact file and use `--force` deliberately; the installer never assumes ownership. |
 | Removal | `codex plugin remove` removes the plugin engine and skill together. Removing the local marketplace removes its configuration entry. Codex 0.147.0 left one empty marketplace cache parent, which the smoke test removes only after proving it is empty and test-owned. | Uninstalling the Python package removes its environment and command, not the separately copied skill or a project-owned synchronized block. Inspect and remove only the reported skill directory and/or exact marked project block if no longer wanted. |
@@ -118,5 +118,10 @@ bytes and requires `--force` to replace an integrity-mismatched but
 structurally valid managed body.
 
 The Claude Code destination exposed by `glossabet install --agent claude` is
-still experimental: path selection and safe copying are tested, but no Claude
-Code session has been directly exercised with the installed pair.
+tested offline — path selection, safe copying, exact manifest and hook bytes,
+refusal to replace a different existing file without `--force`, no writes
+outside the skill folder, and `claude plugin validate` acceptance — and the
+written hook is executed against a fixture repository in the test suite. No
+live Claude Code session has yet been exercised with the installed folder;
+that evidence is PLAN Phase 33.2, and until then the route is labelled
+unverified rather than supported.
