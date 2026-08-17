@@ -10,8 +10,8 @@ the owner self-testing pause before doing anything.
 vocabulary explicit, canonical, inspectable, and maintainable. Deterministic
 machinery gathers evidence, the LLM reasons, the human decides.
 
-**State on disk:** `dev` is four commits (Phases 36.1–36.4) ahead of
-`main`; the working tree is clean; the full suite (513 tests) is green; wheel and plugin were rebuilt
+**State on disk:** `dev` is five commits (Phases 36.1–36.5) ahead of
+`main`; the working tree is clean; the full suite (527 tests) is green; wheel and plugin were rebuilt
 through `uv build --no-sources` + `scripts/build_plugin.py dist` and
 `scripts/check_distribution.py dist --tag v0.1.0` passes; the CLI at
 `~/.local/bin/glossabet` is the current build. The installed agent skills
@@ -51,15 +51,16 @@ re-run `glossabet install --agent claude` / `glossabet install` if unsure.
   oracle identical, 513 tests green. **36.4 done:** `managed_context.py`
   (render / safe read / analysis / inspector / printer) beneath
   `context_sync`; drift and reconcile no longer import a command module.
-  Remaining: 36.5 producer-level drift/validation tests, 36.6 ledger
-  ceremony, 36.7 verification weight onto the skill (needs Kyle). Each sub-phase is one pass under Phase 35
+  **36.5 done:** `tests/test_finding_producers.py` (15 producer-level
+  tests over hand-built evidence, one per finding kind). Remaining: 36.6
+  ledger ceremony, 36.7 verification weight onto the skill (needs Kyle). Each sub-phase is one pass under Phase 35
   rules.
 
 **How to resume**
 
 - `$next` / `/next` → the first incomplete phase whose dependencies are
   complete is Phase 33.2 (needs Kyle's authorization to spend usage) or
-  Phase 36.5 (no external needs). Both honour the owner self-testing pause.
+  Phase 36.6 (no external needs). Both honour the owner self-testing pause.
 - Before any Phase 36 sub-phase, rebuild the byte-identical oracle: copy the
   four local fixtures from `evaluation/corpus.json` (`path` sources) to a
   scratch dir, `glossabet save` each source's `glossary`, run every command

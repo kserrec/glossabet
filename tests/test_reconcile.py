@@ -671,12 +671,6 @@ def test_validate_command_end_to_end(tmp_path, capsys):
     assert (root / "glossabet-out" / "validation.json").is_file()
 
 
-def test_validate_without_glossary_is_user_error(tmp_path, capsys):
-    (tmp_path / "a.py").write_text("x_y = 1\n")
-    assert main(["validate", str(tmp_path)]) == 1
-    assert "no glossary" in capsys.readouterr().err
-
-
 def test_validate_cli_surfaces_adapter_warning_and_skipped_coverage(
     tmp_path, capsys
 ):

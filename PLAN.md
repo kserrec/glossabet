@@ -3,7 +3,7 @@
 Status: **phases 0–22, Phases 24–32, Phase 34 (`GLOSSABET.md` report), and
 Phase 35 (deepening refactor) complete; Phase 33 (Claude Code ambient
 parity) in progress; Phase 36 (good-to-great structural debts) in progress —
-36.1–36.4 complete; owner self-testing pause active before the trusted-alpha
+36.1–36.5 complete; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-17.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1943,7 +1943,7 @@ keeps only the write path (`sync_context`, `_write_bytes_atomic`,
 `glossabet.context_sync.os.replace` now patches the module that calls it
 (`glossabet.artifacts.os.replace`). Both oracles identical; suite 513 green.
 
-#### Phase 36.5 — Producer-level tests for drift and validation rules
+#### Phase 36.5 — Producer-level tests for drift and validation rules ✅ 2026-08-17
 
 **Problem:** the finding *producers* (`_parallel_terms`, `_watched_in_use`,
 `_canonical_fading`, `_canonical_overloaded`, `_structure_findings`,
@@ -1960,6 +1960,26 @@ names the command, not the rule.
 
 **Acceptance:** every finding kind has a test that names it; suite time
 does not grow.
+
+**Completion evidence (2026-08-17):** `tests/test_finding_producers.py` —
+a hand-built RepositoryEvidence factory (only the tables the producers and
+`EvidenceIndex` read) and 15 tests that call the producers directly and
+assert the finding record: `parallel-term` (record, glossary-owned term
+skipped, sampled-zero suppression reason), `watched-term-in-use` (record,
+absent → none), `canonical-fading` (absent → strong, fading → moderate,
+truncated table → no claim), `canonical-overloaded` (repository-wide,
+scoped dispersion recomputed inside scope, non-canonical / thin scoped
+evidence ignored), `_resolve_bindings` (resolved / unresolved /
+out-of-scope / uncertain), `orphaned-concept` + `binding-unresolved` +
+`fragmentation`, `binding-out-of-scope`, and `unnamed-structure` +
+`boundary-mismatch` + `overloaded-structural-region` plus the
+missing-`member_tokens` confession. The per-command end-to-end smokes in
+`test_drift.py`/`test_reconcile.py` stay (they prove the scanned-corpus
+pipeline); the corpus-backed record tests there also stay — they are
+integration proofs, not stdout theater. Deleted:
+`test_validate_without_glossary_is_user_error` (covered by the Phase 36.2
+run contract). Suite 527 tests, ~24 s (unchanged; the new tests run in
+0.25 s). No engine change, so no oracle run was needed.
 
 #### Phase 36.6 — Ledger ceremony
 
