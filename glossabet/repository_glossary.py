@@ -1,0 +1,103 @@
+"""Safe discovery of a repository's own root ``GLOSSARY.md``.
+
+A hand-maintained ``GLOSSARY.md`` is maintainer-authored evidence of prior
+naming intent. It is deliberately *not* lexical evidence (``scanner.SELF_FILES``
+keeps it out of vocabulary counts, or the glossary would be evidence for
+itself) and it is deliberately *not* Glossabet's structured state
+(``glossabet-out/glossary.json``). This module answers only: does the exact
+scan root have one, can it be read safely and completely, and what exactly
+would be read (size + SHA-256)? No content leaves here — the agent context
+carries metadata only, so the skill's independent baseline is built from a
+glossary-blind context and reading the Markdown is a deliberate later step.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import os
+from pathlib import Path
+
+from glossabet.scanner import MAX_FILE_BYTES, _resolves_outside_root
+
+REPOSITORY_GLOSSARY_FILE = "GLOSSARY.md"
+MAX_REPOSITORY_GLOSSARY_BYTES = MAX_FILE_BYTES
+
+REASON_SYMLINK_ESCAPES = "symlink-escapes-repository"
+REASON_NOT_REGULAR = "not-a-regular-file"
+REASON_OVERSIZED = "oversized"
+REASON_UNREADABLE = "unreadable"
+
+
+def _unreadable(reason: str, size: int | None) -> dict:
+    section: dict = {
+        "present": True,
+        "path": REPOSITORY_GLOSSARY_FILE,
+        "readable": False,
+        "reason": reason,
+    }
+    if size is not None:
+        section["bytes"] = size
+    return section
+
+
+def discover_repository_glossary(root: Path) -> dict:
+    """Tri-state description of ``<root>/GLOSSARY.md``.
+
+    - absent → ``{"present": False}``
+    - present, safely and completely read → ``present/path/readable=True/
+      bytes/sha256`` (digest of the exact bytes read)
+    - present but not safely readable → ``present/path/readable=False/
+      reason`` (+ ``bytes`` when known); never reported as absent, so a
+      partial or refused read can never support an absence claim.
+
+    Presence is judged from the directory entry itself (``lexists``), so a
+    dangling or escaping symlink is still *present*. Symlinks follow the
+    walked-file rule: confined inside the root they are followed, escaping
+    ones are refused. The bound is applied to the bytes actually read
+    (``cap + 1``), not to a racy ``stat``.
+    """
+    root = root.resolve()
+    path = root / REPOSITORY_GLOSSARY_FILE
+    full = str(path)
+    if not os.path.lexists(full):
+        return {"present": False}
+    if os.path.islink(full) and _resolves_outside_root(full, root):
+        return _unreadable(REASON_SYMLINK_ESCAPES, None)
+    if not os.path.isfile(full):
+        return _unreadable(REASON_NOT_REGULAR, None)
+    try:
+        with open(full, "rb") as handle:
+            payload = handle.read(MAX_REPOSITORY_GLOSSARY_BYTES + 1)
+    except OSError:
+        return _unreadable(REASON_UNREADABLE, None)
+    if len(payload) > MAX_REPOSITORY_GLOSSARY_BYTES:
+        try:
+            size: int | None = os.path.getsize(full)
+        except OSError:
+            size = None
+        return _unreadable(REASON_OVERSIZED, size)
+    return {
+        "present": True,
+        "path": REPOSITORY_GLOSSARY_FILE,
+        "readable": True,
+        "bytes": len(payload),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+    }
+
+
+def repository_glossary_section(root: Path, evidence: dict) -> dict:
+    """The agent-context section: discovery plus nested exclusions.
+
+    ``nested_ignored`` lists every non-root ``GLOSSARY.md`` the walk saw and
+    excluded from lexical evidence. They are reported, never consulted or
+    merged: only the exact scan root's file is this scan's repository
+    glossary.
+    """
+    section = discover_repository_glossary(root)
+    nested = [
+        rel
+        for rel in evidence["skipped"]["self_glossaries"]
+        if rel != REPOSITORY_GLOSSARY_FILE
+    ]
+    section["nested_ignored"] = sorted(nested)
+    return section
