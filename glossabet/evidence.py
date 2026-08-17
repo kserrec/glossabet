@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import subprocess
 import sys
 from collections import Counter, defaultdict
@@ -44,9 +45,15 @@ from glossabet.tokenize import (
     tokenize_identifier,
 )
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 EVIDENCE_FILE = "evidence.json"
+
+# Beyond this, a spelling is not a real identifier. Per-identifier pattern and
+# co-occurrence analysis is quadratic in token count, so this bounds a hostile
+# single-identifier file from exhausting CPU/memory. Real identifiers use a
+# handful of tokens; the pinned evaluation corpus never approaches this.
+MAX_IDENTIFIER_TOKENS = 64
 
 
 @dataclass(frozen=True)
@@ -61,8 +68,18 @@ class Limits:
 # execute (core.fsmonitor runs on `git status`, hooks on many operations). We
 # only read HEAD and dirty state from an untrusted repo, so we override these
 # to empty on every call: a hostile .git/config must not achieve code
-# execution. Command-line -c beats repo-local config.
+# execution. Command-line -c beats repo-local config. Content filter drivers
+# (filter.<name>.clean/smudge/process) are a third such surface — `git status`
+# runs them during content conversion — but their names are attacker-chosen,
+# so they are enumerated from the repository's own config and cleared
+# per-name in _filter_driver_overrides.
 _GIT_SAFE_CONFIG = ("-c", "core.fsmonitor=", "-c", "core.hooksPath=/dev/null")
+
+
+def _resolve_git() -> str:
+    """Absolute git path so a repo-shipped git.exe on the cwd search path
+    (Windows resolves the current directory before PATH) cannot be run."""
+    return shutil.which("git") or "git"
 
 # Freshness describes repository inputs, not Glossabet's own output. Keep the
 # pathspec here literal and mirrored in skill/SKILL.md: the whole top-level
@@ -84,11 +101,38 @@ _GIT_FRESHNESS_STATUS_ARGS = (
 )
 
 
+def _filter_driver_overrides(git_exe: str, root: Path) -> tuple[str, ...]:
+    """`-c filter.<name>.<op>=` for every content-filter driver the repository
+    defines, so `git status` cannot execute an attacker-named clean/smudge/
+    process command during content conversion. Reading config runs no filter.
+    """
+    try:
+        proc = subprocess.run(
+            [git_exe, *_GIT_SAFE_CONFIG, "-C", str(root),
+             "config", "--local", "--name-only", "--get-regexp", r"^filter\."],
+            capture_output=True, text=True, timeout=30,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ()
+    if proc.returncode not in (0, 1):  # 1 == no matching keys
+        return ()
+    overrides: list[str] = []
+    for key in proc.stdout.split():
+        if key.startswith("filter.") and key.count(".") >= 2:
+            overrides.extend(("-c", f"{key}="))
+    return tuple(overrides)
+
+
 def _git_stamp(root: Path) -> dict:
+    git_exe = _resolve_git()
+    filter_overrides = _filter_driver_overrides(git_exe, root)
+
     def git(*args: str) -> str | None:
         try:
             proc = subprocess.run(
-                ["git", *_GIT_SAFE_CONFIG, "-C", str(root), *args],
+                [git_exe, *_GIT_SAFE_CONFIG, *filter_overrides,
+                 "-C", str(root), *args],
                 capture_output=True, text=True, timeout=30,
                 env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
             )
@@ -186,6 +230,7 @@ class _Vocabulary:
         self.module_neighbor_truncated: set[tuple[str, str]] = set()
         self.identifier_counts: Counter = Counter()
         self.identifier_files: dict[str, Counter] = defaultdict(Counter)
+        self.oversized_identifiers = 0
 
     def fold(
         self,
@@ -199,6 +244,14 @@ class _Vocabulary:
             self.identifier_counts[name] += count
             self.identifier_files[name][rel] += count
             tokens = tokenize_identifier(name)
+            if len(tokens) > MAX_IDENTIFIER_TOKENS:
+                # A real identifier has a handful of tokens. The pattern and
+                # co-occurrence structures below are O(t^2) in token count, so
+                # a single pathological spelling (permitted up to the 2 MB file
+                # cap) would otherwise exhaust CPU and memory. Bound the
+                # per-identifier token work and record the truncation.
+                tokens = tokens[:MAX_IDENTIFIER_TOKENS]
+                self.oversized_identifiers += 1
             uniq = sorted(set(tokens))
             for token in tokens:
                 self.token_counts[token] += count
@@ -483,6 +536,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
             "configured": sorted(walk.skipped_configured),
             "generated": sorted(walk.skipped_generated),
             "vendored": sorted(walk.skipped_vendored),
+            "oversized_identifiers": vocabulary.oversized_identifiers,
             "corpus_budget": walk.corpus_budget.as_evidence(),
         },
     }

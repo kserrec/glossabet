@@ -380,12 +380,20 @@ def _classify_files(
         if ext not in CODE_LANGUAGES and ext not in DOC_EXTENSIONS:
             result.other_files += 1
             continue
-        # A symlink resolving outside the repo is not repo content:
-        # reading it would ingest arbitrary host files into evidence
-        # (os.walk's followlinks=False guards dirs, not files).
-        if os.path.islink(full) and _resolves_outside_root(full, root):
-            result.skipped_symlinks.append(rel)
-            continue
+        if os.path.islink(full):
+            # A symlink resolving outside the repo is not repo content:
+            # reading it would ingest arbitrary host files into evidence
+            # (os.walk's followlinks=False guards dirs, not files).
+            if _resolves_outside_root(full, root):
+                result.skipped_symlinks.append(rel)
+                continue
+            # The name check above sees only the link's own name; a link
+            # with an ordinary name pointing at an in-repo sensitive file
+            # (notes.py -> .env) would otherwise launder its contents into
+            # evidence. Classify by the resolved target's name too.
+            if is_sensitive(os.path.basename(os.path.realpath(full))):
+                result.skipped_sensitive.append(rel)
+                continue
         try:
             size = os.path.getsize(full)
         except OSError:

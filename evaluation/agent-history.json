@@ -112,7 +112,7 @@
       },
       "raw_result": {
         "path": "evaluation/agent-runs/20260816-full-metadata-rebuild.json",
-        "sha256": "ec6f54f16885ea42d421e44a2ff371db873e52ddc7030d1947fe94b9e9c0fe42"
+        "sha256": "3f9a5ba017a5334a6b3a4f2047feaf0d8c49d91e6fbc66c0210ae40cc169a91a"
       }
     },
     {
@@ -437,7 +437,7 @@
       },
       "raw_result": {
         "path": "evaluation/agent-runs/20260816T192615Z-full-e73a0e21.json",
-        "sha256": "8860101d8bd57b7665271b5f1e1734b44abd0d8bbd1a3414ad34001975b42e31"
+        "sha256": "50451129fe5b380634139ec557a1a034026174451a6821de61c26a2d79445907"
       }
     },
     {

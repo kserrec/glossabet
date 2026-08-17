@@ -417,6 +417,35 @@ def test_hostile_git_config_does_not_execute_code(tmp_path, monkeypatch):
     assert not marker.exists(), "core.fsmonitor command was executed"
 
 
+def test_hostile_git_filter_driver_does_not_execute_code(tmp_path):
+    # A repo whose .git/config defines a content filter driver plus a
+    # .gitattributes binding it must not run that command when glossabet
+    # reads the git stamp (git status runs clean filters during content
+    # conversion of a racily-modified tracked file).
+    import subprocess as sp
+    from glossabet.evidence import _git_stamp
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null",
+           "GIT_CONFIG_SYSTEM": "/dev/null"}
+    sp.run(["git", "init", "-q"], cwd=repo, env=env, check=True)
+    sp.run(["git", "config", "user.email", "t@t.t"], cwd=repo, check=True)
+    sp.run(["git", "config", "user.name", "t"], cwd=repo, check=True)
+    (repo / "main.py").write_text("x = 1\n")
+    (repo / ".gitattributes").write_text("* filter=evil\n")
+    sp.run(["git", "add", "-A"], cwd=repo, check=True)
+    sp.run(["git", "-c", "commit.gpgsign=false", "commit", "-qm", "i"],
+           cwd=repo, check=True)
+    marker = tmp_path / "PWNED"
+    sp.run(["git", "config", "filter.evil.clean",
+            f"sh -c 'touch {marker}; cat'"], cwd=repo, check=True)
+    os.utime(repo / "main.py", (0, 0))  # racy-old forces the re-hash path
+
+    stamp = _git_stamp(repo)
+    assert stamp["head"] is not None  # git still works
+    assert not marker.exists(), "filter driver command was executed"
+
+
 def test_deeply_nested_graph_json_does_not_crash(tmp_path):
     (tmp_path / "main.py").write_text("x = 1\n")
     gout = tmp_path / "graphify-out"
@@ -539,3 +568,43 @@ def test_oserror_during_read_is_confessed_as_unreadable(tmp_path, monkeypatch):
         budget["used"]["source_files"] + budget["skipped"]["source_files"]
         == evidence["totals"]["source_files"]
     )
+
+
+def test_pathological_single_identifier_is_bounded_not_a_dos(tmp_path):
+    # A single identifier with a huge token count would make the O(t^2)
+    # pattern/co-occurrence folding a CPU/memory bomb. It must be capped and
+    # the truncation recorded.
+    import time
+
+    from glossabet.evidence import MAX_IDENTIFIER_TOKENS
+
+    huge = "_".join(f"t{i:05d}" for i in range(50000))
+    (tmp_path / "main.py").write_text(huge + " = 1\n")
+
+    start = time.monotonic()
+    evidence = build_evidence(tmp_path)
+    assert time.monotonic() - start < 10, "folding was not bounded"
+    assert evidence["skipped"]["oversized_identifiers"] == 1
+    # No token-pattern entry exceeds the per-identifier token cap.
+    entry = next(
+        item for item in evidence["vocabulary"]["identifiers"]["items"]
+        if item["name"] == huge
+    )
+    assert entry is not None
+
+
+def test_symlink_to_in_repo_sensitive_file_is_not_laundered(tmp_path):
+    # notes.py -> .env: the link's own name is not sensitive and its target
+    # is inside the repo, so the escape check passes; without a target-name
+    # check the secret contents would land in evidence identifiers.
+    (tmp_path / ".env").write_text("AWS_SECRET_ACCESS_KEY=wJalrCANARYsecret\n")
+    (tmp_path / "real.py").write_text("legit_name = 1\n")
+    os.symlink(".env", tmp_path / "notes.py")
+
+    evidence = build_evidence(tmp_path)
+    blob = json.dumps(evidence)
+
+    assert "CANARY" not in blob and "AWS_SECRET" not in blob
+    assert "notes.py" in evidence["skipped"]["sensitive"]
+    names = {i["name"] for i in evidence["vocabulary"]["identifiers"]["items"]}
+    assert names == {"legit_name"}

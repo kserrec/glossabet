@@ -799,3 +799,26 @@ def test_cleanup_only_removes_state_that_was_created(monkeypatch):
         "remove" not in command and "add" not in command for command in issued
     ), issued
     assert all("list" in command for command in issued), issued
+
+
+def test_trace_summary_redacts_home_and_repo_paths():
+    from pathlib import Path
+
+    from scripts.agent_eval import _trace_summary
+
+    home = str(Path.home())
+    command = {
+        "command": f"{home}/Projects/glossabet/.venv/bin/python3 run.py --version",
+        "cwd": home + "/somewhere",
+        "output": f"ran from {home}",
+        "exit_code": 0,
+        "status": "completed",
+    }
+    summary = _trace_summary(
+        command,
+        Path("/tmp/ws"),
+        {"stored_command_characters": 2000, "stored_output_characters": 600},
+    )
+    blob = json.dumps(summary)
+    assert home not in blob
+    assert "<REPO>" in summary["command"] or "<HOME>" in summary["command"]

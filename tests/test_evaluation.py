@@ -356,3 +356,24 @@ def test_aggregate_tolerates_an_empty_corpus_reuse_rate():
         case["cache"]["reuse_rate"] for case in cases[1:]
     ]
     assert aggregate["cache"]["minimum_reuse_rate"] == min(others)
+
+
+def test_manifest_rejects_non_https_corpus_url(tmp_path):
+    from copy import deepcopy
+
+    from evaluation.run import EvaluationError, _read_manifest
+
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    poisoned = deepcopy(manifest)
+    for source in poisoned["sources"]:
+        if source.get("kind") != "local":
+            source["url"] = "ext::sh -c 'touch /tmp/pwn'"
+            break
+    path = tmp_path / "corpus.json"
+    path.write_text(json.dumps(poisoned), encoding="utf-8")
+
+    try:
+        _read_manifest(path)
+        assert False, "an ext:: corpus url was accepted"
+    except EvaluationError as exc:
+        assert "url must be an https" in str(exc)

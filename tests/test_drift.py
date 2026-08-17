@@ -514,3 +514,44 @@ def test_scoped_zero_from_a_clipped_location_sample_is_confessed(tmp_path):
     ledger = section["coverage"]
     assert ledger["complete"] is False
     assert any("location sample" in reason for reason in ledger["reasons"])
+
+
+def test_parallel_term_scope_checks_are_bounded_against_a_hostile_glossary(
+    tmp_path,
+):
+    # A glossary within the accepted concept/alias ceilings can otherwise make
+    # owner-scope overlap O(concepts x owner-scopes) — minutes of CPU. The
+    # comparison budget must bound it and the section report itself partial.
+    import time
+
+    (tmp_path / "a.py").write_text(
+        "foo_value = 1\nbar_value = 2\n" * 5
+        + "def use(foo_value, bar_value):\n    return foo_value + bar_value\n"
+    )
+    concepts = [
+        {
+            "id": f"foo{i}",
+            "term": "foo",
+            "definition": "d",
+            "status": "canonical",
+            "scope": {"path_prefixes": [f"prod/d{i}"]},
+        }
+        for i in range(4000)
+    ]
+    for i in range(400):
+        concepts.append({
+            "id": f"other{i}",
+            "term": "other",
+            "definition": "d",
+            "status": "canonical",
+            "scope": {"path_prefixes": [f"zone/z{i}"]},
+            "aliases": [
+                {"term": f"bar{j}", "status": "proposed"} for j in range(100)
+            ],
+        })
+    glossary = {"schema_version": 1, "concepts": concepts}
+
+    evidence = build_evidence(tmp_path)
+    start = time.monotonic()
+    drift = build_drift(evidence, glossary)
+    assert time.monotonic() - start < 15, "parallel-term scope work was unbounded"

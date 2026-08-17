@@ -322,8 +322,14 @@ Glossabet program or its output artifacts.
   `test_vocabulary_owner_validation_uses_indexed_scope_lookup`.
 - **Target Git configuration cannot name an executable.** Each
   `git rev-parse`/`git status` call overrides `core.fsmonitor` and
-  `core.hooksPath`, uses no shell, disables credential prompts, and has a
-  timeout. The status call uses stable porcelain output, requests all
+  `core.hooksPath`, and additionally clears every content-filter driver the
+  repository defines (`filter.<name>.clean/smudge/process`, enumerated from
+  the repository's own config and overridden per name), because `git status`
+  runs those commands during content conversion of a modified tracked file.
+  The `git` executable is resolved to an absolute path so a repository that
+  ships `git.exe` cannot be run through Windows's current-directory search.
+  Every call uses no shell, disables credential prompts, and has a timeout.
+  The status call uses stable porcelain output, requests all
   untracked files, disables rename detection, and excludes only the
   top-level, Glossabet-owned `glossabet-out/` path relative to the directory
   being scanned. This exclusion is an argument to Git, not a mutation of
@@ -437,6 +443,39 @@ the opt-in developer/release operations that do use the network.
   makes repository coverage partial. `walk_remainder.exact: false` means the
   number and nature of unseen paths are unknown; consumers must not interpret
   an absent term or finding as repository-wide evidence in that state.
+- Per-identifier token analysis is quadratic in token count, so a single
+  spelling is capped at `MAX_IDENTIFIER_TOKENS` (64); any file with a longer
+  spelling is counted in `skipped.oversized_identifiers` and its excess
+  tokens do not enter pattern/co-occurrence analysis. Owner-scope overlap in
+  drift is likewise bounded by a comparison budget and reports its section
+  partial when reached. Real code never approaches either bound; both exist
+  to keep a hostile glossary or source file from exhausting CPU/memory.
+- A symlink whose own name is ordinary but whose in-repository target has a
+  sensitive name (for example `notes.py -> .env`) is classified sensitive by
+  the resolved target and excluded, so it cannot launder secret contents into
+  evidence.
+- **Brief content is untrusted repository input.** The vocabulary brief the
+  agent skill and the SessionStart hook emit renders terms and definitions a
+  repository authored in its committed `glossary.json`. Those bytes are
+  bounded, terminal-escaped, and read-only, but they are attacker-controlled
+  *text reaching a model* in a cloned hostile repository. The brief header
+  labels the content as unverified repository input rather than authoritative
+  instruction; a consumer must still weigh it as untrusted.
+- **The evaluation harness (`evaluation/run.py --fetch`) rejects non-`https://`
+  corpus URLs and disables Git's `ext::` remote helper**, because an
+  attacker-authored corpus entry could otherwise run a shell at fetch time on
+  a maintainer's machine. This is maintainer tooling, not shipped code.
+- **Accepted risk — build backend is version-pinned, not hash-pinned.** The
+  release build resolves `hatchling>=1.32,<1.33` from PyPI at build time in
+  the one job that holds PyPI upload permission; a compromised hatchling patch
+  release in that range would run there. There is no clean hash-pin in the
+  PEP 517 / `uv build` flow, so this is documented rather than fixed. Every
+  other dependency is hash-locked in `uv.lock`; the shipped wheel declares
+  zero runtime dependencies.
+- Published distributions are scanned at build time for absolute local home
+  paths (`/home/<user>/`, `/Users/<user>/`, `C:\Users\<user>`) so a machine
+  trace can never leak a maintainer's username or layout onto PyPI; internal
+  planning docs are excluded from the source distribution.
 
 ## Reporting
 

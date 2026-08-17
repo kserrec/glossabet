@@ -73,7 +73,14 @@ RELEASE_THRESHOLD_NAMES = frozenset({
     "nomination_quality_min",
     "structural_contract_min",
 })
-GIT_SAFE_CONFIG = ("-c", "core.fsmonitor=", "-c", "core.hooksPath=/dev/null")
+# Neutralize repo-config code-execution surfaces and, critically, the ext::
+# remote helper: a corpus url like `ext::sh -c '<payload>'` otherwise runs a
+# shell at fetch time. The manifest validator additionally requires https.
+GIT_SAFE_CONFIG = (
+    "-c", "core.fsmonitor=",
+    "-c", "core.hooksPath=/dev/null",
+    "-c", "protocol.ext.allow=never",
+)
 DRIFT_SECTIONS = (
     "parallel_terms",
     "watched_terms_in_use",
@@ -214,6 +221,15 @@ def _read_manifest(path: Path) -> tuple[dict, str]:
             raise EvaluationError(
                 f"{path}: {source['id']} needs a register expectation"
             )
+        url = source.get("url")
+        if source.get("kind") != "local" and (
+            not isinstance(url, str) or not url.startswith("https://")
+        ):
+            # A non-https url (e.g. `ext::sh -c ...`) reaches `git remote add`
+            # and can execute a shell at fetch time.
+            raise EvaluationError(
+                f"{path}: {source['id']} url must be an https:// URL"
+            )
     if not isinstance(manifest.get("self_register"), dict):
         raise EvaluationError(f"{path}: self_register must be an object")
     if not isinstance(manifest.get("self_nominations"), dict):
@@ -248,7 +264,7 @@ def _fetch(source: dict, repositories_root: Path) -> Path:
         raise EvaluationError(f"refusing to replace existing {destination}")
     destination.mkdir(parents=True)
     _git(["init", "-q"], destination)
-    _git(["remote", "add", "origin", source["url"]], destination)
+    _git(["remote", "add", "origin", "--", source["url"]], destination)
     _git(["fetch", "--depth", "1", "origin", source["commit"]], destination)
     _git(["checkout", "--detach", "--force", "FETCH_HEAD"], destination)
     return destination

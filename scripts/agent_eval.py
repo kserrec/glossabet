@@ -855,6 +855,12 @@ def _normalize_text(
     for source, replacement in aliases:
         normalized = normalized.replace(source, replacement)
     normalized = normalized.replace(str(workspace), "<WORKSPACE>")
+    # The agent may invoke absolute interpreter/shell paths the aliases above
+    # never anticipated; redacting the repo root and home directory keeps a
+    # committed, public trace from leaking the maintainer's username and
+    # local layout. Repo root first (more specific than home).
+    normalized = normalized.replace(str(ROOT), "<REPO>")
+    normalized = normalized.replace(str(Path.home()), "<HOME>")
     if len(normalized) <= limit:
         return normalized
     return normalized[:limit] + "…"

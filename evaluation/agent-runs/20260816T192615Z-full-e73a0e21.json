@@ -18,7 +18,7 @@
         "status": "completed"
       },
       {
-        "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py --version'",
+        "command": "/usr/bin/zsh -lc '<REPO>/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py --version'",
         "cwd": null,
         "exit_code": 0,
         "output_characters": 16,
@@ -93,7 +93,7 @@
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/fresh'",
+          "command": "/usr/bin/zsh -lc '<REPO>/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/fresh'",
           "cwd": null,
           "exit_code": 0,
           "output_characters": 8600,
@@ -134,7 +134,7 @@
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/stale'",
+          "command": "/usr/bin/zsh -lc '<REPO>/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/stale'",
           "cwd": null,
           "exit_code": 0,
           "output_characters": 8606,
@@ -176,7 +176,7 @@
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/absent'",
+          "command": "/usr/bin/zsh -lc '<REPO>/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/absent'",
           "cwd": null,
           "exit_code": 0,
           "output_characters": 7545,
@@ -207,7 +207,7 @@
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/malformed'",
+          "command": "/usr/bin/zsh -lc '<REPO>/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/malformed'",
           "cwd": null,
           "exit_code": 1,
           "output_characters": 200,
@@ -238,7 +238,7 @@
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/oversized'",
+          "command": "/usr/bin/zsh -lc '<REPO>/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/oversized'",
           "cwd": null,
           "exit_code": 1,
           "output_characters": 152,
@@ -269,7 +269,7 @@
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/symlinked'",
+          "command": "/usr/bin/zsh -lc '<REPO>/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/symlinked'",
           "cwd": null,
           "exit_code": 1,
           "output_characters": 81,
@@ -309,7 +309,7 @@
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/partial'",
+          "command": "/usr/bin/zsh -lc '<REPO>/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/partial'",
           "cwd": null,
           "exit_code": 0,
           "output_characters": 31913,
@@ -361,7 +361,7 @@
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/monorepo'",
+          "command": "/usr/bin/zsh -lc '<REPO>/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/monorepo'",
           "cwd": null,
           "exit_code": 0,
           "output_characters": 11932,
@@ -406,7 +406,7 @@
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/resumed-glossary'",
+          "command": "/usr/bin/zsh -lc '<REPO>/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/resumed-glossary'",
           "cwd": null,
           "exit_code": 0,
           "output_characters": 7825,
@@ -450,7 +450,7 @@
       "passed": true,
       "trace": [
         {
-          "command": "/usr/bin/zsh -lc '/home/serrecchia/Projects/glossabet/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/sensitive-file'",
+          "command": "/usr/bin/zsh -lc '<REPO>/.venv/bin/python3 <INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py inspect <WORKSPACE>/scenarios/sensitive-file'",
           "cwd": null,
           "exit_code": 0,
           "output_characters": 7568,

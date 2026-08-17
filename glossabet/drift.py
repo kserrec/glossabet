@@ -37,6 +37,8 @@ DRIFT_FILE = "drift.json"
 
 FINDINGS_PER_KIND_CAP = 10
 FADING_MAX_COUNT = 2
+# Cap on owner-scope overlap comparisons in _parallel_terms.
+PARALLEL_SCOPE_COMPARISON_BUDGET = 500_000
 
 _WATCHED_STATUSES = {"discouraged", "deprecated"}
 
@@ -72,6 +74,14 @@ def _index_glossary(glossary: dict):
                     "concept_id": concept["id"], "tokens": alias_tokens,
                     "scope": scope,
                 })
+    # Distinct owner scopes only. A hostile glossary can register tens of
+    # thousands of aliases mapping one token to the same scope; the overlap
+    # scan below is otherwise O(owners), so deduplication removes that
+    # amplification while preserving every distinct ownership.
+    known_scopes = {
+        token: list(dict.fromkeys(scopes))
+        for token, scopes in known_scopes.items()
+    }
     return canonical, watched, known_scopes
 
 
@@ -110,6 +120,12 @@ def _parallel_terms(
     """New prominent terms that behave like an existing canonical term."""
     findings: list[dict] = []
     suppressed = 0
+    # Owner-scope overlap is O(concepts x owner-scopes); a hostile glossary
+    # can push that product into the hundreds of millions within the accepted
+    # concept/alias ceilings. Bound the total comparisons and report the
+    # section partial rather than spinning for minutes.
+    comparisons_remaining = PARALLEL_SCOPE_COMPARISON_BUDGET
+    budget_exhausted = False
     for item in evidence["terminology"]["synonym_candidates"]["items"]:
         a_canon = item["a"] in canonical
         b_canon = item["b"] in canonical
@@ -119,6 +135,11 @@ def _parallel_terms(
         canon_token = item["a"] if a_canon else item["b"]
         for concept in canonical[canon_token]:
             scope = concept_scope(concept)
+            owners = known_scopes.get(new_term, ())
+            if comparisons_remaining < len(owners):
+                budget_exhausted = True
+                break
+            comparisons_remaining -= len(owners)
             if _known_in_scope(new_term, scope, known_scopes):
                 continue
             canonical_occurrence = matcher.code_term_occurrence(
@@ -155,10 +176,18 @@ def _parallel_terms(
                     f"'{concept['term']}' (similarity {similarity})"
                 ),
             })
+        if budget_exhausted:
+            break
     findings.sort(key=lambda f: (
         -f["evidence"]["similarity"], f["new_term"], f["concept_id"]
     ))
-    return findings, _suppressed_reason(suppressed, "parallel-term")
+    reasons = _suppressed_reason(suppressed, "parallel-term")
+    if budget_exhausted:
+        reasons.append(
+            "parallel-term scope checks reached their comparison budget; "
+            "results are partial"
+        )
+    return findings, reasons
 
 
 def _watched_in_use(
