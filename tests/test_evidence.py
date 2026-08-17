@@ -486,10 +486,14 @@ def test_hostile_git_filter_driver_via_config_include_does_not_execute(tmp_path)
            cwd=repo, check=True)
     # Now define the driver via include.path (not directly in .git/config).
     include_file = repo / ".git" / "evil-include"
+    # Forward-slash the marker: it is embedded in a git-config value inside
+    # the include file, and git's config parser treats backslash as an escape,
+    # so a Windows-native path here would make git reject the whole include.
+    marker_posix = marker.as_posix()
     include_file.write_text(
         "[filter \"evil\"]\n"
-        f"\tclean = sh -c 'touch {marker}; cat'\n"
-        f"\tsmudge = sh -c 'touch {marker}; cat'\n"
+        f"\tclean = sh -c 'touch {marker_posix}; cat'\n"
+        f"\tsmudge = sh -c 'touch {marker_posix}; cat'\n"
     )
     # Forward-slash path: git config treats backslash as an escape, so a
     # Windows-native path here would not resolve the include.
