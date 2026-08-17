@@ -794,10 +794,18 @@ def _print_repository_glossary(section: dict) -> None:
             f"{escape_terminal_text(item['canonical_term'])} does not"
         )
     if not divergence["complete"]:
-        print(
-            f"... term-presence check capped at {divergence['term_cap']} "
-            f"terms; {divergence['skipped_terms']} not checked"
-        )
+        reason = divergence.get("reason")
+        if reason:
+            print(
+                "... term-presence check not run: normalized GLOSSARY.md text "
+                f"exceeds {divergence['text_cap']} characters; "
+                f"{divergence['skipped_terms']} term(s) not checked"
+            )
+        else:
+            print(
+                f"... term-presence check capped at {divergence['term_cap']} "
+                f"terms; {divergence['skipped_terms']} not checked"
+            )
 
 
 def validate_command(path_arg: str) -> int:

@@ -179,7 +179,8 @@ is the validated structured state from `glossabet-out/glossary.json`.
 `repository_glossary` (`glossabet/repository_glossary.py`) is the repository's
 own hand-maintained root `GLOSSARY.md`, reported as metadata only — presence,
 `readable` with a named `reason` (`symlink-escapes-repository`,
-`not-a-regular-file`, `oversized`, `unreadable`), byte count, the SHA-256 of
+`symlink-to-sensitive-file`, `not-a-regular-file`, `oversized`,
+`unreadable`, `root-listing-unconfirmed`), byte count, the SHA-256 of
 the exact bytes read (the reader takes `MAX_FILE_BYTES + 1` bytes so the bound
 is judged from the bytes, not a racy stat), and `nested_ignored`, the non-root
 `GLOSSARY.md` files the walk excluded (`skipped.self_glossaries` in evidence)
@@ -278,8 +279,9 @@ The package is `glossabet/`. Grouped by role:
   present+unreadable with reason) for the `repository_glossary` context
   channel, plus `repository_glossary_divergence`, the one deterministic
   managed-mode signal: NFKC+casefold substring presence of each canonical
-  term and superseded alias in the document, capped at 2,000 terms with the
-  cap reported, surfaced by `inspect` and `validate` only when both files
+  term and superseded alias in the document, capped at 500 terms and at
+  4 M normalized characters (NFKC can expand 18×; the length guard runs
+  before any search) with the cap reported, surfaced by `inspect` and `validate` only when both files
   exist and the Markdown was read completely. It is not lexical evidence and
   not Glossabet state.
 - `brief.py` — the read-only ambient vocabulary projection. It loads no source

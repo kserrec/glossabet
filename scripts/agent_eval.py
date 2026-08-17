@@ -752,13 +752,12 @@ def _make_scenario(root: Path, scenario_id: str) -> None:
             },
         )
     elif scenario_id == "markdown-glossary":
-        (root / "GLOSSARY.md").write_text(
-            MARKDOWN_GLOSSARY_TEXT, encoding="utf-8"
-        )
+        # Bytes, not text: the checker compares the engine's SHA-256 with the
+        # digest of these exact bytes, and text mode would write CRLF on
+        # Windows.
+        (root / "GLOSSARY.md").write_bytes(MARKDOWN_GLOSSARY_TEXT.encode("utf-8"))
     elif scenario_id == "both-glossaries":
-        (root / "GLOSSARY.md").write_text(
-            MARKDOWN_GLOSSARY_TEXT, encoding="utf-8"
-        )
+        (root / "GLOSSARY.md").write_bytes(MARKDOWN_GLOSSARY_TEXT.encode("utf-8"))
         _write_json(
             _glossary_path(root),
             {
@@ -2769,6 +2768,21 @@ def _input_shape_errors(inputs: object) -> list[str]:
     return []
 
 
+def _recorded_scenario_generation(result: dict) -> list[str]:
+    """The known scenario-set generation a recorded run matches exactly, or
+    the current set (which the id/order check then reports as stale)."""
+    items = result.get("scenarios")
+    recorded_ids = (
+        [item.get("id") for item in items if isinstance(item, dict)]
+        if isinstance(items, list)
+        else []
+    )
+    for generation in SCENARIO_ID_GENERATIONS:
+        if recorded_ids == list(generation):
+            return list(generation)
+    return list(REQUIRED_SCENARIO_IDS)
+
+
 def verify_results(
     path: Path = DEFAULT_RESULTS, *, current: bool = False
 ) -> list[str]:
@@ -2801,19 +2815,7 @@ def verify_results(
         # Genuineness never reads the current manifest: the evidence may
         # honestly lag it. The scenario set and limit shape are pinned by
         # the evaluator itself.
-        recorded_ids = [
-            item.get("id")
-            for item in result.get("scenarios", [])
-            if isinstance(item, dict)
-        ] if isinstance(result.get("scenarios"), list) else []
-        expected_ids = next(
-            (
-                list(generation)
-                for generation in SCENARIO_ID_GENERATIONS
-                if recorded_ids == list(generation)
-            ),
-            list(REQUIRED_SCENARIO_IDS),
-        )
+        expected_ids = _recorded_scenario_generation(result)
         limits_ok = (
             isinstance(recorded_limits, dict)
             and set(recorded_limits) == _TRACE_LIMIT_KEYS

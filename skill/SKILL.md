@@ -182,9 +182,10 @@ The context carries two glossary channels that are never the same thing:
   Its `present` means the engine loaded and validated that JSON.
 - `repository_glossary` — the repository's own hand-maintained root
   `GLOSSARY.md`, reported as metadata only: `present`, `path`, `readable`,
-  `bytes`, `sha256`, a `reason` when it could not be read safely
-  (`symlink-escapes-repository`, `not-a-regular-file`, `oversized`,
-  `unreadable`), and `nested_ignored` — non-root `GLOSSARY.md` files the
+  `symlink`, `bytes`, `sha256`, a `reason` when it could not be read safely
+  (`symlink-escapes-repository`, `symlink-to-sensitive-file`,
+  `not-a-regular-file`, `oversized`, `unreadable`,
+  `root-listing-unconfirmed`), and `nested_ignored` — non-root `GLOSSARY.md` files the
   engine excluded from evidence and did not consult. Its words are never in
   the context and never in the vocabulary counts: a glossary that counted
   toward its own evidence would be evidence for itself.
@@ -274,7 +275,9 @@ occurs nowhere in the document) and `superseded_terms_still_present`
 (alias/discouraged/deprecated terms that appear while their canonical term does
 not). Use it as the starting list for the check above; it never compares
 meaning, a lenient substring hit counts as present, and `complete: false`
-means the check was capped and says nothing about unchecked terms. When the
+means the check was capped (by term count, or — with a `reason` — because
+the normalized document exceeded its length bound) and says nothing about
+unchecked terms. When the
 key is absent, no check ran — do not read that as agreement.
 
 ## Step 1 — Scan the repo from its root
@@ -471,7 +474,10 @@ already existed:
   re-check the file's SHA-256 against `repository_glossary.sha256` from Step
   0; if they differ, stop and report — the document changed under you and
   the session's reconciliation may no longer hold. If it was `readable:
-  false`, do not write it at all; say why. Reconciliation findings that are
+  false`, do not write it at all; say why. If `symlink` is true, do not
+  write it either — reading through a confined link is fine, but writing
+  through one would edit whatever file the link points at, and that is not
+  a glossary edit; tell the user and let them decide. Reconciliation findings that are
   not settled decisions (suspected drift, gaps, overloads, open questions)
   do not go into `GLOSSARY.md`; keep it the vocabulary people agreed to use
   and leave those findings in the conversation (or a separate report if the

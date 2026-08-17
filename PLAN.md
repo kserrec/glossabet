@@ -1082,7 +1082,8 @@ without its content and without touching lexical evidence.
      "bytes": N, "sha256": "<hex of the exact bytes read>"}`;
    - present but not safely readable → `{"present": true,
      "path": "GLOSSARY.md", "readable": false, "reason": <one of
-     "symlink-escapes-repository" | "not-a-regular-file" | "oversized" |
+     "symlink-escapes-repository" | "symlink-to-sensitive-file" |
+     "not-a-regular-file" | "oversized" | "root-listing-unconfirmed" |
      "unreadable">, "bytes": N-when-known}`.
    Symlink handling reuses the walked-file rule (a symlink confined inside
    the root is followed; an escaping one is refused). Size bound is the
@@ -1266,7 +1267,9 @@ concept term and each `alias`/`discouraged`/`deprecated` alias of a canonical
 concept and tests lenient substring presence in the decoded Markdown; it
 returns `canonical_missing_from_markdown`, `superseded_terms_still_present`
 (alias present while its canonical term is not), `checked_terms`,
-`skipped_terms`, `complete`, and the 2,000-term cap. `inspect` attaches it as
+`skipped_terms`, `complete`, and the term cap (2,000 at landing; the
+2026-08-17 audit lowered it to 500 and added a 4 M normalized-character
+guard). `inspect` attaches it as
 `repository_glossary.divergence` and `validate` (schema 7 → 8) stores it under
 `repository_glossary` and prints it — both only when structured state exists
 and the Markdown was read completely; otherwise the key is absent. Proposed
@@ -1276,6 +1279,101 @@ both-and-readable case through `inspect`, `validate` output and JSON,
 unreadable named, quiet on agreement. Skill *Managed* section names the
 field and its limits; README, ARCHITECTURE, CHANGELOG updated; plugin
 regenerated. Suite 450 passed; all per-commit gates green.
+
+### Bughunt of Phases 30–32 (2026-08-17) — three findings, all fixed
+
+Post-implementation bughunt scoped to the `GLOSSARY.md` adoption work. All
+three were proven and fixed the same session with pinned regression tests;
+none deferred.
+
+1. A `GLOSSARY.md` symlink to an in-repo sensitive file (`.env`, a key) was
+   reported `readable: true` — the engine would have authorized the skill to
+   read a secret. Root cause: discovery reused only the *escape* half of the
+   scanner's symlink rule and missed the sibling (classify by the resolved
+   target's name). Fixed: new reason `symlink-to-sensitive-file`; chained
+   links covered.
+2. A multi-word canonical term hard-wrapped across a line in the Markdown was
+   reported missing by the Phase 32 divergence check, contradicting its
+   documented lenient direction. Root cause: whitespace-literal fold. Fixed:
+   the fold collapses whitespace runs on both sides.
+3. On a case-insensitive filesystem (Windows CI, macOS) a lowercase
+   `glossary.md` was discovered as the repository glossary while the walk
+   still counted it as ordinary evidence (path lookup vs. exact entry name).
+   Fixed: presence is the exact directory-entry name, matching `SELF_FILES`;
+   the invariant is pinned cross-platform.
+
+### Bughunt round 2 of Phases 30–32 (2026-08-17) — two findings, both fixed
+
+Both share one cause — tests/fixtures assumed that writing text yields the
+exact bytes later hashed and that creating `GLOSSARY.md` yields an entry
+named exactly that; neither holds off Linux, and the suite runs on
+ubuntu/macos/windows.
+
+1. `test_only_the_exactly_named_entry_is_the_repository_glossary` (from
+   bughunt round 1) would fail on macOS/Windows CI: it wrote `GLOSSARY.md`
+   over an existing `glossary.md` (same file on a case-insensitive
+   filesystem, name preserved) and hashed a text-mode write (CRLF on
+   Windows). Fixed: unlink first, `write_bytes`.
+2. `scripts/agent_eval.py` `markdown-glossary`/`both-glossaries` fixtures
+   wrote the Markdown in text mode while the checker expects the digest of
+   the exact UTF-8 bytes (latent — the live eval runs on Linux). Fixed:
+   `write_bytes`; pinned by
+   `test_markdown_glossary_fixtures_match_the_digest_the_checker_expects`.
+
+### Audit of Phases 30–32 (2026-08-17) — three findings, all fixed
+
+Post-implementation security audit of the `GLOSSARY.md` adoption work
+(after the bughunt above). Nothing exploitable now; one ship-time item and
+two hardening items, all fixed the same session with pinned tests and
+recorded in SECURITY.md. None deferred.
+
+1. *(ship-time)* The skill could be steered to write through a symlinked
+   `GLOSSARY.md` into another in-repo file (`GLOSSARY.md -> src/app.py`);
+   discovery followed the confined link for reading (correct) but did not
+   say it was a link. Fixed: `repository_glossary.symlink` reported; skill
+   Step 6 never writes when it is true. Also closes the same gap in the
+   pre-Phase-31 fresh-write path.
+2. *(hardening)* Divergence check CPU ceiling was ~4–7 s under a hostile
+   glossary + NFKC-expanding Markdown, with the expansion unguarded. Fixed:
+   term cap 2,000 → 500 and a 4 M normalized-character guard applied after
+   folding and before any search (`reason: normalized-text-exceeds-bound`);
+   worst case now ~1 s, proven by tests.
+3. *(hardening)* The bughunt's exact-name presence check used
+   `os.listdir(root)`, materializing a possibly enormous root listing.
+   Fixed: `lexists` fast path + bounded `scandir` confirmation under
+   `MAX_WALK_ENTRIES`.
+
+### Audit round 2 of Phases 30–32 (2026-08-17) — three findings, all fixed
+
+1. *(hardening)* The divergence length guard ran after NFKC + casefold +
+   whitespace collapse; on the NFKC bomb, casefold (3× UCS-4 reserve) and the
+   collapse each allocate ~170 MB before the guard looked. Fixed: bound
+   judged right after NFKC (72 MB peak) and again after casefold, before the
+   collapse and any search; pinned by a peak-memory test.
+2. *(hardening / invariant)* The exact-name presence check reported "absent"
+   when something was there but could not be confirmed (unlistable root, or
+   the walk-entry cap reached first) — a false absence claim, the one
+   failure the channel forbids. Fixed: `present: true, readable: false,
+   reason: root-listing-unconfirmed`; both states pinned.
+3. *(hardening)* `SELF_FILES` and `REPOSITORY_GLOSSARY_FILE` were
+   independent spellings of one name; pinned equal by test.
+
+### Test-audit proposals for the Phase 30–32 tests (2026-08-17) — await Kyle's ruling
+
+Left in place; none is proven vacuous, so deletion/weakening waits for a
+ruling. All three trim runtime or wall-clock fragility, nothing else.
+
+1. Delete `test_divergence_worst_case_is_bounded_in_time` — its cap
+   assertions duplicate `test_divergence_caps_its_work_and_says_so`; its
+   only unique claim is a `< 10 s` wall-clock ceiling (a constant-factor
+   canary that is also the classic CI-noise test).
+2. Drop the secondary `elapsed < 5` assertion from
+   `test_divergence_guard_fires_before_casefold_and_collapse_allocate`; the
+   deterministic `tracemalloc` peak assertion is the proof of the claim.
+3. Merge that test with
+   `test_divergence_guard_fires_on_nfkc_expansion_before_any_search` (same
+   2 MB bomb built twice, ~1 s each; different claims, so a merge not a
+   deletion).
 
 ### Open bughunt deferrals (2026-08-17)
 

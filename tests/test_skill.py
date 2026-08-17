@@ -131,6 +131,8 @@ def test_skill_repository_glossary_protocol_matches_engine(tmp_path):
         REASON_NOT_REGULAR,
         REASON_OVERSIZED,
         REASON_SYMLINK_ESCAPES,
+        REASON_LISTING_UNCONFIRMED,
+        REASON_SYMLINK_SENSITIVE,
         REASON_UNREADABLE,
         discover_repository_glossary,
     )
@@ -141,7 +143,7 @@ def test_skill_repository_glossary_protocol_matches_engine(tmp_path):
     # Every field the skill names exists in the engine's section.
     (tmp_path / "GLOSSARY.md").write_text("# Glossary\n")
     section = discover_repository_glossary(tmp_path)
-    for field in ("present", "path", "readable", "bytes", "sha256"):
+    for field in ("present", "path", "readable", "symlink", "bytes", "sha256"):
         assert field in section
         assert f"`{field}`" in text
     assert "`nested_ignored`" in text
@@ -158,9 +160,11 @@ def test_skill_repository_glossary_protocol_matches_engine(tmp_path):
     assert "`complete: false`" in text
     for reason in (
         REASON_SYMLINK_ESCAPES,
+        REASON_SYMLINK_SENSITIVE,
         REASON_NOT_REGULAR,
         REASON_OVERSIZED,
         REASON_UNREADABLE,
+        REASON_LISTING_UNCONFIRMED,
     ):
         assert f"`{reason}`" in text
 

@@ -12,9 +12,13 @@ import pytest
 from glossabet.cli import main
 from glossabet.evidence import build_evidence
 from glossabet.glossary import save_glossary
+from glossabet import repository_glossary as repository_glossary_module
 from glossabet.repository_glossary import (
+    MAX_DIVERGENCE_TERMS,
+    MAX_DIVERGENCE_TEXT_CHARS,
     MAX_REPOSITORY_GLOSSARY_BYTES,
     discover_repository_glossary,
+    repository_glossary_divergence,
 )
 
 
@@ -87,6 +91,20 @@ def test_scan_summary_names_the_self_glossary_exclusion(tmp_path, capsys):
 # --- the four glossary states through inspect -----------------------------
 
 
+def _ledger_glossary() -> dict:
+    return {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": "ledger-batch",
+                "term": "Ledger batch",
+                "definition": "A settled group.",
+                "status": "canonical",
+            }
+        ],
+    }
+
+
 def test_no_glossary_reports_absent_and_nothing_else_changes(tmp_path, capsys):
     _code(tmp_path)
     context = _inspect(tmp_path, capsys)
@@ -110,6 +128,7 @@ def test_markdown_only_is_distinct_from_none_and_from_json_only(tmp_path, capsys
         "present": True,
         "path": "GLOSSARY.md",
         "readable": True,
+        "symlink": False,
         "bytes": len(payload),
         "sha256": hashlib.sha256(payload).hexdigest(),
         "nested_ignored": [],
@@ -120,20 +139,7 @@ def test_markdown_only_is_distinct_from_none_and_from_json_only(tmp_path, capsys
 
 def test_json_only_leaves_repository_glossary_absent(tmp_path, capsys):
     _code(tmp_path)
-    save_glossary(
-        tmp_path,
-        {
-            "schema_version": 1,
-            "concepts": [
-                {
-                    "id": "ledger-batch",
-                    "term": "Ledger batch",
-                    "definition": "A settled group.",
-                    "status": "canonical",
-                }
-            ],
-        },
-    )
+    save_glossary(tmp_path, _ledger_glossary())
     context = _inspect(tmp_path, capsys)
     assert context["glossary"]["present"] is True
     assert context["repository_glossary"]["present"] is False
@@ -142,20 +148,7 @@ def test_json_only_leaves_repository_glossary_absent(tmp_path, capsys):
 def test_both_forms_are_surfaced_distinctly(tmp_path, capsys):
     _code(tmp_path)
     (tmp_path / "GLOSSARY.md").write_text("# Glossary\n")
-    save_glossary(
-        tmp_path,
-        {
-            "schema_version": 1,
-            "concepts": [
-                {
-                    "id": "ledger-batch",
-                    "term": "Ledger batch",
-                    "definition": "A settled group.",
-                    "status": "canonical",
-                }
-            ],
-        },
-    )
+    save_glossary(tmp_path, _ledger_glossary())
     context = _inspect(tmp_path, capsys)
     assert context["glossary"]["present"] is True
     assert context["glossary"]["concepts"][0]["id"] == "ledger-batch"
@@ -330,8 +323,6 @@ def _glossary_with_alias() -> dict:
 
 
 def test_divergence_reports_missing_canonical_and_superseded_terms():
-    from glossabet.repository_glossary import repository_glossary_divergence
-
     text = (
         "# Glossary\n\n**Settlement bundle** — the group we settle.\n"
         "Payments are attempts to collect money.\n"
@@ -356,8 +347,6 @@ def test_divergence_reports_missing_canonical_and_superseded_terms():
 
 
 def test_divergence_is_clean_when_every_settled_term_is_present():
-    from glossabet.repository_glossary import repository_glossary_divergence
-
     text = "Ledger batch; settlement bundle (old name); payment.\n".encode()
     result = repository_glossary_divergence(_glossary_with_alias(), text)
     assert result["canonical_missing_from_markdown"] == []
@@ -366,8 +355,6 @@ def test_divergence_is_clean_when_every_settled_term_is_present():
 
 
 def test_divergence_folds_unicode_like_the_identifier_contract():
-    from glossabet.repository_glossary import repository_glossary_divergence
-
     glossary = {
         "schema_version": 1,
         "concepts": [
@@ -391,8 +378,6 @@ def test_divergence_folds_unicode_like_the_identifier_contract():
 
 
 def test_divergence_caps_its_work_and_says_so():
-    from glossabet import repository_glossary as module
-
     glossary = {
         "schema_version": 1,
         "concepts": [
@@ -402,14 +387,14 @@ def test_divergence_caps_its_work_and_says_so():
                 "definition": "d",
                 "status": "canonical",
             }
-            for i in range(module.MAX_DIVERGENCE_TERMS + 5)
+            for i in range(MAX_DIVERGENCE_TERMS + 5)
         ],
     }
-    result = module.repository_glossary_divergence(glossary, b"nothing\n")
-    assert result["checked_terms"] == module.MAX_DIVERGENCE_TERMS
+    result = repository_glossary_divergence(glossary, b"nothing\n")
+    assert result["checked_terms"] == MAX_DIVERGENCE_TERMS
     assert result["skipped_terms"] == 5
     assert result["complete"] is False
-    assert len(result["canonical_missing_from_markdown"]) == module.MAX_DIVERGENCE_TERMS
+    assert len(result["canonical_missing_from_markdown"]) == MAX_DIVERGENCE_TERMS
 
 
 def test_inspect_carries_divergence_only_when_both_exist_and_readable(
@@ -490,3 +475,261 @@ def test_validate_is_quiet_when_markdown_and_state_agree(tmp_path, capsys):
 
     assert main(["validate", str(tmp_path)]) == 0
     assert "GLOSSARY.md" not in capsys.readouterr().out
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink semantics")
+def test_symlink_to_in_repo_sensitive_file_is_never_declared_readable(tmp_path):
+    (tmp_path / ".env").write_text("SECRET_TOKEN=abc123\n")
+    os.symlink(tmp_path / ".env", tmp_path / "GLOSSARY.md")
+
+    section = discover_repository_glossary(tmp_path)
+
+    assert section["present"] is True
+    assert section["readable"] is False
+    assert section["reason"] == "symlink-to-sensitive-file"
+    assert "sha256" not in section
+
+    # Sibling: a link to an in-repo key file, and a chained link.
+    (tmp_path / "GLOSSARY.md").unlink()
+    (tmp_path / "server.key").write_text("k\n")
+    os.symlink(tmp_path / "server.key", tmp_path / "GLOSSARY.md")
+    assert discover_repository_glossary(tmp_path)["reason"] == "symlink-to-sensitive-file"
+    (tmp_path / "GLOSSARY.md").unlink()
+    os.symlink(tmp_path / ".env", tmp_path / "hop.md")
+    os.symlink(tmp_path / "hop.md", tmp_path / "GLOSSARY.md")
+    assert discover_repository_glossary(tmp_path)["reason"] == "symlink-to-sensitive-file"
+
+
+def test_divergence_matches_terms_across_line_wraps_and_whitespace_runs():
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": "ledger-batch",
+                "term": "Ledger Batch",
+                "definition": "d",
+                "status": "canonical",
+                "aliases": [
+                    {"term": "settlement bundle", "status": "deprecated"},
+                ],
+            },
+            {
+                "id": "gw",
+                "term": "Gateway  Route",  # doubled space in the term itself
+                "definition": "d",
+                "status": "canonical",
+            },
+        ],
+    }
+    wrapped = (
+        "Our Ledger\nBatch is the unit; the old settlement\n\tbundle name is "
+        "gone. The gateway route\nremains.\n"
+    ).encode("utf-8")
+
+    result = repository_glossary_divergence(glossary, wrapped)
+
+    assert result["canonical_missing_from_markdown"] == []
+    # The alias is present too, but so is the canonical term: not superseded.
+    assert result["superseded_terms_still_present"] == []
+    # And a wrapped *alias* still counts as present when the canonical is absent.
+    only_alias = b"the old settlement\nbundle name\n"
+    result = repository_glossary_divergence(glossary, only_alias)
+    assert result["superseded_terms_still_present"][0]["term"] == "settlement bundle"
+
+
+def test_only_the_exactly_named_entry_is_the_repository_glossary(tmp_path):
+    """Pins the invariant on every platform: on a case-insensitive filesystem
+    a path lookup for GLOSSARY.md would find glossary.md, but the scanner's
+    exclusion is by exact entry name, so discovery must be too — otherwise
+    the same file would be both "the repository glossary" and ordinary
+    lexical evidence."""
+    (tmp_path / "glossary.md").write_bytes(b"# lowercase\n")
+    assert discover_repository_glossary(tmp_path) == {"present": False}
+    evidence = build_evidence(tmp_path, cache=False)
+    assert evidence["skipped"]["self_glossaries"] == []
+
+    # On a case-insensitive filesystem writing GLOSSARY.md would reopen
+    # glossary.md and keep its name; remove it so the new entry's name is
+    # exact everywhere. Bytes, not text: Windows text mode writes CRLF and
+    # the digest below is of the exact bytes.
+    (tmp_path / "glossary.md").unlink()
+    (tmp_path / "GLOSSARY.md").write_bytes(b"# exact\n")
+    section = discover_repository_glossary(tmp_path)
+    assert section["readable"] is True
+    assert section["sha256"] == hashlib.sha256(b"# exact\n").hexdigest()
+
+
+# --- audit hardening (2026-08-17) -----------------------------------------
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink semantics")
+def test_confined_symlink_is_flagged_so_the_skill_never_writes_through_it(tmp_path):
+    (tmp_path / "src").mkdir()
+    target = tmp_path / "src" / "app.py"
+    target.write_bytes(b"print('app')\n")
+    os.symlink(target, tmp_path / "GLOSSARY.md")
+
+    section = discover_repository_glossary(tmp_path)
+
+    assert section["readable"] is True
+    assert section["symlink"] is True
+
+    (tmp_path / "GLOSSARY.md").unlink()
+    (tmp_path / "GLOSSARY.md").write_bytes(b"# real\n")
+    assert discover_repository_glossary(tmp_path)["symlink"] is False
+
+
+def test_divergence_guard_fires_on_nfkc_expansion_before_any_search(monkeypatch):
+    # U+FDFA expands to 18 code points under NFKC: a 2 MB document becomes
+    # ~12 M characters. The guard must trip before a single term is searched.
+    bomb = ("\ufdfa" * (MAX_REPOSITORY_GLOSSARY_BYTES // 3)).encode("utf-8")
+    assert len(bomb) <= MAX_REPOSITORY_GLOSSARY_BYTES
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": "a",
+                "term": "Alpha",
+                "definition": "d",
+                "status": "canonical",
+                "aliases": [{"term": "old alpha", "status": "deprecated"}],
+            },
+            {"id": "b", "term": "Beta", "definition": "d", "status": "canonical"},
+        ],
+    }
+    result = repository_glossary_divergence(glossary, bomb)
+
+    assert result == {
+        "canonical_missing_from_markdown": [],
+        "superseded_terms_still_present": [],
+        "checked_terms": 0,
+        "skipped_terms": 3,
+        "complete": False,
+        "reason": "normalized-text-exceeds-bound",
+        "term_cap": MAX_DIVERGENCE_TERMS,
+        "text_cap": MAX_DIVERGENCE_TEXT_CHARS,
+    }
+    # Sibling: exactly at the bound is still searched; one past is not.
+    at_bound = ("a" * MAX_DIVERGENCE_TEXT_CHARS).encode("utf-8")
+    assert repository_glossary_divergence(glossary, at_bound)["checked_terms"] == 3
+    past = ("a" * (MAX_DIVERGENCE_TEXT_CHARS + 1)).encode("utf-8")
+    assert repository_glossary_divergence(glossary, past)["reason"] == (
+        "normalized-text-exceeds-bound"
+    )
+
+
+def test_divergence_worst_case_is_bounded_in_time():
+    import time
+
+    text = b"a" * MAX_REPOSITORY_GLOSSARY_BYTES
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": f"c{i:05d}",
+                "term": "a" * 1000 + f"b{i:04d}",
+                "definition": "d",
+                "status": "canonical",
+            }
+            for i in range(MAX_DIVERGENCE_TERMS + 10)
+        ],
+    }
+    started = time.perf_counter()
+    result = repository_glossary_divergence(glossary, text)
+    elapsed = time.perf_counter() - started
+    assert result["checked_terms"] == MAX_DIVERGENCE_TERMS
+    assert result["complete"] is False
+    # Generous ceiling for slow CI hosts; the pre-hardening cost was ~4.3 s
+    # for four times as many terms, i.e. this path is now ~1 s locally.
+    assert elapsed < 10
+
+
+def test_presence_confirmation_never_materializes_the_root_listing(
+    tmp_path, monkeypatch
+):
+    (tmp_path / "GLOSSARY.md").write_text("# g\n")
+    for index in range(5):
+        (tmp_path / f"file{index}.py").write_text("x = 1\n")
+
+    # Confirmed by bounded scandir iteration, not os.listdir.
+    monkeypatch.setattr(
+        repository_glossary_module.os,
+        "listdir",
+        lambda *_a, **_k: pytest.fail("os.listdir must not be used"),
+    )
+    assert discover_repository_glossary(tmp_path)["present"] is True
+
+    # Something is there (lexists) but its exact name could not be confirmed
+    # within the cap: never "absent" — a false absence claim is the one
+    # failure this channel must not produce.
+    monkeypatch.setattr(repository_glossary_module, "MAX_WALK_ENTRIES", 0)
+    assert discover_repository_glossary(tmp_path) == {
+        "present": True,
+        "path": "GLOSSARY.md",
+        "readable": False,
+        "reason": "root-listing-unconfirmed",
+    }
+    # Sibling: the root cannot be listed at all.
+    monkeypatch.setattr(repository_glossary_module, "MAX_WALK_ENTRIES", 100)
+
+    def _unlistable(*_a, **_k):
+        raise PermissionError("listing denied")
+
+    monkeypatch.setattr(repository_glossary_module.os, "scandir", _unlistable)
+    assert discover_repository_glossary(tmp_path)["reason"] == "root-listing-unconfirmed"
+    # And truly absent stays absent without any listing at all.
+    (tmp_path / "GLOSSARY.md").unlink()
+    assert discover_repository_glossary(tmp_path) == {"present": False}
+
+
+def test_validate_names_the_text_bound_when_the_guard_fires(
+    tmp_path, capsys, monkeypatch
+):
+    # The real bound is proven by the unit test above; here only the printed
+    # message matters, so trip the guard cheaply instead of building a 12 M
+    # character document a second time.
+    monkeypatch.setattr(repository_glossary_module, "MAX_DIVERGENCE_TEXT_CHARS", 8)
+    _code(tmp_path)
+    save_glossary(tmp_path, _glossary_with_alias())
+    (tmp_path / "GLOSSARY.md").write_text("Ledger batch and payment.\n")
+    assert main(["validate", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "term-presence check not run: normalized GLOSSARY.md text exceeds" in out
+
+
+def test_divergence_guard_fires_before_casefold_and_collapse_allocate():
+    """On the NFKC bomb, casefold reserves a 3x buffer (~170 MB) and the
+    whitespace collapse allocates millions of tiny strings (~180 MB). The
+    length guard must be judged right after NFKC (72 MB peak), before either
+    of those steps."""
+    import time
+    import tracemalloc
+
+    bomb = ("\ufdfa" * (MAX_REPOSITORY_GLOSSARY_BYTES // 3)).encode("utf-8")
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {"id": "a", "term": "Alpha", "definition": "d", "status": "canonical"}
+        ],
+    }
+    tracemalloc.start()
+    started = time.perf_counter()
+    result = repository_glossary_divergence(glossary, bomb)
+    elapsed = time.perf_counter() - started
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    assert result["reason"] == "normalized-text-exceeds-bound"
+    # NFKC alone peaks at ~72 MB for this document; casefold or the collapse
+    # would each push it past 165 MB. Generous ceiling, well under either.
+    assert peak < 120_000_000, peak
+    assert elapsed < 5, elapsed
+
+
+def test_discovery_name_is_the_scanner_exclusion_name():
+    """One name, two modules: if either spelling drifts, GLOSSARY.md would be
+    excluded from evidence but not discovered (or discovered and counted)."""
+    from glossabet.repository_glossary import REPOSITORY_GLOSSARY_FILE
+    from glossabet.scanner import SELF_FILES
+
+    assert SELF_FILES == frozenset({REPOSITORY_GLOSSARY_FILE})

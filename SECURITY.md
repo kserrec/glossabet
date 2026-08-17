@@ -82,6 +82,32 @@ sequences or reorder the displayed result.
   `test_walk_work_budget_marks_unknown_remainder`, and
   `test_overfull_directory_is_skipped_whole_to_preserve_determinism`.
 
+- **A repository's own root `GLOSSARY.md` is discovered, never ingested.**
+  `glossabet/repository_glossary.py` reads at most `MAX_FILE_BYTES + 1`
+  bytes of the exact-named root entry and reports presence, safe-read
+  status, size, and SHA-256 only — never content, and its words never enter
+  lexical evidence at any depth (`SELF_FILES`). It applies both walked-file
+  symlink rules: an escaping link and a link whose in-repository target has
+  a sensitive name (`GLOSSARY.md -> .env`) are `present` but `readable:
+  false` with a named reason, so the engine never authorizes the agent to
+  read a secret. A confined symlink is readable but flagged `symlink: true`,
+  and the skill never writes through a flagged entry — a glossary edit must
+  not become an edit of whatever file the link points at. Presence is the
+  exact directory-entry name confirmed by bounded `scandir` iteration under
+  `MAX_WALK_ENTRIES` (never a materialized `listdir`), so a case-insensitive
+  filesystem cannot make one file both "the glossary" and evidence, and a
+  root with millions of entries costs no memory. When something is there
+  (`lexists`) but its exact name cannot be confirmed — the root is not
+  listable, or the cap is reached first — the record is `present: true,
+  readable: false, reason: root-listing-unconfirmed`, never absent: this
+  channel must never produce a false absence claim. Regressions:
+  `test_escaping_symlink_is_present_but_never_read`,
+  `test_symlink_to_in_repo_sensitive_file_is_never_declared_readable`,
+  `test_confined_symlink_is_flagged_so_the_skill_never_writes_through_it`,
+  `test_only_the_exactly_named_entry_is_the_repository_glossary`,
+  `test_presence_confirmation_never_materializes_the_root_listing`,
+  `test_glossary_markdown_never_enters_lexical_evidence`.
+
 ### Repository writes
 
 - **Generated writes cannot be redirected through symlinks.** The
@@ -462,6 +488,22 @@ the opt-in developer/release operations that do use the network.
   quadratic in the count of `import` tokens. Real code never approaches either
   bound; both exist to keep a hostile
   glossary or source file from exhausting CPU/memory.
+- The managed-mode term-presence check (`repository_glossary.divergence`)
+  is bounded on both factors: at most `MAX_DIVERGENCE_TERMS` (500) folded
+  substring searches over a normalized document of at most
+  `MAX_DIVERGENCE_TEXT_CHARS` (4,000,000) characters. The length guard is
+  judged right after NFKC (which can expand a code point up to 18×) and
+  again after casefold (up to a further 3×), *before* the whitespace collapse
+  and any search — on an expanded 12 M-character document, casefold and the
+  collapse each allocate ~170 MB, so the bound must precede them; a document
+  past the bound yields `complete:
+  false` with `reason: normalized-text-exceeds-bound` and zero searches.
+  Measured worst case is ~1 s; a hostile glossary plus Markdown cannot buy
+  more. Regressions:
+  `test_divergence_guard_fires_on_nfkc_expansion_before_any_search`,
+  `test_divergence_guard_fires_before_casefold_and_collapse_allocate`,
+  `test_divergence_worst_case_is_bounded_in_time`,
+  `test_divergence_caps_its_work_and_says_so`.
 - A symlink whose own name is ordinary but whose in-repository target has a
   sensitive name (for example `notes.py -> .env`) is classified sensitive by
   the resolved target and excluded, so it cannot launder secret contents into
