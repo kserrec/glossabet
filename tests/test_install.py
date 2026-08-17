@@ -95,17 +95,17 @@ import subprocess
 import sys
 
 from glossabet import __version__
-from glossabet import installer
-from glossabet.installer import (
+from glossabet import claude_plugin
+from glossabet.claude_plugin import (
     CLAUDE_HOOKS_RELATIVE,
     CLAUDE_MANIFEST_RELATIVE,
-    InstallError,
+    ClaudePluginError,
     claude_hooks,
     claude_plugin_manifest,
     hook_command,
-    install_command,
     resolve_cli_executable,
 )
+from glossabet.installer import install_command
 
 ROOT = Path(__file__).resolve().parents[1]
 CODEX_PLUGIN = ROOT / "plugins" / "glossabet"
@@ -289,7 +289,7 @@ def test_unresolvable_executable_still_installs_the_skill_but_fails_loudly(
     tmp_path, capsys, monkeypatch
 ):
     home = tmp_path / "home"
-    monkeypatch.setattr(installer, "_candidate_executables", lambda: [])
+    monkeypatch.setattr(claude_plugin, "_candidate_executables", lambda: [])
 
     code, destination = _claude_install(home, executable=None)
 
@@ -304,7 +304,7 @@ def test_unresolvable_executable_still_installs_the_skill_but_fails_loudly(
 def test_hook_command_refuses_shell_significant_paths():
     for bad in ('/tmp/a"b/glossabet', "/tmp/$HOME/glossabet", "/tmp/`x`/glossabet",
                 "/tmp/a\nb/glossabet"):
-        with pytest.raises(InstallError):
+        with pytest.raises(ClaudePluginError):
             hook_command(Path(bad))
     assert hook_command(Path("/tmp/with space/glossabet")) == (
         '"/tmp/with space/glossabet" brief .'
@@ -339,7 +339,7 @@ def test_resolve_cli_executable_verifies_the_version(tmp_path, monkeypatch):
 
     monkeypatch.setattr(sys, "argv", ["pytest"])
     monkeypatch.setenv("PATH", str(stale.parent))
-    with pytest.raises(InstallError, match="did not report"):
+    with pytest.raises(ClaudePluginError, match="did not report"):
         resolve_cli_executable()
 
     monkeypatch.setenv("PATH", str(good.parent))

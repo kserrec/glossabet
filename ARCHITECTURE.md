@@ -83,7 +83,7 @@ uv tool install . --reinstall
 
 Install the wheel-bundled canonical skill for Codex (or pass
 `--agent claude` for Claude Code, which also installs the session-start
-`brief` hook as a skills-directory plugin — see `glossabet/installer.py`):
+`brief` hook as a skills-directory plugin — see `glossabet/claude_plugin.py`):
 
 ```
 glossabet install
@@ -364,6 +364,10 @@ The package is `glossabet/`. Grouped by role:
   directory, supports Claude Code and an explicit destination, writes
   atomically, is idempotent, refuses symlink components, and requires
   `--force` before replacing different content.
+- `claude_plugin.py` — the Claude Code skills-directory plugin contract that
+  `install --agent claude` writes beside the skill: manifest, `SessionStart`
+  hook running `brief .`, and version-verified resolution of the `glossabet`
+  executable the hook names. Pure data out; `installer.py` does the writing.
 - `context_sync.py` — the explicit project-context fallback for hosts without
   a trusted lifecycle hook. `sync-context` selects only root `AGENTS.md`
   (Codex default) or root `CLAUDE.md` (explicit Claude target), renders the
