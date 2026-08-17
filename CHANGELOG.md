@@ -39,7 +39,10 @@ This first alpha is prepared but has not been published to PyPI.
   adoption / resume / managed states, forms its own naming baseline before
   reading the document, reconciles into named categories, promotes nothing
   to canonical without the human, and never regenerates a maintainer-owned
-  `GLOSSARY.md` wholesale (schema-v3 agent context).
+  `GLOSSARY.md` wholesale (schema-v3 agent context). With both files present,
+  `inspect` and `validate` (validation schema 8) add a bounded lexical
+  term-presence divergence check — canonical terms absent from the Markdown
+  and superseded aliases still present — never a meaning comparison.
 - A compact schema-v2 routine agent context with vocabulary module rollups,
   file locations only on nomination/read targets, an 80 KB self-repository
   regression target, explicit projection omissions, and `inspect --full` for

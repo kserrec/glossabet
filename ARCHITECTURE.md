@@ -276,7 +276,12 @@ The package is `glossabet/`. Grouped by role:
 - `repository_glossary.py` — safe, content-free discovery of the repository's
   own root `GLOSSARY.md` (tri-state: absent / present+readable with digest /
   present+unreadable with reason) for the `repository_glossary` context
-  channel. It is not lexical evidence and not Glossabet state.
+  channel, plus `repository_glossary_divergence`, the one deterministic
+  managed-mode signal: NFKC+casefold substring presence of each canonical
+  term and superseded alias in the document, capped at 2,000 terms with the
+  cap reported, surfaced by `inspect` and `validate` only when both files
+  exist and the Markdown was read completely. It is not lexical evidence and
+  not Glossabet state.
 - `brief.py` — the read-only ambient vocabulary projection. It loads no source
   files, reuses the confined glossary validator and hardened Git stamp, and
   emits deterministic plain text capped at 4,096 UTF-8 bytes. The semantic

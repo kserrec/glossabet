@@ -214,7 +214,14 @@ maintainers' document, reconciles the two (supported, weakly represented,
 drifted, overloaded, missing, alias mismatch, blurred distinction,
 unresolved), offers settled-and-supported terms as "documented already —
 keep?", promotes nothing to `canonical` without the human, and edits a
-pre-existing `GLOSSARY.md` surgically rather than regenerating it. The skill never
+pre-existing `GLOSSARY.md` surgically rather than regenerating it. When both
+files exist and the Markdown was read completely, the context and
+`glossabet validate` also carry one deterministic signal,
+`repository_glossary.divergence`: canonical terms whose folded spelling occurs
+nowhere in the document, and superseded alias terms that still appear while
+their canonical term does not — lexical presence only, capped at 2,000
+terms with the cap reported, absent (never empty) when the check could not
+run. The skill never
 opens Glossabet JSON artifacts itself and does not fall back to unrestricted
 recursive reading when the CLI boundary fails. When the human settles terms,
 the skill sends the complete JSON document to `glossabet save .` on standard

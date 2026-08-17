@@ -1,7 +1,6 @@
 # Glossabet — Plan
 
-Status: **phases 0–22 and Phases 24–31 complete; Phase 32 (optional
-deterministic term-presence check) is next; owner
+Status: **phases 0–22 and Phases 24–32 complete; owner
 self-testing pause active before the trusted-alpha gate** as of 2026-08-17.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1237,7 +1236,7 @@ Plugin skill + wheel regenerated through `build_plugin.py`; README,
 ARCHITECTURE, EVALUATION, CHANGELOG, WALKTHROUGH updated. Suite 441 passed;
 workflow check, three genuineness verifiers, and wheel smoke green.
 
-### Phase 32 — Deterministic managed-mode term-presence check (optional)
+### Phase 32 — Deterministic managed-mode term-presence check ✅ 2026-08-17
 
 **Goal:** the one reconciliation signal the engine can give honestly without
 parsing Markdown: for each `glossary.json` concept, is its term (NFKC +
@@ -1260,6 +1259,23 @@ canonical replacement does not? (Depends on Phases 30 and 31.)
 
 **Acceptance:** suite passes; the check is deterministic, bounded, and
 absent (not empty) whenever the Markdown was not completely read.
+
+**Completion evidence (2026-08-17):** `repository_glossary_divergence` in
+`glossabet/repository_glossary.py` folds (NFKC + casefold) each canonical
+concept term and each `alias`/`discouraged`/`deprecated` alias of a canonical
+concept and tests lenient substring presence in the decoded Markdown; it
+returns `canonical_missing_from_markdown`, `superseded_terms_still_present`
+(alias present while its canonical term is not), `checked_terms`,
+`skipped_terms`, `complete`, and the 2,000-term cap. `inspect` attaches it as
+`repository_glossary.divergence` and `validate` (schema 7 → 8) stores it under
+`repository_glossary` and prints it — both only when structured state exists
+and the Markdown was read completely; otherwise the key is absent. Proposed
+concepts are never checked. Nine new tests: positive/negative for both lists,
+Unicode fold parity (ß / ligature), cap-and-say-so, presence only in the
+both-and-readable case through `inspect`, `validate` output and JSON,
+unreadable named, quiet on agreement. Skill *Managed* section names the
+field and its limits; README, ARCHITECTURE, CHANGELOG updated; plugin
+regenerated. Suite 450 passed; all per-commit gates green.
 
 ### Open bughunt deferrals (2026-08-17)
 

@@ -295,3 +295,198 @@ def test_exact_scan_root_owns_its_glossary(tmp_path, capsys):
     subproject = _inspect(sub, capsys)["repository_glossary"]
     assert subproject["sha256"] == hashlib.sha256(b"api glossary\n").hexdigest()
     assert subproject["nested_ignored"] == []
+
+
+# --- Phase 32: deterministic managed-mode term-presence check -------------
+
+
+def _glossary_with_alias() -> dict:
+    return {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": "ledger-batch",
+                "term": "Ledger Batch",
+                "definition": "A settled group.",
+                "status": "canonical",
+                "aliases": [
+                    {"term": "settlement bundle", "status": "deprecated"},
+                ],
+            },
+            {
+                "id": "payment",
+                "term": "Payment",
+                "definition": "An attempt to collect money.",
+                "status": "canonical",
+            },
+            {
+                "id": "gateway-route",
+                "term": "Gateway Route",
+                "definition": "Still open.",
+                "status": "proposed",
+            },
+        ],
+    }
+
+
+def test_divergence_reports_missing_canonical_and_superseded_terms():
+    from glossabet.repository_glossary import repository_glossary_divergence
+
+    text = (
+        "# Glossary\n\n**Settlement bundle** — the group we settle.\n"
+        "Payments are attempts to collect money.\n"
+    ).encode("utf-8")
+
+    result = repository_glossary_divergence(_glossary_with_alias(), text)
+
+    # "Payment" is present (leniently, inside "Payments"); "Ledger Batch" is
+    # not, and its deprecated alias still leads. The proposed concept is
+    # not a settled decision and is never checked.
+    assert result["canonical_missing_from_markdown"] == ["Ledger Batch"]
+    assert result["superseded_terms_still_present"] == [
+        {
+            "concept": "ledger-batch",
+            "term": "settlement bundle",
+            "status": "deprecated",
+            "canonical_term": "Ledger Batch",
+        }
+    ]
+    assert result["checked_terms"] == 3
+    assert result["complete"] is True
+
+
+def test_divergence_is_clean_when_every_settled_term_is_present():
+    from glossabet.repository_glossary import repository_glossary_divergence
+
+    text = "Ledger batch; settlement bundle (old name); payment.\n".encode()
+    result = repository_glossary_divergence(_glossary_with_alias(), text)
+    assert result["canonical_missing_from_markdown"] == []
+    # The alias appears, but so does the canonical term: not superseded.
+    assert result["superseded_terms_still_present"] == []
+
+
+def test_divergence_folds_unicode_like_the_identifier_contract():
+    from glossabet.repository_glossary import repository_glossary_divergence
+
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": "strasse",
+                "term": "Straße",
+                "definition": "d",
+                "status": "canonical",
+            },
+            {
+                "id": "ligature",
+                "term": "ﬁle handle",  # U+FB01 ligature, NFKC → "fi"
+                "definition": "d",
+                "status": "canonical",
+            },
+        ],
+    }
+    text = "STRASSE and the file handle\n".encode("utf-8")
+    result = repository_glossary_divergence(glossary, text)
+    assert result["canonical_missing_from_markdown"] == []
+
+
+def test_divergence_caps_its_work_and_says_so():
+    from glossabet import repository_glossary as module
+
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": f"c{i}",
+                "term": f"Term{i}",
+                "definition": "d",
+                "status": "canonical",
+            }
+            for i in range(module.MAX_DIVERGENCE_TERMS + 5)
+        ],
+    }
+    result = module.repository_glossary_divergence(glossary, b"nothing\n")
+    assert result["checked_terms"] == module.MAX_DIVERGENCE_TERMS
+    assert result["skipped_terms"] == 5
+    assert result["complete"] is False
+    assert len(result["canonical_missing_from_markdown"]) == module.MAX_DIVERGENCE_TERMS
+
+
+def test_inspect_carries_divergence_only_when_both_exist_and_readable(
+    tmp_path, capsys
+):
+    _code(tmp_path)
+    save_glossary(tmp_path, _glossary_with_alias())
+
+    # Structured only: no repository glossary, no divergence.
+    section = _inspect(tmp_path, capsys)["repository_glossary"]
+    assert "divergence" not in section
+
+    (tmp_path / "GLOSSARY.md").write_text("Payments only.\n")
+    section = _inspect(tmp_path, capsys)["repository_glossary"]
+    assert section["divergence"]["canonical_missing_from_markdown"] == [
+        "Ledger Batch"
+    ]
+
+    # Unreadable Markdown: no divergence key at all — never an empty,
+    # clean-looking result.
+    (tmp_path / "GLOSSARY.md").unlink()
+    (tmp_path / "GLOSSARY.md").mkdir()
+    section = _inspect(tmp_path, capsys)["repository_glossary"]
+    assert section["readable"] is False
+    assert "divergence" not in section
+
+
+def test_markdown_only_has_no_divergence(tmp_path, capsys):
+    _code(tmp_path)
+    (tmp_path / "GLOSSARY.md").write_text("# Glossary\n")
+    section = _inspect(tmp_path, capsys)["repository_glossary"]
+    assert section["readable"] is True
+    assert "divergence" not in section
+
+
+def test_validate_reports_repository_glossary_divergence(tmp_path, capsys):
+    _code(tmp_path)
+    save_glossary(tmp_path, _glossary_with_alias())
+    (tmp_path / "GLOSSARY.md").write_text(
+        "**Settlement bundle** — the group.\nPayments.\n"
+    )
+
+    assert main(["validate", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "repository GLOSSARY.md divergence" in out
+    assert "canonical term Ledger Batch does not appear in GLOSSARY.md" in out
+    assert (
+        "deprecated term settlement bundle appears in GLOSSARY.md while its "
+        "canonical term Ledger Batch does not"
+    ) in out
+
+    validation = json.loads(
+        (tmp_path / "glossabet-out" / "validation.json").read_text()
+    )
+    assert validation["schema_version"] == 8
+    section = validation["repository_glossary"]
+    assert section["readable"] is True
+    assert section["divergence"]["canonical_missing_from_markdown"] == [
+        "Ledger Batch"
+    ]
+
+
+def test_validate_names_an_unreadable_repository_glossary(tmp_path, capsys):
+    _code(tmp_path)
+    save_glossary(tmp_path, _glossary_with_alias())
+    (tmp_path / "GLOSSARY.md").mkdir()
+
+    assert main(["validate", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "present but not read (not-a-regular-file)" in out
+    assert "divergence" not in out
+
+
+def test_validate_is_quiet_when_markdown_and_state_agree(tmp_path, capsys):
+    _code(tmp_path)
+    save_glossary(tmp_path, _glossary_with_alias())
+    (tmp_path / "GLOSSARY.md").write_text("Ledger batch and payment.\n")
+
+    assert main(["validate", str(tmp_path)]) == 0
+    assert "GLOSSARY.md" not in capsys.readouterr().out

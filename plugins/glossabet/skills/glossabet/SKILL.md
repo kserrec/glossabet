@@ -267,6 +267,16 @@ disagree; an alias/deprecation decided in the JSON while the Markdown still
 presents the old term as primary. Offer to bring the two into line as part of
 Step 6, only for decisions the user confirms.
 
+In this state, when the Markdown was readable, the context also carries
+`repository_glossary.divergence`: a lexical term-presence check only —
+`canonical_missing_from_markdown` (canonical terms whose folded spelling
+occurs nowhere in the document) and `superseded_terms_still_present`
+(alias/discouraged/deprecated terms that appear while their canonical term does
+not). Use it as the starting list for the check above; it never compares
+meaning, a lenient substring hit counts as present, and `complete: false`
+means the check was capped and says nothing about unchecked terms. When the
+key is absent, no check ran — do not read that as agreement.
+
 ## Step 1 — Scan the repo from its root
 
 Build a mental map of what this codebase is and what its parts are:

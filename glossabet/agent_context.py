@@ -383,7 +383,9 @@ def inspect_command(
     context = build_agent_context(
         evidence,
         glossary,
-        repository_glossary=repository_glossary_section(root, evidence),
+        repository_glossary=repository_glossary_section(
+            root, evidence, glossary
+        ),
         full=full,
     )
     print(serialize_agent_context(context), end="")

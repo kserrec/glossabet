@@ -146,6 +146,16 @@ def test_skill_repository_glossary_protocol_matches_engine(tmp_path):
         assert f"`{field}`" in text
     assert "`nested_ignored`" in text
     assert "`reason`" in text
+    from glossabet.repository_glossary import repository_glossary_divergence
+
+    divergence = repository_glossary_divergence(
+        {"schema_version": 1, "concepts": []}, b""
+    )
+    assert "`repository_glossary.divergence`" in text
+    for field in ("canonical_missing_from_markdown", "superseded_terms_still_present"):
+        assert field in divergence
+        assert f"`{field}`" in text
+    assert "`complete: false`" in text
     for reason in (
         REASON_SYMLINK_ESCAPES,
         REASON_NOT_REGULAR,
