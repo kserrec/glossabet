@@ -394,8 +394,6 @@ def test_community_id_zero_keeps_its_id(tmp_path):
 
 
 def test_oversized_graph_degrades_lexical_only(tmp_path, monkeypatch):
-    import glossabet.graphify as gmod
-    monkeypatch.setattr(gmod, "MAX_JSON_BYTES", 100)
     monkeypatch.setattr("glossabet.artifacts.MAX_JSON_BYTES", 100)
     graph = {"nodes": [{"id": "a", "label": "A"} for _ in range(50)]}
     structural = build_evidence(make_repo(tmp_path, graph))["structural_groups"]

@@ -19,6 +19,7 @@ from pathlib import Path
 
 import unicodedata
 
+from glossabet.artifacts import READ_OVERSIZED, read_bounded_bytes
 from glossabet.scanner import (
     MAX_FILE_BYTES,
     MAX_WALK_ENTRIES,
@@ -110,17 +111,12 @@ def _read_repository_glossary(root: Path) -> tuple[dict, bytes | None]:
             return _unreadable(REASON_SYMLINK_SENSITIVE, None), None
     if not os.path.isfile(full):
         return _unreadable(REASON_NOT_REGULAR, None), None
-    try:
-        with open(full, "rb") as handle:
-            payload = handle.read(MAX_REPOSITORY_GLOSSARY_BYTES + 1)
-    except OSError:
+    read = read_bounded_bytes(full, MAX_REPOSITORY_GLOSSARY_BYTES)
+    if read.status == READ_OVERSIZED:
+        return _unreadable(REASON_OVERSIZED, read.size), None
+    if not read.ok:  # unreadable, or the entry vanished between checks
         return _unreadable(REASON_UNREADABLE, None), None
-    if len(payload) > MAX_REPOSITORY_GLOSSARY_BYTES:
-        try:
-            size: int | None = os.path.getsize(full)
-        except OSError:
-            size = None
-        return _unreadable(REASON_OVERSIZED, size), None
+    payload = read.payload
     return {
         "present": True,
         "path": REPOSITORY_GLOSSARY_FILE,

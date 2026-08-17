@@ -17,10 +17,11 @@ from collections import Counter
 from pathlib import Path, PurePosixPath
 
 from glossabet.artifacts import (
+    READ_ABSENT,
+    READ_OVERSIZED,
     ArtifactError,
-    MAX_JSON_BYTES,
     confined_artifact_path,
-    oversized,
+    read_bounded_json,
 )
 from glossabet.coverage import capped_collection, coverage_ledger
 from glossabet.tokenize import tokenize_term
@@ -77,22 +78,19 @@ def _load_graph(root: Path) -> tuple[dict | None, bool, list[str]]:
         path = confined_artifact_path(root, GRAPH_PATH)
     except ArtifactError as exc:
         return None, True, [f"{exc} — proceeding lexical-only"]
-    if not path.is_file():
+    read = read_bounded_json(path)
+    if read.status == READ_ABSENT:
         return None, False, []
-    if oversized(path):
+    if read.status == READ_OVERSIZED:
         return None, True, [
-            f"{GRAPH_PATH}: larger than {MAX_JSON_BYTES} bytes — "
+            f"{GRAPH_PATH}: larger than {read.cap} bytes — "
             "proceeding lexical-only"
         ]
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, RecursionError):
-        # RecursionError: deeply nested JSON. json raises it outside the
-        # ValueError hierarchy, so it must be caught explicitly or a hostile
-        # graph would crash the whole scan.
+    if not read.ok:
         return None, True, [
             f"{GRAPH_PATH}: unreadable JSON — proceeding lexical-only"
         ]
+    data = read.value
     if (
         not isinstance(data, dict)
         or not isinstance(data.get("nodes"), list)

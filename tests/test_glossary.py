@@ -342,7 +342,6 @@ def test_non_string_status_is_a_user_error_not_a_crash(
 
 
 def test_oversized_glossary_refused_as_user_error(tmp_path, monkeypatch):
-    monkeypatch.setattr("glossabet.glossary.MAX_JSON_BYTES", 50)
     monkeypatch.setattr("glossabet.artifacts.MAX_JSON_BYTES", 50)
     out = tmp_path / "glossabet-out"
     out.mkdir()

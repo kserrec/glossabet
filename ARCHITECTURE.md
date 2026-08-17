@@ -224,9 +224,14 @@ The package is `glossabet/`. Grouped by role:
   `OUT_DIR`, `repo_root()` (the "is this a directory" check + resolve),
   `confined_artifact_path()` (direct artifacts may contain no symlink
   component), `write_artifact()` / `write_json_atomic()` (deterministic,
-  same-directory atomic JSON replacement), and `oversized()` /
-  `MAX_JSON_BYTES` (the size cap that bounds directly-read JSON so a hostile
-  artifact cannot be loaded without limit).
+  same-directory atomic JSON replacement), and the one bounded read
+  discipline: `read_bounded_bytes()` / `read_bounded_json()` /
+  `parse_bounded_json()` read `cap + 1` bytes (the bound is judged from the
+  bytes read, never a racy stat), decode UTF-8 only, catch hostile-nesting
+  `RecursionError`, and return a named outcome — absent, read, oversized,
+  unreadable, malformed — that `config`, `glossary` (file and stdin),
+  `graphify`, `cache`, and `repository_glossary` map to their own
+  degradation. `MAX_JSON_BYTES` is the default cap for directly-read JSON.
 - `config.py` — loads the optional root `glossabet.json` under a 1 MB cap and
   no-symlink rule. It validates literal repository-relative prefix rules,
   rejects unknown fields/roles and ambiguous equal-path roles, applies

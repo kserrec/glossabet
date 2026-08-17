@@ -8,14 +8,15 @@ configured role wins over conservative built-in conventions.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
 from glossabet.artifacts import (
+    READ_ABSENT,
+    READ_OVERSIZED,
     ArtifactError,
     confined_artifact_path,
-    oversized,
+    read_bounded_json,
 )
 
 CONFIG_FILE = "glossabet.json"
@@ -167,16 +168,16 @@ def load_config(root: Path) -> RepositoryConfig:
         path = confined_artifact_path(root, CONFIG_FILE)
     except ArtifactError as exc:
         raise ConfigurationError(f"{CONFIG_FILE}: {exc}") from exc
-    if not path.is_file():
+    read = read_bounded_json(path, MAX_CONFIG_BYTES)
+    if read.status == READ_ABSENT:
         return _empty_config()
-    if oversized(path, MAX_CONFIG_BYTES):
+    if read.status == READ_OVERSIZED:
         raise ConfigurationError(
             f"{CONFIG_FILE}: larger than {MAX_CONFIG_BYTES} bytes"
         )
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, RecursionError) as exc:
-        raise ConfigurationError(f"{CONFIG_FILE}: unreadable JSON ({exc})") from exc
+    if not read.ok:
+        raise ConfigurationError(f"{CONFIG_FILE}: unreadable JSON ({read.error})")
+    data = read.value
     if not isinstance(data, dict):
         raise ConfigurationError(f"{CONFIG_FILE}: top level must be an object")
 

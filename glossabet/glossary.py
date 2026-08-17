@@ -17,11 +17,14 @@ import unicodedata
 from pathlib import Path
 
 from glossabet.artifacts import (
+    READ_ABSENT,
+    READ_OVERSIZED,
     ArtifactError,
     MAX_JSON_BYTES,
     OUT_DIR,
     confined_artifact_path,
-    oversized,
+    parse_bounded_json,
+    read_bounded_json,
     repo_root,
     write_artifact,
 )
@@ -542,18 +545,16 @@ def load_glossary(root: Path) -> dict | None:
         path = confined_artifact_path(root, f"{OUT_DIR}/{GLOSSARY_FILE}")
     except ArtifactError as exc:
         raise GlossaryError(str(exc)) from exc
-    if not path.is_file():
+    read = read_bounded_json(path)
+    if read.status == READ_ABSENT:
         return None
-    if oversized(path):
+    if read.status == READ_OVERSIZED:
         raise GlossaryError(
-            f"{path}: larger than {MAX_JSON_BYTES} bytes — refusing to load"
+            f"{path}: larger than {read.cap} bytes — refusing to load"
         )
-    try:
-        glossary = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, RecursionError) as exc:
-        # RecursionError: deeply nested JSON, raised outside the ValueError
-        # hierarchy — a hostile glossary must fail cleanly, not crash.
-        raise GlossaryError(f"{path}: unreadable JSON ({exc})") from exc
+    if not read.ok:
+        raise GlossaryError(f"{path}: unreadable JSON ({read.error})")
+    glossary = read.value
     errors = validate_glossary(glossary)
     if errors:
         raise GlossaryError(f"{path}: " + "; ".join(errors))
@@ -677,27 +678,23 @@ def save_command(path_arg: str) -> int:
             file=sys.stderr,
         )
         return 1
-    encoded_size = (
-        len(raw.encode("utf-8")) if isinstance(raw, str) else len(raw)
-    )
-    if encoded_size > MAX_JSON_BYTES:
+    parsed = parse_bounded_json(raw, MAX_JSON_BYTES)
+    if parsed.status == READ_OVERSIZED:
         print(
             "glossabet: glossary JSON on standard input is larger than "
             f"{MAX_JSON_BYTES} bytes",
             file=sys.stderr,
         )
         return 1
-    try:
-        glossary = json.loads(raw)
-    except (ValueError, UnicodeError, RecursionError) as exc:
+    if not parsed.ok:
         print(
             "glossabet: glossary JSON on standard input is unreadable ("
-            + escape_terminal_text(str(exc)) + ")",
+            + escape_terminal_text(parsed.error) + ")",
             file=sys.stderr,
         )
         return 1
     try:
-        path = save_glossary(root, glossary)
+        path = save_glossary(root, parsed.value)
     except (GlossaryError, ArtifactError) as exc:
         print_error(exc)
         return 1

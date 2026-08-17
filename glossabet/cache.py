@@ -11,13 +11,12 @@ entry-shape problem becomes a miss and never changes scan correctness.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import sys
 from pathlib import Path
 
 from glossabet import __version__
-from glossabet.artifacts import oversized, write_json_atomic
+from glossabet.artifacts import read_bounded_json, write_json_atomic
 
 # Version 4 invalidates doc extraction from before Phase 28.3. Reusing a
 # version-3 entry for AGENTS.md/CLAUDE.md could echo a synchronized glossary
@@ -74,12 +73,10 @@ def load_cache(root: Path) -> dict | None:
         return None
     if path.is_symlink() or not path.is_file():
         return None
-    if oversized(path):
+    read = read_bounded_json(path)
+    if not read.ok:
         return None
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, RecursionError):
-        return None
+    data = read.value
     if not isinstance(data, dict):
         return None
     if data.get("cache_version") != CACHE_VERSION:

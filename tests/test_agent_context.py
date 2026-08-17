@@ -249,7 +249,6 @@ def test_inspect_rejects_oversized_glossary(tmp_path, capsys, monkeypatch):
     (out / "glossary.json").write_text(
         json.dumps({"schema_version": 1, "concepts": [_concept(0)]})
     )
-    monkeypatch.setattr("glossabet.glossary.MAX_JSON_BYTES", 20)
     monkeypatch.setattr("glossabet.artifacts.MAX_JSON_BYTES", 20)
 
     assert main(["inspect", str(tmp_path), "--no-graphify"]) == EXIT_USER_ERROR

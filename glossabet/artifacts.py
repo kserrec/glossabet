@@ -14,6 +14,7 @@ import json
 import os
 import sys
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 from glossabet.display import escape_terminal_text
@@ -37,14 +38,79 @@ class ArtifactError(ValueError):
     """A repository artifact path or write is unsafe or unusable."""
 
 
-def oversized(path: Path, cap: int | None = None) -> bool:
-    """True if the file exists and exceeds the byte cap (caller decides how
-    to degrade). A stat failure is not oversized — the reader handles it."""
-    cap = MAX_JSON_BYTES if cap is None else cap
+# One read discipline for every directly-read file whose size an untrusted
+# repository controls. The bound is judged from the bytes actually read (the
+# reader takes ``cap + 1`` bytes), never from a stat that a concurrent writer
+# could make stale. Callers get a named outcome and decide how to degrade —
+# raise, warn, or treat as a miss — without re-deriving the read, the
+# encoding, the bound, or the exception set.
+READ_ABSENT = "absent"        # no regular file at the path
+READ_OK = "read"              # value/payload is usable
+READ_OVERSIZED = "oversized"  # more than ``cap`` bytes; nothing was decoded
+READ_UNREADABLE = "unreadable"  # the OS refused the read
+READ_MALFORMED = "malformed"  # bytes read, but not valid UTF-8 JSON
+
+
+@dataclass(frozen=True)
+class BoundedRead:
+    status: str
+    cap: int
+    # ``payload`` is the exact bytes read (READ_OK from read_bounded_bytes,
+    # and READ_OK/READ_MALFORMED from the JSON reader); ``value`` is the
+    # decoded JSON document (READ_OK from the JSON readers only).
+    payload: bytes | None = None
+    value: object = None
+    # Best-effort size hint for READ_OVERSIZED (``None`` when even a stat
+    # failed); the reason text for READ_UNREADABLE / READ_MALFORMED.
+    size: int | None = None
+    error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.status == READ_OK
+
+
+def read_bounded_bytes(path: Path | str, cap: int) -> BoundedRead:
+    """Read a regular file of at most ``cap`` bytes; ``cap + 1`` bytes are
+    requested so the bound is decided by what was read."""
+    if not os.path.isfile(path):
+        return BoundedRead(READ_ABSENT, cap)
     try:
-        return path.stat().st_size > cap
-    except OSError:
-        return False
+        with open(path, "rb") as handle:
+            payload = handle.read(cap + 1)
+    except OSError as exc:
+        return BoundedRead(READ_UNREADABLE, cap, error=str(exc))
+    if len(payload) > cap:
+        try:
+            size: int | None = os.path.getsize(path)
+        except OSError:
+            size = None
+        return BoundedRead(READ_OVERSIZED, cap, size=size)
+    return BoundedRead(READ_OK, cap, payload=payload)
+
+
+def parse_bounded_json(raw: bytes | str, cap: int) -> BoundedRead:
+    """Decode an already-read document under the same bound and error set:
+    UTF-8 only, ``RecursionError`` from hostile nesting caught (json raises
+    it outside the ValueError hierarchy)."""
+    payload = raw.encode("utf-8") if isinstance(raw, str) else raw
+    if len(payload) > cap:
+        return BoundedRead(READ_OVERSIZED, cap, size=len(payload))
+    try:
+        value = json.loads(payload.decode("utf-8"))
+    except (ValueError, RecursionError) as exc:
+        return BoundedRead(READ_MALFORMED, cap, payload=payload, error=str(exc))
+    return BoundedRead(READ_OK, cap, payload=payload, value=value)
+
+
+def read_bounded_json(path: Path | str, cap: int | None = None) -> BoundedRead:
+    """``read_bounded_bytes`` then ``parse_bounded_json``; the default cap is
+    the shared repository-JSON bound."""
+    cap = MAX_JSON_BYTES if cap is None else cap
+    read = read_bounded_bytes(path, cap)
+    if not read.ok:
+        return read
+    return parse_bounded_json(read.payload, cap)
 
 
 def repo_root(path_arg: str) -> Path | None:
