@@ -1037,6 +1037,33 @@ workspace-manifest hidden-file skip (`scanner.py:370`, provably no effect),
 and three cosmetic wording nits (install message agent word, empty-file
 "appended" vs "created", brief output on a zero-canonical glossary).
 
+### Test-audit round 1 (2026-08-17) — deferred items (await Kyle's ruling)
+
+Two proven gaps were fixed this session (EDGE_CAP/EXTERNAL_CAP truncation
+counts now asserted exactly in `test_edge_and_external_caps_report_exact_truncation_counts`;
+glob-in-config-path rejection now guarded by
+`test_glob_in_a_config_path_is_a_user_error_not_a_literal_prefix`). These
+remain open, left in place pending a decision:
+
+1. **`test_parallel_term_scope_checks_are_bounded_against_a_hostile_glossary`
+   (test_drift.py:519) is proven vacuous — recommend deletion.** Its fixture
+   produces zero synonym candidates, so the scope-overlap path it claims to
+   bound is never entered; its only assertion is a loose `< 15s` timer that
+   survives disabling the comparison budget entirely. The budget invariant is
+   genuinely guarded by `test_parallel_term_budget_charges_prefix_pair_work_not_owner_count`
+   (added round 3). Left in place because deleting a test waits for the owner.
+2. **`test_glossabet_routine_context_fits_the_soft_target`
+   (test_agent_context.py:190) is fragile.** It scans the *live* repository and
+   asserts the projection is <= 80,000 bytes, so it is coupled to repo growth
+   and will silently start failing as the codebase grows, passing today for
+   reasons unrelated to the projection-bounding logic. It doubles as a
+   dogfooding check, so it was not changed; pin it to a synthetic fixture repo
+   if a pure unit test is wanted.
+3. Minor weak assertions left in place (real bound covered elsewhere):
+   `test_bounds_are_reported` (test_terminology.py:208, presence-only; the
+   151st-token test is the real guard) and `test_scope_shape_rejects_ambiguous_or_nonliteral_paths`
+   (test_glossary.py:195, asserts *some* error, not which).
+
 ### Owner self-testing pause — active, not an implementation phase
 
 Kyle is keeping the current build to himself while he runs it and performs
