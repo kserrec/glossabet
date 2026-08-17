@@ -271,12 +271,14 @@ def build_evidence(root: Path, limits: Limits = Limits(),
         if isinstance(source, str):
             # An inventoried file the build could not read is an omission
             # the artifact must confess: silence here would let capped or
-            # broken evidence read as complete.
+            # broken evidence read as complete. The walk already admitted
+            # the file, so reclassify it from used to skipped rather than
+            # counting it on both sides of the ledger.
             try:
                 size = os.path.getsize(root / rel)
             except OSError:
                 size = 0
-            walk.corpus_budget.skip_source(
+            walk.corpus_budget.reclassify_unread(
                 rel, size, source, production=role == "production"
             )
             return None
@@ -706,8 +708,10 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
             details.append(f"excluded {omitted} source file(s)")
         if budget["walk_remainder"]["truncated"]:
             details.append("directory walk omitted an inexact remainder")
+        # Skips cover budget caps and read failures alike; the sample
+        # entries name each file's reason.
         print(
-            "corpus budget reached: " + "; ".join(details)
+            "corpus coverage incomplete: " + "; ".join(details)
             + "; evidence is partial",
             file=sys.stderr,
         )

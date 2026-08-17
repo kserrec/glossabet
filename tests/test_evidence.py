@@ -364,7 +364,7 @@ def test_scan_reports_partial_corpus_budget(tmp_path, monkeypatch, capsys):
     assert main(["scan", str(tmp_path)]) == 0
 
     captured = capsys.readouterr()
-    assert "corpus budget" in captured.err
+    assert "corpus coverage incomplete" in captured.err
     assert "evidence is partial" in captured.err
 
 
@@ -506,3 +506,36 @@ def test_unreadable_and_binary_sources_are_confessed_not_silent(tmp_path):
     # The unreadable code file contributed no identifiers.
     names = {e["name"] for e in evidence["vocabulary"]["identifiers"]["items"]}
     assert names == {"core_service"}
+    # A read-failed file moves from used to skipped; it is never on both
+    # sides of the ledger.
+    assert (
+        budget["used"]["source_files"] + budget["skipped"]["source_files"]
+        == evidence["totals"]["source_files"]
+    )
+
+
+def test_oserror_during_read_is_confessed_as_unreadable(tmp_path, monkeypatch):
+    (tmp_path / "core.py").write_text("core_service = 1\n")
+    (tmp_path / "gone.py").write_text("vanished_service = 1\n")
+
+    import glossabet.evidence as evidence_module
+
+    real_read = evidence_module._read_source
+
+    def failing_read(path):
+        if path.name == "gone.py":
+            return "unreadable"
+        return real_read(path)
+
+    monkeypatch.setattr(evidence_module, "_read_source", failing_read)
+    evidence = build_evidence(tmp_path)
+
+    budget = evidence["skipped"]["corpus_budget"]
+    assert budget["complete"] is False
+    assert {item["reason"] for item in budget["skipped"]["sample"]} == {
+        "unreadable"
+    }
+    assert (
+        budget["used"]["source_files"] + budget["skipped"]["source_files"]
+        == evidence["totals"]["source_files"]
+    )

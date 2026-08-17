@@ -381,12 +381,19 @@ def _concept_findings(
                     ),
                 })
         spread = occurrence["modules"]
-        # A scoped or compound occurrence counts modules over the retained
-        # location sample. An undercounted spread that still clears the
-        # threshold is a valid lower bound; one below it proves nothing.
+        # A scoped single-token occurrence counts modules over the entry's
+        # retained location sample, so a clipped sample undercounts spread:
+        # a value that still clears the threshold is a valid lower bound,
+        # one below it proves nothing. For that path locations_truncated is
+        # exactly the entry-level clip. Compound occurrences also fold the
+        # final display clip into the same flag, which does not reduce the
+        # module set — treating it as sampling would cry wolf on ordinary
+        # repositories, so compound spread stays a best-effort lower bound.
         modules_sampled = (
-            scope is not None or occurrence["match_kind"] == "lexical-unit"
-        ) and occurrence["locations_truncated"]
+            scope is not None
+            and occurrence["match_kind"] == "token"
+            and occurrence["locations_truncated"]
+        )
         if spread >= FRAGMENTATION_MIN_MODULES:
             fragmented.append({
                 "kind": "fragmentation",

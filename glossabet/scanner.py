@@ -130,6 +130,24 @@ class CorpusBudget:
         if len(self.skipped_sample) < BUDGET_PATH_SAMPLE:
             self.skipped_sample.append({"path": relative, "reason": reason})
 
+    def reclassify_unread(
+        self,
+        relative: str,
+        size: int,
+        reason: str,
+        *,
+        production: bool,
+    ) -> None:
+        """Move one walk-admitted file to the skipped ledger.
+
+        The walk admits files by stat alone; a later read failure means the
+        file never actually joined the corpus. Keeping it on both sides
+        would make used + skipped exceed the inventory.
+        """
+        self.source_files -= 1
+        self.source_bytes -= size
+        self.skip_source(relative, size, reason, production=production)
+
     def truncate_walk(
         self, relative: str, minimum_omitted: int, reason: str
     ) -> None:

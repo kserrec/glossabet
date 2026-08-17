@@ -690,3 +690,57 @@ def test_validate_cli_surfaces_adapter_warning_and_skipped_coverage(
     assert "structural checks skipped" in captured.out
     assert "graphify adapter:" in captured.err
     assert "no community structure" in captured.err
+
+
+def test_scoped_sampled_fragmentation_is_confessed(tmp_path):
+    # Five lib files crowd the token's 5-slot location sample; the scoped
+    # concept's module spread is computed from that clipped sample, so the
+    # below-threshold result must be confessed, not silently complete.
+    for index in range(5):
+        (tmp_path / f"lib{index}.py").write_text(
+            "widget_handle = 1\n" * (50 - index)
+        )
+    auth = tmp_path / "auth"
+    auth.mkdir()
+    (auth / "a.py").write_text("account_handle = 1\n")
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "auth-handle",
+            "term": "handle",
+            "definition": "d",
+            "status": "canonical",
+            "scope": {"path_prefixes": ["auth"]},
+        }],
+    }
+    evidence = build_evidence(tmp_path)
+    validation = build_validation(evidence, glossary)
+
+    ledger = validation["fragmentation"]["coverage"]
+    assert ledger["complete"] is False
+    assert any("location sample" in reason for reason in ledger["reasons"])
+
+
+def test_clip_only_compound_spread_is_not_reported_as_sampled(tmp_path):
+    # Six single-module files using a compound term: the display sample
+    # clips to five locations but the module count is exact, so nothing
+    # was suppressed and the ledger must stay complete.
+    src = tmp_path / "src"
+    src.mkdir()
+    for index in range(6):
+        (src / f"f{index}.py").write_text("payment_request = 1\n")
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "pr",
+            "term": "Payment Request",
+            "definition": "d",
+            "status": "canonical",
+        }],
+    }
+    evidence = build_evidence(tmp_path)
+    validation = build_validation(evidence, glossary)
+
+    ledger = validation["fragmentation"]["coverage"]
+    assert ledger["complete"] is True
+    assert ledger["reasons"] == []
