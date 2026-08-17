@@ -4,10 +4,11 @@ overload nomination must find one term living disjoint lives, and all
 pairwise work must be visibly bounded."""
 
 import json
-from collections import Counter, defaultdict
+from collections import Counter
 
 from glossabet.cli import main
 from glossabet.evidence import build_evidence
+from glossabet.vocabulary import ProductionVocabulary
 from glossabet.terminology import (
     OVERLOAD_MODULE_ANALYSIS_CAP,
     PAIR_TOP_N,
@@ -218,14 +219,15 @@ def test_bounds_are_reported(tmp_path):
 
 
 def test_151st_eligible_token_is_counted_and_propagates_partial_coverage():
-    token_counts = Counter({f"token{index:03}": 2 for index in range(151)})
-    counters = defaultdict(Counter)
-    module_contexts = defaultdict(lambda: defaultdict(set))
-
-    terminology = build_terminology(
-        Counter(), token_counts, counters, counters, counters, counters,
-        module_contexts, Counter(), set(),
+    # 151 single-token identifiers, each seen twice: 151 eligible tokens.
+    vocabulary = ProductionVocabulary.from_files([
+        ("a.py", "a", "python", {f"token{index:03}": 2 for index in range(151)}),
+    ])
+    assert vocabulary.token_counts == Counter(
+        {f"token{index:03}": 2 for index in range(151)}
     )
+
+    terminology = build_terminology(vocabulary, Counter())
 
     token_coverage = terminology["coverage"]["eligible_tokens"]
     assert token_coverage == {
@@ -249,18 +251,16 @@ def test_151st_eligible_token_is_counted_and_propagates_partial_coverage():
 
 
 def test_language_tokens_do_not_consume_the_top_150_eligibility_budget():
-    token_counts = Counter({
-        f"domain{index:03}": 2 for index in range(PAIR_TOP_N)
-    })
-    token_counts["dict"] = 10_000
-    counters = defaultdict(Counter)
-    module_contexts = defaultdict(lambda: defaultdict(set))
+    # PAIR_TOP_N domain tokens plus the Python builtin ``dict`` — a
+    # language-origin token in the fold, however frequent.
+    identifiers = {f"domain{index:03}": 2 for index in range(PAIR_TOP_N)}
+    identifiers["dict"] = 10_000
+    vocabulary = ProductionVocabulary.from_files([
+        ("a.py", "a", "python", identifiers),
+    ])
+    assert vocabulary.token_origins["dict"] == "language"
 
-    terminology = build_terminology(
-        Counter(), token_counts, counters, counters, counters, counters,
-        module_contexts, Counter(), set(),
-        {**{term: "domain" for term in token_counts}, "dict": "language"},
-    )
+    terminology = build_terminology(vocabulary, Counter())
 
     assert terminology["vocabulary_size"] == PAIR_TOP_N + 1
     assert terminology["domain_vocabulary_size"] == PAIR_TOP_N
@@ -280,24 +280,18 @@ def test_language_tokens_do_not_consume_the_top_150_eligibility_budget():
 
 
 def test_overload_module_pair_work_is_bounded_and_reported():
+    # ``session`` appears in OVERLOAD_MODULE_ANALYSIS_CAP + 1 modules, each
+    # pairing it with a different context token.
     module_count = OVERLOAD_MODULE_ANALYSIS_CAP + 1
-    modules = {
-        f"module-{index:03}": {f"context-{index:03}"}
+    vocabulary = ProductionVocabulary.from_files([
+        (f"module{index:03}/x.py", f"module{index:03}", "python",
+         {f"session_context{index:03}": 2})
         for index in range(module_count)
-    }
-    counters = defaultdict(Counter)
+    ])
+    assert vocabulary.token_counts["session"] == module_count * 2
+    assert len(vocabulary.module_neighbor_sets["session"]) == module_count
 
-    terminology = build_terminology(
-        Counter(),
-        Counter({"session": module_count * 2}),
-        counters,
-        {"session": Counter({module: 2 for module in modules})},
-        counters,
-        counters,
-        {"session": modules},
-        Counter(),
-        set(),
-    )
+    terminology = build_terminology(vocabulary, Counter())
 
     overload = terminology["overload_candidates"]
     assert overload["items"] == []

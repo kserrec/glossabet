@@ -236,20 +236,22 @@ def test_term_nominations_exclude_language_tokens_and_report_the_filter(tmp_path
 
 
 def test_untagged_tokens_are_not_assumed_to_be_domain_vocabulary():
-    from collections import Counter, defaultdict
+    """The fold tags every token, so an untagged one can only mean a broken
+    view; the candidate pool must exclude it and say so, never treat it as
+    domain vocabulary by default."""
+    from collections import Counter
 
     from glossabet.importance import build_naming_candidates
+    from glossabet.vocabulary import ProductionVocabulary
+
+    vocabulary = ProductionVocabulary.from_files([
+        ("a.py", "left", "python", {"untagged": 1}),
+        ("b.py", "right", "python", {"untagged": 1}),
+    ])
+    del vocabulary.token_origins["untagged"]  # simulate the broken view
 
     naming = build_naming_candidates(
-        {"internal_edges": []},
-        [],
-        Counter({"untagged": 2}),
-        {"untagged": Counter({"a.py": 1, "b.py": 1})},
-        {"untagged": Counter({"left": 1, "right": 1})},
-        Counter(),
-        {},
-        defaultdict(Counter),
-        {},
+        {"internal_edges": []}, [], vocabulary, Counter(), {},
     )
 
     assert naming["terms"] == []
@@ -342,6 +344,7 @@ def test_module_naming_coverage_reports_truncated_import_edges():
     from collections import Counter
 
     from glossabet.importance import build_naming_candidates
+    from glossabet.vocabulary import ProductionVocabulary
 
     imports_section = {
         "internal_edges": [
@@ -352,9 +355,7 @@ def test_module_naming_coverage_reports_truncated_import_edges():
     naming = build_naming_candidates(
         imports_section,
         [{"path": "a", "code_files": 1}, {"path": "b", "code_files": 1}],
-        Counter(),
-        {},
-        {},
+        ProductionVocabulary(),
         Counter(),
     )
 

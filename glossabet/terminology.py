@@ -17,6 +17,10 @@ from glossabet.coverage import (
     coverage_ledger,
     coverage_reasons,
 )
+from glossabet.vocabulary import (
+    MODULE_CONTEXT_ANALYSIS_CAP,
+    ProductionVocabulary,
+)
 from glossabet.tokenize import (
     STRUCTURED_IDENTIFIER_STYLES,
     TOKEN_ORIGIN_DOMAIN,
@@ -42,7 +46,6 @@ OVERLOAD_MODULE_ANALYSIS_CAP = 50
 SHARED_CONTEXT_SAMPLE = 5
 SHARED_PATTERN_SAMPLE = 5
 MODULE_CONTEXT_SAMPLE = 5
-MODULE_CONTEXT_ANALYSIS_CAP = 30
 REGISTER_AFFIX_CAP = 8
 LAYER_CAP = 10
 
@@ -460,15 +463,19 @@ def _overload_candidates(
     }
 
 
-def build_terminology(identifier_counts: Counter, token_counts: Counter,
-                      token_files: dict, token_modules: dict,
-                      token_patterns: dict, neighbors: dict,
-                      module_neighbor_sets: dict,
-                      doc_term_counts: Counter,
-                      module_neighbor_truncated: set[tuple[str, str]] | None = None,
-                      token_origins: dict[str, str] | None = None,
-                      ) -> dict:
-    token_origins = token_origins or {}
+def build_terminology(vocabulary: ProductionVocabulary,
+                      doc_term_counts: Counter) -> dict:
+    """House-register statistics, layers, synonym/overload candidates, and
+    context dispersion for one scan's production vocabulary."""
+    identifier_counts = vocabulary.identifier_counts
+    token_counts = vocabulary.token_counts
+    token_files = vocabulary.token_files
+    token_modules = vocabulary.token_modules
+    token_patterns = vocabulary.token_patterns
+    neighbors = vocabulary.neighbors
+    module_neighbor_sets = vocabulary.module_neighbor_sets
+    module_neighbor_truncated = vocabulary.module_neighbor_truncated
+    token_origins = vocabulary.token_origins
     language_tokens_excluded = sum(
         token_origins.get(term) == TOKEN_ORIGIN_LANGUAGE
         for term in token_counts
@@ -500,7 +507,7 @@ def build_terminology(identifier_counts: Counter, token_counts: Counter,
     dispersion_profiles, context_dispersion = _context_dispersion(
         top_tokens,
         module_neighbor_sets,
-        module_neighbor_truncated or set(),
+        module_neighbor_truncated,
         token_coverage,
     )
     return {

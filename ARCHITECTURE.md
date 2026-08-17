@@ -283,8 +283,7 @@ The package is `glossabet/`. Grouped by role:
 **The aggregation hub**
 - `evidence.py` — `build_evidence()` orchestrates everything: walk the repo,
   read each included production/test/fixture file (via the cache when valid),
-  fold only production identifiers into the `_Vocabulary` aggregate (token,
-  identifier-unit, per-file/per-module, origin, and neighbor views), read
+  fold only production identifiers into a `ProductionVocabulary`, read
   production docs into the terminology layer, then assemble the evidence
   dict. Identifier entries retain normalized tokens and bounded locations so
   compound matching can prove one lexical unit rather than infer from aggregate
@@ -317,6 +316,15 @@ The package is `glossabet/`. Grouped by role:
   omitted canonical concept or truncated entry.
 
 **Analysis over the evidence**
+- `vocabulary.py` — `ProductionVocabulary`, the identifier vocabulary of one
+  scan as one aggregate: `fold()` takes each production file's identifier
+  counts and keeps every view in step (token counts, per-file/per-module
+  counts, positional compound patterns, domain/language origins, in-identifier
+  neighbors, capped per-module neighbor sets with their truncation record,
+  raw identifier counts/files, and the `MAX_IDENTIFIER_TOKENS` cut count).
+  `build_terminology(vocabulary, doc_term_counts)` and
+  `build_naming_candidates(…, vocabulary, …)` take the aggregate, never its
+  views as parallel arguments; tests build one with `from_files()`.
 - `imports.py` — best-effort, regex-level import extraction per language
   (`extract_imports`) and a `Resolver` that maps import strings to internal
   modules or external dependencies. Explicitly lossy and tagged `lossy: true`;
@@ -543,7 +551,7 @@ an agent host.
 `build_evidence` loads `glossabet.json`, walks and role-classifies the repo
 (`scanner.walk_repository`), reads each included code/doc file and hashes its
 bytes, reuses cached extraction only when that digest matches, folds production
-identifiers into `_Vocabulary`, extracts production imports, optionally builds
+identifiers into a `ProductionVocabulary`, extracts production imports, optionally builds
 structural groups from Graphify, computes naming candidates and terminology,
 and returns the evidence dict, which is atomically written to
 `glossabet-out/evidence.json`. `analyze` additionally prints a human-readable

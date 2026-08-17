@@ -13,6 +13,7 @@ from heapq import nsmallest
 from pathlib import PurePosixPath
 
 from glossabet.coverage import coverage_ledger
+from glossabet.vocabulary import ProductionVocabulary
 from glossabet.tokenize import (
     TOKEN_ORIGIN_DOMAIN,
     TOKEN_ORIGIN_LANGUAGE,
@@ -151,14 +152,16 @@ def _ranked(
 
 
 def build_naming_candidates(imports_section: dict, modules: list[dict],
-                            token_counts: Counter, token_files: dict,
-                            token_modules: dict,
+                            vocabulary: ProductionVocabulary,
                             doc_term_counts: Counter,
-                            token_origins: dict[str, str] | None = None,
-                            token_patterns: dict | None = None,
                             context_dispersion: dict | None = None) -> dict:
-    token_origins = token_origins or {}
-    token_patterns = token_patterns or {}
+    """Ranked module and term naming candidates from import structure, the
+    production vocabulary, documentation, and terminology dispersion."""
+    token_counts = vocabulary.token_counts
+    token_files = vocabulary.token_files
+    token_modules = vocabulary.token_modules
+    token_origins = vocabulary.token_origins
+    token_patterns = vocabulary.token_patterns
     context_dispersion = context_dispersion or {}
     language_tokens_excluded = sum(
         token_origins.get(term) == TOKEN_ORIGIN_LANGUAGE
