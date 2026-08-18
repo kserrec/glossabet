@@ -413,3 +413,24 @@ def test_claude_cli_validates_the_installed_plugin_folder(tmp_path):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Validation passed" in result.stdout
+
+
+def test_claude_install_outside_a_skills_directory_does_not_promise_plugin_loading(
+    tmp_path, capsys, monkeypatch
+):
+    """Claude Code discovers skills-directory plugins only under
+    ``~/.claude/skills`` or ``<project>/.claude/skills``; a custom
+    ``--destination`` gets the files but must not be told a hook will run."""
+    monkeypatch.setattr(
+        "glossabet.install.installer.hook_command", lambda _exe: '"x" brief .'
+    )
+    other = tmp_path / "elsewhere" / "glossabet"
+    assert main(["install", "--agent", "claude", "--destination", str(other)]) == 0
+    out = capsys.readouterr().out
+    assert "will not load it as a plugin" in out
+    assert "Every Claude Code session will run" not in out
+
+    proper = tmp_path / ".claude" / "skills" / "glossabet"
+    assert main(["install", "--agent", "claude", "--destination", str(proper)]) == 0
+    out = capsys.readouterr().out
+    assert "Every Claude Code session will run" in out

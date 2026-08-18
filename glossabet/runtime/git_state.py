@@ -67,15 +67,28 @@ FRESHNESS_STATUS_ARGS = (
 )
 
 
+_REPOSITORY_SELECTION_VARIABLES = frozenset({
+    "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+})
+
+
 def _run_git(
     git_exe: str, root: Path, args, *, overrides=()
 ) -> subprocess.CompletedProcess:
     """The one hardened git invocation: safe config, no prompts, a timeout.
     Callers own their own returncode policy and catch OSError/timeout."""
+    # ``-C root`` names the repository being stamped; a caller's exported
+    # GIT_DIR/GIT_WORK_TREE would silently redirect every command to some
+    # other repository (or, relative, to nowhere), so they never inherit.
+    env = {
+        key: value for key, value in os.environ.items()
+        if key not in _REPOSITORY_SELECTION_VARIABLES
+    }
+    env["GIT_TERMINAL_PROMPT"] = "0"
     return subprocess.run(
         [git_exe, *SAFE_CONFIG, *overrides, "-C", str(root), *args],
-        capture_output=True, text=True, timeout=30,
-        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        capture_output=True, text=True, timeout=30, env=env,
     )
 
 

@@ -510,6 +510,7 @@ def test_oserror_during_read_is_confessed_as_unreadable(tmp_path, monkeypatch):
 
     def failing_read(path):
         if path.name == "gone.py":
+            path.unlink()  # vanished between the walk's stat and the read
             return "unreadable"
         return real_read(path)
 
@@ -525,6 +526,10 @@ def test_oserror_during_read_is_confessed_as_unreadable(tmp_path, monkeypatch):
         budget["used"]["source_files"] + budget["skipped"]["source_files"]
         == evidence["totals"]["source_files"]
     )
+    # The bytes moved to the skipped side are the ones the walk charged
+    # (a fresh stat of the vanished file would have subtracted nothing).
+    assert budget["skipped"]["source_bytes"] == len("vanished_service = 1\n")
+    assert budget["used"]["source_bytes"] == len("core_service = 1\n")
 
 
 def test_pathological_single_identifier_is_bounded_not_a_dos(tmp_path):
@@ -535,6 +540,9 @@ def test_pathological_single_identifier_is_bounded_not_a_dos(tmp_path):
 
     huge = "_".join(f"t{i:05d}" for i in range(50000))
     (tmp_path / "main.py").write_text(huge + " = 1\n")
+
+    # The same spelling in a second file is still one oversized spelling.
+    (tmp_path / "other.py").write_text(huge + " = 2\n")
 
     start = time.monotonic()
     evidence = build_evidence(tmp_path)
@@ -607,3 +615,137 @@ def test_documentation_vocabulary_views_stay_in_step():
     assert documentation.term_files["ledger"] == {"README.md": 1}
     for term, total in documentation.term_counts.items():
         assert sum(documentation.term_files[term].values()) == total
+
+
+def test_innocently_named_symlinks_cannot_launder_excluded_content(tmp_path):
+    """Every exclusion applies to a link's *target* path too: a link named
+    like ordinary content must not read GLOSSARY.md, the report, Glossabet's
+    own output, a sensitive directory, hidden, ignored, generated, or
+    vendored content into evidence — and each refusal is reported."""
+    (tmp_path / "main.py").write_text("real_value = 1\n")
+    (tmp_path / "GLOSSARY.md").write_text("glossaryleak word\n")
+    (tmp_path / "GLOSSABET.md").write_text("reportleak word\n")
+    (tmp_path / "glossabet-out").mkdir()
+    (tmp_path / "glossabet-out" / "notes.md").write_text("selfoutleak word\n")
+    (tmp_path / "secrets").mkdir()
+    (tmp_path / "secrets" / "notes.txt").write_text("secretleak word\n")
+    (tmp_path / ".hidden").mkdir()
+    (tmp_path / ".hidden" / "h.py").write_text("hiddenleak = 1\n")
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "junk.js").write_text("vendoredleak = 1\n")
+    (tmp_path / "scratch").mkdir()
+    (tmp_path / "scratch" / "x.py").write_text("ignoredleak = 1\n")
+    (tmp_path / "glossabet.json").write_text(
+        json.dumps({"schema_version": 1, "ignore_paths": ["scratch"]})
+    )
+    links = {
+        "glossary_link.md": "GLOSSARY.md",
+        "report_link.md": "GLOSSABET.md",
+        "selfout_link.md": "glossabet-out/notes.md",
+        "innocent.txt": "secrets/notes.txt",
+        "hidden_link.py": ".hidden/h.py",
+        "vendored_link.js": "node_modules/junk.js",
+        "ignored_link.py": "scratch/x.py",
+    }
+    for link, target in links.items():
+        os.symlink(tmp_path / target, tmp_path / link)
+
+    evidence = build_evidence(tmp_path)
+
+    blob = json.dumps(evidence)
+    for canary in ("glossaryleak", "reportleak", "selfoutleak", "secretleak",
+                   "hiddenleak", "vendoredleak", "ignoredleak"):
+        assert canary not in blob, canary
+    assert [f["path"] for f in evidence["files"]["code"]] == ["main.py"]
+    assert evidence["files"]["docs"] == []
+    assert evidence["skipped"]["symlinks_to_excluded_content"] == [
+        "glossary_link.md", "hidden_link.py", "ignored_link.py",
+        "report_link.md", "selfout_link.md", "vendored_link.js",
+    ]
+    assert "innocent.txt" in evidence["skipped"]["sensitive"]
+
+
+def test_walk_reports_directory_symlinks_dangling_links_and_unlistable_dirs(tmp_path):
+    """Nothing the walk meets and does not read is silent: an escaping
+    directory link, a confined directory link (real path is walked), a
+    dangling file link, and an unlistable directory each land in a ledger,
+    and an unlistable directory makes the walk inexact."""
+    (tmp_path / "main.py").write_text("main_value = 1\n")
+    (tmp_path / "real").mkdir()
+    (tmp_path / "real" / "a.py").write_text("real_value = 1\n")
+    outside = tmp_path.parent / f"{tmp_path.name}-outside"
+    outside.mkdir()
+    (outside / "o.py").write_text("outsideleak = 1\n")
+    os.symlink(outside, tmp_path / "docs_link")
+    os.symlink(tmp_path / "real", tmp_path / "current")
+    os.symlink(tmp_path / "missing.py", tmp_path / "broken.py")
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    (locked / "z.py").write_text("locked_value = 1\n")
+    locked.chmod(0)
+    try:
+        listable = os.access(locked, os.R_OK)  # true only when running as root
+        evidence = build_evidence(tmp_path)
+    finally:
+        locked.chmod(0o755)
+
+    assert "outsideleak" not in json.dumps(evidence)
+    skipped = evidence["skipped"]
+    assert skipped["symlinks_escaping_repo"] == ["docs_link"]
+    assert skipped["symlinked_directories"] == ["current"]
+    assert skipped["unreadable"] == ["broken.py"]
+    assert [f["path"] for f in evidence["files"]["code"]] == [
+        "main.py", "real/a.py"
+    ]
+    budget = evidence["skipped"]["corpus_budget"]
+    if listable:
+        return
+    assert budget["complete"] is False
+    assert budget["walk_remainder"]["exact"] is False
+    assert {"path": "locked", "reason": "unreadable-directory"} in (
+        budget["walk_remainder"]["sample"]
+    )
+
+
+def test_non_utf8_text_is_confessed_not_decoded_into_invented_vocabulary(tmp_path):
+    """Latin-1/cp1252 bytes must not become `nave_rsum` identifiers or `cafs`
+    doc words: the file is skipped with a named reason in the corpus budget
+    and the corpus is reported incomplete."""
+    (tmp_path / "ok.py").write_text("plain_value = 1\n")
+    (tmp_path / "legacy.py").write_bytes("naïve_résumé_value = 1\n".encode("latin-1"))
+    (tmp_path / "notes.md").write_bytes("The café’s naïveté façade\n".encode("cp1252"))
+
+    evidence = build_evidence(tmp_path)
+
+    blob = json.dumps(evidence)
+    for invented in ("nave", "rsum", "cafs", "faade", "navet"):
+        assert invented not in blob, invented
+    budget = evidence["skipped"]["corpus_budget"]
+    assert budget["complete"] is False
+    assert {"path": "legacy.py", "reason": "not-utf-8"} in budget["skipped"]["sample"]
+    assert {"path": "notes.md", "reason": "not-utf-8"} in budget["skipped"]["sample"]
+    # A UTF-8 file with a BOM and real accents still reads normally.
+    (tmp_path / "legacy.py").write_bytes("\ufeffnaïve_value = 1\n".encode("utf-8"))
+    (tmp_path / "notes.md").unlink()
+    evidence = build_evidence(tmp_path)
+    assert "naïve" in json.dumps(evidence, ensure_ascii=False)
+
+
+def test_fixture_package_manifests_are_not_monorepo_sub_roots(tmp_path):
+    """Three `tests/fixtures/*/package.json` are test scaffolding, not three
+    sub-projects; only production-role directories count toward the alert."""
+    (tmp_path / "app.py").write_text("app_value = 1\n")
+    for name in ("one", "two", "three"):
+        fixture = tmp_path / "tests" / "fixtures" / name
+        fixture.mkdir(parents=True)
+        (fixture / "package.json").write_text("{}")
+        (fixture / "index.js").write_text("x = 1\n")
+    mono = build_evidence(tmp_path)["monorepo"]
+    assert mono == {"detected": False, "reasons": [], "sub_roots": []}
+    # Real sub-projects still count.
+    for name in ("web", "api", "worker"):
+        (tmp_path / "packages" / name).mkdir(parents=True)
+        (tmp_path / "packages" / name / "package.json").write_text("{}")
+    mono = build_evidence(tmp_path)["monorepo"]
+    assert mono["detected"] is True
+    assert mono["sub_roots"] == ["packages/api", "packages/web", "packages/worker"]

@@ -18,6 +18,7 @@ from pathlib import Path, PurePosixPath
 from glossabet.runtime.artifacts import (
     READ_ABSENT,
     READ_OVERSIZED,
+    REPORT_FILE,
     ArtifactError,
     confined_artifact_path,
     read_bounded_json,
@@ -35,13 +36,22 @@ _GLOSSARY_TYPES = frozenset({"glossary"})
 _DOCUMENT_TYPES = frozenset({"doc", "document", "paper", "markdown"})
 _DOCUMENT_SUFFIXES = frozenset({".md", ".rst", ".txt", ".pdf"})
 _GLOSSARY_OUTPUT_DIRS = frozenset({"glossabet-out", "glossarize-out"})
+# The settled glossary and Glossabet's own derived report: a Graphify node
+# built from either is Glossabet's vocabulary echoing back, never structure.
+_GLOSSARY_FILES = frozenset({"glossary.md", REPORT_FILE.casefold()})
 
 
 def _first_value(mapping: dict, keys, types=None):
+    """The first present, typed, *non-empty* value among ``keys``: an empty
+    label falls through to the name/id, an empty ``links`` list to a legacy
+    ``edges`` list — emptiness is absence for every field read here."""
     for key in keys:
         value = mapping.get(key)
-        if value is not None and (types is None or isinstance(value, types)):
-            return value
+        if value is None or (types is not None and not isinstance(value, types)):
+            continue
+        if isinstance(value, (str, list, dict)) and not value:
+            continue
+        return value
     return None
 
 
@@ -126,7 +136,7 @@ def _provenance(node: dict) -> str:
     if (
         ntype in _GLOSSARY_TYPES
         or not _GLOSSARY_OUTPUT_DIRS.isdisjoint(source_parts)
-        or (source_parts and source_parts[-1] == "glossary.md")
+        or (source_parts and source_parts[-1] in _GLOSSARY_FILES)
     ):
         return "glossary"
     if (
@@ -278,11 +288,11 @@ def _groups_from_communities(
             # Tolerate unknown community shapes; the caller reports when
             # no usable structure remains after normalization.
             continue
-        members = [
+        members = list(dict.fromkeys(  # a member list is a set: dedupe, keep order
             str(member)
             for member in raw_members
             if str(member) in nodes
-        ]
+        ))
         cohesion = community.get("cohesion")
         # json.loads accepts bare NaN/Infinity and bool passes isinstance
         # (int); neither is a usable cohesion and NaN would poison scores
@@ -292,6 +302,15 @@ def _groups_from_communities(
             and not isinstance(cohesion, bool)
             and math.isfinite(cohesion)
         )
+        if group_id in groups:
+            # Two entries claiming one id are one community written twice:
+            # merge the members rather than letting the later entry silently
+            # replace the earlier one.
+            existing = groups[group_id]
+            existing["members"] = list(
+                dict.fromkeys(existing["members"] + members)
+            )
+            continue
         groups[group_id] = {
             "label": str(
                 _first_value(community, ("label", "name"))

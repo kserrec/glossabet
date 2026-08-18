@@ -42,10 +42,15 @@ BLOCK_RE = re.compile(
 def strip_managed_context_for_evidence(relative: str, text: str) -> str:
     """Remove one exactly bounded managed block from root host-file evidence.
 
-    The surrounding hand-written instructions remain lexical evidence. Even a
-    body whose stamp was edited is removed when its two exact outer markers
-    still define one unambiguous region; malformed marker layouts are left
-    untouched and separately flagged by drift/validate.
+    The surrounding hand-written instructions remain lexical evidence.
+    Whenever the two exact outer markers each occur once, the region between
+    them is removed — even if the stamp inside was edited or the layout is
+    one drift/validate would call malformed (trailing text after a marker,
+    a metadata line the analyzer rejects). That is the safe direction:
+    canonical vocabulary must never echo into evidence, and drift/validate
+    report a malformed layout separately. Only a file with no marker pair, or
+    duplicated/unmatched markers (no single unambiguous region), is left
+    untouched.
     """
     if relative not in AGENT_TARGETS.values():
         return text

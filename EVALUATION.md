@@ -307,8 +307,10 @@ Verification runs in two modes. The default checks **genuineness**: the
 committed result is untampered and internally consistent — well-formed
 digests, no missing or duplicated cases, the required five-run sample,
 aggregate metrics that recompute exactly from the per-case records, and
-passing thresholds rebuilt from the recorded targets. It never compares the
-evidence to the current source tree, so ordinary development (refactors,
+threshold checks that recompute exactly from those metrics and the recorded
+targets (whether they *pass* is a release-gate fact — see below — so a
+truthfully recorded open finding does not make honest evidence look
+tampered). It never compares the evidence to the current source tree, so ordinary development (refactors,
 fixes, features) leaves it green while the evidence honestly describes the
 commit it was generated from:
 
@@ -320,9 +322,10 @@ The release gate adds `--current`, which additionally checks **currency**:
 the engine source digest, manifest digest, and case order match the current
 tree; local fixtures and their structural and register scores plus
 Glossabet's self-register and self-nomination scores are recomputed without
-network; external cases retain their immutable commit identity; and
-thresholds are rebuilt from the manifest configuration. Evidence may lag the
-tree between releases, but it can never lag at the moment something ships:
+network; external cases retain their immutable commit identity; thresholds are
+rebuilt from the manifest configuration; and every release threshold must
+pass. Evidence may lag the tree between releases, but it can never lag — or
+fail a threshold — at the moment something ships:
 
 ```bash
 uv run python evaluation/run.py --verify-results evaluation/results.json --current

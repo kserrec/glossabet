@@ -600,3 +600,49 @@ def test_parallel_term_budget_charges_prefix_pair_work_not_owner_count(tmp_path)
     assert any(
         "comparison budget" in reason for reason in parallel["reasons"]
     ), parallel["reasons"]
+
+
+def test_terms_the_doc_index_cannot_hold_are_not_reported_as_fading(tmp_path):
+    """`ID`/`S3` (too short, digits) and a possessive-only mention
+    (`tenant's`) used to score `doc_mentions: 0, count_complete: true` and
+    yield a false "canonical … is fading"; the doc index cannot represent the
+    first two (so absence proves nothing) and now folds the possessive."""
+    (tmp_path / "app.py").write_text(
+        "id_value = 1\ns3_bucket = 2\ntenant_slice = 3\n"
+    )
+    (tmp_path / "README.md").write_text(
+        "The ID is unique. Every ID maps to S3. S3 holds blobs; S3 again.\n"
+        "Each tenant's data lives in the tenant's slice; the tenant's isolated.\n"
+    )
+    glossary = {"schema_version": 1, "concepts": [
+        {"id": "id", "term": "ID", "definition": "d", "status": "canonical"},
+        {"id": "s3", "term": "S3", "definition": "d", "status": "canonical"},
+        {"id": "tenant", "term": "Tenant", "definition": "d", "status": "canonical"},
+    ]}
+    evidence = build_evidence(tmp_path)
+    matcher = EvidenceIndex(evidence, ["ID", "S3", "Tenant"])
+    assert matcher.doc_term_occurrence("ID")["count_complete"] is False
+    assert matcher.doc_term_occurrence("S3")["count_complete"] is False
+    assert matcher.doc_term_occurrence("Tenant") == {
+        "count": 3, "count_complete": True, "scope": {"kind": "repository"},
+    }
+    fading = build_drift(evidence, glossary)["canonical_fading"]["items"]
+    assert [f["term"] for f in fading] == []
+
+
+def test_compound_occurrence_file_total_stays_exact_when_only_the_sample_is_clipped(tmp_path):
+    """Two matching identifiers across six files: `files: 6` is exact, so
+    `files_complete` must be True even though only five locations are
+    displayed (`locations_truncated` reports the display clip)."""
+    for index in range(3):  # each identifier stays under the per-entry cap
+        (tmp_path / f"a{index}.py").write_text("create_payment_request = 1\n")
+        (tmp_path / f"b{index}.py").write_text("payment_request = 2\n")
+    evidence = build_evidence(tmp_path)
+    occurrence = EvidenceIndex(evidence, ["Payment Request"]).code_term_occurrence(
+        "Payment Request"
+    )
+    assert occurrence["match_kind"] == "lexical-unit"
+    assert occurrence["count"] == 6 and occurrence["count_complete"] is True
+    assert occurrence["files"] == 6 and occurrence["files_complete"] is True
+    assert len(occurrence["locations"]) == 5
+    assert occurrence["locations_truncated"] is True

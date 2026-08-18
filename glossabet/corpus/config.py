@@ -94,6 +94,11 @@ def _validated_path(value: object, where: str) -> str:
         raise ConfigurationError(
             f"{CONFIG_FILE}: {where} is a literal path prefix, not a glob"
         )
+    if value.endswith("/"):
+        raise ConfigurationError(
+            f"{CONFIG_FILE}: {where} must not end with '/' (a prefix already "
+            "covers the directory and everything beneath it)"
+        )
     parts = value.split("/")
     if value.startswith("/") or any(part in ("", ".", "..") for part in parts):
         raise ConfigurationError(
@@ -217,7 +222,8 @@ def load_config(root: Path) -> RepositoryConfig:
         raise ConfigurationError(
             f"{CONFIG_FILE}: unknown field(s): {', '.join(unknown)}"
         )
-    if data.get("schema_version") != CONFIG_SCHEMA_VERSION:
+    version = data.get("schema_version")
+    if type(version) is not int or version != CONFIG_SCHEMA_VERSION:  # not bool/float
         raise ConfigurationError(
             f"{CONFIG_FILE}: schema_version must be {CONFIG_SCHEMA_VERSION}"
         )

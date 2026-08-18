@@ -280,3 +280,26 @@ def test_hostile_git_filter_driver_via_config_include_does_not_execute(tmp_path)
     stamp = repository_git_stamp(repo)
     assert stamp["head"] is not None
     assert not marker.exists(), "include-defined filter driver was executed"
+
+
+def test_stamp_ignores_a_callers_git_dir_and_work_tree(tmp_path, monkeypatch):
+    """``-C root`` names the stamped repository; an exported GIT_DIR (some CI
+    wrappers and hook scripts set one) must not redirect the stamp to another
+    repository or, when relative, to nowhere."""
+    a, b = tmp_path / "a", tmp_path / "b"
+    a.mkdir(), b.mkdir()
+    _init_repo(a)
+    _init_repo(b)
+    (b / "main.py").write_text("different = 2\n")
+    _git(b, "commit", "-qam", "b diverges")
+    head_a = repository_git_stamp(a)["head"]
+    head_b = repository_git_stamp(b)["head"]
+    assert head_a and head_b and head_a != head_b
+
+    monkeypatch.setenv("GIT_DIR", str(a / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(a))
+    assert repository_git_stamp(b) == {"head": head_b, "dirty": False}
+    monkeypatch.setenv("GIT_DIR", ".git")  # relative, as a hook at a's top sees
+    (a / "sub").mkdir()
+    (a / "sub" / "x.py").write_text("y = 1\n")
+    assert repository_git_stamp(a / "sub")["head"] == head_a

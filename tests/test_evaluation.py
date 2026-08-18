@@ -229,14 +229,18 @@ def test_genuineness_verifier_catches_internal_tampering_without_currency(
         for error in verify_results(aggregate_path, MANIFEST)
     )
 
-    weakened_thresholds = deepcopy(original)
-    weakened_thresholds["release_thresholds"]["passed"] = False
-    thresholds_path = tmp_path / "weakened-thresholds.json"
+    # Flipping the recorded verdict without the metrics behind it is
+    # tampering (the checks no longer recompute), whichever way it flips.
+    flipped_thresholds = deepcopy(original)
+    flipped_thresholds["release_thresholds"]["passed"] = not (
+        original["release_thresholds"]["passed"]
+    )
+    thresholds_path = tmp_path / "flipped-thresholds.json"
     thresholds_path.write_text(
-        json.dumps(weakened_thresholds), encoding="utf-8"
+        json.dumps(flipped_thresholds), encoding="utf-8"
     )
     assert any(
-        "thresholds are not configured and passing" in error
+        "thresholds are stale" in error
         for error in verify_results(thresholds_path, MANIFEST)
     )
 
@@ -298,12 +302,15 @@ def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path):
 
     def thresholds_weakened(result):
         result["release_thresholds"]["passed"] = False
+        # Whether they pass is a release-gate fact; genuineness only requires
+        # that the recorded checks recompute from the recorded metrics.
+        result["release_thresholds"]["checks"][0]["passed"] = False
 
     def register_stale(result):
         result["self_register"]["actual"]["dominant_style"] = "camelCase"
 
     def nomination_stale(result):
-        result["self_nominations"]["passed"] = False
+        result["self_nominations"]["passed"] = not result["self_nominations"]["passed"]
 
     mutations = [
         (engine_stale, "engine version, schema, or source digest is stale"),
@@ -459,3 +466,45 @@ def test_manifest_rejects_oversized_file(tmp_path):
         assert False, "an oversized manifest was accepted"
     except EvaluationError as exc:
         assert "exceeds" in str(exc)
+
+
+def test_recall_where_complete_counts_only_hits_inside_the_measured_set():
+    """A real-repository true positive where recall is not measured must not
+    inflate the fixture-only recall figure: one incomplete case with nine
+    hits plus one complete case at 1/4 is 25% recall, not 10/13."""
+    from evaluation.run import _aggregate, _score
+
+    def block(**overrides):
+        base = {"checks": 0, "passed_checks": 0, "passed": None, "failures": []}
+        base.update(overrides)
+        return base
+
+    incomplete = _score(
+        {f"t{i}" for i in range(9)},
+        {f"t{i}": {"useful": True} for i in range(9)},
+        set(),  # recall not measured for this case
+    )
+    complete = _score(
+        {"a"}, {k: {"useful": True} for k in "abcd"}, {"a", "b", "c", "d"}
+    )
+    empty = _score(set(), {}, set())
+    cases = []
+    for terminology in (incomplete, complete):
+        cases.append({
+            "terminology": terminology,
+            "drift": empty,
+            "structural": {"configured": False, "recall_complete": False,
+                           **empty, "contracts": block()},
+            "lexical": block(),
+            "register": block(),
+            "files": {"production_code": 1, "source": 1},
+            "bytes": {"source_budgeted": 10},
+            "corpus_budget": {"complete": True, "limits": {},
+                              "used": {"walk_entries": 1}},
+            "runtime_seconds": {"cold_median": 0.0, "warm_median": 0.0},
+            "truncations": [],
+            "cache": {"reuse_rate": None, "warm_output_matches_cold": True},
+        })
+    aggregate = _aggregate(cases, block(), block())
+    assert aggregate["quality"]["terminology_recall_where_complete"] == 0.25
+    assert aggregate["quality"]["terminology_precision"] == 1.0

@@ -736,3 +736,19 @@ def test_discovery_name_is_the_scanner_exclusion_name():
     from glossabet.corpus.scanner import SELF_FILES
 
     assert SELF_FILES == frozenset({REPOSITORY_GLOSSARY_FILE})
+
+
+def test_root_glossary_symlink_to_excluded_content_is_never_declared_readable(tmp_path):
+    """The root GLOSSARY.md discovery shares the walk's content rule: a link
+    at GLOSSARY.md pointing at vendored (or ignored, hidden, self-output)
+    content is present but unreadable, with the target's exclusion named."""
+    (tmp_path / "a.py").write_text("x = 1\n")
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "doc.md").write_text("# vendored\n")
+    os.symlink(tmp_path / "node_modules" / "doc.md", tmp_path / "GLOSSARY.md")
+
+    section = discover_repository_glossary(tmp_path)
+
+    assert section["present"] is True
+    assert section["readable"] is False
+    assert section["reason"] == "symlink-to-excluded-content"

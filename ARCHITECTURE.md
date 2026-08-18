@@ -140,7 +140,7 @@ The skill does not read this artifact directly. Its top-level shape:
 | `vocabulary` | normalization contract plus production-scoped, capped origin-tagged `tokens`, enriched `identifiers`, and `doc_terms` tables |
 | `terminology` | production scope, self-accounting register stats, code-vs-doc layers, bounded context-dispersion profiles, synonym and overload nominations |
 | `monorepo` | `{detected, reasons, sub_roots}` |
-| `skipped` | sensitive, oversized, escaping-symlink, configured, generated, vendored, and corpus-budget exclusions |
+| `skipped` | sensitive, oversized, escaping-symlink, symlink-to-excluded-content, symlinked-directory, unreadable, configured, generated, vendored, self-glossary, self-report, oversized-identifier, and corpus-budget exclusions |
 
 Two invariants govern this structure and are the reason it can be trusted:
 
@@ -184,8 +184,9 @@ is the validated structured state from `glossabet-out/glossary.json`.
 `repository_glossary` (`glossabet/repository_glossary.py`) is the repository's
 own hand-maintained root `GLOSSARY.md`, reported as metadata only — presence,
 `readable` with a named `reason` (`symlink-escapes-repository`,
-`symlink-to-sensitive-file`, `not-a-regular-file`, `oversized`,
-`unreadable`, `root-listing-unconfirmed`), byte count, the SHA-256 of
+`symlink-to-sensitive-file`, `symlink-to-excluded-content`,
+`not-a-regular-file`, `oversized`, `unreadable`,
+`root-listing-unconfirmed`), byte count, the SHA-256 of
 the exact bytes read (the reader takes `MAX_FILE_BYTES + 1` bytes so the bound
 is judged from the bytes, not a racy stat), and `nested_ignored`, the non-root
 `GLOSSARY.md` files the walk excluded (`skipped.self_glossaries` in evidence)
@@ -239,8 +240,9 @@ prefix each with its subpackage (`glossabet.corpus.scanner`, …).
 
 **Entry point and shared plumbing**
 - `cli.py` — argparse dispatcher. Owns the exit-status contract: `0` success,
-  `1` user error (bad usage, missing input, malformed glossary), `2` internal
-  defect. A custom parser remaps argparse's own exit-2-on-usage-error to `1`.
+  `1` user or environment error (bad usage, missing input, malformed
+  glossary, and `OSError`s such as permission denied or a full disk; a
+  closed stdout pipe also exits `1`, silently), `2` internal defect. A custom parser remaps argparse's own exit-2-on-usage-error to `1`.
   Both terminal streams are protected for the entire invocation.
 - `engine_run.py` — the one command preamble. `open_run(path_arg,
   glossary=none|optional|required, missing=…)` resolves the repository root
@@ -283,11 +285,14 @@ prefix each with its subpackage (`glossabet.corpus.scanner`, …).
   run;
   symlinks whose real target escapes the repo root are skipped so a hostile
   repo can't read outside files, and a confined link whose target has a
-  sensitive name is classified sensitive — both through
-  `symlink_content_refusal()`, the one content rule for symlinked paths that
-  root `GLOSSARY.md` discovery reuses verbatim (its reasons
-  `symlink-escapes-repository` / `symlink-to-sensitive-file` are the
-  scanner's). Every such exclusion is one entry in
+  sensitive name is classified sensitive, and a link whose target the walk
+  itself would exclude (Glossabet's own files, hidden, configured-ignored,
+  generated, vendored) is skipped as `symlink-to-excluded-content` — all
+  through `symlink_content_refusal()`, the one content rule for symlinked
+  paths, which classifies the target's complete repository-relative path and
+  which root `GLOSSARY.md` discovery reuses verbatim (its reasons
+  `symlink-escapes-repository` / `symlink-to-sensitive-file` /
+  `symlink-to-excluded-content` are the scanner's). Every such exclusion is one entry in
   `EXCLUSION_KINDS`, the ledger that owns its `evidence["skipped"]` key, the
   `WalkResult` list that collects it, and the sentence `scan` reports it with
   (`WalkResult.skipped_as_evidence()` emits the section, `exclusion_sentences()`
@@ -324,7 +329,9 @@ prefix each with its subpackage (`glossabet.corpus.scanner`, …).
   (bytes + digest, or the corpus-budget skip reason), `extract_code_entry()`
   / `extract_doc_entry()`, and `SourceExtractor`, which reuses a valid cache
   entry instead of re-extracting, strips the managed block from docs before
-  word extraction, confesses unreadable files to the corpus budget, and
+  word extraction, confesses unreadable, binary, and non-UTF-8 files to the
+  corpus budget (a file that is not valid UTF-8 is skipped as `not-utf-8`,
+  never decoded with dropped bytes into invented vocabulary), and
   keeps the reused/extracted counts and the entries for the next cache save.
 - `evidence_report.py` — the `scan`/`analyze` command handlers and their
   terminal rendering (walk/graph/cache summary, exclusion sentences, the
@@ -631,8 +638,11 @@ prefix each with its subpackage (`glossabet.corpus.scanner`, …).
 skill from package data (or the source-tree fallback), selects the documented
 personal directory for Codex or Claude Code unless an explicit destination is
 given, preserves different existing content unless `--force` is present, and
-atomically writes only `SKILL.md`. It does not inspect a repository or contact
-an agent host.
+atomically writes `SKILL.md`. With `--agent claude` (and not `--skill-only`)
+it also writes the skills-directory plugin manifest and the `SessionStart`
+hook beside it, and runs the selected `glossabet` executable with
+`--version` to pin the hook to a working CLI. It never inspects a repository
+and writes nothing outside the skill folder.
 
 **`cache-clear`** (`cli.py` → `cache.cache_clear_command` → `cache.clear_cache`).
 Removes the user-owned extraction cache and nothing else: it unlinks

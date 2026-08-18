@@ -215,8 +215,8 @@ The context carries two glossary channels that are never the same thing:
   `GLOSSARY.md`, reported as metadata only: `present`, `path`, `readable`,
   `symlink`, `bytes`, `sha256`, a `reason` when it could not be read safely
   (`symlink-escapes-repository`, `symlink-to-sensitive-file`,
-  `not-a-regular-file`, `oversized`, `unreadable`,
-  `root-listing-unconfirmed`), and `nested_ignored` — non-root `GLOSSARY.md` files the
+  `symlink-to-excluded-content`, `not-a-regular-file`, `oversized`,
+  `unreadable`, `root-listing-unconfirmed`), and `nested_ignored` — non-root `GLOSSARY.md` files the
   engine excluded from evidence and did not consult. Its words are never in
   the context and never in the vocabulary counts: a glossary that counted
   toward its own evidence would be evidence for itself.

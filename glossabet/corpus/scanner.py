@@ -112,23 +112,56 @@ def _resolves_outside_root(full: str, root: Path) -> bool:
 # readable). Reasons are the reported vocabulary of both.
 LINK_ESCAPES_REPOSITORY = "symlink-escapes-repository"
 LINK_TO_SENSITIVE_FILE = "symlink-to-sensitive-file"
+LINK_TO_EXCLUDED_CONTENT = "symlink-to-excluded-content"
 
 
-def symlink_content_refusal(full: str, root: Path) -> str | None:
+def _target_relative(full: str, root: Path) -> str | None:
+    """The link target's repository-relative POSIX path, or ``None`` when it
+    resolves outside the root."""
+    try:
+        return Path(os.path.realpath(full)).relative_to(root).as_posix()
+    except ValueError:
+        return None
+
+
+def symlink_content_refusal(
+    full: str, root: Path, config: RepositoryConfig | None = None
+) -> str | None:
     """Why a symlinked path is not repository content, or ``None`` when its
     confined target may be read like an ordinary file.
 
     A link resolving outside the repo is not repo content: reading it would
     ingest arbitrary host files into evidence (``os.walk``'s
     ``followlinks=False`` guards dirs, not files). A link with an innocent
-    name pointing at an in-repo sensitive file (``notes.py -> .env``) would
-    otherwise launder its contents into evidence, so the resolved target's
-    name is classified too.
+    name pointing at content every other rule excludes (``notes.py -> .env``,
+    ``x.md -> GLOSSARY.md``, ``y.js -> node_modules/...``) would otherwise
+    launder that content into evidence, so the resolved target's complete
+    repository-relative path is classified by the same rules the walk applies
+    to the paths it meets directly: sensitive names anywhere in the path,
+    Glossabet's own directories and files, hidden components, configured
+    ignores, and generated/vendored roles (``config`` supplies the last two;
+    without it those two rules are not applied).
     """
-    if _resolves_outside_root(full, root):
+    target = _target_relative(full, root)
+    if target is None:
         return LINK_ESCAPES_REPOSITORY
-    if is_sensitive(os.path.basename(os.path.realpath(full))):
+    parts = target.split("/")
+    directories, name = parts[:-1], parts[-1]
+    if any(is_sensitive(part) for part in parts):
         return LINK_TO_SENSITIVE_FILE
+    if (
+        any(part in SELF_DIRS for part in directories)
+        or name in SELF_FILES
+        or name in SELF_REPORT_FILES
+        or any(part.startswith(".") for part in directories)
+        or (name.startswith(".") and name not in WORKSPACE_MANIFESTS)
+    ):
+        return LINK_TO_EXCLUDED_CONTENT
+    if config is not None and (
+        config.is_ignored(target)
+        or config.role_for(target) in EXCLUDED_CONTENT_ROLES
+    ):
+        return LINK_TO_EXCLUDED_CONTENT
     return None
 
 
@@ -145,10 +178,15 @@ class CorpusBudget:
     walk_truncations: int = 0
     minimum_entries_omitted: int = 0
     walk_sample: list[dict] = field(default_factory=list)
+    # Walk-time size of every admitted file, so a later read failure
+    # reclassifies exactly the bytes that were charged (a fresh stat could
+    # differ, or fail, if the file changed or vanished in between).
+    admitted_sizes: dict[str, int] = field(default_factory=dict)
 
-    def include_source(self, size: int) -> None:
+    def include_source(self, relative: str, size: int) -> None:
         self.source_files += 1
         self.source_bytes += size
+        self.admitted_sizes[relative] = size
 
     def skip_source(
         self,
@@ -168,7 +206,6 @@ class CorpusBudget:
     def reclassify_unread(
         self,
         relative: str,
-        size: int,
         reason: str,
         *,
         production: bool,
@@ -177,8 +214,10 @@ class CorpusBudget:
 
         The walk admits files by stat alone; a later read failure means the
         file never actually joined the corpus. Keeping it on both sides
-        would make used + skipped exceed the inventory.
+        would make used + skipped exceed the inventory, and the bytes moved
+        are the ones the walk charged.
         """
+        size = self.admitted_sizes.pop(relative, 0)
         self.source_files -= 1
         self.source_bytes -= size
         self.skip_source(relative, size, reason, production=production)
@@ -254,6 +293,22 @@ EXCLUSION_KINDS: tuple[ExclusionKind, ...] = (
                   "skipped {n} oversized file(s) (>2MB)"),
     ExclusionKind("symlinks_escaping_repo", "skipped_symlinks",
                   "skipped {n} symlink(s) resolving outside the repository"),
+    # A confined link whose target the walk itself would exclude (Glossabet's
+    # own files, hidden, ignored, generated, vendored): the target's own
+    # exclusion is what applies, reported here so it is never silent.
+    ExclusionKind("symlinks_to_excluded_content",
+                  "skipped_symlinks_to_excluded",
+                  "skipped {n} symlink(s) whose target is excluded content"),
+    # A confined directory symlink is never descended into (its real path is
+    # walked); reported so the non-descent is not silent.
+    ExclusionKind("symlinked_directories", "skipped_symlinked_directories",
+                  "did not descend into {n} symlinked director(ies) inside "
+                  "the repository (their real paths are walked)"),
+    # Entries the walk met but could not stat or read at all: dangling
+    # links, permission denied. Not source evidence and not silently gone.
+    ExclusionKind("unreadable", "skipped_unreadable",
+                  "skipped {n} unreadable path(s) (dangling link or "
+                  "permission denied)"),
     ExclusionKind("configured", "skipped_configured",
                   "ignored {n} configured path(s)"),
     ExclusionKind("generated", "skipped_generated",
@@ -296,6 +351,9 @@ class WalkResult:
     skipped_sensitive: list[str] = field(default_factory=list)
     skipped_oversized: list[str] = field(default_factory=list)
     skipped_symlinks: list[str] = field(default_factory=list)
+    skipped_symlinks_to_excluded: list[str] = field(default_factory=list)
+    skipped_symlinked_directories: list[str] = field(default_factory=list)
+    skipped_unreadable: list[str] = field(default_factory=list)
     skipped_configured: list[str] = field(default_factory=list)
     skipped_generated: list[str] = field(default_factory=list)
     skipped_vendored: list[str] = field(default_factory=list)
@@ -344,7 +402,10 @@ def _bounded_directory_entries(
                     return None
                 entries.append(entry)
     except OSError:
-        return []
+        # An unlistable directory has an unknown number of entries: the walk
+        # is no longer exact, and says so, rather than reading as complete.
+        budget.truncate_walk(relative, 0, "unreadable-directory")
+        return None
     return sorted(entries, key=lambda entry: entry.name)
 
 
@@ -378,6 +439,7 @@ def _classify_directories(
     file_count: int,
     rel_dir: str,
     is_root: bool,
+    root: Path,
     config: RepositoryConfig,
     result: WalkResult,
 ) -> tuple[list[tuple[Path, str]], bool]:
@@ -424,8 +486,13 @@ def _classify_directories(
         ):
             _record_role_skip(result, relative, role)
             continue
-        if not is_directory_symlink:
-            kept.append((Path(entry.path), relative))
+        if is_directory_symlink:
+            if _resolves_outside_root(entry.path, root):
+                result.skipped_symlinks.append(relative)
+            else:
+                result.skipped_symlinked_directories.append(relative)
+            continue
+        kept.append((Path(entry.path), relative))
     return kept, False
 
 
@@ -484,16 +551,20 @@ def _classify_files(
         if os.path.islink(full):
             # The name check above sees only the link's own name; the shared
             # content rule also classifies the resolved target.
-            refusal = symlink_content_refusal(full, root)
+            refusal = symlink_content_refusal(full, root, config)
             if refusal == LINK_ESCAPES_REPOSITORY:
                 result.skipped_symlinks.append(rel)
                 continue
             if refusal == LINK_TO_SENSITIVE_FILE:
                 result.skipped_sensitive.append(rel)
                 continue
+            if refusal == LINK_TO_EXCLUDED_CONTENT:
+                result.skipped_symlinks_to_excluded.append(rel)
+                continue
         try:
             size = os.path.getsize(full)
         except OSError:
+            result.skipped_unreadable.append(rel)
             continue
         if size > MAX_FILE_BYTES:
             result.skipped_oversized.append(rel)
@@ -520,7 +591,7 @@ def _classify_files(
                 production=role == "production",
             )
             continue
-        result.corpus_budget.include_source(size)
+        result.corpus_budget.include_source(rel, size)
         if ext in CODE_LANGUAGES:
             result.code_files.append((rel, CODE_LANGUAGES[ext], role))
         else:
@@ -540,12 +611,18 @@ def walk_repository(root: Path, config: RepositoryConfig) -> WalkResult:
         is_root = rel_dir == "."
         directories, files = _partition_entries(entries)
         kept_dirs, exhausted = _classify_directories(
-            directories, len(files), rel_dir, is_root, config, result
+            directories, len(files), rel_dir, is_root, root, config, result
         )
         if exhausted:
             break
         filenames = [entry.name for entry in files]
-        if not is_root and any(m in filenames for m in PACKAGE_MANIFESTS):
+        if (
+            not is_root
+            and any(m in filenames for m in PACKAGE_MANIFESTS)
+            # A fixture or test-data package (``tests/fixtures/x/package.json``)
+            # is scaffolding, not a sub-project of the repository.
+            and config.role_for(rel_dir, is_dir=True) == "production"
+        ):
             result.sub_roots.append(rel_dir)
         if _classify_files(files, rel_dir, is_root, root, config, result):
             break

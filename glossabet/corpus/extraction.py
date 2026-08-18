@@ -8,7 +8,6 @@ vocabularies; this module knows nothing about the evidence schema."""
 from __future__ import annotations
 
 import hashlib
-import os
 from collections import Counter
 from pathlib import Path
 
@@ -18,15 +17,25 @@ from glossabet.agent.managed_block import strip_managed_context_for_evidence
 from glossabet.corpus.tokenize import doc_words, iter_identifiers
 
 
-def read_source(path: Path) -> tuple[bytes, str] | str:
-    """Content and digest, or the corpus-budget skip reason when unreadable."""
+def read_source(path: Path) -> tuple[bytes, str, str] | str:
+    """Content, its digest, and its decoded text — or the corpus-budget skip
+    reason when the file cannot be read as UTF-8 text.
+
+    A file that is not valid UTF-8 is confessed, never guessed: decoding
+    with dropped or replaced bytes would invent identifiers and words
+    (``naïve`` → ``nave``) and present them as repository vocabulary.
+    """
     try:
         content = path.read_bytes()
     except OSError:
         return "unreadable"
     if b"\0" in content[:1024]:  # binary despite its extension
         return "binary-content"
-    return content, hashlib.sha256(content).hexdigest()
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        return "not-utf-8"
+    return content, hashlib.sha256(content).hexdigest(), text
 
 
 def extract_code_entry(text: str, language: str) -> dict:
@@ -86,18 +95,13 @@ class SourceExtractor:
             # broken evidence read as complete. The walk already admitted
             # the file, so reclassify it from used to skipped rather than
             # counting it on both sides of the ledger.
-            try:
-                size = os.path.getsize(self._root / rel)
-            except OSError:
-                size = 0
             self._budget.reclassify_unread(
-                rel, size, source, production=role == "production"
+                rel, source, production=role == "production"
             )
             return None
-        content, content_sha256 = source
+        content, content_sha256, text = source
         entry = entry_if_valid(self._cached, rel, kind, content_sha256)
         if entry is None:
-            text = content.decode(errors="ignore")
             if kind == "doc":
                 text = strip_managed_context_for_evidence(rel, text)
             entry = extractor(text)

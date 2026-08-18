@@ -15,7 +15,7 @@ from glossabet.runtime.coverage import coverage_ledger, location_sample
 from glossabet.analysis.evidence_view import EvidenceView
 from glossabet.glossary.store import path_in_scope, scope_evidence
 from glossabet.corpus.imports import module_of
-from glossabet.corpus.tokenize import tokenize_identifier, tokenize_term
+from glossabet.corpus.tokenize import doc_words, tokenize_identifier, tokenize_term
 
 LOCATION_SAMPLE = 5
 COMPOUND_MATCH_START_BUDGET = 250_000
@@ -277,10 +277,11 @@ class EvidenceIndex:
                 if scope is not None:
                     scoped_count_complete = False
 
+        # The display sample may be clipped without making the file total a
+        # lower bound: ``files`` counts every aggregated location. Only an
+        # upstream entry-level clip (handled above) makes ``files`` inexact.
         kept, sample_truncated = location_sample(locations, LOCATION_SAMPLE)
-        if sample_truncated:
-            locations_truncated = True
-            files_complete = False
+        locations_truncated = locations_truncated or sample_truncated
         return {
             "term_tokens": wanted,
             "match_kind": "lexical-unit",
@@ -351,10 +352,16 @@ class EvidenceIndex:
             }
         entry = self.doc_entries.get(wanted[0])
         if entry is None:
+            # Absence proves zero mentions only if the documentation index
+            # could hold this token at all: doc words are letters-only and
+            # at least MIN_DOC_WORD_LEN long, so ``ID``, ``S3``, ``OAuth2``
+            # never appear there however often the README uses them.
+            representable = doc_words(wanted[0]) == [wanted[0]]
             return {
                 "count": 0,
                 "count_complete": (
-                    self.doc_section.get("truncated") is None
+                    representable
+                    and self.doc_section.get("truncated") is None
                     and corpus_complete
                 ),
                 "scope": scope_evidence(scope),

@@ -163,6 +163,14 @@ def _string_field(
             f"{where} contains a terminal control or bidirectional-format character"
         )
         return None
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        # A JSON ``\udXXX`` escape yields a lone surrogate: a str that no
+        # UTF-8 writer, digest, or terminal can encode. Refuse it here so
+        # ``brief``/``sync-context`` never meet it later.
+        errors.add(f"{where} contains a lone surrogate (invalid UTF-16 escape)")
+        return None
     return value
 
 
@@ -206,7 +214,10 @@ def _scope_from_raw(
     unique = set(valid)
     overlapping = False
     ancestry: list[str] = []
-    for prefix in sorted(unique):
+    # Component-wise order keeps every descendant directly after its
+    # ancestor; plain string order would let ``src-old`` (``-`` sorts before
+    # ``/``) sit between ``src`` and ``src/payments`` and hide the overlap.
+    for prefix in sorted(unique, key=lambda path: path.split("/")):
         while ancestry and not prefix.startswith(ancestry[-1] + "/"):
             ancestry.pop()
         if ancestry:
@@ -468,7 +479,8 @@ def validate_glossary(glossary: object) -> list[str]:
     if not isinstance(glossary, dict):
         return ["top level must be an object"]
     _unknown_fields(glossary, _TOP_LEVEL_KEYS, "top level", errors)
-    if glossary.get("schema_version") != GLOSSARY_SCHEMA_VERSION:
+    version = glossary.get("schema_version")
+    if type(version) is not int or version != GLOSSARY_SCHEMA_VERSION:  # not bool/float
         errors.add(
             f"schema_version must be {GLOSSARY_SCHEMA_VERSION}, "
             f"got {_bounded_repr(glossary.get('schema_version'))}"

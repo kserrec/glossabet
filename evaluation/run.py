@@ -53,7 +53,7 @@ from glossabet.corpus.tokenize import (  # noqa: E402
     STRUCTURED_IDENTIFIER_STYLES,
 )
 
-EVALUATION_SCHEMA_VERSION = 6
+EVALUATION_SCHEMA_VERSION = 7
 DEFAULT_MANIFEST = PROJECT_ROOT / "evaluation" / "corpus.json"
 DEFAULT_RESULTS = PROJECT_ROOT / "evaluation" / "results.json"
 RELEASE_RUNTIME_RUNS = 5
@@ -556,6 +556,10 @@ def _score(actual: set[str], labels: dict[str, dict],
         "true_positive": true_positive,
         "false_positive": false_positive,
         "false_negative": false_negative,
+        # Only hits inside the *measured* expected set count toward recall;
+        # a real-repository true positive where recall is not measured must
+        # not inflate the fixture-only recall figure.
+        "recall_true_positive": sorted(actual & recall_expected),
         "useful": useful,
     }
 
@@ -905,6 +909,7 @@ def _structural_score(
             "true_positive": [],
             "false_positive": [],
             "false_negative": [],
+            "recall_true_positive": [],
             "useful": [],
             "contracts": {
                 "checks": 0,
@@ -1108,14 +1113,17 @@ def _aggregate(
     term_actual = combine("terminology", "actual")
     term_true = combine("terminology", "true_positive")
     term_false = combine("terminology", "false_positive")
+    term_recall_true = combine("terminology", "recall_true_positive")
     term_missed = combine("terminology", "false_negative")
     drift_actual = combine("drift", "actual")
     drift_true = combine("drift", "true_positive")
     drift_false = combine("drift", "false_positive")
+    drift_recall_true = combine("drift", "recall_true_positive")
     drift_missed = combine("drift", "false_negative")
     structural_actual = combine("structural", "actual")
     structural_true = combine("structural", "true_positive")
     structural_false = combine("structural", "false_positive")
+    structural_recall_true = combine("structural", "recall_true_positive")
     structural_missed = combine("structural", "false_negative")
     total_actual = term_actual + drift_actual + structural_actual
     total_true = term_true + drift_true + structural_true
@@ -1170,17 +1178,17 @@ def _aggregate(
         "quality": {
             "terminology_precision": _ratio(term_true, term_actual),
             "terminology_recall_where_complete": _ratio(
-                term_true, term_true + term_missed
+                term_recall_true, term_recall_true + term_missed
             ),
             "drift_precision": _ratio(drift_true, drift_actual),
             "drift_recall_where_complete": _ratio(
-                drift_true, drift_true + drift_missed
+                drift_recall_true, drift_recall_true + drift_missed
             ),
             "structural_precision": _ratio(
                 structural_true, structural_actual
             ),
             "structural_recall_where_complete": _ratio(
-                structural_true, structural_true + structural_missed
+                structural_recall_true, structural_recall_true + structural_missed
             ),
             "overall_precision": _ratio(total_true, total_actual),
             "reviewer_usefulness": _ratio(total_useful, total_actual),
@@ -1386,6 +1394,32 @@ def _genuineness_errors(results: dict) -> list[str]:
 
     self_register = results.get("self_register")
     self_nominations = results.get("self_nominations")
+    # Each check block derives ``passed_checks``/``passed`` from its own
+    # ``failures``; a block claiming more passes than its failure list
+    # allows is a contradiction the aggregate would otherwise trust.
+    blocks = [("self_register", self_register), ("self_nominations", self_nominations)]
+    for case in cases:
+        if isinstance(case, dict):
+            case_id = case.get("id", "<unknown>")
+            blocks.append((f"{case_id}.register", case.get("register")))
+            structural = case.get("structural")
+            if isinstance(structural, dict):
+                blocks.append((f"{case_id}.structural.contracts", structural.get("contracts")))
+    for name, block in blocks:
+        if not isinstance(block, dict) or "failures" not in block:
+            continue
+        failures = block.get("failures")
+        checks = block.get("checks")
+        passed_checks = block.get("passed_checks")
+        if (
+            not isinstance(failures, list)
+            or not isinstance(checks, int) or isinstance(checks, bool)
+            or passed_checks != checks - len(failures)
+            or (block.get("passed") is not None and block["passed"] is not (
+                passed_checks == checks
+            ))
+        ):
+            errors.append(f"{name}: passed counts disagree with recorded failures")
     aggregate = results.get("aggregate")
     expected_aggregate = None
     try:
@@ -1415,13 +1449,20 @@ def _genuineness_errors(results: dict) -> list[str]:
             errors.append("evaluation release metrics are malformed")
         if expected_thresholds is not None and thresholds != expected_thresholds:
             errors.append("evaluation release thresholds are stale")
-    if (
-        not isinstance(thresholds, dict)
-        or thresholds.get("configured") is not True
-        or thresholds.get("passed") is not True
-    ):
-        errors.append("evaluation release thresholds are not configured and passing")
+    if not isinstance(thresholds, dict) or thresholds.get("configured") is not True:
+        errors.append("evaluation release thresholds are not configured")
     return errors
+
+
+def _release_threshold_errors(results: dict) -> list[str]:
+    """Release gate only: the recorded thresholds must all pass. Genuineness
+    checks that they were *computed honestly*; whether they pass is a fact
+    about the engine that may legitimately be false between releases (a
+    recorded open finding), never at the moment something ships."""
+    thresholds = results.get("release_thresholds", {})
+    if not isinstance(thresholds, dict) or thresholds.get("passed") is not True:
+        return ["evaluation release thresholds are not configured and passing"]
+    return []
 
 
 def _currency_errors(results: dict, manifest_path: Path) -> list[str]:
@@ -1557,6 +1598,7 @@ def verify_results(
     errors = _genuineness_errors(results)
     if current:
         errors.extend(_currency_errors(results, manifest_path))
+        errors.extend(_release_threshold_errors(results))
     return errors
 
 
@@ -1667,7 +1709,7 @@ def main(argv: list[str] | None = None) -> int:
             "--check gates release thresholds, which a partial --case run "
             "never computes; drop --case or --check"
         )
-    if args.case and args.output == DEFAULT_RESULTS:
+    if args.case and args.output.resolve() == DEFAULT_RESULTS.resolve():
         parser.error(
             "--case writes a partial document; pass an explicit --output "
             "so the committed release evidence is not overwritten"

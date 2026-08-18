@@ -7,7 +7,7 @@ import json
 import os
 
 from glossabet import __version__
-from glossabet.corpus.cache import CACHE_VERSION, cache_path, load_cache
+from glossabet.corpus.cache import CACHE_VERSION, cache_path, clear_cache, load_cache
 from glossabet.analysis.evidence import build_evidence
 
 
@@ -244,3 +244,26 @@ def test_cache_clear_removes_empty_root_and_reports_absence(tmp_path, capsys):
 
     assert main(["cache-clear"]) == 0
     assert "nothing to remove" in capsys.readouterr().out
+
+
+def test_cache_clear_reports_an_unlistable_entry_instead_of_crashing(tmp_path, monkeypatch):
+    """An entry directory that cannot be listed is left in place and named in
+    the report, after the removable entries were still removed."""
+    root = tmp_path / "cache"
+    good = root / ("a" * 64)
+    good.mkdir(parents=True)
+    (good / "cache.json").write_text("{}")
+    locked = root / ("c" * 64)
+    locked.mkdir()
+    (locked / "cache.json").write_text("{}")
+    locked.chmod(0)
+    monkeypatch.setenv("GLOSSABET_CACHE_DIR", str(root))
+    try:
+        if os.access(locked, os.R_OK):
+            return  # root can list anything
+        report = clear_cache()
+    finally:
+        locked.chmod(0o755)
+    assert report["removed_entries"] == 1
+    assert report["unrecognized_left_in_place"] == ["c" * 64]
+    assert report["root_removed"] is False

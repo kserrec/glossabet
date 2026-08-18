@@ -7,6 +7,7 @@ usage, missing input, not-yet-implemented command), 2 internal defect.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import traceback
 from typing import NoReturn as _NoReturn
@@ -192,7 +193,11 @@ def build_parser() -> argparse.ArgumentParser:
     install.add_argument(
         "--force",
         action="store_true",
-        help="replace a different existing SKILL.md at the destination",
+        help=(
+            "replace a different existing SKILL.md at the destination "
+            "(with --agent claude, also a different plugin manifest or "
+            "session-start hook)"
+        ),
     )
 
     return parser
@@ -274,11 +279,43 @@ def _run(argv: list[str] | None) -> int:
     return EXIT_DEFECT  # unreachable; error() exits
 
 
+def _abandon_stdout() -> None:
+    """Point fd 1 at the null device so the interpreter's exit-time flush of
+    an unwritable stdout stays quiet (no "Exception ignored" noise, no exit
+    status 120 overriding the one already chosen)."""
+    try:
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+    except (OSError, ValueError):
+        pass
+
+
 def _main(argv: list[str] | None = None) -> int:
     try:
-        return _run(argv)
+        code = _run(argv)
+        sys.stdout.flush()  # a full disk or closed pipe is reported here
+        return code
     except SystemExit:
         raise
+    except BrokenPipeError:
+        # The reader went away (a pager closed, a hook host stopped
+        # listening): there is nobody to print to and nothing is wrong with
+        # glossabet.
+        _abandon_stdout()
+        return EXIT_USER_ERROR
+    except OSError as exc:
+        # Permission denied, unreadable directory, disk full: the user's
+        # environment, not a glossabet defect. pathlib's ``exists()`` /
+        # ``is_dir()`` / ``is_symlink()`` raise on EACCES, so these surface
+        # from any command that touches a path.
+        detail = exc.strerror or str(exc)
+        if exc.filename:
+            detail = f"{detail}: {exc.filename}"
+        print_error(detail)
+        try:
+            sys.stdout.flush()
+        except OSError:  # the failure was stdout itself (disk full)
+            _abandon_stdout()
+        return EXIT_USER_ERROR
     except Exception as exc:
         # Imported lazily to keep CLI startup small and avoid pulling command
         # modules into argparse-only paths.

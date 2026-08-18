@@ -324,3 +324,15 @@ def test_analyze_command_end_to_end(tmp_path, capsys):
     assert "vocabulary overlaps" in out
     assert "nominations" in out  # the not-verdicts reminder
     assert (tmp_path / "glossabet-out" / "evidence.json").is_file()
+
+
+def test_clojure_repository_register_reports_kebab_case_and_exemplars(tmp_path):
+    (tmp_path / "core.clj").write_text(
+        "(ns app.core)\n(defn pending-work [queue-state] queue-state)\n"
+        "(defn drain-queue [queue-state] queue-state)\n(def retry-limit 3)\n"
+        "(defn worker-loop [job-runner queue-state] job-runner)\n"
+    )
+    evidence = build_evidence(tmp_path)
+    register = evidence["terminology"]["register"]
+    assert register["identifier_styles_pct"] == {"kebab-case": 100.0}
+    assert register["composition"]["used_by_reason"]["structurally_styled"] > 0

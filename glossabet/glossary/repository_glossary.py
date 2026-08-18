@@ -21,8 +21,10 @@ import unicodedata
 
 from glossabet.runtime.artifacts import READ_OVERSIZED, read_bounded_bytes
 from glossabet.analysis.evidence_view import EvidenceView
+from glossabet.corpus.config import load_config
 from glossabet.corpus.scanner import (
     LINK_ESCAPES_REPOSITORY,
+    LINK_TO_EXCLUDED_CONTENT,
     LINK_TO_SENSITIVE_FILE,
     MAX_FILE_BYTES,
     MAX_WALK_ENTRIES,
@@ -47,6 +49,7 @@ SUPERSEDED_ALIAS_STATUSES = frozenset({"alias", "discouraged", "deprecated"})
 # The symlink reasons are the scanner's own content-rule vocabulary.
 REASON_SYMLINK_ESCAPES = LINK_ESCAPES_REPOSITORY
 REASON_SYMLINK_SENSITIVE = LINK_TO_SENSITIVE_FILE
+REASON_SYMLINK_EXCLUDED = LINK_TO_EXCLUDED_CONTENT
 REASON_NOT_REGULAR = "not-a-regular-file"
 REASON_OVERSIZED = "oversized"
 REASON_UNREADABLE = "unreadable"
@@ -110,7 +113,7 @@ def _read_repository_glossary(root: Path) -> tuple[dict, bytes | None]:
         # pointing at an in-repo sensitive file (GLOSSARY.md -> .env) must
         # not be declared readable — the skill reads what the engine
         # declares readable.
-        refusal = symlink_content_refusal(full, root)
+        refusal = symlink_content_refusal(full, root, load_config(root))
         if refusal is not None:
             return _unreadable(refusal, None), None
     if not os.path.isfile(full):

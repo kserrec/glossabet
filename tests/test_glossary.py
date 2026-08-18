@@ -590,6 +590,23 @@ def test_overlapping_paths_inside_one_scope_are_rejected():
         "contains overlapping paths" in error
         for error in validate_glossary(glossary)
     )
+    # A sibling that sorts between the ancestor and its descendant (`-`,
+    # `.`, space, digits all sort before `/`) must not hide the overlap.
+    for prefixes in (
+        ["src", "src-old", "src/payments"],
+        ["pkg", "pkg.egg-info", "pkg/x"],
+        ["a", "a b", "a/b"],
+        ["src/payments", "src", "src-old"],
+    ):
+        glossary["concepts"][0]["scope"] = {"path_prefixes": prefixes}
+        assert any(
+            "contains overlapping paths" in error
+            for error in validate_glossary(glossary)
+        ), prefixes
+    glossary["concepts"][0]["scope"] = {"path_prefixes": ["src", "src-old"]}
+    assert not any(
+        "overlapping" in error for error in validate_glossary(glossary)
+    )
 
 
 def test_save_command_validates_stdin_and_writes_atomically(
@@ -649,3 +666,33 @@ def test_save_command_cannot_follow_a_glossary_symlink(
 
     assert "symlinked artifact paths are not trusted" in capsys.readouterr().err
     assert outside.read_text(encoding="utf-8") == "do not replace"
+
+
+def test_schema_version_must_be_the_integer_one_not_a_bool_or_float():
+    for version in (True, 1.0, "1"):
+        errors = validate_glossary({"schema_version": version, "concepts": []})
+        assert errors and errors[0].startswith("schema_version must be 1"), version
+    assert validate_glossary({"schema_version": 1, "concepts": []}) == []
+
+
+def test_lone_surrogates_are_refused_at_save_so_brief_never_crashes(tmp_path):
+    """A JSON `\\udcff` escape decodes to a str no UTF-8 writer can encode;
+    it used to pass validation and then make `brief`/`sync-context` exit 2
+    every session. Every string field goes through the same check."""
+    for field, where in (
+        ("term", "concepts[0] field 'term'"),
+        ("definition", "concepts[0] field 'definition'"),
+        ("notes", "concepts[0].notes"),
+    ):
+        glossary = json.loads(json.dumps(GLOSSARY))
+        glossary["concepts"][0][field] = "bad \udcff char"
+        errors = validate_glossary(glossary)
+        assert any(
+            error.startswith(where) and "lone surrogate" in error
+            for error in errors
+        ), (field, errors)
+    glossary = json.loads(json.dumps(GLOSSARY))
+    glossary["concepts"][0]["aliases"] = [
+        {"term": "x\udcff", "status": "alias"}
+    ]
+    assert any("lone surrogate" in e for e in validate_glossary(glossary))

@@ -63,7 +63,7 @@ class ProductionVocabulary:
         self.module_neighbor_truncated: set[tuple[str, str]] = set()
         self.identifier_counts: Counter = Counter()
         self.identifier_files: dict[str, Counter] = defaultdict(Counter)
-        self.oversized_identifiers = 0
+        self._oversized_spellings: set[str] = set()
 
     def fold(
         self,
@@ -80,7 +80,7 @@ class ProductionVocabulary:
             if len(tokens) > MAX_IDENTIFIER_TOKENS:
                 # See MAX_IDENTIFIER_TOKENS.
                 tokens = tokens[:MAX_IDENTIFIER_TOKENS]
-                self.oversized_identifiers += 1
+                self._oversized_spellings.add(name)
             uniq = sorted(set(tokens))
             for token in tokens:
                 self.token_counts[token] += count
@@ -111,6 +111,11 @@ class ProductionVocabulary:
                         seen.add(neighbor)
                     else:
                         self.module_neighbor_truncated.add((token, module))
+
+    @property
+    def oversized_identifiers(self) -> int:
+        """Spellings (not per-file occurrences) whose token list was cut."""
+        return len(self._oversized_spellings)
 
     def language_token_count(self) -> int:
         """Vocabulary tokens tagged as language builtins — excluded from the

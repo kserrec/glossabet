@@ -127,8 +127,12 @@ def _check_names(names: list[str], label: str) -> None:
 # byte-literals so this file does not flag itself when the sdist (which ships
 # scripts/) is scanned.
 _LOCAL_PATH_RE = re.compile(
-    rb"(?:/home/|/Users/)[\w.-]+/"
-    rb"|(?<![\w/.-])/roo" rb"t/"
+    # A home directory with or without a trailing separator: a recorded
+    # working directory that *is* the home directory leaks the username just
+    # as a path beneath it does. (Spelled without an example so this file
+    # does not flag itself in the sdist.)
+    rb"(?<![\w.-])(?:/home/|/Users/)[\w.-]+(?![\w.-])"
+    rb"|(?<![\w/.-])/roo" rb"t(?![\w.-])"
     rb"|[A-Za-z]:\\Users\\[\w.-]+"
 )
 

@@ -19,7 +19,7 @@
       "false_alarms": 0,
       "false_alarms_per_1000_production_code_files": 0.0,
       "lexical_contract_rate": 1.0,
-      "nomination_quality": 1.0,
+      "nomination_quality": 0.8889,
       "overall_precision": 1.0,
       "register_accuracy": 1.0,
       "reviewer_usefulness": 1.0,
@@ -30,10 +30,10 @@
       "terminology_recall_where_complete": 1.0
     },
     "runtime": {
-      "cold_median_seconds_total": 0.552056,
-      "cold_seconds_per_1000_source_files": 5.576,
-      "warm_median_seconds_total": 0.607688,
-      "warm_seconds_per_1000_source_files": 6.138
+      "cold_median_seconds_total": 0.666317,
+      "cold_seconds_per_1000_source_files": 6.73,
+      "warm_median_seconds_total": 0.657934,
+      "warm_seconds_per_1000_source_files": 6.646
     },
     "source_bytes": 661164,
     "source_files": 99,
@@ -96,6 +96,12 @@
         ],
         "false_negative": [],
         "false_positive": [],
+        "recall_true_positive": [
+          "canonical-fading:workspace",
+          "canonical-overloaded:session",
+          "parallel-term:run:execution",
+          "watched-term-in-use:gateway:charge"
+        ],
         "true_positive": [
           "canonical-fading:workspace",
           "canonical-overloaded:session",
@@ -465,21 +471,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.010902,
+        "cold_median": 0.013098,
         "cold_samples": [
-          0.010862,
-          0.010025,
-          0.013369,
-          0.010902,
-          0.011007
+          0.01538,
+          0.013427,
+          0.01297,
+          0.013098,
+          0.012902
         ],
-        "warm_median": 0.029974,
+        "warm_median": 0.044753,
         "warm_samples": [
-          0.019281,
-          0.021442,
-          0.029974,
-          0.035061,
-          0.047152
+          0.036553,
+          0.044753,
+          0.041341,
+          0.049703,
+          0.053088
         ]
       },
       "source": {
@@ -502,6 +508,7 @@
         "false_negative": [],
         "false_positive": [],
         "recall_complete": false,
+        "recall_true_positive": [],
         "true_positive": [],
         "useful": []
       },
@@ -512,6 +519,10 @@
         ],
         "false_negative": [],
         "false_positive": [],
+        "recall_true_positive": [
+          "overload:session",
+          "synonym:execution:run"
+        ],
         "true_positive": [
           "overload:session",
           "synonym:execution:run"
@@ -570,6 +581,7 @@
         "actual": [],
         "false_negative": [],
         "false_positive": [],
+        "recall_true_positive": [],
         "true_positive": [],
         "useful": []
       },
@@ -599,8 +611,8 @@
             "excluded_spellings": 0,
             "total_spellings": 21,
             "used_by_reason": {
-              "corroborated_flat": 4,
-              "structurally_styled": 17
+              "corroborated_flat": 1,
+              "structurally_styled": 20
             },
             "used_spellings": 21
           },
@@ -620,21 +632,21 @@
       },
       "review_items": [],
       "runtime_seconds": {
-        "cold_median": 0.030101,
+        "cold_median": 0.040356,
         "cold_samples": [
-          0.030884,
-          0.030101,
-          0.029894,
-          0.031179,
-          0.029632
+          0.04046,
+          0.037948,
+          0.037276,
+          0.040726,
+          0.040356
         ],
-        "warm_median": 0.041491,
+        "warm_median": 0.056547,
         "warm_samples": [
-          0.037629,
-          0.035882,
-          0.049519,
-          0.042077,
-          0.041491
+          0.087471,
+          0.238512,
+          0.056547,
+          0.037513,
+          0.03368
         ]
       },
       "source": {
@@ -657,6 +669,7 @@
         "false_negative": [],
         "false_positive": [],
         "recall_complete": false,
+        "recall_true_positive": [],
         "true_positive": [],
         "useful": []
       },
@@ -664,6 +677,7 @@
         "actual": [],
         "false_negative": [],
         "false_positive": [],
+        "recall_true_positive": [],
         "true_positive": [],
         "useful": []
       },
@@ -721,6 +735,12 @@
         ],
         "false_negative": [],
         "false_positive": [],
+        "recall_true_positive": [
+          "canonical-fading:prefetch",
+          "watched-term-in-use:connection-api:get connection",
+          "watched-term-in-use:encoding-discovery:get encodings from content",
+          "watched-term-in-use:unicode-decoding:get unicode from response"
+        ],
         "true_positive": [
           "canonical-fading:prefetch",
           "watched-term-in-use:connection-api:get connection",
@@ -755,15 +775,15 @@
             "excluded_by_reason": {
               "language_tagged_flat": 23,
               "no_lexical_tokens": 122,
-              "prose_dominated_flat": 779
+              "prose_dominated_flat": 782
             },
-            "excluded_spellings": 924,
+            "excluded_spellings": 927,
             "total_spellings": 3077,
             "used_by_reason": {
-              "corroborated_flat": 1488,
-              "structurally_styled": 665
+              "corroborated_flat": 1487,
+              "structurally_styled": 663
             },
-            "used_spellings": 2153
+            "used_spellings": 2150
           },
           "dominant_style": "snake_case",
           "multi_word_pct": 100.0,
@@ -903,21 +923,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.327474,
+        "cold_median": 0.392757,
         "cold_samples": [
-          0.423693,
-          0.352526,
-          0.327474,
-          0.30878,
-          0.320543
+          0.506832,
+          0.388732,
+          0.40135,
+          0.392757,
+          0.392513
         ],
-        "warm_median": 0.285333,
+        "warm_median": 0.295014,
         "warm_samples": [
-          0.239858,
-          0.30103,
-          0.285333,
-          0.26525,
-          0.291781
+          0.266634,
+          0.342487,
+          0.302698,
+          0.271036,
+          0.295014
         ]
       },
       "source": {
@@ -942,6 +962,7 @@
         "false_negative": [],
         "false_positive": [],
         "recall_complete": false,
+        "recall_true_positive": [],
         "true_positive": [],
         "useful": []
       },
@@ -949,6 +970,7 @@
         "actual": [],
         "false_negative": [],
         "false_positive": [],
+        "recall_true_positive": [],
         "true_positive": [],
         "useful": []
       },
@@ -959,12 +981,12 @@
           "surface": "vocabulary.identifiers"
         },
         {
-          "dropped_occurrences": 981,
-          "dropped_terms": 981,
+          "dropped_occurrences": 952,
+          "dropped_terms": 952,
           "surface": "vocabulary.doc_terms"
         },
         {
-          "dropped_items": 15,
+          "dropped_items": 14,
           "surface": "imports.external_truncated"
         }
       ]
@@ -1016,6 +1038,7 @@
         "actual": [],
         "false_negative": [],
         "false_positive": [],
+        "recall_true_positive": [],
         "true_positive": [],
         "useful": []
       },
@@ -1066,21 +1089,21 @@
       },
       "review_items": [],
       "runtime_seconds": {
-        "cold_median": 0.071144,
+        "cold_median": 0.077905,
         "cold_samples": [
-          0.159839,
-          0.069255,
-          0.071152,
-          0.070915,
-          0.071144
+          0.169917,
+          0.077113,
+          0.077905,
+          0.077567,
+          0.082235
         ],
-        "warm_median": 0.088317,
+        "warm_median": 0.074049,
         "warm_samples": [
-          0.086988,
-          0.068101,
-          0.088317,
-          0.139784,
-          0.135205
+          0.074049,
+          0.072555,
+          0.082417,
+          0.071233,
+          0.082702
         ]
       },
       "source": {
@@ -1105,6 +1128,7 @@
         "false_negative": [],
         "false_positive": [],
         "recall_complete": false,
+        "recall_true_positive": [],
         "true_positive": [],
         "useful": []
       },
@@ -1112,6 +1136,7 @@
         "actual": [],
         "false_negative": [],
         "false_positive": [],
+        "recall_true_positive": [],
         "true_positive": [],
         "useful": []
       },
@@ -1166,6 +1191,9 @@
         ],
         "false_negative": [],
         "false_positive": [],
+        "recall_true_positive": [
+          "canonical-fading:pause-queue"
+        ],
         "true_positive": [
           "canonical-fading:pause-queue"
         ],
@@ -1248,21 +1276,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.071703,
+        "cold_median": 0.089353,
         "cold_samples": [
-          0.160973,
-          0.072036,
-          0.07169,
-          0.071703,
-          0.070036
+          0.174758,
+          0.080509,
+          0.078679,
+          0.089353,
+          0.098965
         ],
-        "warm_median": 0.083613,
+        "warm_median": 0.091768,
         "warm_samples": [
-          0.100375,
-          0.083613,
-          0.084726,
-          0.079035,
-          0.072194
+          0.091768,
+          0.096626,
+          0.092842,
+          0.083089,
+          0.078125
         ]
       },
       "source": {
@@ -1287,6 +1315,7 @@
         "false_negative": [],
         "false_positive": [],
         "recall_complete": false,
+        "recall_true_positive": [],
         "true_positive": [],
         "useful": []
       },
@@ -1294,6 +1323,7 @@
         "actual": [],
         "false_negative": [],
         "false_positive": [],
+        "recall_true_positive": [],
         "true_positive": [],
         "useful": []
       },
@@ -1348,6 +1378,9 @@
         ],
         "false_negative": [],
         "false_positive": [],
+        "recall_true_positive": [
+          "canonical-fading:workspace"
+        ],
         "true_positive": [
           "canonical-fading:workspace"
         ],
@@ -1565,21 +1598,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.011995,
+        "cold_median": 0.016094,
         "cold_samples": [
-          0.012137,
-          0.011634,
-          0.01116,
-          0.014033,
-          0.011995
+          0.014256,
+          0.014957,
+          0.016863,
+          0.016281,
+          0.016094
         ],
-        "warm_median": 0.0404,
+        "warm_median": 0.055208,
         "warm_samples": [
-          0.034047,
-          0.0404,
-          0.037656,
-          0.049631,
-          0.044032
+          0.030228,
+          0.030357,
+          0.055208,
+          0.05646,
+          0.057319
         ]
       },
       "source": {
@@ -1622,6 +1655,16 @@
         "false_negative": [],
         "false_positive": [],
         "recall_complete": true,
+        "recall_true_positive": [
+          "boundary-mismatch:Identity Boundary:authentication:authorization",
+          "boundary-mismatch:Mixed Region:payment:run",
+          "boundary-mismatch:Mixed Region:payment:tenant",
+          "boundary-mismatch:Mixed Region:run:tenant",
+          "fragmentation:tenant",
+          "orphaned-concept:workspace",
+          "overloaded-structural-region:Mixed Region",
+          "unnamed-structure:Lease Boundary"
+        ],
         "true_positive": [
           "boundary-mismatch:Identity Boundary:authentication:authorization",
           "boundary-mismatch:Mixed Region:payment:run",
@@ -1647,6 +1690,7 @@
         "actual": [],
         "false_negative": [],
         "false_positive": [],
+        "recall_true_positive": [],
         "true_positive": [],
         "useful": []
       },
@@ -1699,6 +1743,7 @@
         "actual": [],
         "false_negative": [],
         "false_positive": [],
+        "recall_true_positive": [],
         "true_positive": [],
         "useful": []
       },
@@ -1749,21 +1794,21 @@
       },
       "review_items": [],
       "runtime_seconds": {
-        "cold_median": 0.028737,
+        "cold_median": 0.036754,
         "cold_samples": [
-          0.028649,
-          0.02972,
-          0.028737,
-          0.028292,
-          0.030891
+          0.036754,
+          0.036192,
+          0.042747,
+          0.03763,
+          0.035971
         ],
-        "warm_median": 0.03856,
+        "warm_median": 0.040595,
         "warm_samples": [
-          0.03856,
-          0.047813,
-          0.034201,
-          0.038209,
-          0.039373
+          0.052148,
+          0.041867,
+          0.030114,
+          0.040595,
+          0.027821
         ]
       },
       "source": {
@@ -1799,6 +1844,7 @@
         "false_negative": [],
         "false_positive": [],
         "recall_complete": false,
+        "recall_true_positive": [],
         "true_positive": [],
         "useful": []
       },
@@ -1806,6 +1852,7 @@
         "actual": [],
         "false_negative": [],
         "false_positive": [],
+        "recall_true_positive": [],
         "true_positive": [],
         "useful": []
       },
@@ -1826,11 +1873,11 @@
   ],
   "engine": {
     "drift_schema_version": 6,
-    "evaluation_schema_version": 6,
-    "evidence_schema_version": 10,
+    "evaluation_schema_version": 7,
+    "evidence_schema_version": 14,
     "name": "glossabet",
-    "source_sha256": "46a3405d07ccc8cecade149ee42f40ed046541f18bd0a96bca1e7ba32897cbc9",
-    "validation_schema_version": 7,
+    "source_sha256": "fc0baaa978c8625c490685b53e99f075e4882a94de9a7dcdc8b4ef56db9c3b83",
+    "validation_schema_version": 8,
     "version": "0.1.0"
   },
   "environment": {
@@ -1839,7 +1886,7 @@
     "python": "3.12.3",
     "python_implementation": "CPython"
   },
-  "manifest_sha256": "70072cba63dc9f0bf426965a36f7fc31d7c8d94816ab837c3f54d2167df86b6c",
+  "manifest_sha256": "6c7c6fd60ffd37252e12af029275336abdd5c43e6f3aaaa28409cb0b3467e95c",
   "method": {
     "external_source_vendored": false,
     "graphify": "per-case",
@@ -1891,7 +1938,7 @@
         "target": 50.0
       },
       {
-        "actual": 5.576,
+        "actual": 6.73,
         "name": "cold_seconds_per_1000_source_files_max",
         "passed": true,
         "target": 10.0
@@ -1921,9 +1968,9 @@
         "target": 1.0
       },
       {
-        "actual": 1.0,
+        "actual": 0.8889,
         "name": "nomination_quality_min",
-        "passed": true,
+        "passed": false,
         "target": 1.0
       },
       {
@@ -1940,18 +1987,18 @@
       }
     ],
     "configured": true,
-    "passed": true
+    "passed": false
   },
-  "schema_version": 6,
+  "schema_version": 7,
   "self_nominations": {
     "actual": [
       {
         "nomination_kind": "deserves disambiguation",
-        "term": "cache"
+        "term": "bytes"
       },
       {
-        "nomination_kind": "deserves a canonical name",
-        "term": "cold"
+        "nomination_kind": "deserves disambiguation",
+        "term": "cache"
       },
       {
         "nomination_kind": "deserves disambiguation",
@@ -1962,11 +2009,11 @@
         "term": "context"
       },
       {
-        "nomination_kind": "deserves a canonical name",
+        "nomination_kind": "deserves disambiguation",
         "term": "coverage"
       },
       {
-        "nomination_kind": "deserves a canonical name",
+        "nomination_kind": "deserves disambiguation",
         "term": "drift"
       },
       {
@@ -1979,15 +2026,19 @@
       },
       {
         "nomination_kind": "deserves a canonical name",
-        "term": "min"
+        "term": "hook"
+      },
+      {
+        "nomination_kind": "deserves disambiguation",
+        "term": "max"
       },
       {
         "nomination_kind": "deserves a canonical name",
         "term": "plugin"
       },
       {
-        "nomination_kind": "deserves a canonical name",
-        "term": "rate"
+        "nomination_kind": "deserves disambiguation",
+        "term": "run"
       },
       {
         "nomination_kind": "deserves disambiguation",
@@ -1995,18 +2046,14 @@
       },
       {
         "nomination_kind": "deserves disambiguation",
-        "term": "structural"
-      },
-      {
-        "nomination_kind": "deserves disambiguation",
-        "term": "tokens"
+        "term": "vocabulary"
       },
       {
         "nomination_kind": "deserves a canonical name",
         "term": "warm"
       }
     ],
-    "checks": 11,
+    "checks": 9,
     "configured": true,
     "expected": {
       "forbidden_terms": [
@@ -2014,21 +2061,16 @@
         "path",
         "file",
         "name",
-        "run",
         "root"
       ],
       "require_all_typed": true,
       "required": [
         {
-          "nomination_kind": "deserves disambiguation",
-          "term": "structural"
-        },
-        {
           "nomination_kind": "deserves a canonical name",
           "term": "plugin"
         },
         {
-          "nomination_kind": "deserves a canonical name",
+          "nomination_kind": "deserves disambiguation",
           "term": "coverage"
         },
         {
@@ -2037,10 +2079,17 @@
         }
       ]
     },
-    "failures": [],
+    "failures": [
+      {
+        "actual": "deserves disambiguation",
+        "expected": "deserves a canonical name",
+        "name": "required:drift",
+        "passed": false
+      }
+    ],
     "id": "glossabet",
-    "passed": true,
-    "passed_checks": 11,
+    "passed": false,
+    "passed_checks": 8,
     "source": {
       "kind": "local",
       "path": "."
@@ -2050,17 +2099,17 @@
     "actual": {
       "composition": {
         "excluded_by_reason": {
-          "language_tagged_flat": 23,
-          "no_lexical_tokens": 118,
-          "prose_dominated_flat": 1209
+          "language_tagged_flat": 25,
+          "no_lexical_tokens": 134,
+          "prose_dominated_flat": 1697
         },
-        "excluded_spellings": 1350,
-        "total_spellings": 3928,
+        "excluded_spellings": 1856,
+        "total_spellings": 5544,
         "used_by_reason": {
-          "corroborated_flat": 1155,
-          "structurally_styled": 1423
+          "corroborated_flat": 1619,
+          "structurally_styled": 2069
         },
-        "used_spellings": 2578
+        "used_spellings": 3688
       },
       "dominant_style": "snake_case",
       "multi_word_pct": 100.0,

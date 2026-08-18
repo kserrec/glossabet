@@ -10,17 +10,26 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from glossabet.corpus.unicode_marks import mark_class_body
+
 # Clojure's ordinary word-like identifiers use hyphens. Other supported
 # languages treat ``a-b`` as subtraction or two tokens, so the source iterator
 # joins hyphenated spans only where the language contract makes that useful.
 _KEBAB_IDENTIFIER_LANGUAGES = frozenset({"clojure"})
-_IDENTIFIER_BASE = r"(?:[^\W\d]|_)\w*"
+# ``\w`` misses combining marks (Devanagari vowel signs, Thai tone marks,
+# niqqud, harakat), which are legal identifier-continue characters and part
+# of the word; every word class below admits them after a first letter.
+_MARK = f"[{mark_class_body()}]"
+_WORD_CHAR = rf"(?:\w|{_MARK})"
+_LETTER = r"[^\W\d_]"
+_LETTER_RUN = rf"{_LETTER}(?:{_LETTER}|{_MARK})*"
+_IDENTIFIER_BASE = rf"(?:[^\W\d]|_){_WORD_CHAR}*"
 _IDENTIFIER_RE = re.compile(_IDENTIFIER_BASE)
 _KEBAB_IDENTIFIER_RE = re.compile(
     rf"{_IDENTIFIER_BASE}(?:-{_IDENTIFIER_BASE})*"
 )
-_WORD_HUNK_RE = re.compile(r"\w+")
-_DOC_WORD_RE = re.compile(r"[^\W\d_]+(?:['’][^\W\d_]+)*")
+_WORD_HUNK_RE = re.compile(rf"{_WORD_CHAR}+")
+_DOC_WORD_RE = re.compile(rf"{_LETTER_RUN}(?:['’]{_LETTER_RUN})*")
 # Order matters. An acronym run followed by a lone lowercase ``s`` is a plural
 # (``IDs`` -> ``ids``, ``URLs`` -> ``urls``): the ``s`` stays with the run, the
 # same way ordinary plurals keep their ``s``. This alternative must come before
@@ -92,6 +101,7 @@ STRUCTURED_IDENTIFIER_STYLES = frozenset({
     "camelCase",
     "PascalCase",
     "UPPER_SNAKE",
+    "kebab-case",  # Clojure's ordinary multi-word form (see iter_identifiers)
 })
 
 
@@ -190,6 +200,12 @@ def _split_case_and_digits(hunk: str) -> list[str]:
     if hunk.isascii():
         return _ASCII_WORD_RE.findall(hunk)
     kinds = [_kind(char) for char in hunk]
+    # A combining mark continues the character it attaches to, so for
+    # boundary purposes it takes that character's kind (a leading mark is
+    # a plain letter).
+    for index, kind in enumerate(kinds):
+        if kind == "mark":
+            kinds[index] = kinds[index - 1] if index else "letter"
     words: list[str] = []
     current = [hunk[0]]
     for index in range(1, len(hunk)):
@@ -270,6 +286,8 @@ def doc_words(text: str) -> list[str]:
         raw = match.group()
         word = raw.lower() if raw.isascii() else raw.casefold()
         word = word.rstrip("'’")  # users' and users are one term
+        if word.endswith(("'s", "’s")):  # tenant's and tenant are one term
+            word = word[:-2]
         if len(word) >= MIN_DOC_WORD_LEN and word not in DOC_STOPWORDS:
             words.append(word)
     return words
@@ -283,6 +301,10 @@ def identifier_style(name: str) -> str:
     carries internal word structure, otherwise ``upper`` or ``flat``.
     """
     core = name.strip("_")
+    if "-" in core.strip("-"):
+        # Only the Clojure iterator joins hyphenated spans into one spelling,
+        # so an internal hyphen is that language's word structure.
+        return "kebab-case"
     if "_" in core:
         return "UPPER_SNAKE" if core.isupper() else "snake_case"
     if core.isupper():

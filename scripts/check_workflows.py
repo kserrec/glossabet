@@ -71,6 +71,9 @@ def _requires_in_order(block: str, fragments: list[str], errors: list[str],
 
 def _check_pinned_actions(name: str, workflow: str, errors: list[str]) -> None:
     for line in workflow.splitlines():
+        # A commented-out ``uses:`` is not a step; a trailing comment after
+        # the target still is (``uses: x@sha  # note``).
+        line = line.split("#", 1)[0] if line.lstrip().startswith("#") else line
         match = re.search(r"\buses:\s*([^\s#]+)", line)
         if match is None:
             continue

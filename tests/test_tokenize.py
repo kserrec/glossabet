@@ -4,6 +4,7 @@ import pytest
 
 from glossabet.corpus.tokenize import (
     LANGUAGE_BUILTIN_TOKENS,
+    STRUCTURED_IDENTIFIER_STYLES,
     TOKEN_ORIGIN_DOMAIN,
     TOKEN_ORIGIN_LANGUAGE,
     doc_words,
@@ -105,3 +106,54 @@ def test_plausible_domain_words_survive_cross_language_keyword_filtering():
     assert tokenize_identifier("open_type_run_match_register") == [
         "open", "type", "run", "match", "register",
     ]
+
+
+def test_combining_marks_stay_inside_identifiers_and_doc_words():
+    """Devanagari vowel signs and Thai tone marks are Unicode category M —
+    outside ``\\w`` — yet legal identifier characters and part of the word.
+    They must not shred `डेटा_सेवा` into junk or drop Hindi doc words."""
+    from glossabet.corpus.tokenize import doc_words, iter_identifiers
+
+    assert list(iter_identifiers(
+        "डेटा_सेवा = 1\nडेटाService = 2\nข้อมูลService = 3\n", "python"
+    )) == ["डेटा_सेवा", "डेटाService", "ข้อมูลService"]
+    assert tokenize_identifier("डेटा_सेवा") == ["डेटा", "सेवा"]
+    assert tokenize_identifier("डेटाService") == ["डेटा", "service"]
+    assert doc_words("यह डेटा सेवा है और ข้อมูล ระบบ") == [
+        "डेटा", "सेवा", "ข้อมูล", "ระบบ"
+    ]
+    # Hebrew with niqqud: the points stay with their letters.
+    assert tokenize_identifier("שָׁלוֹם_world") == ["שָׁלוֹם", "world"]
+
+
+def test_static_mark_table_matches_the_interpreter_when_versions_agree():
+    """The mark table is a literal (identical across Pythons). Where the
+    running interpreter ships the same Unicode version, it must agree with
+    the live data exactly; on other versions the check is skipped."""
+    import unicodedata
+
+    from glossabet.corpus.unicode_marks import MARK_RANGES, UNICODE_VERSION
+
+    if unicodedata.unidata_version != UNICODE_VERSION:
+        return
+    from_table = {
+        cp for start, end in MARK_RANGES for cp in range(start, end + 1)
+    }
+    live = {
+        cp for cp in range(0x110000)
+        if unicodedata.category(chr(cp)) in ("Mn", "Mc", "Me")
+    }
+    assert from_table == live
+
+
+def test_clojure_kebab_identifiers_are_a_structured_style():
+    """`tokenization_contract()` lists clojure-kebab-case as a supported form;
+    the register must credit it as word structure (like snake_case), not
+    file every Clojure identifier under `flat`."""
+    from glossabet.corpus.tokenize import identifier_style
+
+    assert identifier_style("pending-work") == "kebab-case"
+    assert identifier_style("worker-loop-state") == "kebab-case"
+    assert identifier_style("-main") == "flat"  # a leading hyphen alone is not structure
+    assert identifier_style("pending_work") == "snake_case"
+    assert "kebab-case" in STRUCTURED_IDENTIFIER_STYLES

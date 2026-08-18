@@ -4,7 +4,9 @@ import json
 import os
 
 from glossabet.cli import main
-from glossabet.corpus.config import CONFIG_SHAPE
+import pytest
+
+from glossabet.corpus.config import CONFIG_SHAPE, ConfigurationError, load_config
 from glossabet.analysis.evidence import build_evidence
 
 
@@ -231,3 +233,18 @@ def test_configuration_shape_and_hint_meet_the_user_at_the_point_of_need(
     )
     assert main(["scan", str(tmp_path)]) == 0
     assert "roles and exclusions from glossabet.json" in capsys.readouterr().out
+
+
+def test_config_rejects_trailing_slash_with_the_real_reason_and_non_integer_versions(tmp_path):
+    (tmp_path / "a.py").write_text("x = 1\n")
+    (tmp_path / "glossabet.json").write_text(
+        json.dumps({"schema_version": 1, "ignore_paths": ["scratch/"]})
+    )
+    with pytest.raises(ConfigurationError, match="must not end with '/'"):
+        load_config(tmp_path)
+    for version in (True, 1.0, "1"):
+        (tmp_path / "glossabet.json").write_text(
+            json.dumps({"schema_version": version, "ignore_paths": []})
+        )
+        with pytest.raises(ConfigurationError, match="schema_version must be 1"):
+            load_config(tmp_path)

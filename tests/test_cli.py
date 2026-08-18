@@ -1,6 +1,8 @@
 """CLI contract tests: version reporting and the exit-status scheme
 (0 success, 1 user error, 2 defect)."""
 
+import os
+
 import pytest
 
 from glossabet import __version__
@@ -72,3 +74,44 @@ def test_unexpected_exception_text_is_terminal_safe(capsys, monkeypatch):
     assert "\x1b" not in error and "\x07" not in error
     assert "forged\nline" not in error
     assert "forged\\nline\\x1b]0;title\\x07" in error
+
+
+def test_permission_errors_are_user_errors_not_internal_defects(tmp_path, capsys):
+    """An unreadable repository or destination is the environment's fault:
+    exit 1 with the OS reason, never a traceback and exit 2 blaming glossabet
+    (pathlib's exists()/is_dir()/is_symlink() raise on EACCES)."""
+    locked = tmp_path / "locked"
+    (locked / "repo").mkdir(parents=True)
+    locked.chmod(0)
+    try:
+        if os.access(locked / "repo", os.R_OK):
+            return  # running as root: nothing is unreadable
+        assert main(["brief", str(locked / "repo")]) == 1
+        err = capsys.readouterr().err
+        assert "Permission denied" in err and "Traceback" not in err
+        assert main(["install", "--destination", str(locked / "skills")]) == 1
+        err = capsys.readouterr().err
+        assert "Permission denied" in err and "internal error" not in err
+    finally:
+        locked.chmod(0o755)
+
+
+def test_stdout_write_failures_exit_one_quietly(monkeypatch, capsys):
+    """A closed pipe (reader went away) exits 1 with nothing to say; a full
+    disk exits 1 with the OS reason — neither is a defect, and neither may
+    leave the interpreter to report an 'Exception ignored' exit 120."""
+    def broken(_argv):
+        raise BrokenPipeError(32, "Broken pipe")
+
+    monkeypatch.setattr("glossabet.cli._run", broken)
+    monkeypatch.setattr("glossabet.cli._abandon_stdout", lambda: None)
+    assert main([]) == 1
+    assert capsys.readouterr().err == ""
+
+    def full(_argv):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr("glossabet.cli._run", full)
+    assert main([]) == 1
+    err = capsys.readouterr().err
+    assert "No space left on device" in err and "Traceback" not in err

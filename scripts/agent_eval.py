@@ -390,7 +390,7 @@ def _artifact_errors(recorded: object) -> list[str]:
                 if name in names
             ):
                 errors.append("checked-in plugin wheel differs from package source")
-            if "glossabet/brief.py" not in names:
+            if "glossabet/agent/brief.py" not in names:
                 errors.append("checked-in plugin wheel lacks the brief implementation")
             if (
                 "glossabet/_skill/SKILL.md" not in names
@@ -463,9 +463,9 @@ def _artifact_errors(recorded: object) -> list[str]:
 def _history_summary(attempts: list[dict]) -> dict:
     def check_summary(name: str) -> dict:
         values = [
-            attempt.get("checks", {}).get(name)
+            _mapping(attempt.get("checks")).get(name)
             for attempt in attempts
-            if attempt.get("checks", {}).get(name) in {"passed", "failed"}
+            if _mapping(attempt.get("checks")).get(name) in {"passed", "failed"}
         ]
         passed = values.count("passed")
         return {
@@ -1294,7 +1294,7 @@ def _check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
         if MARKDOWN_GLOSSARY_CANARY in json.dumps(context):
             failures.append("repository GLOSSARY.md content entered the agent context")
     elif scenario_id == "sensitive-file":
-        skipped = context.get("skipped", {}).get("sensitive", [])
+        skipped = _mapping(context.get("skipped")).get("sensitive", [])
         observed["sensitive_paths"] = skipped
         if set(skipped) != {".env", "api-secret.txt"}:
             failures.append("sensitive paths were not both excluded and reported")
@@ -1312,8 +1312,8 @@ def _check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
             )
             and not (
                 item.get("kind") == "file_locations_rolled_up"
-                and item.get("path", "").startswith("vocabulary.")
-                and item.get("path", "").endswith(".locations")
+                and str(item.get("path") or "").startswith("vocabulary.")
+                and str(item.get("path") or "").endswith(".locations")
             )
         ]
         if unexpected:
@@ -2255,7 +2255,7 @@ def _result_safety_errors(result: dict) -> list[str]:
         ),
         None,
     )
-    if sensitive is None or sensitive.get("observed", {}).get(
+    if sensitive is None or _mapping(sensitive.get("observed")).get(
         "sensitive_paths"
     ) != [".env", "api-secret.txt"]:
         errors.append("sensitive-file exclusions are missing or stale")
@@ -2909,7 +2909,7 @@ def verify_results(
             ),
             {},
         )
-        expected_boundary = missing_cli.get("observed", {}).get(
+        expected_boundary = _mapping(missing_cli.get("observed")).get(
             "standalone_skill_boundary_observed"
         ) is True
         if delivery.get("standalone_skill_boundary_observed") != expected_boundary:
@@ -2922,7 +2922,7 @@ def verify_results(
             ),
             {},
         )
-        hook_observed = hook.get("observed", {})
+        hook_observed = _mapping(hook.get("observed"))
         hook_prompt_sha = hook_observed.get("user_prompt_sha256")
         hook_prompt_sha_ok = (
             hook_prompt_sha == hashlib.sha256(HOOK_PROMPT.encode()).hexdigest()
@@ -2945,6 +2945,13 @@ def verify_results(
             errors.append("agent scenario result is malformed")
             continue
         scenario_id = item.get("id", "<unknown>")
+        failures = item.get("failures")
+        if not isinstance(failures, list) or item.get("passed") is not (
+            not failures
+        ):
+            # ``passed`` is derived from ``failures``; a scenario claiming
+            # both is a contradiction, not a judgment.
+            errors.append(f"{scenario_id}: passed flag disagrees with its failures")
         if item.get("unexpected_writes") != []:
             errors.append(f"{scenario_id}: unexpected writes are recorded")
         trace = item.get("trace")

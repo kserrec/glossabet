@@ -1,6 +1,6 @@
 # Glossabet — Plan
 
-Status: **Phases 0–22, 24–32, 34–39 complete (36.8, live
+Status: **Phases 0–22, 24–32, 34–40 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
 in progress at 33.2; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-17.
@@ -720,6 +720,75 @@ source-checkout fallback path fixed for the deeper module; dependency and
 document-key ratchets made layout-aware (the latter had been globbing
 non-recursively — fixed); `check_distribution`/`test_plugin` wheel path
 lists updated; `wheel_smoke` passes. Suite 532 green.
+
+### Phase 40 — Bughunt round 4 (whole project) ✅ 2026-08-18
+
+Five close-read hunters (corpus, analysis+runtime, glossary, agent+install+cli,
+scripts+evaluation) after Phases 38–39 and the refactor round; every finding
+re-run first-hand before fixing; each fix landed serially with a pinned
+regression test. Fixed (30 confirmed/latent-proven + 3 settled Likely):
+
+- **Engine honesty:** innocently named symlinks laundered excluded content
+  (GLOSSARY.md, GLOSSABET.md, glossabet-out, sensitive dirs, hidden,
+  ignored, generated, vendored) into evidence — the shared content rule now
+  classifies the target's full path (`symlink-to-excluded-content`; root
+  GLOSSARY.md discovery inherits it); silent walk drops (escaping/confined
+  directory symlinks, dangling links, unlistable directories) now ledgered
+  (`symlinked_directories`, `unreadable`, `walk_remainder` inexact); non-UTF-8
+  text confessed as `not-utf-8` instead of decoded into invented words;
+  `oversized_identifiers` counts spellings; combining marks (Devanagari, Thai,
+  niqqud) stay inside identifiers/doc words via a static Mn/Mc/Me table
+  (`corpus/unicode_marks.py`, `scripts/gen_unicode_marks.py`); relative
+  imports of non-code no longer fabricate modules; Rust `crate::`/`self::`/
+  `super::` resolve intra-crate; slug matching indexed (103 s → 0.14 s at
+  2k files × 20 specs); `glossabet.json` trailing slash gets the real reason;
+  integer-only `schema_version` (config + glossary); fixture package manifests
+  no longer trip the monorepo alert; walk-time byte ledger on reclassify;
+  Graphify fallback shape (dup members/ids, empty `links`, empty `label`,
+  GLOSSABET.md-sourced nodes discounted); `GIT_DIR`/`GIT_WORK_TREE` never
+  inherited; `cache-clear` reports an unlistable entry; kebab-case is a
+  structured register style. Evidence schema 13 → 14, cache version 4 → 5.
+- **Glossary layer:** scope-overlap validation now sorts component-wise;
+  doc-index absence proves nothing for terms the index cannot hold (`ID`,
+  `S3`) and possessives fold (`tenant's` → `tenant`) — no false "fading";
+  compound `files_complete` no longer conflated with the display clip; lone
+  surrogates refused at `save` (they crashed `brief`/`sync-context`).
+- **CLI/agent/install:** `OSError`s (permission denied, disk full) exit 1
+  with the OS reason; closed stdout pipe exits 1 silently (`_abandon_stdout`);
+  install outside a Claude skills directory no longer promises plugin
+  loading; README remedy is `--force`; `--force` help, ARCHITECTURE install
+  flow and exit contract, `strip_managed_context_for_evidence` docstring
+  corrected.
+- **Release machinery:** stale `glossabet/brief.py` wheel path (agent lane
+  gate could never pass); `--case --output evaluation/results.json` guard
+  resolves paths; recall numerators restricted to the measured set
+  (`recall_true_positive`, evaluation schema 6 → 7, results regenerated with
+  `--fetch --runs 5`: precision 1.0, zero false alarms, nomination 8/9 as
+  recorded); null-safe agent verifiers; `passed`-vs-`failures` consistency
+  in both verifiers; home-path guard without trailing slash; reviewer `..`
+  check is a path-segment check; commented `uses:` ignored.
+- **Verifier contract change (consequence of the Phase 39 ruling):**
+  genuineness now requires threshold checks to *recompute* from recorded
+  metrics; *passing* every threshold moved to the release gate
+  (`--current`), because the truthfully recorded `required:drift` open
+  finding would otherwise make honest evidence read as tampered
+  (EVALUATION.md updated). Kyle to confirm.
+
+**Awaiting Kyle's ruling (not fixed):**
+- R1 — `file:`/`module:` bindings to real files outside the lexical
+  inventory (`Makefile`, `config/settings.toml`, vendored) are reported
+  "no longer resolves" with `certainty: observed`. Recommendation: document
+  that bindings name inventoried code/doc files and report an uninventoried
+  path as `uncertain`; alternative: `validate` checks disk existence within
+  the confined root.
+- R2 — `hooks.json` command quoting does not escape backslashes (Windows-style
+  or doubled-backslash executable paths under a POSIX shell). Deferred pending
+  a Windows/hook-runner environment to verify the correct escaping.
+
+**Deferred with reason:** an aborted Codex attempt records raw stderr in the
+attempt history; if that text ever carried the sensitive canary or a home path
+the history would fail its own checks. Not reproducible without a live
+authorized run; settle at the next Codex batch.
 
 ### Owner self-testing pause — active, not an implementation phase
 

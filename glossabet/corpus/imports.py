@@ -101,11 +101,29 @@ class Resolver:
             parts = rel.split("/")[:-1]
             for i in range(1, len(parts) + 1):
                 self.dirs.add("/".join(parts[:i]))
+        # Every component-wise suffix of every slug and directory ("a/b/c",
+        # "b/c", "c"), so a spec that names the tail of a path resolves in
+        # one lookup instead of a scan over every code file per spec (which
+        # is quadratic in a large repository). First insertion wins, in the
+        # same sorted order the scan used, so the winner is unchanged.
+        self.by_slug_suffix: dict[str, str] = {}
+        for slug, rel in self.by_slug.items():
+            parts = slug.split("/")
+            for i in range(len(parts)):
+                self.by_slug_suffix.setdefault("/".join(parts[i:]), rel)
+        self.by_dir_suffix: dict[str, str] = {}
+        for directory in sorted(self.dirs):
+            parts = directory.split("/")
+            for i in range(len(parts)):
+                self.by_dir_suffix.setdefault("/".join(parts[i:]), directory)
         # Lowered: OCaml/Java-style specs capitalize what the filesystem
         # keeps lowercase (open Translate -> translate/).
         self.top_level = {
             p.split("/", 1)[0].rsplit(".", 1)[0].lower() for p in self.paths
         }
+        # Every directory (module) that actually holds a code file: the only
+        # targets an unresolved relative spec may be attributed to.
+        self.modules = {module_of(p) for p in self.paths}
 
     def resolve(
         self,
@@ -116,6 +134,16 @@ class Resolver:
         """Return ("internal", module) or ("external", top-level name)."""
         if spec.startswith("."):
             return self._resolve_relative(spec, importer_rel, language)
+        if language == "rust":
+            # Rust's path keywords are always intra-crate: ``crate::`` is the
+            # crate root (resolved like any bare path below), ``self::`` and
+            # ``super::`` are relative to the importer's module.
+            if spec.startswith("crate::"):
+                spec = spec[len("crate::"):]
+            elif spec == "crate":
+                return "internal", None
+            elif spec.startswith(("self::", "super::")) or spec in ("self", "super"):
+                return self._resolve_rust_relative(spec, importer_rel)
 
         # File-with-extension specs (C-family includes): by_name keys always
         # contain a dot, so bare module specs ("os", "lodash") can't match.
@@ -124,16 +152,45 @@ class Resolver:
             return "internal", module_of(self.by_name[name])
 
         slug = spec.replace(".", "/").replace("::", "/").rstrip("/")
-        for known, rel in self.by_slug.items():
-            if known == slug or known.endswith("/" + slug):
-                return "internal", module_of(rel)
+        rel = self.by_slug_suffix.get(slug)
+        if rel is not None:
+            return "internal", module_of(rel)
+        # A spec naming a package directory (``crate::config`` ->
+        # ``src/config/mod.rs``, ``pkg.sub`` -> ``pkg/sub/__init__.py``).
+        directory = self.by_dir_suffix.get(slug)
+        if directory is not None:
+            return "internal", directory
         stem = slug.rsplit("/", 1)[-1].lower()
         if stem in self.by_stem:
             return "internal", module_of(self.by_stem[stem])
+        if language == "rust" and "/" in slug:
+            # ``crate::config::Settings`` names an item inside module
+            # ``config``: retry with the trailing item segments dropped.
+            return self.resolve(
+                slug.rsplit("/", 1)[0].replace("/", "::"), importer_rel, language
+            )
         first = spec.replace("::", ".").split(".")[0].split("/")[0]
         if first.lower() in self.top_level:
             return "internal", first.lower()
         return "external", first or None
+
+    def _resolve_rust_relative(
+        self, spec: str, importer_rel: str
+    ) -> tuple[str, str | None]:
+        """``self::``/``super::`` against Rust's module tree: a ``mod.rs``,
+        ``lib.rs``, or ``main.rs`` *is* its directory's module; any other
+        file is a module of its own beneath that directory."""
+        directory, _, filename = importer_rel.rpartition("/")
+        stem = filename.rsplit(".", 1)[0]
+        segments = directory.split("/") if directory else []
+        if stem not in ("mod", "lib", "main"):
+            segments.append(stem)
+        parts = spec.split("::")
+        while parts and parts[0] in ("self", "super"):
+            if parts[0] == "super":
+                segments = segments[:-1]
+            parts = parts[1:]
+        return self._resolve_segments(segments + parts)
 
     def _resolve_relative(
         self,
@@ -160,6 +217,11 @@ class Resolver:
                     segments = segments[:-1]
                 else:
                     segments.append(part)
+        return self._resolve_segments(segments)
+
+    def _resolve_segments(self, segments: list[str]) -> tuple[str, str | None]:
+        """A repository-relative path guess (from a relative spec) to the
+        module it names, or ``None`` when it names no code module."""
         joined = "/".join(segments)
         for suffix in _JS_SUFFIXES:
             candidate = joined + suffix
@@ -170,7 +232,14 @@ class Resolver:
                 return "internal", module_of(hit)
         if joined in self.dirs:  # a package itself, not a file in one
             return "internal", joined
-        return "internal", module_of(joined) if joined else None
+        # Nothing on disk matched. Attribute the spec to the module it points
+        # into only if that module holds code (``../lib/missing`` -> ``lib``);
+        # a path into ``assets/``, ``styles/``, or a deleted directory names
+        # no module and must not fabricate one.
+        module = module_of(joined) if joined else None
+        if module is not None and module in self.modules:
+            return "internal", module
+        return "internal", None
 
 
 def build_imports_section(file_imports: list[tuple[str, str, list[str]]],

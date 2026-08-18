@@ -362,3 +362,74 @@ def test_module_naming_coverage_reports_truncated_import_edges():
     ledger = naming["coverage"]["modules"]
     assert ledger["complete"] is False
     assert any("edge cap" in reason for reason in ledger["reasons"])
+
+
+def test_relative_imports_of_non_code_assets_fabricate_no_modules(tmp_path):
+    """Sibling of the bare-`.` fix: `import '../assets/logo.svg'` used to
+    resolve to a phantom internal module `assets` (a directory with no code)
+    and nominate it. Unresolved relative specs attribute only to modules
+    that hold code."""
+    for app in ("web", "admin", "mobile"):
+        (tmp_path / app).mkdir()
+        (tmp_path / app / "index.js").write_text(
+            "import logo from '../assets/logo.svg';\n"
+            "import '../styles/app.css';\n"
+            "import cfg from '../data/config.json';\n"
+            "import util from '../lib/missing';\n"
+            f"export const {app}Value = 1;\n"
+        )
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "logo.svg").write_text("<svg/>")
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "lib" / "real.js").write_text("export const lib_value = 1;\n")
+
+    evidence = build_evidence(tmp_path)
+
+    targets = {edge["to"] for edge in evidence["imports"]["internal_edges"]}
+    assert targets == {"lib"}  # a real code module; assets/styles/data are not
+    nominated = {c["path"] for c in evidence["naming_candidates"]["modules"]}
+    assert not nominated & {"assets", "styles", "data"}
+
+
+def test_rust_crate_self_super_paths_are_intra_crate(tmp_path):
+    """`crate::`, `self::`, `super::` are never external dependencies; they
+    resolve against the crate's module tree (a `mod.rs`/`lib.rs`/`main.rs`
+    is its directory's module; other files are modules beneath it)."""
+    src = tmp_path / "src"
+    (src / "config").mkdir(parents=True)
+    (src / "net").mkdir()
+    (src / "config" / "mod.rs").write_text("pub struct Settings;\n")
+    (src / "net" / "mod.rs").write_text("pub fn connect() {}\n")
+    (src / "net" / "client.rs").write_text(
+        "use super::connect;\nuse crate::config;\nuse self::helper::x;\n"
+        "pub fn client_thing() {}\n"
+    )
+    (src / "main.rs").write_text(
+        "use crate::config::Settings;\nuse crate::net;\n"
+        "use std::collections::HashMap;\nfn main() {}\n"
+    )
+
+    imports = build_evidence(tmp_path)["imports"]
+
+    assert [e["name"] for e in imports["external_top"]] == ["std"]
+    edges = {(e["from"], e["to"]) for e in imports["internal_edges"]}
+    assert edges == {
+        ("src", "src/config"), ("src", "src/net"), ("src/net", "src/config"),
+    }
+
+
+def test_unresolved_import_specs_do_not_scan_every_code_file():
+    """Slug matching used to compare each spec against every known slug
+    (~100 s for 2,000 files x 20 unresolved specs; ~8 min at the 10k cap).
+    A component-suffix index keeps it near-constant per spec."""
+    from glossabet.corpus.imports import build_imports_section
+
+    files = [(f"pkg{i % 50}/mod{i}.py", "python") for i in range(10000)]
+    imports = [
+        (rel, "python", [f"lib{j}.thing" for j in range(20)])
+        for rel, _ in files[:2000]
+    ]
+    start = time.monotonic()
+    section = build_imports_section(imports, files)
+    assert time.monotonic() - start < 5, "import resolution was quadratic"
+    assert section["external_top"][0]["count"] == 2000

@@ -194,7 +194,9 @@ never touched); `--skill-only` installs the skill without the hook, and
 deleting the folder (or `claude plugin disable glossabet@skills-dir`) removes
 it. The hook names the exact `glossabet` executable that ran `install`, so a
 moved or removed CLI produces a visible per-session notice rather than
-silence — rerun `glossabet install --agent claude` after reinstalling. The
+silence — after reinstalling or moving the CLI, rerun
+`glossabet install --agent claude --force` (without `--force` the installer
+refuses to replace the now-different hook, by design). The
 folder is validated offline against `claude plugin validate`; a live
 installed Claude Code session has not yet been probed the way the Codex
 plugin has (PLAN Phase 33.2), so that route is still labelled unverified.
@@ -246,8 +248,10 @@ carries two distinct glossary channels that are never merged: `glossary` is
 Glossabet's own structured state (`glossabet-out/glossary.json`), and
 `repository_glossary` describes the repository's hand-maintained root
 `GLOSSARY.md` — presence, safe-read status (`readable` with a named
-`reason` when a symlink escapes the root or points at an in-repo sensitive
-file, the entry is not a regular file, the file exceeds the 2 MB bound, or
+`reason` when a symlink escapes the root, points at an in-repo sensitive
+file, or points at content the scanner itself excludes (Glossabet's own
+files, hidden, ignored, generated, or vendored paths), the entry is not a
+regular file, the file exceeds the 2 MB bound, or
 something is there but its exact name could not be confirmed),
 whether the entry is a symlink (readable through, never written through), size, and the SHA-256 of the exact
 bytes, plus any nested `GLOSSARY.md` files the walk excluded

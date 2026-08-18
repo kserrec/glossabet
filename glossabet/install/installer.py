@@ -212,6 +212,17 @@ def install_command(
         )
     folder = escape_terminal_text(str(path.parent))
     command = escape_terminal_text(hook_command(executable))
+    if not _is_claude_skills_directory(path.parent):
+        # Claude Code discovers skills-directory plugins only under
+        # ``~/.claude/skills/`` or a project's ``.claude/skills/``; a custom
+        # destination holds the same files but nothing will load them.
+        print(
+            f"Note: {folder} is not under a Claude Code skills directory "
+            "(~/.claude/skills or <project>/.claude/skills), so Claude Code "
+            "will not load it as a plugin or run its session-start hook "
+            "automatically."
+        )
+        return 0
     print(
         "Every Claude Code session will run "
         f"{command} at startup, resume, clear, and compaction "
@@ -223,3 +234,12 @@ def install_command(
         "`claude plugin disable glossabet@skills-dir`."
     )
     return 0
+
+
+def _is_claude_skills_directory(skill_dir: Path) -> bool:
+    """Whether ``skill_dir`` sits where Claude Code scans for skills-directory
+    plugins: ``<...>/.claude/skills/<name>``."""
+    return (
+        skill_dir.parent.name == "skills"
+        and skill_dir.parent.parent.name == ".claude"
+    )

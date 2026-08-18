@@ -466,3 +466,36 @@ def test_non_finite_and_bool_cohesion_never_enter_artifacts(tmp_path):
 
     assert [group["cohesion"] for group in structural["groups"]] == [None, None]
     assert "NaN" not in json.dumps(structural)
+
+
+def test_fallback_communities_shape_tolerates_duplicates_empties_and_report_nodes(tmp_path):
+    """The explicit ``communities`` list is a set of sets: duplicate member
+    ids do not inflate a group, two entries with one id are one community,
+    an empty ``links`` list falls through to a legacy ``edges`` list, an
+    empty ``label`` falls through to ``name``/``id``, and a node sourced from
+    the root GLOSSABET.md report is glossary provenance (discounted)."""
+    graph = {
+        "nodes": [
+            {"id": "n1", "label": "", "name": "Alpha", "source_file": "a.py"},
+            {"id": "n2", "label": "Beta", "source_file": "b.py"},
+            {"id": "n3", "label": "Gamma", "source_file": "c.py"},
+            {"id": "n4", "label": "ReportWord", "source_file": "GLOSSABET.md"},
+        ],
+        "links": [],
+        "edges": [{"source": "n1", "target": "n2"}],
+        "communities": [
+            {"id": 0, "nodes": ["n1", "n1", "n1", "n2"]},
+            {"id": 0, "nodes": ["n3", "n4"]},
+        ],
+    }
+    root = make_repo(tmp_path, graph)
+    structural = build_structural_groups(root, {"head": None, "dirty": None})
+
+    assert structural["edges"] == 1
+    assert structural["discounted_glossary_nodes"] == 1
+    groups = {g["id"]: g for g in structural["groups"]}
+    assert list(groups) == ["0"]
+    group = groups["0"]
+    assert group["size"] == 3  # n1, n2, n3 once each; the report node discounted
+    assert sorted(group["members_sample"]) == ["Alpha", "Beta", "Gamma"]
+    assert group["provenance"] == {"code": 3, "doc": 0, "glossary": 1}

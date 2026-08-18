@@ -21,7 +21,7 @@ from glossabet.runtime.artifacts import read_bounded_json, write_json_atomic
 # Version 4 invalidates doc extraction from before Phase 28.3. Reusing a
 # version-3 entry for AGENTS.md/CLAUDE.md could echo a synchronized glossary
 # block into evidence even though the current extractor removes that block.
-CACHE_VERSION = 4
+CACHE_VERSION = 5
 CACHE_FILE = "cache.json"
 CACHE_ROOT_ENV = "GLOSSABET_CACHE_DIR"
 
@@ -197,7 +197,14 @@ def clear_cache() -> dict:
         entry_dir = Path(child.path)
         removed_here = False
         leftovers = False
-        for item in os.scandir(entry_dir):
+        try:
+            items = list(os.scandir(entry_dir))
+        except OSError:
+            # Unlistable: left in place and reported, like anything else
+            # this command does not understand.
+            report["unrecognized_left_in_place"].append(child.name)
+            continue
+        for item in items:
             is_cache_file = (
                 not item.is_symlink()
                 and item.is_file(follow_symlinks=False)
