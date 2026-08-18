@@ -159,12 +159,28 @@ def _source_version() -> str:
     return match.group(1)
 
 
+_MAX_NESTED_MEMBER_BYTES = 64 * 1024 * 1024
+
+
 def _check_no_local_paths_in_zip(data: bytes, member: str, label: str) -> None:
+    """Scan every member of a wheel nested inside the sdist. Bounded: a
+    member declaring more than 64 MB uncompressed is refused rather than
+    inflated (a nested archive that decompresses to gigabytes must fail the
+    check, not exhaust the release runner)."""
     import io
 
-    with zipfile.ZipFile(io.BytesIO(data)) as inner:
-        for name in inner.namelist():
-            _check_no_local_paths(inner.read(name), f"{member}!{name}", label)
+    try:
+        inner = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile:
+        _fail(f"{label} member {member} is not a readable zip archive")
+    with inner:
+        for info in inner.infolist():
+            if info.file_size > _MAX_NESTED_MEMBER_BYTES:
+                _fail(
+                    f"{label} member {member}!{info.filename} declares "
+                    f"{info.file_size} bytes; refusing to inflate it"
+                )
+            _check_no_local_paths(inner.read(info), f"{member}!{info.filename}", label)
 
 
 def _check_wheel(wheel: Path, version: str, canonical_skill: bytes) -> None:

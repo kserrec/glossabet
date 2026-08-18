@@ -560,3 +560,33 @@ def test_graph_input_work_is_bounded_before_any_member_is_materialized(tmp_path)
     graph["communities"] = graph["communities"][:900]
     (root / "graphify-out" / "graph.json").write_text(json.dumps(graph))
     assert build_structural_groups(root, {"head": None, "dirty": None})["available"] is True
+
+
+def test_graph_label_tokenizing_is_budgeted_and_memoized(tmp_path):
+    """Under the reference budget a graph could still cost minutes: every
+    community re-tokenized each member's 512-char label. Labels are
+    tokenized once per node and the total label characters are budgeted."""
+    import time
+
+    label = " ".join(f"tok{i}" for i in range(80))[:512]
+    nodes = [{"id": f"n{i}", "label": label + str(i)} for i in range(1000)]
+    communities = [
+        {"id": f"c{j}", "nodes": [f"n{i}" for i in range(1000)]} for j in range(300)
+    ]
+    root = make_repo(tmp_path, {"nodes": nodes, "edges": [], "communities": communities})
+    start = time.monotonic()
+    structural = build_structural_groups(root, {"head": None, "dirty": None})
+    assert time.monotonic() - start < 10
+    assert structural["available"] is True
+
+    # Over the label-character budget: refused before any tokenizing.
+    many = [{"id": f"n{i}", "label": "x" * 512} for i in range(10_000)]
+    (root / "graphify-out" / "graph.json").write_text(json.dumps({
+        "nodes": many, "edges": [],
+        "communities": [{"id": 0, "nodes": [f"n{i}" for i in range(10_000)]}],
+    }))
+    start = time.monotonic()
+    structural = build_structural_groups(root, {"head": None, "dirty": None})
+    assert time.monotonic() - start < 5
+    assert structural["available"] is False
+    assert any("tokenizing budget" in w for w in structural["warnings"])

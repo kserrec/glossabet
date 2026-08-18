@@ -15,12 +15,20 @@ EXPECTED_VERSION = "0.1.0"
 # swap in a tampered wheel and matching hash together. build_plugin.py keeps
 # this in sync with the bundled wheel.
 EXPECTED_WHEEL_SHA256 = (
-    "aaf45af55afd65ab01e3b10ab5b9312b7bf8059c91f883eb05d0ce1e91b9e1f2"
+    "214f08e74e3506b83f877042dd550dbacea1cf2a60a4900091f169c1853fdba5"
 )
 
 
 def _fail(message: str) -> int:
-    print(f"glossabet plugin runner: {message}", file=sys.stderr)
+    # Under ``-I`` a user's PYTHONUTF8/PYTHONIOENCODING is ignored; a message
+    # naming a non-ASCII path must not itself raise on a narrow stderr.
+    stream = sys.stderr
+    if hasattr(stream, "reconfigure"):
+        try:
+            stream.reconfigure(errors="backslashreplace")
+        except (ValueError, OSError):
+            pass
+    print(f"glossabet plugin runner: {message}", file=stream)
     return 2
 
 

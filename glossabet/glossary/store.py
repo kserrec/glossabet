@@ -27,7 +27,7 @@ from glossabet.runtime.artifacts import (
     write_artifact,
 )
 from glossabet.corpus.tokenize import term_words
-from glossabet.runtime.display import contains_terminal_control
+from glossabet.runtime.display import first_terminal_control
 
 GLOSSARY_SCHEMA_VERSION = 1
 GLOSSARY_FILE = "glossary.json"
@@ -167,18 +167,15 @@ def _string_field(
     if len(value) > limit:
         errors.add(f"{where} exceeds {limit} characters")
         return None
-    if contains_terminal_control(value, allow_layout=prose):
+    unsafe = first_terminal_control(value, allow_layout=prose)
+    if unsafe is not None:
+        # Terminal controls, bidirectional overrides, lone surrogates, and
+        # invisible (default-ignorable) characters — named by code point so
+        # the author can find it.
         errors.add(
-            f"{where} contains a terminal control or bidirectional-format character"
+            f"{where} contains a terminal control, bidirectional-format, or "
+            f"invisible character (U+{ord(unsafe):04X})"
         )
-        return None
-    try:
-        value.encode("utf-8")
-    except UnicodeEncodeError:
-        # A JSON ``\udXXX`` escape yields a lone surrogate: a str that no
-        # UTF-8 writer, digest, or terminal can encode. Refuse it here so
-        # ``brief``/``sync-context`` never meet it later.
-        errors.add(f"{where} contains a lone surrogate (invalid UTF-16 escape)")
         return None
     return value
 

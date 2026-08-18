@@ -70,18 +70,33 @@ def is_terminal_control(character: str) -> bool:
     )
 
 
-def contains_terminal_control(text: str, *, allow_layout: bool = False) -> bool:
-    """Return whether ``text`` contains unsafe terminal-facing characters.
+# Default-ignorable characters that are ordinary display hints inside prose
+# (emoji presentation "❤️" = U+2764 U+FE0F, keycaps, Mongolian free variation
+# selectors) but still spoof-capable in an identity field: allowed in prose,
+# refused in terms/ids/aliases/paths.
+_PROSE_TOLERATED = frozenset(chr(cp) for cp in (
+    0xFE0E, 0xFE0F, 0x180B, 0x180C, 0x180D,
+))
 
-    Human prose may deliberately contain a line feed or tab; identity fields
-    (terms, ids, paths, and bindings) may not contain either.
+
+def first_terminal_control(text: str, *, allow_layout: bool = False) -> str | None:
+    """The first unsafe terminal-facing character in ``text``, or ``None``.
+
+    Human prose may deliberately contain a line feed, a tab, or an emoji
+    presentation selector; identity fields (terms, ids, paths, and bindings)
+    may contain none of them.
     """
     for character in text:
-        if allow_layout and character in "\n\t":
+        if allow_layout and (character in "\n\t" or character in _PROSE_TOLERATED):
             continue
         if is_terminal_control(character):
-            return True
-    return False
+            return character
+    return None
+
+
+def contains_terminal_control(text: str, *, allow_layout: bool = False) -> bool:
+    """Return whether ``text`` contains unsafe terminal-facing characters."""
+    return first_terminal_control(text, allow_layout=allow_layout) is not None
 
 
 def escape_terminal_text(text: str, *, preserve_line_feeds: bool = False) -> str:
@@ -138,10 +153,12 @@ class _SafeTerminalStream:
         if encoding:
             try:
                 safe.encode(encoding)
-            except (UnicodeEncodeError, LookupError):
+            except UnicodeEncodeError:
                 safe = safe.encode(encoding, "backslashreplace").decode(
                     encoding, "replace"
                 )
+            except LookupError:
+                pass  # an unknown codec name: nothing we can pre-check
         return self._stream.write(safe)
 
     def __getattr__(self, name: str):

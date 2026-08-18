@@ -170,7 +170,7 @@ def test_workflow_policy_ignores_comments_and_checks_every_workflow_file(tmp_pat
     inline["release.yml"] = workflows["release.yml"].replace(
         '--tag "$RELEASE_TAG"', '--tag "${{ github.ref_name }}"'
     )
-    assert any("untrusted expression into a shell line" in e for e in validate_workflow_texts(inline))
+    assert any("untrusted expression outside env:/if:" in e for e in validate_workflow_texts(inline))
 
     # A fourth workflow file is read: fork-PR trigger, tag-pinned action, and
     # an event expression in a run line are all reported.
@@ -186,6 +186,42 @@ def test_workflow_policy_ignores_comments_and_checks_every_workflow_file(tmp_pat
     assert any("unpinned action" in e for e in errors)
     assert any("untrusted expression" in e for e in errors)
     assert any("pipes a download" in e for e in errors)
+
+    # The bypasses a fix-review found against the first hardening: an
+    # expression on line 2 of a `run: |` block, a `#` inside a quoted string
+    # before the expression, list/flow/bare spellings of the fork trigger, a
+    # `uses:` target on a continuation line, and dropped publish hardening.
+    for text, expected in (
+        ("on: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n    steps:\n"
+         "      - run: |\n          echo hi\n          echo ${{ github.event.issue.title }}\n",
+         "untrusted expression"),
+        ("on: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n    steps:\n"
+         "      - run: echo \"a #\" ${{ github.event.issue.title }}\n",
+         "untrusted expression"),
+        ("on: [pull_request_target]\njobs: {}\n", "pull_request_target"),
+        ("on: pull_request_target\njobs: {}\n", "pull_request_target"),
+        ("on: {pull_request_target: {}}\njobs: {}\n", "pull_request_target"),
+        ("on: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n    steps:\n"
+         "      - uses:\n          actions/checkout@v4\n", "unpinned action"),
+        ("on: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n    steps:\n"
+         "      - uses: actions/github-script@0123456789abcdef0123456789abcdef01234567\n"
+         "        with:\n          script: return context.payload.pull_request.title\n"
+         "      - uses: x/y@0123456789abcdef0123456789abcdef01234567\n"
+         "        with:\n          arg: ${{ github.event.pull_request.title }}\n",
+         "untrusted expression"),
+    ):
+        variant = dict(workflows)
+        variant["extra.yml"] = text
+        assert any(expected in e for e in validate_workflow_texts(variant)), (expected, text)
+    weakened = dict(workflows)
+    weakened["release.yml"] = workflows["release.yml"].replace(
+        "          persist-credentials: false\n", ""
+    )
+    assert any("persist credentials" in e for e in validate_workflow_texts(weakened))
+    weakened["release.yml"] = workflows["release.yml"].replace(
+        "      id-token: write\n", "      id-token: write\n      packages: write\n"
+    )
+    assert any("not exactly contents: read" in e for e in validate_workflow_texts(weakened))
 
     # And check_workflows() reads the whole directory, not three fixed names.
     for name, text in extra.items():

@@ -346,3 +346,27 @@ def test_git_lookup_never_resolves_into_the_current_directory(tmp_path, monkeypa
     monkeypatch.setenv("PATH", f".:{tmp_path}")
     assert which_on_path("git") is None
     assert git_state.repository_git_stamp(tmp_path) == {"head": None, "dirty": None}
+
+
+def test_git_lookup_skips_unreadable_path_entries_and_links_into_the_repo(tmp_path, monkeypatch):
+    from glossabet.runtime.executables import which_on_path
+
+    _init_repo(tmp_path)
+    locked = tmp_path.parent / f"{tmp_path.name}-locked"
+    locked.mkdir()
+    (locked / "git").write_text("#!/bin/sh\necho x\n")
+    locked.chmod(0)
+    linkdir = tmp_path.parent / f"{tmp_path.name}-links"
+    linkdir.mkdir()
+    (tmp_path / "git").write_text("#!/bin/sh\necho PWNED\n")
+    (tmp_path / "git").chmod(0o755)
+    os.symlink(tmp_path / "git", linkdir / "git")  # PATH dir link into the repo
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PATH", f"{locked}:{linkdir}:{os.environ.get('PATH', '')}")
+    try:
+        found = which_on_path("git")
+    finally:
+        locked.chmod(0o755)
+    assert found is not None
+    assert not str(found).startswith((str(locked), str(linkdir)))
+    assert not str(found.resolve()).startswith(str(tmp_path))

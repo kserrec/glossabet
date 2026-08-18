@@ -901,11 +901,28 @@ path (OS username + layout) is in public git history from 2026-08-15/16
 transcripts/docs; not shipped anywhere; removal needs a history rewrite —
 **Kyle to rule** whether to rewrite before publication.
 
+**Fix-review of the audit code (same day):** a cold review of the round-5
+changes found and I fixed: the graph budget bounded memory but not time (an
+in-budget dense shape ran 192 s → node labels tokenized once, memoized, plus
+`GRAPH_LABEL_CHAR_BUDGET`; now ~5 s); `which_on_path` regressed on an
+unreadable PATH entry and did not resolve the candidate file (a PATH-dir
+symlink named `git` into the repo) — both fixed; the hardened workflow
+checker had new bypasses (`#` inside quotes, `run: |` block scalars,
+list/flow/bare `pull_request_target`, `uses:` continuation lines,
+uppercase-suffix files, dropped `persist-credentials`/broadened permissions)
+— rewritten over logical `key: value` entries with parent tracking, so an
+untrusted expression is refused anywhere except an `if:` condition or an
+`env:` value; VS15/VS16 and Mongolian FVS tolerated in prose (so "❤️" is
+allowed in a definition) but refused in identity fields, with the offending
+code point named in the error; runner `_fail` stderr backslash-replaces
+under `-I`; nested-wheel scan bounded (64 MB per member, `BadZipFile`
+reported). Suite 582 green.
+
 **Deferred (Windows-only, unverifiable here):** the Codex `commandWindows`
 launcher `py` is a bare name that `cmd.exe` would resolve through the
 current directory (a repo-shipped `py.bat`); a portable absolute-launcher
-form needs the Windows plugin probe (Phase 33.2 territory). R2 (hook quoting
-of `\`/UNC) unchanged.
+form needs the Windows plugin probe (Phase 33.2 territory) — recorded as a
+known limit in SECURITY.md. R2 (hook quoting of `\`/UNC) unchanged.
 
 ### Owner self-testing pause — active, not an implementation phase
 

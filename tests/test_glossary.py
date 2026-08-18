@@ -427,7 +427,7 @@ def test_terminal_controls_and_bidi_formatting_are_rejected(field, value):
 
     errors = validate_glossary(glossary)
 
-    assert any("terminal control or bidirectional" in error for error in errors)
+    assert any("terminal control, bidirectional-format, or invisible" in error for error in errors)
 
 
 def test_human_prose_may_contain_newlines_and_tabs():
@@ -743,10 +743,19 @@ def test_default_ignorable_characters_are_refused_as_a_class():
     for label, term in hidden.items():
         glossary = json.loads(json.dumps(GLOSSARY))
         glossary["concepts"][0]["term"] = term
-        assert any("terminal control" in e for e in validate_glossary(glossary)), label
+        errors = validate_glossary(glossary)
+        assert any("invisible character (U+" in e for e in errors), (label, errors)
+        # Prose tolerates emoji presentation/keycap selectors (a display hint,
+        # "❤️"); every other invisible character is refused there too.
         glossary = json.loads(json.dumps(GLOSSARY))
         glossary["concepts"][0]["definition"] = f"a {term} thing"
-        assert any("terminal control" in e for e in validate_glossary(glossary)), label
+        errors = validate_glossary(glossary)
+        if label == "VS16":
+            assert errors == []
+        else:
+            assert any("invisible character (U+" in e for e in errors), (label, errors)
     glossary = json.loads(json.dumps(GLOSSARY))
     glossary["concepts"][0]["term"] = "نیم\u200cفاصله"
-    assert not any("terminal control" in e for e in validate_glossary(glossary))
+    assert not any("invisible character" in e for e in validate_glossary(glossary))
+    glossary["concepts"][0]["definition"] = "I \u2764\ufe0f this 1\ufe0f\u20e3"
+    assert validate_glossary(glossary) == []

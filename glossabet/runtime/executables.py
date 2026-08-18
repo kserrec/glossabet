@@ -53,6 +53,17 @@ def which_on_path(name: str) -> Path | None:
             continue
         for candidate_name in names:
             candidate = directory / candidate_name
-            if candidate.is_file() and os.access(candidate, os.X_OK):
-                return candidate.absolute()
+            try:
+                # An unreadable or over-long PATH entry is skipped like any
+                # other non-match (pathlib raises on EACCES/ENAMETOOLONG),
+                # and the candidate is resolved too: a PATH-dir symlink named
+                # ``git`` pointing into the repository is a hit inside cwd.
+                if not (candidate.is_file() and os.access(candidate, os.X_OK)):
+                    continue
+                target = candidate.resolve()
+            except OSError:
+                continue
+            if target == cwd or _inside(target, cwd):
+                continue
+            return candidate.absolute()
     return None

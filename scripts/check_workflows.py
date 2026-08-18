@@ -18,19 +18,70 @@ SUPPORTED_OSES = ["ubuntu-latest", "macos-latest", "windows-latest"]
 SUPPORTED_PYTHONS = ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
 
+def _strip_trailing_comment(line: str) -> str:
+    """Cut a trailing ``# ...`` that is outside single/double quotes; a ``#``
+    inside a quoted string is content (``echo "a #" ${{ ... }}``)."""
+    in_single = in_double = False
+    for index, char in enumerate(line):
+        if char == "'" and not in_double:
+            in_single = not in_single
+        elif char == '"' and not in_single:
+            in_double = not in_double
+        elif char == "#" and not in_single and not in_double and (
+            index == 0 or line[index - 1] in " \t"
+        ):
+            return line[:index].rstrip()
+    return line.rstrip()
+
+
 def _strip_comments(workflow: str) -> str:
-    """Drop comment lines and trailing ``# ...`` so a required fragment or a
+    """Drop comment lines and trailing comments so a required fragment or a
     guard condition present only inside a comment cannot satisfy a check,
-    and a forbidden construct cannot hide behind one. YAML has no ``#`` inside
-    the plain scalars these workflows use except in quoted strings, which the
-    workflows here do not contain a ``#`` inside."""
+    and a forbidden construct cannot hide behind one."""
     kept = []
     for line in workflow.splitlines():
         stripped = line.lstrip()
         if stripped.startswith("#") or stripped.startswith("- #"):
             continue
-        kept.append(line.split(" #", 1)[0].rstrip())
+        kept.append(_strip_trailing_comment(line))
     return "\n".join(kept)
+
+
+def _logical_values(workflow: str):
+    """Yield ``(key, value_text)`` for every mapping entry, with block scalars
+    (``key: |`` / ``key: >``), continuation lines, and folded plain scalars
+    joined into one value — so an expression on line 2 of a ``run: |`` block
+    is seen as part of that ``run``."""
+    lines = workflow.splitlines()
+    index = 0
+    key_re = re.compile(r"^(?P<indent>\s*)(?:- )?(?P<key>[A-Za-z_][\w.-]*):(?P<rest>.*)$")
+    parents: list[tuple[int, str]] = []  # (indent, key) of enclosing mappings
+    while index < len(lines):
+        match = key_re.match(lines[index])
+        if match is None:
+            index += 1
+            continue
+        indent = len(match.group("indent")) + (2 if lines[index].lstrip().startswith("- ") else 0)
+        while parents and parents[-1][0] >= indent:
+            parents.pop()
+        parent = parents[-1][1] if parents else None
+        parents.append((indent, match.group("key")))
+        value = match.group("rest").strip()
+        parts = [value] if value and value not in ("|", ">", "|-", ">-", "|+", ">+") else []
+        index += 1
+        while index < len(lines):
+            line = lines[index]
+            if not line.strip():
+                index += 1
+                continue
+            line_indent = len(line) - len(line.lstrip())
+            if line_indent <= indent or key_re.match(line) and line_indent <= indent:
+                break
+            if key_re.match(line) and value not in ("|", ">", "|-", ">-", "|+", ">+"):
+                break  # a nested mapping, not a continuation of this scalar
+            parts.append(line.strip())
+            index += 1
+        yield match.group("key"), " ".join(parts), parent
 
 
 def _job_block(workflow: str, name: str) -> str | None:
@@ -85,21 +136,16 @@ def _requires_in_order(block: str, fragments: list[str], errors: list[str],
 
 
 def _check_pinned_actions(name: str, workflow: str, errors: list[str]) -> None:
-    for line in workflow.splitlines():
-        # A commented-out ``uses:`` is not a step; a trailing comment after
-        # the target still is (``uses: x@sha  # note``).
-        stripped = line.lstrip()
-        if stripped.startswith("- "):
-            stripped = stripped[2:].lstrip()
-        if stripped.startswith("#"):
-            continue  # a commented-out step, with or without its list dash
-        match = re.search(r"""\buses:\s*["']?([^\s#"']+)""", line)
-        if match is None:
+    for key, value, _parent in _logical_values(workflow):
+        if key != "uses":
             continue
-        target = match.group(1)
+        target = value.strip().strip("\"'")
+        if not target:
+            errors.append(f"{name} has an empty uses: target")
+            continue
         if target.startswith("./"):
             continue
-        if re.fullmatch(r"[^@]+@[0-9a-f]{40}", target) is None:
+        if re.fullmatch(r"[^@\s]+@[0-9a-f]{40}", target) is None:
             errors.append(f"{name} has an unpinned action: {target}")
 
 
@@ -197,8 +243,11 @@ def validate_workflow_texts(workflows: dict[str, str]) -> list[str]:
             errors.append(f"release publish guard is missing {condition!r}")
     if "id-token: write" not in publish:
         errors.append("release publish job lacks scoped Trusted Publishing permission")
-    if "write-all" in publish or re.search(r"contents:\s*write", publish):
-        errors.append("release publish job permissions are broader than read + id-token")
+    permissions = re.findall(r"(?m)^      ([a-z-]+):\s*(read|write|write-all|none)\s*$", publish)
+    if "write-all" in publish or set(permissions) != {("contents", "read"), ("id-token", "write")}:
+        errors.append("release publish job permissions are not exactly contents: read + id-token: write")
+    if "persist-credentials: false" not in publish:
+        errors.append("release publish checkout must not persist credentials")
     if "secrets." in publish:
         errors.append(
             "release publish job references a stored secret; publishing uses "
@@ -237,21 +286,22 @@ _EVENT_EXPRESSION = re.compile(
 
 def _check_global_rules(name: str, workflow: str, errors: list[str]) -> None:
     """Rules every workflow file obeys, whatever its job: no fork-PR trigger
-    that exposes secrets, no attacker-influenced expression interpolated into
-    a shell line (pass it through ``env:`` instead), no ``curl | sh``."""
-    if re.search(r"(?m)^\s*pull_request_target\s*:", workflow):
+    that exposes secrets (any spelling of the trigger), no attacker-influenced
+    expression anywhere except an ``if:`` condition or an ``env:`` value
+    (``run:`` blocks, ``with:`` arguments, and everything else must receive
+    it through ``env:``), no ``curl | sh``."""
+    if re.search(r"\bpull_request_target\b", workflow):
         errors.append(f"{name} uses pull_request_target (secrets exposed to fork PRs)")
-    for line in workflow.splitlines():
-        stripped = line.strip()
-        if stripped.startswith(("- run:", "run:")) and _EVENT_EXPRESSION.search(stripped):
+    for key, value, parent in _logical_values(workflow):
+        if key == "if" or parent == "env":  # a condition, or an env: value
+            continue
+        if _EVENT_EXPRESSION.search(value):
             errors.append(
-                f"{name} interpolates an untrusted expression into a shell line: "
-                f"{stripped[:80]}"
+                f"{name} interpolates an untrusted expression outside env:/if: "
+                f"({key}: {value[:80]})"
             )
-        if re.search(r"curl[^|\n]*\|\s*(?:ba)?sh\b", stripped) or re.search(
-            r"wget[^|\n]*\|\s*(?:ba)?sh\b", stripped
-        ):
-            errors.append(f"{name} pipes a download into a shell: {stripped[:80]}")
+        if re.search(r"(?:curl|wget)[^|]*\|\s*(?:ba|z)?sh\b", value):
+            errors.append(f"{name} pipes a download into a shell: {value[:80]}")
 
 
 def check_workflows(directory: Path = WORKFLOWS) -> list[str]:
@@ -260,7 +310,7 @@ def check_workflows(directory: Path = WORKFLOWS) -> list[str]:
     return validate_workflow_texts({
         path.name: path.read_text(encoding="utf-8")
         for path in sorted(directory.iterdir())
-        if path.suffix in (".yml", ".yaml") and path.is_file()
+        if path.suffix.lower() in (".yml", ".yaml") and path.is_file()
     })
 
 

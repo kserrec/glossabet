@@ -208,6 +208,13 @@ supported platform.
   or squatted `glossabet` elsewhere cannot be the one executed while the
   digest guards another. Regression:
   `test_hook_interpreter_is_isolated_from_a_hostile_working_directory`.
+  **Known limit (Windows, unverified):** the `commandWindows` launcher `py`
+  is a bare name; if Codex spawns it through `cmd.exe`, the current
+  directory is searched before `PATH`, so a hostile checkout shipping
+  `py.bat` at its root would run at session start — the interpreter is
+  isolated once started, but its *selection* is not yet hardened there. A
+  portable absolute-launcher form awaits the Windows plugin probe (Phase
+  33.2); until then the Codex plugin route on Windows is labelled unverified.
 - **Package data is pinned to the repository source of truth.** Hatch maps
   `skill/SKILL.md` directly to `glossabet/_skill/SKILL.md`; focused tests and
   the built-wheel smoke test compare the bytes rather than maintaining an
@@ -543,10 +550,15 @@ the opt-in developer/release operations that do use the network.
   present but unusable with a warning and proceeds lexical-only, without
   materializing a member. Node labels are bounded (512 chars,
   `label_truncated`), member-token sets are capped (2,000, with a ledger),
-  and cohesion is usable only within `MAX_USABLE_COHESION`. The remaining
-  cost of a maximal graph is `json.loads` of the file itself, which the size
-  cap governs. Regression:
+  and cohesion is usable only within `MAX_USABLE_COHESION`. Each node's label
+  is tokenized once (memoized), and total label characters are budgeted
+  (`GRAPH_LABEL_CHAR_BUDGET`, 5,000,000) before any tokenizing, because a
+  graph *under* the reference budget could otherwise re-tokenize 512-char
+  labels once per community and cost minutes. What remains for a maximal
+  in-budget graph is a few seconds of per-community sorting plus
+  `json.loads` of the file itself, which the size cap governs. Regression:
   `test_graph_input_work_is_bounded_before_any_member_is_materialized`,
+  `test_graph_label_tokenizing_is_budgeted_and_memoized`,
   `test_astronomical_cohesion_and_giant_labels_degrade_instead_of_crashing`.
 - The managed-mode term-presence check (`repository_glossary.divergence`)
   is bounded on both factors: at most `MAX_DIVERGENCE_TERMS` (500) folded

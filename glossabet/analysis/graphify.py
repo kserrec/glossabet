@@ -47,6 +47,13 @@ MAX_USABLE_COHESION = 1_000_000.0
 # references, not millions; beyond this the graph is reported present but
 # unusable and the run proceeds lexical-only.
 GRAPH_WORK_BUDGET = 1_000_000
+# Label characters tokenized across all nodes. Each node's label is tokenized
+# once (memoized per node id) — a member listed in a thousand communities is
+# not tokenized a thousand times — and the total is bounded, because
+# tokenizing is ~0.3 ms per 512-char label: a million such labels under the
+# reference budget would still cost minutes. Judged after label truncation,
+# before any tokenizing.
+GRAPH_LABEL_CHAR_BUDGET = 5_000_000
 MEMBER_SAMPLE = 6
 STRUCTURE_CANDIDATE_CAP = 10
 
@@ -417,6 +424,15 @@ def _groups_from_node_attributes(
     return groups
 
 
+def _node_tokens(node: dict) -> list[str]:
+    """A node label's tokens, computed once per node however many
+    communities list it."""
+    tokens = node.get("tokens")
+    if tokens is None:
+        tokens = node["tokens"] = tokenize_term(node["label"])
+    return tokens
+
+
 def _group_items(
     groups: dict[str, dict],
     nodes: dict[str, dict],
@@ -447,7 +463,7 @@ def _group_items(
         all_member_tokens = sorted({
             token
             for member in visible
-            for token in tokenize_term(nodes[member]["label"])
+            for token in _node_tokens(nodes[member])
         })
         member_tokens, member_token_coverage = capped_collection(
             all_member_tokens,
@@ -509,6 +525,16 @@ def build_structural_groups(
             present=True,
             warnings=warnings + [
                 f"{GRAPH_PATH}: nodes carry no usable ids — proceeding lexical-only"
+            ],
+        )
+    label_chars = sum(len(node["label"]) for node in nodes.values())
+    if label_chars > GRAPH_LABEL_CHAR_BUDGET:
+        return _unavailable(
+            present=True,
+            warnings=warnings + [
+                f"{GRAPH_PATH}: {label_chars} node-label characters exceed the "
+                f"adapter's tokenizing budget of {GRAPH_LABEL_CHAR_BUDGET} — "
+                "proceeding lexical-only"
             ],
         )
 
