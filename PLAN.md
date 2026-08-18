@@ -1,6 +1,6 @@
 # Glossabet — Plan
 
-Status: **Phases 0–22, 24–32, 34–36, and 37 complete (36.8, live
+Status: **Phases 0–22, 24–32, 34–36, 37, and 38 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
 in progress at 33.2; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-17.
@@ -600,6 +600,50 @@ the installed-agent evidence's `--current` currency lapses (skill, source,
 README, and evaluator changed) until the next authorized Codex batch — the
 genuineness form still passes. Deterministic and reviewer evidence already
 lagged and are regenerated at the release gate as before.
+
+### Phase 38 — `glossabet.json` discoverability and skill WLOS ✅ 2026-08-18
+
+**Origin:** during Kyle's pre-testing review walkthrough, the optional root
+`glossabet.json` configuration turned out to be documented in exactly one
+README section and nowhere a user or agent would meet it at the moment of
+need (no `--help` mention, no runtime hint, and the skill knows only that
+the file exists — not its shape). Kyle chose the "engine carries the shape,
+skill gets one sentence" design over teaching the skill the schema, to keep
+the skill lean, and asked for a WLOS (without loss of substance) shortening
+pass on the skill in the same phase.
+
+1. **Engine carries the shape.** `configuration` in `evidence.json` and the
+   `inspect` context gains a static `shape` entry (file, location, keys,
+   the five roles, the literal-prefix rules, one example) defined next to
+   the loader in `config.py`, so the schema has one home and cannot drift.
+   Evidence `SCHEMA_VERSION` 12 → 13; context schema stays 3 (additive).
+2. **Hint at the point of need.** `scan`/`analyze` print one line naming
+   whether roles came from defaults or from `glossabet.json`, and that a
+   root `glossabet.json` (`ignore_paths`, `path_roles`) adjusts them.
+   `--help` for `scan`/`analyze`/`inspect` mentions the file.
+3. **Skill: one sentence.** Step 0's existing "a repository can override…"
+   sentence becomes: if roles or exclusions look wrong, say so and offer to
+   write a root `glossabet.json` as described by `configuration.shape`;
+   write only on the user's yes. `test_skill` dotted-field check covers it.
+4. **WLOS pass on `skill/SKILL.md`.** Remove repetition and restatement
+   only; every rule, ordering, threshold, and stance survives; the
+   `test_skill` structure tests must still pass. Report before/after size.
+5. Docs (README, ARCHITECTURE) reflect the new field and hint; wheel and
+   plugin rebuilt; suite green; commit naming the phase.
+
+**Outcome:** `config.CONFIG_SHAPE` carried as `configuration.shape`
+(evidence schema 13); `evidence_report.configuration_hint` printed by
+`scan`/`analyze`; `--help` scope note on `scan`/`analyze`/`inspect`; skill
+Step 0 sentence; new test in `test_config.py` (hint text, shape keys, and
+the carried example itself loads). WLOS pass: 707 → 693 lines, 39,844 →
+38,818 bytes — restatements only (three "never bulk-read" phrasings merged
+into one, plugin-engine path note folded into the command paragraph,
+Graphify/state/Step 6/Step 7 paragraphs tightened); every pinned phrase and
+`test_skill` structure test unchanged. The document is already dense;
+further cuts would remove examples or rationale. Suite 532 green; wheel and
+plugin rebuilt; installed-agent `--current` currency lapses again until the
+next authorized Codex batch. Kyle's review of the codebase itself (nesting,
+flat package, module sizes) has not started.
 
 ### Owner self-testing pause — active, not an implementation phase
 

@@ -30,7 +30,7 @@ from glossabet.terminology import build_terminology
 from glossabet.tokenize import tokenization_contract, tokenize_identifier
 from glossabet.vocabulary import DocumentationVocabulary, ProductionVocabulary
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 EVIDENCE_FILE = "evidence.json"
 

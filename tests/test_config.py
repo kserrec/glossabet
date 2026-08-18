@@ -4,6 +4,7 @@ import json
 import os
 
 from glossabet.cli import main
+from glossabet.config import CONFIG_SHAPE
 from glossabet.evidence import build_evidence
 
 
@@ -97,6 +98,7 @@ def test_configured_prefixes_ignore_or_override_default_roles(tmp_path):
         },
         "present": True,
         "schema_version": 1,
+        "shape": CONFIG_SHAPE,
     }
 
 
@@ -204,3 +206,28 @@ def test_configuration_is_deterministic(tmp_path):
     first = build_evidence(tmp_path)
     second = build_evidence(tmp_path)
     assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
+
+
+def test_configuration_shape_and_hint_meet_the_user_at_the_point_of_need(
+    tmp_path, capsys
+):
+    """The optional glossabet.json is otherwise documented only in the
+    README: the evidence carries its shape and the scan summary names it."""
+    (tmp_path / "app.py").write_text("def run(): pass\n")
+    assert main(["scan", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "roles and exclusions from built-in defaults" in out
+    assert "adjust with a root glossabet.json (ignore_paths, path_roles: " in out
+    evidence = json.loads((tmp_path / "glossabet-out" / "evidence.json").read_text())
+    shape = evidence["configuration"]["shape"]
+    assert shape["schema_version"] == 1
+    assert set(shape["keys"]["path_roles"]) == {
+        "production", "test", "fixture", "generated", "vendored"
+    }
+    assert "literal" in shape["rules"] and "no globs" in shape["rules"]
+
+    (tmp_path / "glossabet.json").write_text(
+        json.dumps(shape["example"])  # the carried example must itself load
+    )
+    assert main(["scan", str(tmp_path)]) == 0
+    assert "roles and exclusions from glossabet.json" in capsys.readouterr().out

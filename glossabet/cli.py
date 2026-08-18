@@ -36,6 +36,14 @@ def _add_repository_path(command: argparse.ArgumentParser) -> None:
     command.add_argument("path", nargs="?", default=".", help="repository root")
 
 
+_SCOPE_NOTE = (
+    "Analysis scope: production files drive vocabulary; test, fixture, "
+    "generated, and vendored paths are classified by built-in defaults. An "
+    "optional root glossabet.json (ignore_paths, path_roles) adjusts them; "
+    "every effective role and exclusion is reported."
+)
+
+
 def _add_graphify_toggle(command: argparse.ArgumentParser) -> None:
     command.add_argument(
         "--no-graphify", action="store_true",
@@ -57,13 +65,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command")
 
-    scan = sub.add_parser("scan", help="build or refresh repository evidence")
+    scan = sub.add_parser(
+        "scan",
+        help="build or refresh repository evidence",
+        description="Build or refresh repository evidence. " + _SCOPE_NOTE,
+    )
     _add_repository_path(scan)
     _add_graphify_toggle(scan)
 
     analyze = sub.add_parser(
         "analyze",
         help="scan plus a terminology report (register, overlaps, overloads)",
+        description=(
+            "Scan plus a terminology report (register, overlaps, overloads). "
+            + _SCOPE_NOTE
+        ),
     )
     _add_repository_path(analyze)
     _add_graphify_toggle(analyze)
@@ -71,6 +87,10 @@ def build_parser() -> argparse.ArgumentParser:
     inspect = sub.add_parser(
         "inspect",
         help="emit a fresh, bounded JSON context for the agent skill",
+        description=(
+            "Emit a fresh, bounded JSON context for the agent skill. "
+            + _SCOPE_NOTE
+        ),
     )
     _add_repository_path(inspect)
     _add_graphify_toggle(inspect)

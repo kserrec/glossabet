@@ -7,11 +7,28 @@ from __future__ import annotations
 
 import sys
 
+from glossabet.config import CONFIG_FILE, PATH_ROLES
 from glossabet.display import escape_terminal_text
 from glossabet.engine_run import open_run
 from glossabet.evidence import build_evidence, write_evidence
 from glossabet.evidence_view import EvidenceView
 from glossabet.scanner import exclusion_sentences
+
+
+def configuration_hint(configuration: dict) -> str:
+    """One line telling the user where the roles came from and that a root
+    ``glossabet.json`` adjusts them — printed exactly where the exclusions
+    and role totals are on screen, so the option is met at the point of
+    need rather than only in the README."""
+    source = (
+        f"roles and exclusions from {CONFIG_FILE}"
+        if configuration["present"]
+        else "roles and exclusions from built-in defaults"
+    )
+    return (
+        f"{source}; adjust with a root {CONFIG_FILE} "
+        "(ignore_paths, path_roles: " + "/".join(PATH_ROLES) + ")"
+    )
 
 
 def _print_terminology_report(view: EvidenceView) -> None:
@@ -191,6 +208,7 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
     )
     for sentence in exclusion_sentences(view.skipped()):
         print(sentence, file=sys.stderr)
+    print(configuration_hint(view.configuration()))
     budget = view.corpus_budget()
     if not budget["complete"]:
         omitted = budget["skipped"]["source_files"]

@@ -29,7 +29,7 @@ def test_inspect_emits_versioned_context_and_refreshes_evidence(tmp_path, capsys
     context = json.loads(captured.out)
     assert captured.err == ""
     assert context["context_schema_version"] == 3
-    assert context["evidence_schema_version"] == 12
+    assert context["evidence_schema_version"] == 13
     assert context["freshness"]["status"] == "current"
     assert context["files"]["code"] == [
         {"language": "python", "path": "service.py", "role": "production"}

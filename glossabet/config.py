@@ -28,6 +28,35 @@ MAX_PATH_LENGTH = 512
 PATH_ROLES = ("production", "test", "fixture", "generated", "vendored")
 EXCLUDED_CONTENT_ROLES = frozenset({"generated", "vendored"})
 
+# The file's shape, carried in every evidence/context ``configuration``
+# section so a user or agent meets it exactly where the role classification
+# is on screen. Defined beside the loader so the description cannot drift
+# from what ``load_config`` accepts.
+CONFIG_SHAPE = {
+    "file": f"optional {CONFIG_FILE} at the scanned root",
+    "schema_version": CONFIG_SCHEMA_VERSION,
+    "keys": {
+        "ignore_paths": "list of paths never inventoried or read",
+        "path_roles": {
+            role: "list of paths given this role" for role in PATH_ROLES
+        },
+    },
+    "rules": (
+        "every path is a literal /-separated prefix relative to the scanned "
+        "root (no globs, absolute paths, or ..); ignore rules win; the most "
+        "specific configured role wins over the built-in defaults; unknown "
+        "fields or a malformed file are errors, never ignored"
+    ),
+    "example": {
+        "schema_version": CONFIG_SCHEMA_VERSION,
+        "ignore_paths": ["scratch"],
+        "path_roles": {
+            "production": ["tests/product_contracts"],
+            "generated": ["src/api/generated"],
+        },
+    },
+}
+
 _TEST_DIRS = frozenset({"test", "tests", "spec", "specs", "__tests__"})
 _FIXTURE_DIRS = frozenset({
     "fixture", "fixtures", "testdata", "test_data", "__snapshots__",
@@ -151,6 +180,7 @@ class RepositoryConfig:
                 for role, paths in sorted(self.path_roles.items())
                 if paths
             },
+            "shape": CONFIG_SHAPE,
         }
 
 

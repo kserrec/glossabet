@@ -417,7 +417,13 @@ the skill's naming review, never canonical decisions.
 
 An optional `glossabet.json` at the scanned root can add ignored paths,
 classify project-specific layouts, or mark a conventionally non-production
-path as production:
+path as production. You meet it where the classification is on screen: `scan`
+and `analyze` end their summary with one line saying whether roles came from
+built-in defaults or from `glossabet.json` and that the file adjusts them,
+`--help` for `scan`/`analyze`/`inspect` names it, and every evidence and
+`inspect` context carries its shape under `configuration.shape` (keys, the
+five roles, the literal-prefix rules, one example) so the `/glossabet` skill
+can offer to write one when the roles look wrong — only on the user's yes:
 
 ```json
 {

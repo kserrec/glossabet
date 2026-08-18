@@ -130,7 +130,7 @@ The skill does not read this artifact directly. Its top-level shape:
 |-----|---------------|
 | `schema_version`, `generator` | version stamps |
 | `repository.git` | `{head, dirty}` — the filtered Git state the evidence was built from (staleness signal) |
-| `configuration` | normalized `glossabet.json` state, or an explicit absent state |
+| `configuration` | normalized `glossabet.json` state, or an explicit absent state, plus `shape` — the file's own description (keys, roles, rules, example) carried so the option is met at the point of need |
 | `totals` | source/code/doc file, byte, and word counts, including per-role totals |
 | `languages`, `modules` | language tally; per-directory module and role inventory |
 | `imports` | best-effort internal edges + external dependency tally (lossy, tagged so) |

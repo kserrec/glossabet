@@ -15,7 +15,7 @@ EXPECTED_VERSION = "0.1.0"
 # swap in a tampered wheel and matching hash together. build_plugin.py keeps
 # this in sync with the bundled wheel.
 EXPECTED_WHEEL_SHA256 = (
-    "d21d51151c04e8f6e57289b96890d12bab0fd75e3c4c30ef88efa27a6c4b801b"
+    "5c1a4ce2b589dd6b8c3da438dd4db738896737f3b79d2382d1ff9f0f2948abbc"
 )
 
 
