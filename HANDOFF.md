@@ -71,6 +71,24 @@ re-run `glossabet install --agent claude` / `glossabet install` if unsure.
   second usage authorization). Each sub-phase is one pass under Phase 35
   rules.
 
+**Kyle's next session: owner self-testing (start here)**
+
+1. Reinstall so the CLI and skill are today's build (the tree moved through
+   Phases 36.1–36.7 since the last install; behaviour is intended to be
+   identical, which is exactly what the testing checks):
+   `uv tool install . --reinstall` → `glossabet --version` prints
+   `glossabet 0.1.0`; then `glossabet install --agent claude` (Claude Code)
+   and/or `glossabet install` (Codex).
+2. Test freely: `scan`/`analyze`/`inspect`/`brief`/`drift`/`validate`/
+   `show`/`sync-context` on any repository, and the `/glossabet` skill in the
+   agent host. Nothing in Phase 36 was meant to change any output.
+3. If something looks off, it can be checked against the pre-refactor
+   baseline: the command oracle recipe is under "How to resume" below (the
+   scratchpad copies from this session are gone; rebuild takes ~1 minute),
+   and the pre-Phase-36 code is commit `0466822` for a side-by-side run.
+4. Anything Kyle finds becomes a plan item, not an on-the-spot fix; the
+   owner self-testing pause stays active until he explicitly ends it.
+
 **How to resume**
 
 - `$next` / `/next` → the first incomplete phase whose dependencies are
