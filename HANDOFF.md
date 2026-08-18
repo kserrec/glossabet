@@ -62,8 +62,10 @@ re-run `glossabet install --agent claude` / `glossabet install` if unsure.
 **How to resume**
 
 - `$next` / `/next` → the first incomplete phase whose dependencies are
-  complete is Phase 33.2 (needs Kyle's authorization to spend usage) or
-  Phase 36.7 (needs Kyle's authorization to spend usage). Both honour the owner self-testing pause.
+  complete is Phase 33.2 or Phase 36.7 — both need Kyle's authorization
+  to spend Codex/Claude usage on a bounded scenario batch, and both honour
+  the owner self-testing pause. Phase 36.7 step 3 (structure tests in
+  `test_skill.py`) needs no authorization and can go first.
 - Before any Phase 36 sub-phase, rebuild the byte-identical oracle: copy the
   four local fixtures from `evaluation/corpus.json` (`path` sources) to a
   scratch dir, `glossabet save` each source's `glossary`, run every command
