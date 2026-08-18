@@ -277,6 +277,33 @@ def test_genuineness_verifier_catches_internal_tampering_without_currency(
         for error in verify_results(method_path, MANIFEST)
     )
 
+    # Per-case score sets must be what `_score` produces: a phantom recall
+    # hit (with an empty false-negative list the ratio stays 1.0 and the
+    # aggregate re-derives cleanly), a hit listed as both true and false
+    # positive, a "useful" key never found, or a found key also "missed"
+    # are all tampering the aggregate check alone cannot see.
+    def with_score(mutate, expected):
+        doc = deepcopy(original)
+        block = doc["cases"][0]["terminology"]
+        mutate(block)
+        path = tmp_path / "score-sets.json"
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        errors = verify_results(path, MANIFEST)
+        assert any(expected in error for error in errors), (expected, errors)
+
+    import evaluation.run as run
+
+    with_score(lambda b: b["recall_true_positive"].append("zz:phantom"),
+               "recall true positives are not a subset of true positives")
+    with_score(lambda b: b["false_positive"].append(b["true_positive"][0]),
+               "do not partition actual")
+    with_score(lambda b: b["useful"].append("zz:never-found"),
+               "useful hits are not a subset of true positives")
+    with_score(lambda b: b["false_negative"].append(b["actual"][0]),
+               "also recorded as found")
+    with_score(lambda b: b["actual"].append(b["actual"][0]),  # duplicate, unsorted
+               "not a sorted list of unique strings")
+
 
 def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path, monkeypatch):
     """Every staleness detector is proven on its own: the recorded results

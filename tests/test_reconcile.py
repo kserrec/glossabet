@@ -4,6 +4,7 @@ against stable identities only, and nothing assumes one community = one
 concept."""
 
 import json
+import os
 
 import pytest
 
@@ -829,4 +830,99 @@ def test_only_canonical_concepts_are_judged_for_orphans_and_bindings(tmp_path):
     assert [f["concept_id"] for f in judged["orphaned_concepts"]["items"]] == ["ledger"]
     assert [f["ref"] for f in judged["unresolved_bindings"]["items"]] == [
         "symbol:GhostLedger"
+    ]
+
+
+def test_bindings_into_paths_the_scan_excluded_are_uncertain_not_unresolved(tmp_path):
+    """A `file:`/`module:` binding pointing under a vendored, generated,
+    configured-ignore, or sensitive path names something the scan chose not
+    to read: it may well exist, so it is `uncertain` (and counted in the
+    ledger reason), never the "no longer resolves — drift signal" finding
+    a deleted file earns. A binding to a path nowhere on disk stays
+    unresolved; a binding to an inventoried file stays resolved. (R1.)"""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "core.py").write_text("core_value = 1\n")
+    (tmp_path / "vendor" / "lib").mkdir(parents=True)
+    (tmp_path / "vendor" / "lib" / "dep.py").write_text("dep_value = 1\n")
+    (tmp_path / "build").mkdir()
+    (tmp_path / "build" / "out.py").write_text("out_value = 1\n")
+    (tmp_path / "scratch").mkdir()
+    (tmp_path / "scratch" / "notes.py").write_text("notes_value = 1\n")
+    (tmp_path / ".env").write_text("SECRET=1\n")
+    os.symlink("/", tmp_path / "rootlink")  # escaping link: in the scan's ledger
+    (tmp_path / "glossabet.json").write_text(json.dumps(
+        {"schema_version": 1, "ignore_paths": ["scratch"]}
+    ))
+    glossary = {"schema_version": 1, "concepts": [{
+        "id": "core", "term": "Core", "definition": "d", "status": "canonical",
+        "bindings": [
+            {"ref": "file:src/core.py"},              # resolved
+            {"ref": "file:vendor/lib/dep.py"},        # vendored: uncertain
+            {"ref": "module:vendor/lib"},             # vendored: uncertain
+            {"ref": "file:build/out.py"},             # generated: uncertain
+            {"ref": "file:scratch/notes.py"},         # configured ignore: uncertain
+            {"ref": "file:.env"},                     # sensitive: uncertain
+            {"ref": "file:src/gone.py"},              # nowhere: unresolved
+        ],
+    }]}
+    assert validate_glossary(glossary) == []
+    evidence = build_evidence(tmp_path)
+    assert evidence["skipped"]["corpus_budget"]["complete"] is True
+    from glossabet.glossary.reconcile import _resolve_bindings
+
+    statuses = {
+        b["ref"]: b["status"]
+        for b in _resolve_bindings(glossary["concepts"][0], EvidenceIndex(evidence, ["Core"]))
+    }
+    assert statuses == {
+        "file:src/core.py": "resolved",
+        "file:vendor/lib/dep.py": "uncertain",
+        "module:vendor/lib": "uncertain",
+        "file:build/out.py": "uncertain",
+        "file:scratch/notes.py": "uncertain",
+        "file:.env": "uncertain",
+        "file:src/gone.py": "unresolved",
+    }
+    validation = build_validation(evidence, glossary)
+    assert [f["ref"] for f in validation["unresolved_bindings"]["items"]] == ["file:src/gone.py"]
+    ledger = validation["coverage"]["collections"]["unresolved_bindings"]
+    assert ledger["total_items_exact"] is False
+    assert any("5 binding(s) name paths the scan did not read" in r for r in ledger["reasons"])
+    # And a concept whose only bindings are excluded is not orphaned on that
+    # account (uncertain bindings shield it, as under a partial corpus).
+    assert validation["orphaned_concepts"]["items"] == []
+
+    # With the repository root available (the `validate` command has it), a
+    # binding to a real file the inventory never lists — not a code or doc
+    # extension — is uncertain too; a hostile binding cannot probe outside
+    # the root (absolute, `..`, or a link escaping it read as absent).
+    (tmp_path / "Makefile").write_text("all:\n\ttrue\n")
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "settings.toml").write_text("[x]\n")
+    glossary["concepts"][0]["bindings"] = [
+        {"ref": "file:Makefile"}, {"ref": "file:config/settings.toml"},
+        {"ref": "module:config"}, {"ref": "file:src/gone.py"},
+        {"ref": "file:../outside"}, {"ref": "file:/etc/hosts"},
+        {"ref": "file:rootlink/etc"},
+    ]
+    from glossabet.glossary.reconcile import _exists_confined
+
+    # The escaping link is in the scan's own omission ledger (uncertain by
+    # that rule); the disk probe itself must still refuse to follow it.
+    assert _exists_confined(tmp_path, "rootlink/etc") is False
+    assert _exists_confined(tmp_path, "../outside") is False
+    assert _exists_confined(tmp_path, "/etc/hosts") is False
+    assert _exists_confined(tmp_path, "Makefile") is True
+    with_root = build_validation(evidence, glossary, root=tmp_path)
+    assert sorted(f["ref"] for f in with_root["unresolved_bindings"]["items"]) == [
+        "file:../outside", "file:/etc/hosts", "file:src/gone.py",
+    ]
+    without_root = build_validation(evidence, glossary)
+    assert len(without_root["unresolved_bindings"]["items"]) == 6  # rootlink/etc: ledger
+    # And through the CLI, which passes the root.
+    save_glossary(tmp_path, glossary)
+    assert main(["validate", str(tmp_path)]) == 0
+    written = json.loads((tmp_path / "glossabet-out" / "validation.json").read_text())
+    assert sorted(f["ref"] for f in written["unresolved_bindings"]["items"]) == [
+        "file:../outside", "file:/etc/hosts", "file:src/gone.py",
     ]

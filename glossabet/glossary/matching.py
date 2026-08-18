@@ -183,9 +183,11 @@ class EvidenceIndex:
                 reasons=term_reasons,
             ),
         }
-        self.compound_complete = all(
-            ledger["complete"] for ledger in self.coverage.values()
-        )
+        # The position budget is index-wide (an exhausted pass leaves every
+        # compound term's count a lower bound); the term-length cap is not —
+        # an over-cap term is simply absent from the matches, and must not
+        # mark every other compound term's count inexact.
+        self.compound_complete = self.coverage["compound_match_positions"]["complete"]
 
     def code_term_occurrence(
         self, term: str, scope: tuple[str, ...] | None = None

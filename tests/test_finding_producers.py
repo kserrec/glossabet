@@ -311,9 +311,10 @@ def test_concept_findings_orphan_binding_and_fragmentation_records():
     )
     matcher = EvidenceIndex(ev, ["Workspace", "Payment", "Tenant"])
 
-    orphaned, unresolved, fragmented, reasons = _concept_findings(
+    orphaned, unresolved, fragmented, reasons, binding_reasons = _concept_findings(
         canonical, vocab, matcher
     )
+    assert binding_reasons == []
 
     assert reasons == []
     [orphan] = orphaned
@@ -345,7 +346,7 @@ def test_concept_findings_out_of_scope_binding_and_resolved_binding_is_no_orphan
         tokens=[token("payment", 3, {"pay/svc.py": 3})],
         identifiers=[identifier("payment_service", 1, {"pay/svc.py": 1})],
     )
-    orphaned, unresolved, _f, _r = _concept_findings(
+    orphaned, unresolved, _f, _r, _b = _concept_findings(
         canonical, vocab, EvidenceIndex(ev, ["Payment"])
     )
     [record] = unresolved

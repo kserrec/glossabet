@@ -272,15 +272,46 @@ def validate_workflow_texts(workflows: dict[str, str]) -> list[str]:
         "release publish job",
     )
 
+    for label, block in (
+        ("quality test job", test), ("quality package job", package),
+        ("release publish job", publish),
+    ):
+        _check_steps_cannot_be_softened(label, block, errors)
+
     for name, workflow in workflows.items():
         _check_pinned_actions(name, workflow, errors)
         _check_global_rules(name, workflow, errors)
     return errors
 
 
+_SHELL_SOFTENERS = re.compile(
+    r"\|\|\s*(?:true\b|:(?!\S)|exit\s+0\b)|;\s*true\s*$|\bset\s+\+e\b"
+)
+
+
+def _check_steps_cannot_be_softened(label: str, block: str, errors: list[str]) -> None:
+    """A required step counts only if its failure fails the job: no
+    ``continue-on-error``, no step-level ``if:`` (gate steps are
+    unconditional; a job-level guard is a different key with a different
+    parent), and no shell softener (``|| true``, ``|| exit 0``, ``set +e``)
+    in any ``run:`` of a gate job — otherwise the required command is
+    present as text while its result is discarded. Heuristic: ``|| echo``,
+    a mid-block ``; true``, ``shell: bash {0}`` (no ``-e``) and
+    ``sh -c "$(curl …)"`` are not recognized."""
+    for key, value, parent in _logical_values(block):
+        if key == "continue-on-error":
+            errors.append(f"{label} step is allowed to fail (continue-on-error)")
+        elif key == "if" and parent == "steps":
+            errors.append(f"{label} step is conditional (if: {value[:60]})")
+        elif key == "run" and _SHELL_SOFTENERS.search(value):
+            errors.append(f"{label} run step discards its own failure: {value[:80]}")
+
+
+# Anywhere inside ``${{ … }}`` — a ``toJSON(github.event.…)`` or
+# ``format('{0}', inputs.x)`` wrapper is the same untrusted value.
 _EVENT_EXPRESSION = re.compile(
-    r"\$\{\{\s*(?:github\.event\.|github\.head_ref|github\.ref_name|"
-    r"inputs\.|steps\.[^}]*outputs)"
+    r"\$\{\{(?:(?!\}\}).)*?(?:github\.event\b|github\.head_ref|github\.ref_name|"
+    r"inputs\.|steps\.(?:(?!\}\}).)*outputs)"
 )
 
 
@@ -289,7 +320,8 @@ def _check_global_rules(name: str, workflow: str, errors: list[str]) -> None:
     that exposes secrets (any spelling of the trigger), no attacker-influenced
     expression anywhere except an ``if:`` condition or an ``env:`` value
     (``run:`` blocks, ``with:`` arguments, and everything else must receive
-    it through ``env:``), no ``curl | sh``."""
+    it through ``env:``), no ``curl | sh``, and no ``secrets.`` reference at
+    any level of any file (Trusted Publishing needs none)."""
     if re.search(r"\bpull_request_target\b", workflow):
         errors.append(f"{name} uses pull_request_target (secrets exposed to fork PRs)")
     for key, value, parent in _logical_values(workflow):
@@ -300,8 +332,17 @@ def _check_global_rules(name: str, workflow: str, errors: list[str]) -> None:
                 f"{name} interpolates an untrusted expression outside env:/if: "
                 f"({key}: {value[:80]})"
             )
-        if re.search(r"(?:curl|wget)[^|]*\|\s*(?:ba|z)?sh\b", value):
+        if re.search(
+            r"(?:curl|wget)[^|]*\|\s*(?:(?:sudo|env|nice)\s+(?:\S+\s+)*)?"
+            r"(?:ba|z|da|k)?sh\b",
+            value,
+        ):
             errors.append(f"{name} pipes a download into a shell: {value[:80]}")
+    if re.search(r"\bsecrets\.", workflow):
+        # Trusted Publishing needs no stored secret; a ``secrets.`` reference
+        # at any level (a top-level ``env:`` reaches every job, including a
+        # fork-triggered one) is a decision to make deliberately, here.
+        errors.append(f"{name} references a stored secret (secrets.…)")
 
 
 def check_workflows(directory: Path = WORKFLOWS) -> list[str]:

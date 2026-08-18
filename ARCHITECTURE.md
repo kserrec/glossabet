@@ -547,7 +547,12 @@ prefix each with its subpackage (`glossabet.corpus.scanner`, …).
   occurrence checks for lexical evidence, full-term matching inside a
   structural group as its defined local context, and no one-to-one
   community=concept assumption anywhere. Stable bindings, orphan checks, and
-  fragmentation are scope-aware. Normalized Graphify groups currently lack
+  fragmentation are scope-aware. A binding is `resolved`, `out-of-scope`,
+  `unresolved` (a drift signal), or `uncertain` — the inventory was partial,
+  or the path lies under something the scan deliberately did not read
+  (vendored, generated, configured-ignore, sensitive, oversized, a link);
+  uncertain bindings are counted in the ledger reason and never reported as
+  drift. Normalized Graphify groups currently lack
   repository paths, so scoped structural coverage is marked partial and
   potentially false unnamed-structure conclusions are skipped. It shares
   drift's signal/certainty and total-count contracts. Structural matching

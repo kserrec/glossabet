@@ -1325,6 +1325,42 @@ def _stored_threshold_targets(thresholds: object) -> dict | None:
     return targets
 
 
+_SCORE_SET_KEYS = (
+    "actual", "true_positive", "false_positive", "false_negative",
+    "recall_true_positive", "useful",
+)
+
+
+def _score_set_problems(block: dict) -> list[str]:
+    """Why a recorded score block cannot have come from ``_score``: every
+    list must be a sorted, duplicate-free list of strings; true and false
+    positives partition ``actual``; recall hits and useful hits are subsets
+    of the true positives; nothing is both found and missed."""
+    sets: dict[str, list] = {}
+    for key in _SCORE_SET_KEYS:
+        value = block.get(key)
+        if (
+            not isinstance(value, list)
+            or not all(isinstance(item, str) for item in value)
+            or value != sorted(set(value))
+        ):
+            return [f"{key} is not a sorted list of unique strings"]
+        sets[key] = value
+    actual = set(sets["actual"])
+    true_positive = set(sets["true_positive"])
+    false_positive = set(sets["false_positive"])
+    problems = []
+    if true_positive | false_positive != actual or true_positive & false_positive:
+        problems.append("true and false positives do not partition actual")
+    if not set(sets["recall_true_positive"]) <= true_positive:
+        problems.append("recall true positives are not a subset of true positives")
+    if not set(sets["useful"]) <= true_positive:
+        problems.append("useful hits are not a subset of true positives")
+    if set(sets["false_negative"]) & actual:
+        problems.append("a false negative is also recorded as found")
+    return problems
+
+
 def _genuineness_errors(results: dict) -> list[str]:
     """Check the results artifact standalone: untampered, internally consistent."""
     errors: list[str] = []
@@ -1420,6 +1456,21 @@ def _genuineness_errors(results: dict) -> list[str]:
             ))
         ):
             errors.append(f"{name}: passed counts disagree with recorded failures")
+    # Every score block is a partition of ``actual`` plus subsets of it; a
+    # phantom recall hit or a hit listed as both true and false positive
+    # would otherwise flow into a recomputed aggregate that "matches".
+    for case in cases:
+        if not isinstance(case, dict):
+            continue
+        case_id = case.get("id", "<unknown>")
+        for section in ("terminology", "drift", "structural"):
+            block = case.get(section)
+            if not isinstance(block, dict) or "actual" not in block:
+                continue
+            errors.extend(
+                f"{case_id}.{section}: {problem}"
+                for problem in _score_set_problems(block)
+            )
     aggregate = results.get("aggregate")
     expected_aggregate = None
     try:

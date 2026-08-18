@@ -16,6 +16,7 @@ import unicodedata
 from collections import defaultdict
 from dataclasses import dataclass
 from itertools import combinations, islice
+from pathlib import Path
 
 from glossabet.runtime.artifacts import write_artifact
 from glossabet.runtime.coverage import coverage_ledger
@@ -93,23 +94,78 @@ def _match_strength_from_tokens(
     return 0
 
 
+# Omission ledgers whose entries are paths the scan chose not to read: a
+# binding into one of them names something that may well exist, so it is
+# never "unresolved" — the engine simply cannot judge it.
+_EXCLUDED_PATH_LEDGERS = (
+    "configured", "generated", "vendored", "sensitive", "oversized",
+    "symlinks_escaping_repo", "symlinks_to_excluded_content",
+    "symlinked_directories", "unreadable",
+)
+
+
+def _excluded_prefixes(view) -> tuple[str, ...]:
+    prefixes = []
+    for ledger in _EXCLUDED_PATH_LEDGERS:
+        for entry in view.skipped_paths(ledger):
+            path = entry.get("path") if isinstance(entry, dict) else entry
+            if isinstance(path, str) and path:
+                prefixes.append(unicodedata.normalize("NFC", path))
+    return tuple(prefixes)
+
+
+def _under_excluded_path(value: str, excluded: tuple[str, ...]) -> bool:
+    return any(
+        value == prefix or value.startswith(prefix + "/") for prefix in excluded
+    )
+
+
+def _exists_confined(root: Path | None, relative: str) -> bool:
+    """Whether ``relative`` names something on disk inside ``root`` — an
+    ordinary path only: absolute, ``..``, or symlink-escaping paths read as
+    absent, so a hostile binding cannot probe outside the repository."""
+    if root is None:
+        return False
+    rel = Path(relative)
+    if rel.is_absolute() or not rel.parts or ".." in rel.parts:
+        return False
+    candidate = root / rel
+    try:
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(root.resolve())
+    except (OSError, ValueError, RuntimeError):
+        return False
+    return True
+
+
 def _path_binding_status(
-    value: str, known_paths, scope, inventory_complete: bool
+    value: str, known_paths, scope, inventory_complete: bool,
+    excluded: tuple[str, ...] = (), root: Path | None = None,
 ) -> str:
     value = unicodedata.normalize("NFC", value)  # known_paths are NFC-keyed
     if value in known_paths and path_in_scope(value, scope):
         return "resolved"
     if value in known_paths:
         return "out-of-scope"
-    if not inventory_complete:
+    if (
+        not inventory_complete
+        or _under_excluded_path(value, excluded)
+        or _exists_confined(root, value)
+    ):
+        # The inventory is partial, the path was deliberately not read
+        # (vendored, generated, ignored, sensitive, oversized, a link), or
+        # it exists on disk but is not a file the scan reads (a Makefile,
+        # a settings file): existence is not in question, only the engine's
+        # ability to judge it, so this is not a drift signal.
         return "uncertain"
     return "unresolved"
 
 
 def _resolve_bindings(
-    concept: dict, matcher: EvidenceIndex
+    concept: dict, matcher: EvidenceIndex, root: Path | None = None
 ) -> list[dict]:
     inventory_complete = matcher.view.repository_corpus_complete()
+    excluded = _excluded_prefixes(matcher.view)
     scope = concept_scope(concept)
 
     results = []
@@ -128,11 +184,11 @@ def _resolve_bindings(
                 status = "unresolved"
         elif kind == "file":
             status = _path_binding_status(
-                value, matcher.file_paths, scope, inventory_complete
+                value, matcher.file_paths, scope, inventory_complete, excluded, root
             )
         else:  # module
             status = _path_binding_status(
-                value, matcher.module_paths, scope, inventory_complete
+                value, matcher.module_paths, scope, inventory_complete, excluded, root
             )
         results.append({
             "ref": binding["ref"],
@@ -381,21 +437,28 @@ def _concept_findings(
     canonical: list[dict],
     vocab: dict,
     matcher: EvidenceIndex,
-) -> tuple[list, list, list, list[str]]:
+    root: Path | None = None,
+) -> tuple[list, list, list, list[str], list[str]]:
     """Direction B: glossary -> evidence.
 
     Returns (orphaned concepts, unresolved bindings, fragmentation,
-    fragmentation incompleteness reasons).
+    fragmentation incompleteness reasons, binding-ledger reasons).
     """
     orphaned, unresolved, fragmented = [], [], []
     fragmentation_suppressed = 0
+    excluded_bindings = 0
     for concept in canonical:
         scope = concept_scope(concept)
         term_tokens, _ = vocab[concept["id"]]
         occurrence = matcher.code_term_occurrence(concept["term"], scope)
-        bindings = _resolve_bindings(concept, matcher)
+        bindings = _resolve_bindings(concept, matcher, root)
         resolved = [b for b in bindings if b["status"] == "resolved"]
         uncertain = [b for b in bindings if b["status"] == "uncertain"]
+        excluded_bindings += sum(
+            1 for b in uncertain
+            if b["ref"].partition(":")[0] in ("file", "module")
+            and matcher.view.repository_corpus_complete()
+        )
         unresolved.extend(_binding_findings(concept, scope, bindings))
         orphan = _orphan_finding(
             concept, scope, term_tokens, occurrence, bindings, resolved,
@@ -437,7 +500,12 @@ def _concept_findings(
     fragmentation_reasons = suppressed_reason(
         fragmentation_suppressed, "fragmentation"
     )
-    return orphaned, unresolved, fragmented, fragmentation_reasons
+    binding_reasons = [] if not excluded_bindings else [
+        f"{excluded_bindings} binding(s) name paths the scan did not read "
+        "(vendored, generated, ignored, sensitive, oversized, linked, or not "
+        "a code/doc file) and were not judged"
+    ]
+    return orphaned, unresolved, fragmented, fragmentation_reasons, binding_reasons
 
 
 @dataclass(frozen=True)
@@ -542,7 +610,13 @@ def build_validation(
     *,
     managed_context: dict | None = None,
     repository_glossary: dict | None = None,
+    root: Path | None = None,
 ) -> dict:
+    """``root`` (the scanned repository, when the caller has it) lets a
+    binding to a real file the inventory never lists (``Makefile``,
+    ``config/settings.toml``) be judged ``uncertain`` rather than
+    ``unresolved``; without it, existence cannot be checked and only the
+    omission ledgers distinguish the two."""
     canonical = [
         c for c in glossary["concepts"] if c["status"] == "canonical"
     ]
@@ -556,8 +630,8 @@ def build_validation(
     structural_sections, structural_work = _structural_sections(
         structural, graph, global_canonical, scoped_canonical, vocab
     )
-    orphaned, unresolved, fragmented, fragmentation_reasons = _concept_findings(
-        canonical, vocab, matcher
+    orphaned, unresolved, fragmented, fragmentation_reasons, binding_reasons = _concept_findings(
+        canonical, vocab, matcher, root
     )
     drift = build_drift(
         evidence,
@@ -590,7 +664,7 @@ def build_validation(
         ),
         "unresolved_bindings": capped_section(
             unresolved, "unresolved binding",
-            incomplete_reasons=inventory_reasons + identifier_reasons,
+            incomplete_reasons=inventory_reasons + identifier_reasons + binding_reasons,
         ),
         "fragmentation": capped_section(
             fragmented, "fragmentation", incomplete_reasons=(
@@ -800,6 +874,7 @@ def validate_command(path_arg: str) -> int:
         repository_glossary=repository_glossary_section(
             run.root, evidence, run.glossary
         ),
+        root=run.root,
     )
     write_artifact(run.root, VALIDATION_FILE, validation)
     for warning in ValidationView(validation).graph()["warnings"]:

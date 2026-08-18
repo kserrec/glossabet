@@ -306,7 +306,10 @@ digest over every accepted corpus file.
 Verification runs in two modes. The default checks **genuineness**: the
 committed result is untampered and internally consistent — well-formed
 digests, no missing or duplicated cases, the required five-run sample,
-aggregate metrics that recompute exactly from the per-case records, and
+per-case score sets that partition what was found (true and false positives
+cover `actual`; recall and usefulness hits are subsets of the true positives;
+nothing is both found and missed), aggregate metrics that recompute exactly
+from the per-case records, and
 threshold checks that recompute exactly from those metrics and the recorded
 targets (whether they *pass* is a release-gate fact — see below — so a
 truthfully recorded open finding does not make honest evidence look

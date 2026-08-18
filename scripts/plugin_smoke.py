@@ -95,14 +95,15 @@ def _extract_sdist(sdist: Path, destination: Path) -> Path:
     with tarfile.open(sdist, mode="r:gz") as archive:
         members = archive.getmembers()
         for member in members:
-            path = PurePosixPath(member.name)
+            name = member.name
+            path = PurePosixPath(name)
             if (
-            path.is_absolute()
-            or PureWindowsPath(name).is_absolute()  # C:/x, C:\\x, \\\\server
-            or "\\" in name
-            or ".." in path.parts
-        ):
-                _fail(f"source distribution has unsafe path: {member.name}")
+                path.is_absolute()
+                or PureWindowsPath(name).is_absolute()  # C:/x, C:\\x, \\\\server
+                or "\\" in name
+                or ".." in path.parts
+            ):
+                _fail(f"source distribution has unsafe path: {name}")
             if member.issym() or member.islnk() or member.isdev():
                 _fail(f"source distribution has link/device: {member.name}")
             if any(_dotenv_part(part) for part in path.parts):

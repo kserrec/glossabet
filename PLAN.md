@@ -1,6 +1,6 @@
 # Glossabet — Plan
 
-Status: **Phases 0–22, 24–32, 34–43 complete (36.8, live
+Status: **Phases 0–22, 24–32, 34–44 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
 in progress at 33.2; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-17.
@@ -772,18 +772,22 @@ regression test. Fixed (30 confirmed/latent-proven + 3 settled Likely):
   metrics; *passing* every threshold moved to the release gate
   (`--current`), because the truthfully recorded `required:drift` open
   finding would otherwise make honest evidence read as tampered
-  (EVALUATION.md updated). Kyle to confirm.
+  (EVALUATION.md updated). **Confirmed by Kyle 2026-08-18** ("nothing
+  needed from me").
 
-**Awaiting Kyle's ruling (not fixed):**
-- R1 — `file:`/`module:` bindings to real files outside the lexical
-  inventory (`Makefile`, `config/settings.toml`, vendored) are reported
-  "no longer resolves" with `certainty: observed`. Recommendation: document
-  that bindings name inventoried code/doc files and report an uninventoried
-  path as `uncertain`; alternative: `validate` checks disk existence within
-  the confined root.
+**Rulings (2026-08-18):**
+- R1 — **ruled "uncertain"; implemented in Phase 44.** A `file:`/`module:`
+  binding under a path the scan deliberately did not read (vendored,
+  generated, configured-ignore, sensitive, oversized, a link) or — when the
+  `validate` command passes the repository root — to a real on-disk path
+  the inventory never lists (`Makefile`, `config/settings.toml`) is
+  `uncertain`, counted in the unresolved-bindings ledger reason, never a
+  drift finding; the disk probe is confined (absolute/`..`/escaping links
+  read as absent).
 - R2 — `hooks.json` command quoting does not escape backslashes (Windows-style
-  or doubled-backslash executable paths under a POSIX shell). Deferred pending
-  a Windows/hook-runner environment to verify the correct escaping.
+  or doubled-backslash executable paths under a POSIX shell). **Ruled: leave
+  as a documented known limit** (no Windows machine available); revisit with
+  the Windows plugin probe (Phase 33.2).
 
 **Deferred with reason:** an aborted Codex attempt records raw stderr in the
 attempt history; if that text ever carried the sensitive canary or a home path
@@ -899,7 +903,8 @@ re-verified, all fixed with pinned tests. Highest-value:
 **Recorded accepted risk (SECURITY.md):** the maintainer's absolute checkout
 path (OS username + layout) is in public git history from 2026-08-15/16
 transcripts/docs; not shipped anywhere; removal needs a history rewrite —
-**Kyle to rule** whether to rewrite before publication.
+**Kyle ruled 2026-08-18: accept the risk, no rewrite** (the name is public
+already; the layout tells an attacker nothing).
 
 **Fix-review of the audit code (same day):** a cold review of the round-5
 changes found and I fixed: the graph budget bounded memory but not time (an
@@ -998,6 +1003,41 @@ example (a derived report, not part of the sample).
 **Not deleted (proposed only, per the test-audit rule):** the ~6 redundant
 pairs listed in the report (cohesion NaN vs overflow; three invisible-
 character tests; two confined-symlink tests; two warm-cache tests).
+
+### Phase 44 — Bughunt round 6 (test-audit findings) ✅ 2026-08-18
+
+The four product findings the test audit surfaced, fixed with class-level
+tests, plus R1 as ruled:
+
+- `scripts/plugin_smoke.py::_extract_sdist` referenced an undefined name in
+  its unsafe-path guard (pasted from the distribution checker), so the sdist
+  smoke probe crashed on its first member. Fixed; a synthetic-tarball test
+  covers extraction of a well-formed archive and refusal of absolute (POSIX
+  and Windows), backslashed, `..`, link/device, and dotenv members.
+- `scripts/check_workflows.py`: a required step counted as present while
+  inert. Root cause: presence judged by substring, not by "a step whose
+  failure fails the job". Now gate jobs (quality test/package, release
+  publish) refuse `continue-on-error`, step-level `if:`, and shell softeners
+  (`|| true`, `|| exit 0`, `set +e`) in any `run:`; an untrusted expression
+  is caught anywhere inside `${{ … }}` (`toJSON(github.event)`, `toJSON(github.event.…)`,
+  `format('{0}', inputs.x)`); `curl … | sudo bash` and `env`/`nice`
+  prefixes are download-pipes; `secrets.` anywhere in any workflow is
+  refused (Trusted Publishing needs none). Every bypass pinned in
+  `tests/test_release.py`.
+- `evaluation/run.py` genuineness now checks each per-case score block is
+  what `_score` produces (true/false positives partition `actual`; recall
+  and useful hits ⊆ true positives; nothing both found and missed; sorted
+  unique strings) — a phantom recall hit with an empty false-negative list
+  previously verified clean. EVALUATION.md updated.
+- `EvidenceIndex.compound_complete` was index-wide: one over-cap glossary
+  term made every compound term's count inexact. Root cause: a per-term
+  property stored as an index flag. Now only the (genuinely index-wide)
+  position budget marks counts inexact; the over-cap term alone is
+  unmatched.
+- R1 as above (`reconcile._path_binding_status`, `_exists_confined`,
+  `build_validation(root=…)` from the `validate` command; ARCHITECTURE.md).
+
+Suite: 623 tests green.
 
 ### Owner self-testing pause — active, not an implementation phase
 

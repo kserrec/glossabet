@@ -852,7 +852,7 @@ def test_over_long_compound_terms_are_reported_as_unmatched_not_absent(tmp_path)
     """A canonical term longer than the compound-matching cap cannot be
     looked up; the engine must say so (ledger reason, count inexact) rather
     than let a confident zero read as "absent from code". At the cap the
-    term is matched normally."""
+    term is matched normally, and other terms in the same index stay exact."""
     from glossabet.glossary.matching import MAX_COMPOUND_TERM_TOKENS
 
     (tmp_path / "a.py").write_text("payment_request = 1\n")
@@ -865,8 +865,9 @@ def test_over_long_compound_terms_are_reported_as_unmatched_not_absent(tmp_path)
     assert ledger["total_items"] == 2 and ledger["included_items"] == 1
     assert ledger["complete"] is False
     assert any(f"{MAX_COMPOUND_TERM_TOKENS}-token" in r for r in ledger["reasons"])
-    alone = EvidenceIndex(evidence, [at_cap]).code_term_occurrence(at_cap)
-    assert alone["count_complete"] is True
+    # The over-cap term is the only one affected: its neighbour in the same
+    # index keeps an exact count (a bughunt found the flag was index-wide).
+    assert index.code_term_occurrence(at_cap)["count_complete"] is True
     unmatched = index.code_term_occurrence(over)
     assert unmatched["count"] == 0 and unmatched["count_complete"] is False
 
