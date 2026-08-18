@@ -12,17 +12,17 @@ from __future__ import annotations
 
 from itertools import combinations
 
-from glossabet.artifacts import write_artifact
-from glossabet.coverage import coverage_reasons
-from glossabet.managed_context import (
+from glossabet.runtime.artifacts import write_artifact
+from glossabet.runtime.coverage import coverage_reasons
+from glossabet.agent.managed_context import (
     inspect_managed_context,
     print_managed_context_issues,
     unchecked_managed_context,
 )
-from glossabet.display import escape_terminal_text
-from glossabet.engine_run import GLOSSARY_REQUIRED, open_run
-from glossabet.evidence import persist_evidence
-from glossabet.findings import (
+from glossabet.runtime.display import escape_terminal_text
+from glossabet.runtime.engine_run import GLOSSARY_REQUIRED, open_run
+from glossabet.analysis.evidence import persist_evidence
+from glossabet.glossary.findings import (
     FindingsDocumentView,
     capped_section,
     finding,
@@ -31,16 +31,16 @@ from glossabet.findings import (
     print_sections,
     vocabulary_omission_reasons,
 )
-from glossabet.glossary import (
+from glossabet.glossary.store import (
     concept_scope,
     path_in_scope,
     scope_evidence,
     scopes_overlap,
 )
-from glossabet.evidence_view import EvidenceView
-from glossabet.matching import EvidenceIndex
-from glossabet.terminology import OVERLOAD_MIN_DISPERSION, OVERLOAD_MIN_MODULES
-from glossabet.tokenize import tokenize_term
+from glossabet.analysis.evidence_view import EvidenceView
+from glossabet.glossary.matching import EvidenceIndex
+from glossabet.analysis.terminology import OVERLOAD_MIN_DISPERSION, OVERLOAD_MIN_MODULES
+from glossabet.corpus.tokenize import tokenize_term
 
 DRIFT_SCHEMA_VERSION = 6
 DRIFT_FILE = "drift.json"

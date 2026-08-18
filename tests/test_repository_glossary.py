@@ -10,10 +10,10 @@ from pathlib import Path
 import pytest
 
 from glossabet.cli import main
-from glossabet.evidence import build_evidence
-from glossabet.glossary import save_glossary
-from glossabet import repository_glossary as repository_glossary_module
-from glossabet.repository_glossary import (
+from glossabet.analysis.evidence import build_evidence
+from glossabet.glossary.store import save_glossary
+from glossabet.glossary import repository_glossary as repository_glossary_module
+from glossabet.glossary.repository_glossary import (
     MAX_DIVERGENCE_TERMS,
     MAX_DIVERGENCE_TEXT_CHARS,
     MAX_REPOSITORY_GLOSSARY_BYTES,
@@ -732,7 +732,7 @@ def test_divergence_guard_fires_before_casefold_and_collapse_allocate():
 def test_discovery_name_is_the_scanner_exclusion_name():
     """One name, two modules: if either spelling drifts, GLOSSARY.md would be
     excluded from evidence but not discovered (or discovered and counted)."""
-    from glossabet.repository_glossary import REPOSITORY_GLOSSARY_FILE
-    from glossabet.scanner import SELF_FILES
+    from glossabet.glossary.repository_glossary import REPOSITORY_GLOSSARY_FILE
+    from glossabet.corpus.scanner import SELF_FILES
 
     assert SELF_FILES == frozenset({REPOSITORY_GLOSSARY_FILE})

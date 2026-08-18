@@ -5,13 +5,13 @@ import json
 import re
 from pathlib import Path
 
-from glossabet.agent_context import (
+from glossabet.agent.agent_context import (
     AGENT_CONTEXT_SCHEMA_VERSION,
     build_agent_context,
 )
-from glossabet.evidence import build_evidence
-from glossabet.glossary import save_glossary
-from glossabet.repository_glossary import repository_glossary_section
+from glossabet.analysis.evidence import build_evidence
+from glossabet.glossary.store import save_glossary
+from glossabet.glossary.repository_glossary import repository_glossary_section
 
 SKILL = Path(__file__).resolve().parents[1] / "skill" / "SKILL.md"
 
@@ -161,7 +161,7 @@ def test_skill_keeps_ambient_vocabulary_read_only_and_human_gated():
 
 
 def test_skill_glossary_protocol_matches_engine():
-    from glossabet.glossary import SCOPE_PATHS_KEY, STATUSES
+    from glossabet.glossary.store import SCOPE_PATHS_KEY, STATUSES
 
     text = SKILL.read_text(encoding="utf-8")
     assert "glossabet-out/glossary.json" in text
@@ -233,7 +233,7 @@ def test_skill_repository_glossary_protocol_matches_engine(tmp_path):
     baseline before reading GLOSSARY.md, reconciles into named categories,
     never promotes Markdown terms to canonical, and never clobbers a
     pre-existing GLOSSARY.md."""
-    from glossabet.repository_glossary import (
+    from glossabet.glossary.repository_glossary import (
         REASON_NOT_REGULAR,
         REASON_OVERSIZED,
         REASON_SYMLINK_ESCAPES,
@@ -254,7 +254,7 @@ def test_skill_repository_glossary_protocol_matches_engine(tmp_path):
         assert f"`{field}`" in text
     assert "`nested_ignored`" in text
     assert "`reason`" in text
-    from glossabet.repository_glossary import repository_glossary_divergence
+    from glossabet.glossary.repository_glossary import repository_glossary_divergence
 
     divergence = repository_glossary_divergence(
         {"schema_version": 1, "concepts": []}, b""
@@ -314,7 +314,7 @@ def test_skill_report_protocol_keeps_the_three_artifacts_separate():
     worded as canonical, empty sections omitted, and the same three-artifact
     model the engine enforces (excluded from evidence at any depth, excluded
     from freshness at the root, GLOSSARY.md still visible to freshness)."""
-    from glossabet.artifacts import REPORT_FILE
+    from glossabet.runtime.artifacts import REPORT_FILE
 
     text = SKILL.read_text(encoding="utf-8")
     normalized = " ".join(text.split())

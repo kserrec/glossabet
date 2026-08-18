@@ -10,11 +10,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from glossabet.artifacts import replace_file_atomic
-from glossabet.display import escape_terminal_text, print_error
-from glossabet.engine_run import GLOSSARY_REQUIRED, open_run
-from glossabet.managed_block import AGENT_TARGETS
-from glossabet.managed_context import (
+from glossabet.runtime.artifacts import replace_file_atomic
+from glossabet.runtime.display import escape_terminal_text, print_error
+from glossabet.runtime.engine_run import GLOSSARY_REQUIRED, open_run
+from glossabet.agent.managed_block import AGENT_TARGETS
+from glossabet.agent.managed_context import (
     ContextSyncError,
     _analyze_managed_block,
     _read_regular_target,

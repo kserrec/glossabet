@@ -12,7 +12,7 @@ import traceback
 from typing import NoReturn as _NoReturn
 
 from glossabet import __version__
-from glossabet.display import (
+from glossabet.runtime.display import (
     escape_terminal_text,
     print_error,
     safe_terminal_streams,
@@ -207,17 +207,17 @@ def _run(argv: list[str] | None) -> int:
         return EXIT_USER_ERROR
 
     if args.command == "scan":
-        from glossabet.evidence_report import scan_command
+        from glossabet.analysis.evidence_report import scan_command
 
         return scan_command(args.path, graphify=not args.no_graphify)
 
     if args.command == "analyze":
-        from glossabet.evidence_report import analyze_command
+        from glossabet.analysis.evidence_report import analyze_command
 
         return analyze_command(args.path, graphify=not args.no_graphify)
 
     if args.command == "inspect":
-        from glossabet.agent_context import inspect_command
+        from glossabet.agent.agent_context import inspect_command
 
         return inspect_command(
             args.path,
@@ -226,42 +226,42 @@ def _run(argv: list[str] | None) -> int:
         )
 
     if args.command == "brief":
-        from glossabet.brief import brief_command
+        from glossabet.agent.brief import brief_command
 
         return brief_command(args.path)
 
     if args.command == "sync-context":
-        from glossabet.context_sync import sync_context_command
+        from glossabet.agent.context_sync import sync_context_command
 
         return sync_context_command(args.path, args.agent, force=args.force)
 
     if args.command == "show":
-        from glossabet.glossary_commands import show_command
+        from glossabet.glossary.glossary_commands import show_command
 
         return show_command(args.path)
 
     if args.command == "save":
-        from glossabet.glossary_commands import save_command
+        from glossabet.glossary.glossary_commands import save_command
 
         return save_command(args.path)
 
     if args.command == "drift":
-        from glossabet.drift import drift_command
+        from glossabet.glossary.drift import drift_command
 
         return drift_command(args.path)
 
     if args.command == "validate":
-        from glossabet.reconcile import validate_command
+        from glossabet.glossary.reconcile import validate_command
 
         return validate_command(args.path)
 
     if args.command == "cache-clear":
-        from glossabet.cache import cache_clear_command
+        from glossabet.corpus.cache import cache_clear_command
 
         return cache_clear_command()
 
     if args.command == "install":
-        from glossabet.installer import install_command
+        from glossabet.install.installer import install_command
 
         return install_command(
             args.agent,
@@ -282,7 +282,7 @@ def _main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         # Imported lazily to keep CLI startup small and avoid pulling command
         # modules into argparse-only paths.
-        from glossabet.artifacts import ArtifactError
+        from glossabet.runtime.artifacts import ArtifactError
 
         if isinstance(exc, ArtifactError):
             print_error(exc)

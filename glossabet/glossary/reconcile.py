@@ -15,20 +15,20 @@ import sys
 from collections import defaultdict
 from itertools import combinations, islice
 
-from glossabet.artifacts import write_artifact
-from glossabet.coverage import coverage_ledger
-from glossabet.managed_context import (
+from glossabet.runtime.artifacts import write_artifact
+from glossabet.runtime.coverage import coverage_ledger
+from glossabet.agent.managed_context import (
     inspect_managed_context,
     print_managed_context_issues,
     unchecked_managed_context,
 )
-from glossabet.display import escape_terminal_text
-from glossabet.drift import DriftView, build_drift
-from glossabet.engine_run import GLOSSARY_REQUIRED, open_run
-from glossabet.evidence import persist_evidence
-from glossabet.evidence_view import EvidenceView
-from glossabet import findings
-from glossabet.findings import (
+from glossabet.runtime.display import escape_terminal_text
+from glossabet.glossary.drift import DriftView, build_drift
+from glossabet.runtime.engine_run import GLOSSARY_REQUIRED, open_run
+from glossabet.analysis.evidence import persist_evidence
+from glossabet.analysis.evidence_view import EvidenceView
+from glossabet.glossary import findings
+from glossabet.glossary.findings import (
     FindingsDocumentView,
     capped_section,
     empty_section,
@@ -39,14 +39,14 @@ from glossabet.findings import (
     print_sections,
     vocabulary_omission_reasons,
 )
-from glossabet.glossary import (
+from glossabet.glossary.store import (
     concept_scope,
     path_in_scope,
     scope_evidence,
 )
-from glossabet.repository_glossary import repository_glossary_section
-from glossabet.matching import EvidenceIndex
-from glossabet.tokenize import tokenize_term
+from glossabet.glossary.repository_glossary import repository_glossary_section
+from glossabet.glossary.matching import EvidenceIndex
+from glossabet.corpus.tokenize import tokenize_term
 
 VALIDATION_SCHEMA_VERSION = 8
 VALIDATION_FILE = "validation.json"

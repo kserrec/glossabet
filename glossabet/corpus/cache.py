@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 from glossabet import __version__
-from glossabet.artifacts import read_bounded_json, write_json_atomic
+from glossabet.runtime.artifacts import read_bounded_json, write_json_atomic
 
 # Version 4 invalidates doc extraction from before Phase 28.3. Reusing a
 # version-3 entry for AGENTS.md/CLAUDE.md could echo a synchronized glossary
@@ -231,7 +231,7 @@ def clear_cache() -> dict:
 
 def cache_clear_command() -> int:
     """CLI: remove Glossabet's user cache and print exactly what happened."""
-    from glossabet.display import escape_terminal_text
+    from glossabet.runtime.display import escape_terminal_text
 
     report = clear_cache()
     root = escape_terminal_text(report["cache_root"])

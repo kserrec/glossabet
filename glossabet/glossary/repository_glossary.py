@@ -19,9 +19,9 @@ from pathlib import Path
 
 import unicodedata
 
-from glossabet.artifacts import READ_OVERSIZED, read_bounded_bytes
-from glossabet.evidence_view import EvidenceView
-from glossabet.scanner import (
+from glossabet.runtime.artifacts import READ_OVERSIZED, read_bounded_bytes
+from glossabet.analysis.evidence_view import EvidenceView
+from glossabet.corpus.scanner import (
     LINK_ESCAPES_REPOSITORY,
     LINK_TO_SENSITIVE_FILE,
     MAX_FILE_BYTES,

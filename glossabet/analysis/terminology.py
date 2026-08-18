@@ -12,17 +12,17 @@ import math
 from collections import Counter
 from itertools import combinations
 
-from glossabet.coverage import (
+from glossabet.runtime.coverage import (
     capped_collection,
     capped_section,
     coverage_ledger,
     coverage_reasons,
 )
-from glossabet.vocabulary import (
+from glossabet.analysis.vocabulary import (
     MODULE_CONTEXT_ANALYSIS_CAP,
     ProductionVocabulary,
 )
-from glossabet.tokenize import (
+from glossabet.corpus.tokenize import (
     STRUCTURED_IDENTIFIER_STYLES,
     TOKEN_ORIGIN_DOMAIN,
     TOKEN_ORIGIN_LANGUAGE,

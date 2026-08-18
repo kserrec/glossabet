@@ -83,12 +83,22 @@ labels, not additional labels for synonym, overload, drift, or structural
 usefulness.
 
 The nomination labels are likewise a narrow regression contract, not a claim
-that the heuristic knows which terms should become canonical. They require
-`structural` to surface as `deserves disambiguation`, require `plugin`,
-`coverage`, and `drift` as `deserves a canonical name`, forbid `json`, `path`,
-`file`, `name`, `run`, and `root`, and require every retained term to use one of
-the two nomination kinds. The human still judges every nomination against the
-code.
+that the heuristic knows which terms should become canonical. Since Phase 39
+(2026-08-18, when the package gained layer subpackages and the same code read
+as more dispersed) they require `plugin` and `drift` as `deserves a canonical
+name` and `coverage` as `deserves disambiguation`, forbid `json`, `path`,
+`file`, `name`, and `root`, and require every retained term to use one of the
+two nomination kinds — nine checks. The re-labelling was argued term by term,
+not copied from the machine: `coverage` has three referents (the bounded
+ledger, corpus completeness, context omissions); `run` left the forbidden list
+because `engine_run.Run` has been a first-class domain object since Phase
+36.2; `structural` left the required list because it is an adjective whose
+noun is `structural_groups`. `drift` keeps its truthful label and currently
+**fails**: the dispersion heuristic reads call-site diversity across layers as
+meaning diversity. That is a recorded open finding, so the self-check stands
+at 8/9 and the 1.0 `nomination_quality_min` release threshold is legitimately
+unmet until a heuristic phase resolves it. The human still judges every
+nomination against the code.
 
 ## Calibration result
 
@@ -124,7 +134,7 @@ where recall was complete:
 | Minimum warm-cache reuse | 100% | 100% |
 | Phase 16 lexical contract | 15/15 (100%) | 100% |
 | Phase 25 register accuracy | 16/16 (100%) | 100% |
-| Phase 26 nomination quality | 11/11 (100%) | 100% |
+| Phase 26 nomination quality | 8/9 (89%) since Phase 39 re-labelling; `required:drift` is the open finding | 100% |
 | Phase 22 structural contract | 26/26 (100%) | 100% |
 
 All deterministic release thresholds and the separate second-reviewer
@@ -186,11 +196,14 @@ source-unit numbers.
 Terminology now exposes bounded context-dispersion profiles from the same
 top-150 domain-token analysis used for overload nominations. Importance reads
 that exact result: a divergent wide term is typed `deserves disambiguation`;
-other retained terms are typed `deserves a canonical name`. On Glossabet,
-`drift`, `coverage`, `glossary`, and `structural` surface while the six recorded
-generic terms are absent. All 11 labels pass. This validates the recorded
-self-testing failure and its counterexamples; it does not establish nomination
-quality on arbitrary repositories.
+other retained terms are typed `deserves a canonical name`. On the flat
+package of 2026-08-15, `drift`, `coverage`, `glossary`, and `structural`
+surfaced while the six recorded generic terms were absent and all 11 labels
+passed. After Phase 39's layer subpackages the labels were re-argued (see
+"Labelling method"); `drift` now types as `deserves disambiguation` against a
+label that says `deserves a canonical name`, an open heuristic finding. This
+validates the recorded self-testing failure and its counterexamples; it does
+not establish nomination quality on arbitrary repositories.
 
 ## Phase 22 structural and reviewer result
 

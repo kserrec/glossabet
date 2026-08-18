@@ -5,16 +5,16 @@ rule breaks, the failing test names the rule, not the command. The
 end-to-end pipeline over a scanned corpus is proven once per command in
 `test_drift.py` / `test_reconcile.py`."""
 
-from glossabet.drift import (
+from glossabet.glossary.drift import (
     _canonical_fading,
     _canonical_overloaded,
     _index_glossary,
     _parallel_terms,
     _watched_in_use,
 )
-from glossabet.evidence_view import EvidenceView
-from glossabet.matching import EvidenceIndex
-from glossabet.reconcile import (
+from glossabet.analysis.evidence_view import EvidenceView
+from glossabet.glossary.matching import EvidenceIndex
+from glossabet.glossary.reconcile import (
     _concept_findings,
     _concept_vocab,
     _resolve_bindings,

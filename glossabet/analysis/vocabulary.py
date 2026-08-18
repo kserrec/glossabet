@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from itertools import combinations
 
-from glossabet.tokenize import (
+from glossabet.corpus.tokenize import (
     TOKEN_ORIGIN_DOMAIN,
     token_origin,
     tokenize_identifier,

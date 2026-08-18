@@ -12,7 +12,7 @@ import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCES = sorted((ROOT / "glossabet").glob("*.py")) + [
+SOURCES = sorted((ROOT / "glossabet").rglob("*.py")) + [
     ROOT / "evaluation" / "run.py"
 ]
 
@@ -66,8 +66,8 @@ def test_document_keys_are_spelled_only_by_their_owners():
 def test_views_cover_every_top_level_evidence_key(tmp_path):
     # Every key the writer emits has a view method, so a consumer never has
     # a reason to fall back to spelling one.
-    from glossabet.evidence import build_evidence
-    from glossabet.evidence_view import EvidenceView
+    from glossabet.analysis.evidence import build_evidence
+    from glossabet.analysis.evidence_view import EvidenceView
 
     (tmp_path / "a.py").write_text("payment_id = 1\n")
     evidence = build_evidence(tmp_path)

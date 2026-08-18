@@ -15,10 +15,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from glossabet import coverage
-from glossabet.coverage import coverage_ledger, coverage_reasons
-from glossabet.display import escape_terminal_text
-from glossabet.evidence_view import EvidenceView
+from glossabet.runtime import coverage
+from glossabet.runtime.coverage import coverage_ledger, coverage_reasons
+from glossabet.runtime.display import escape_terminal_text
+from glossabet.analysis.evidence_view import EvidenceView
 
 # Per-section detail cap for every findings document. Totals stay exact;
 # only the listed detail is bounded, and the cap is reported.

@@ -2,7 +2,7 @@
 
 import pytest
 
-from glossabet.tokenize import (
+from glossabet.corpus.tokenize import (
     LANGUAGE_BUILTIN_TOKENS,
     TOKEN_ORIGIN_DOMAIN,
     TOKEN_ORIGIN_LANGUAGE,

@@ -7,8 +7,8 @@ import json
 import os
 
 from glossabet.cli import main
-from glossabet.evidence import build_evidence
-from glossabet.graphify import build_structural_groups
+from glossabet.analysis.evidence import build_evidence
+from glossabet.analysis.graphify import build_structural_groups
 
 GRAPH = {
     "directed": True,
@@ -161,7 +161,7 @@ def test_glossary_only_groups_are_not_usable_structure(tmp_path):
 
 
 def test_group_cap_marks_structure_nominations_partial(tmp_path, monkeypatch):
-    monkeypatch.setattr("glossabet.graphify.GROUP_CAP", 2)
+    monkeypatch.setattr("glossabet.analysis.graphify.GROUP_CAP", 2)
     graph = {
         "nodes": [
             {"id": f"{group}-{member}", "label": f"Node{group}{member}",
@@ -394,7 +394,7 @@ def test_community_id_zero_keeps_its_id(tmp_path):
 
 
 def test_oversized_graph_degrades_lexical_only(tmp_path, monkeypatch):
-    monkeypatch.setattr("glossabet.artifacts.MAX_JSON_BYTES", 100)
+    monkeypatch.setattr("glossabet.runtime.artifacts.MAX_JSON_BYTES", 100)
     graph = {"nodes": [{"id": "a", "label": "A"} for _ in range(50)]}
     structural = build_evidence(make_repo(tmp_path, graph))["structural_groups"]
     assert structural["available"] is False

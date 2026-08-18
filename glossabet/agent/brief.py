@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from glossabet.artifacts import ArtifactError
-from glossabet import git_state
-from glossabet.display import escape_terminal_text
-from glossabet.engine_run import GLOSSARY_OPTIONAL, open_run
-from glossabet.glossary import (
+from glossabet.runtime.artifacts import ArtifactError
+from glossabet.runtime import git_state
+from glossabet.runtime.display import escape_terminal_text
+from glossabet.runtime.engine_run import GLOSSARY_OPTIONAL, open_run
+from glossabet.glossary.store import (
     GLOSSARY_SCHEMA_VERSION,
     concept_scope,
     glossary_sha256,

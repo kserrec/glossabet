@@ -12,23 +12,23 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from glossabet import __version__
-from glossabet.artifacts import write_artifact
-from glossabet.cache import load_cache, save_cache
-from glossabet.config import load_config
-from glossabet.coverage import capped_collection
-from glossabet.extraction import SourceExtractor
-from glossabet import git_state
-from glossabet.graphify import (
+from glossabet.runtime.artifacts import write_artifact
+from glossabet.corpus.cache import load_cache, save_cache
+from glossabet.corpus.config import load_config
+from glossabet.runtime.coverage import capped_collection
+from glossabet.corpus.extraction import SourceExtractor
+from glossabet.runtime import git_state
+from glossabet.analysis.graphify import (
     build_structural_groups,
     disabled_structural_groups,
     structure_candidates,
 )
-from glossabet.imports import build_imports_section, module_of
-from glossabet.importance import build_naming_candidates
-from glossabet.scanner import detect_monorepo, walk_repository
-from glossabet.terminology import build_terminology
-from glossabet.tokenize import tokenization_contract, tokenize_identifier
-from glossabet.vocabulary import DocumentationVocabulary, ProductionVocabulary
+from glossabet.corpus.imports import build_imports_section, module_of
+from glossabet.analysis.importance import build_naming_candidates
+from glossabet.corpus.scanner import detect_monorepo, walk_repository
+from glossabet.analysis.terminology import build_terminology
+from glossabet.corpus.tokenize import tokenization_contract, tokenize_identifier
+from glossabet.analysis.vocabulary import DocumentationVocabulary, ProductionVocabulary
 
 SCHEMA_VERSION = 13
 

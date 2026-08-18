@@ -4,11 +4,11 @@ import json
 import os
 from pathlib import Path
 
-from glossabet import agent_context
-from glossabet.agent_context import ROUTINE_AGENT_CONTEXT_TARGET_BYTES
+from glossabet.agent import agent_context
+from glossabet.agent.agent_context import ROUTINE_AGENT_CONTEXT_TARGET_BYTES
 from glossabet.cli import EXIT_USER_ERROR, main
-from glossabet.evidence import build_evidence
-from glossabet.glossary import save_glossary
+from glossabet.analysis.evidence import build_evidence
+from glossabet.glossary.store import save_glossary
 
 
 def _concept(index: int) -> dict:
@@ -235,7 +235,7 @@ def test_inspect_rejects_oversized_glossary(tmp_path, capsys, monkeypatch):
     (out / "glossary.json").write_text(
         json.dumps({"schema_version": 1, "concepts": [_concept(0)]})
     )
-    monkeypatch.setattr("glossabet.artifacts.MAX_JSON_BYTES", 20)
+    monkeypatch.setattr("glossabet.runtime.artifacts.MAX_JSON_BYTES", 20)
 
     assert main(["inspect", str(tmp_path), "--no-graphify"]) == EXIT_USER_ERROR
 

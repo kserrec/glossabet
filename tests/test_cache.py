@@ -7,8 +7,8 @@ import json
 import os
 
 from glossabet import __version__
-from glossabet.cache import CACHE_VERSION, cache_path, load_cache
-from glossabet.evidence import build_evidence
+from glossabet.corpus.cache import CACHE_VERSION, cache_path, load_cache
+from glossabet.analysis.evidence import build_evidence
 
 
 def make_repo(tmp_path):
@@ -118,7 +118,7 @@ def test_deeply_nested_cache_json_is_a_miss(tmp_path):
 def test_oversized_cache_is_a_miss(tmp_path, monkeypatch):
     # Security boundary (SECURITY.md): an untrusted repo shipping a giant
     # cache.json must be a miss, never read into memory and OOM the process.
-    monkeypatch.setattr("glossabet.artifacts.MAX_JSON_BYTES", 50)
+    monkeypatch.setattr("glossabet.runtime.artifacts.MAX_JSON_BYTES", 50)
     root = make_repo(tmp_path)
     path = cache_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)

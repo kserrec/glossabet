@@ -4,12 +4,12 @@ must be present, and every nomination must carry its reasons."""
 
 import time
 
-from glossabet.evidence import build_evidence
-from glossabet.importance import (
+from glossabet.analysis.evidence import build_evidence
+from glossabet.analysis.importance import (
     NOMINATION_CANONICAL_NAME,
     NOMINATION_DISAMBIGUATION,
 )
-from glossabet.imports import extract_imports
+from glossabet.corpus.imports import extract_imports
 
 
 def test_import_extraction_is_linear_on_blank_line_bomb():
@@ -241,8 +241,8 @@ def test_untagged_tokens_are_not_assumed_to_be_domain_vocabulary():
     domain vocabulary by default."""
     from collections import Counter
 
-    from glossabet.importance import build_naming_candidates
-    from glossabet.vocabulary import ProductionVocabulary
+    from glossabet.analysis.importance import build_naming_candidates
+    from glossabet.analysis.vocabulary import ProductionVocabulary
 
     vocabulary = ProductionVocabulary.from_files([
         ("a.py", "left", "python", {"untagged": 1}),
@@ -282,7 +282,7 @@ def test_edge_and_external_caps_report_exact_truncation_counts():
     # be reported exactly, so a consumer can never read a capped list as the
     # complete dependency graph. Guards against a truncation counter stuck at 0
     # (which `test_bounds_reported` — a shape-only check — does not catch).
-    from glossabet.imports import build_imports_section, EDGE_CAP, EXTERNAL_CAP
+    from glossabet.corpus.imports import build_imports_section, EDGE_CAP, EXTERNAL_CAP
 
     extra_edges, extra_externals = 51, 10
     code_files = [("hub/f.py", "")] + [
@@ -343,8 +343,8 @@ def test_same_repo_include_resolves_internal(tmp_path):
 def test_module_naming_coverage_reports_truncated_import_edges():
     from collections import Counter
 
-    from glossabet.importance import build_naming_candidates
-    from glossabet.vocabulary import ProductionVocabulary
+    from glossabet.analysis.importance import build_naming_candidates
+    from glossabet.analysis.vocabulary import ProductionVocabulary
 
     imports_section = {
         "internal_edges": [

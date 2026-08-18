@@ -235,7 +235,9 @@ or subproject root. That command safely validates repository-controlled JSON,
 builds current evidence, refreshes `evidence.json`, and emits a separate
 versioned, compact context. The routine schema-v3 projection uses per-module
 vocabulary rollups and retains file locations only for naming candidates and
-register exemplars; on Glossabet itself its checked soft target is 80 KB. The
+register exemplars; on Glossabet itself its checked soft target is 100 KB
+(raised from 80 KB in Phase 39 when the package gained layer subpackages,
+whose longer module paths cost ~9 KB of rollup keys). The
 1 MB ceiling remains a hard failure backstop for unusual repositories, not a
 routine budget. `inspect --full` emits the former detailed collection shape
 for diagnostics. Both modes report scanner omissions under `coverage.corpus`

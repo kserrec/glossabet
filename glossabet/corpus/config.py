@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from glossabet.artifacts import (
+from glossabet.runtime.artifacts import (
     READ_ABSENT,
     READ_OVERSIZED,
     ArtifactError,

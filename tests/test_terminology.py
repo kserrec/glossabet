@@ -7,9 +7,9 @@ import json
 from collections import Counter
 
 from glossabet.cli import main
-from glossabet.evidence import build_evidence
-from glossabet.vocabulary import ProductionVocabulary
-from glossabet.terminology import (
+from glossabet.analysis.evidence import build_evidence
+from glossabet.analysis.vocabulary import ProductionVocabulary
+from glossabet.analysis.terminology import (
     OVERLOAD_MODULE_ANALYSIS_CAP,
     PAIR_TOP_N,
     build_terminology,

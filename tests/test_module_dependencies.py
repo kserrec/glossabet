@@ -12,15 +12,31 @@ from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parents[1] / "glossabet"
 
+# Modules are addressed by their bare name; the layer subpackage (Phase 39)
+# is looked up, so the pins below read as architecture, not as paths.
+_LOCATION = {
+    path.stem: ".".join(path.relative_to(PACKAGE).with_suffix("").parts)
+    for path in PACKAGE.rglob("*.py")
+    if path.stem != "__init__" and "_skill" not in path.parts
+}
+_MODULE_NAMES = {**_LOCATION, "glossary": _LOCATION["store"]}
+
+
+def _qualified(module: str) -> str:
+    return f"glossabet.{_MODULE_NAMES[module]}"
+
 
 def _imports(module: str) -> set[str]:
-    tree = ast.parse((PACKAGE / f"{module}.py").read_text(encoding="utf-8"))
+    path = PACKAGE / (_MODULE_NAMES[module].replace(".", "/") + ".py")
+    tree = ast.parse(path.read_text(encoding="utf-8"))
     names: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module:
             names.add(node.module)
-            if node.module == "glossabet":
-                names.update(f"glossabet.{alias.name}" for alias in node.names)
+            if node.module.startswith("glossabet"):
+                names.update(
+                    f"{node.module}.{alias.name}" for alias in node.names
+                )
         elif isinstance(node, ast.Import):
             names.update(alias.name for alias in node.names)
     return names
@@ -57,5 +73,6 @@ def test_forbidden_dependency_directions():
         "git_state": {"glossabet.evidence", "glossabet.brief"},
     }
     for module, banned in forbidden.items():
+        banned = {_qualified(name.removeprefix("glossabet.")) for name in banned}
         found = _imports(module) & banned
         assert not found, f"{module} imports {sorted(found)}"

@@ -13,8 +13,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from glossabet.artifacts import OUT_DIR, ArtifactError
-from glossabet.glossary import GLOSSARY_FILE, GlossaryError, load_glossary
+from glossabet.runtime.artifacts import OUT_DIR, ArtifactError
+from glossabet.glossary.store import GLOSSARY_FILE, GlossaryError, load_glossary
 
 GLOSSARY_NONE = "none"          # the command never reads the glossary
 GLOSSARY_OPTIONAL = "optional"  # absent is fine; malformed is a user error

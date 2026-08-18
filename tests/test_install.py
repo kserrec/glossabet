@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from glossabet.cli import EXIT_OK, EXIT_USER_ERROR, main
-from glossabet.installer import (
+from glossabet.install.installer import (
     canonical_skill_text,
     default_skill_directory,
 )
@@ -95,8 +95,8 @@ import subprocess
 import sys
 
 from glossabet import __version__
-from glossabet import claude_plugin
-from glossabet.claude_plugin import (
+from glossabet.install import claude_plugin
+from glossabet.install.claude_plugin import (
     CLAUDE_HOOKS_RELATIVE,
     CLAUDE_MANIFEST_RELATIVE,
     ClaudePluginError,
@@ -105,7 +105,7 @@ from glossabet.claude_plugin import (
     hook_command,
     resolve_cli_executable,
 )
-from glossabet.installer import install_command
+from glossabet.install.installer import install_command
 
 ROOT = Path(__file__).resolve().parents[1]
 CODEX_PLUGIN = ROOT / "plugins" / "glossabet"

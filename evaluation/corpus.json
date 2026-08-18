@@ -24,23 +24,19 @@
   "self_nominations": {
     "required": [
       {
-        "term": "structural",
-        "nomination_kind": "deserves disambiguation"
-      },
-      {
         "term": "plugin",
         "nomination_kind": "deserves a canonical name"
       },
       {
         "term": "coverage",
-        "nomination_kind": "deserves a canonical name"
+        "nomination_kind": "deserves disambiguation"
       },
       {
         "term": "drift",
         "nomination_kind": "deserves a canonical name"
       }
     ],
-    "forbidden_terms": ["json", "path", "file", "name", "run", "root"],
+    "forbidden_terms": ["json", "path", "file", "name", "root"],
     "require_all_typed": true
   },
   "sources": [

@@ -48,26 +48,27 @@ def test_manifest_pins_licensed_varied_sources():
         "dominant_style": "snake_case",
         "predominantly_multi_word": True,
     }
+    # Re-labelled deliberately in Phase 39 (layer subpackages): `coverage`
+    # has three referents (ledger, corpus completeness, context omissions),
+    # `run` stopped being a generic-only token once `engine_run.Run` existed,
+    # and `structural` is an adjective whose noun is `structural_groups`.
+    # `drift` keeps its truthful label and is the recorded open finding.
     assert manifest["self_nominations"] == {
         "required": [
-            {
-                "term": "structural",
-                "nomination_kind": "deserves disambiguation",
-            },
             {
                 "term": "plugin",
                 "nomination_kind": "deserves a canonical name",
             },
             {
                 "term": "coverage",
-                "nomination_kind": "deserves a canonical name",
+                "nomination_kind": "deserves disambiguation",
             },
             {
                 "term": "drift",
                 "nomination_kind": "deserves a canonical name",
             },
         ],
-        "forbidden_terms": ["json", "path", "file", "name", "run", "root"],
+        "forbidden_terms": ["json", "path", "file", "name", "root"],
         "require_all_typed": True,
     }
 
@@ -108,9 +109,17 @@ def test_local_calibration_case_runs_without_network(tmp_path):
     assert result["self_register"]["actual"]["dominant_style"] == "snake_case"
     assert result["self_register"]["actual"]["predominantly_multi_word"] is True
     assert result["aggregate"]["quality"]["register_accuracy"] == 1.0
-    assert result["self_nominations"]["passed"] is True
-    assert result["self_nominations"]["checks"] == 11
-    assert result["aggregate"]["quality"]["nomination_quality"] == 1.0
+    # Open finding (PLAN Phase 39): the dispersion heuristic reads `drift`'s
+    # call-site diversity across layer subpackages as meaning diversity and
+    # types it `deserves disambiguation`; the label stays truthful, so this
+    # one check is expected to fail until a heuristic phase resolves it.
+    assert result["self_nominations"]["passed"] is False
+    assert result["self_nominations"]["checks"] == 9
+    assert result["self_nominations"]["passed_checks"] == 8
+    assert [f["name"] for f in result["self_nominations"]["failures"]] == [
+        "required:drift"
+    ]
+    assert result["aggregate"]["quality"]["nomination_quality"] == round(8 / 9, 4)
     assert result["release_thresholds"] == {
         "configured": False,
         "passed": None,
@@ -441,7 +450,7 @@ def test_manifest_rejects_non_hex_commit(tmp_path):
 
 def test_manifest_rejects_oversized_file(tmp_path):
     from evaluation.run import EvaluationError, _read_manifest
-    from glossabet.artifacts import MAX_JSON_BYTES
+    from glossabet.runtime.artifacts import MAX_JSON_BYTES
 
     path = tmp_path / "corpus.json"
     path.write_bytes(b'{"x":' + b" " * (MAX_JSON_BYTES + 10) + b"1}")

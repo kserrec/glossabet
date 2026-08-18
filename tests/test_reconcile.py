@@ -6,9 +6,9 @@ concept."""
 import json
 
 from glossabet.cli import main
-from glossabet.evidence import Limits, build_evidence
-from glossabet.glossary import save_glossary, validate_glossary
-from glossabet.reconcile import build_validation
+from glossabet.analysis.evidence import Limits, build_evidence
+from glossabet.glossary.store import save_glossary, validate_glossary
+from glossabet.glossary.reconcile import build_validation
 
 GLOSSARY = {
     "schema_version": 1,
@@ -180,7 +180,7 @@ def test_uncertain_symbol_binding_does_not_create_a_false_orphan(tmp_path):
 def test_partial_inventory_does_not_claim_missing_bindings_or_orphans(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr("glossabet.scanner.MAX_SOURCE_FILES", 1)
+    monkeypatch.setattr("glossabet.corpus.scanner.MAX_SOURCE_FILES", 1)
     (tmp_path / "a.py").write_text("ordinary_name = 1\n")
     hidden = tmp_path / "z"
     hidden.mkdir()
@@ -289,7 +289,7 @@ def test_usable_graph_with_no_canonical_concepts_finds_unnamed_structure(
 def test_graph_group_cap_makes_structural_validation_explicitly_partial(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr("glossabet.graphify.GROUP_CAP", 2)
+    monkeypatch.setattr("glossabet.analysis.graphify.GROUP_CAP", 2)
     graph = {
         "nodes": [
             {"id": f"{group}-{member}", "label": f"Node{group}{member}",
@@ -363,7 +363,7 @@ def test_validation_total_includes_dropped_items(tmp_path, monkeypatch):
         ],
     }
     (tmp_path / "main.py").write_text("ordinary_name = 1\n")
-    monkeypatch.setattr("glossabet.findings.FINDINGS_CAP", 1)
+    monkeypatch.setattr("glossabet.glossary.findings.FINDINGS_CAP", 1)
 
     validation = build_validation(build_evidence(tmp_path), glossary)
 
@@ -564,7 +564,7 @@ def test_structural_matching_uses_inverted_token_candidates(
         ],
     }
     calls = 0
-    from glossabet import reconcile as reconcile_module
+    from glossabet.glossary import reconcile as reconcile_module
     real_match = reconcile_module._match_strength_from_tokens
 
     def counted_match(*args):
@@ -610,7 +610,7 @@ def test_structural_match_budget_reports_omitted_candidate_evaluations(
             for term in terms
         ],
     }
-    monkeypatch.setattr("glossabet.reconcile.STRUCTURAL_MATCH_BUDGET", 2)
+    monkeypatch.setattr("glossabet.glossary.reconcile.STRUCTURAL_MATCH_BUDGET", 2)
 
     validation = build_validation(build_evidence(tmp_path), glossary)
     work = validation["coverage"]["work"]["structural_matches"]

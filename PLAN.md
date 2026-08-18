@@ -1,6 +1,6 @@
 # Glossabet — Plan
 
-Status: **Phases 0–22, 24–32, 34–36, 37, and 38 complete (36.8, live
+Status: **Phases 0–22, 24–32, 34–39 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
 in progress at 33.2; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-17.
@@ -644,6 +644,82 @@ further cuts would remove examples or rationale. Suite 532 green; wheel and
 plugin rebuilt; installed-agent `--current` currency lapses again until the
 next authorized Codex batch. Kyle's review of the codebase itself (nesting,
 flat package, module sizes) has not started.
+
+### Phase 39 — Subpackages by layer, zero behavior change ✅ 2026-08-18
+
+**Origin:** Kyle's pre-testing review: the flat 35-module package "has zero
+organization" and hides real layer boundaries. He accepted the standard
+`glossabet/glossabet/` nesting once explained, declined splitting the six
+500+-line files (well-organized big files are fine; only the four longest
+functions are a readability cost, left as a separate offer), and said "do
+it" to grouping. Every module keeps its name except one, and only import
+paths change.
+
+**Layout** (import direction flows downward; package names never repeat a
+module name, so no `x/x` doubling):
+
+```
+glossabet/
+  cli.py, __main__.py, __init__.py, _skill/     entry point
+  runtime/   engine_run, artifacts, display, coverage, git_state
+  corpus/    scanner, config, extraction, cache, tokenize, imports
+  analysis/  evidence, evidence_view, vocabulary, terminology, importance,
+             graphify, evidence_report
+  glossary/  store (was glossary.py), glossary_commands, repository_glossary,
+             matching, findings, drift, reconcile
+  agent/     agent_context, brief, managed_block, managed_context, context_sync
+  install/   installer, claude_plugin
+```
+
+Boundary calls: `tokenize` is the lexical contract every layer uses and sits
+lowest (`corpus`); `matching` matches glossary terms against evidence and
+imports `glossary`, so it lives with the glossary health checks; `findings`
+serves only `drift`/`reconcile`. `glossary.py` → `glossary/store.py` is the
+single rename (load/validate/save of `glossary.json`), to avoid
+`glossary.glossary`.
+
+**Self-measurements that changed with the layout (Kyle's rulings, 2026-08-18,
+"do as you recommend"):**
+- `ROUTINE_AGENT_CONTEXT_TARGET_BYTES` 80 000 → 100 000. Glossabet's own
+  routine `inspect` context went 78 417 → 87 675 bytes because module
+  rollup keys, `files`, and `modules` now carry seven longer package paths.
+  The constant is reported in `coverage.context.limits` and used by one
+  dogfood test; it shapes no output. README/ARCHITECTURE updated.
+- `evaluation/corpus.json` `self_nominations` re-labelled deliberately (the
+  dispersion measure is per directory, so identical code in seven packages
+  reads as more spread out): `coverage` → `deserves disambiguation` (three
+  referents: ledger, corpus completeness, context omissions); `run` removed
+  from `forbidden_terms` (`engine_run.Run` is a first-class domain object
+  since Phase 36.2; the layered nomination is neither required nor
+  forbidden); `structural` removed from `required` (an adjective whose noun
+  is `structural_groups`; not nominated now); `drift` keeps `deserves a
+  canonical name` and **fails** — 8/9. **Open finding for a heuristic
+  phase:** the context-dispersion heuristic reads call-site diversity across
+  layer subpackages as meaning diversity. Until resolved, the
+  `nomination_quality_min: 1.0` release threshold is legitimately unmet;
+  `test_evaluation` asserts exactly this state (`required:drift` the only
+  failure). `evaluation/results.json` lags as before (regenerated at the
+  release gate).
+
+Steps: (1) oracle baseline — every command × four fixtures with seeded
+glossary, `GLOSSARY.md`, host files, `glossabet.json`; stdout/stderr/rc,
+every `glossabet-out/*.json`, both host files, plus an error-path set;
+captured twice and byte-identical before any move. (2) `git mv` into
+subpackages with `__init__.py`; rewrite every `glossabet.<module>` import
+and dotted reference in `glossabet/`, `tests/`, `scripts/`, `evaluation/`,
+`plugins/`. (3) `test_module_dependencies` and `test_document_keys` follow
+the new paths (the ratchet globs recursively). (4) ARCHITECTURE.md module
+map, CLAUDE.md, README where paths are named. (5) Oracle byte-identical;
+suite green; wheel/plugin rebuilt; `check_distribution` passes; commit.
+
+**Outcome:** done as planned. Oracle: 18 commands × 4 fixtures + 9 error
+paths, every artifact and host file — byte-identical except the twelve
+`inspect` outputs, which differ only in the reported
+`routine_target_bytes` (80000 → 100000). `installer.canonical_skill_text`
+source-checkout fallback path fixed for the deeper module; dependency and
+document-key ratchets made layout-aware (the latter had been globbing
+non-recursively — fixed); `check_distribution`/`test_plugin` wheel path
+lists updated; `wheel_smoke` passes. Suite 532 green.
 
 ### Owner self-testing pause — active, not an implementation phase
 

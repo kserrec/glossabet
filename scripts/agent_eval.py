@@ -122,10 +122,10 @@ settled term; do not perform any action.
 sys.path.insert(0, str(ROOT))
 
 from glossabet import __version__  # noqa: E402
-from glossabet.agent_context import AGENT_CONTEXT_SCHEMA_VERSION  # noqa: E402
-from glossabet.artifacts import MAX_JSON_BYTES  # noqa: E402
-from glossabet.installer import default_skill_directory  # noqa: E402
-from glossabet.scanner import is_sensitive  # noqa: E402
+from glossabet.agent.agent_context import AGENT_CONTEXT_SCHEMA_VERSION  # noqa: E402
+from glossabet.runtime.artifacts import MAX_JSON_BYTES  # noqa: E402
+from glossabet.install.installer import default_skill_directory  # noqa: E402
+from glossabet.corpus.scanner import is_sensitive  # noqa: E402
 
 
 class AgentEvaluationError(RuntimeError):

@@ -5,7 +5,7 @@ import json
 import os
 
 from glossabet.cli import main
-from glossabet.evidence import Limits, build_evidence, write_evidence
+from glossabet.analysis.evidence import Limits, build_evidence, write_evidence
 
 
 def make_repo(tmp_path):
@@ -46,7 +46,7 @@ def test_sensitive_files_never_enter_evidence(tmp_path):
 
 def test_additional_private_key_and_credential_names_are_sensitive():
     # Private-key / credential filename conventions beyond the original set.
-    from glossabet.scanner import is_sensitive
+    from glossabet.corpus.scanner import is_sensitive
 
     for name in (
         "backup.kdbx", "key.asc", "key.gpg", "key.pgp",
@@ -146,7 +146,7 @@ def test_truncation_is_capped_marked_and_counted(tmp_path):
 
 
 def test_corpus_file_budget_is_deterministic_and_reported(tmp_path, monkeypatch):
-    monkeypatch.setattr("glossabet.scanner.MAX_SOURCE_FILES", 2)
+    monkeypatch.setattr("glossabet.corpus.scanner.MAX_SOURCE_FILES", 2)
     for name in ("c.py", "a.py", "b.py"):
         (tmp_path / name).write_text(f"{name[0]}_identifier = 1\n")
 
@@ -169,7 +169,7 @@ def test_corpus_file_budget_is_deterministic_and_reported(tmp_path, monkeypatch)
 def test_oversized_production_source_marks_corpus_incomplete(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr("glossabet.scanner.MAX_FILE_BYTES", 40)
+    monkeypatch.setattr("glossabet.corpus.scanner.MAX_FILE_BYTES", 40)
     (tmp_path / "small.py").write_text("ordinary = 1\n")
     (tmp_path / "large.py").write_text(
         "hidden_canonical_term = 1\n" + "# padding\n" * 10
@@ -190,7 +190,7 @@ def test_oversized_production_source_marks_corpus_incomplete(
 def test_skipped_nonproduction_source_keeps_production_corpus_complete(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr("glossabet.scanner.MAX_SOURCE_FILES", 1)
+    monkeypatch.setattr("glossabet.corpus.scanner.MAX_SOURCE_FILES", 1)
     (tmp_path / "a.py").write_text("production_name = 1\n")
     tests = tmp_path / "tests"
     tests.mkdir()
@@ -206,7 +206,7 @@ def test_skipped_nonproduction_source_keeps_production_corpus_complete(
 def test_corpus_byte_budget_reports_skips_and_can_use_later_space(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr("glossabet.scanner.MAX_SOURCE_BYTES", 35)
+    monkeypatch.setattr("glossabet.corpus.scanner.MAX_SOURCE_BYTES", 35)
     (tmp_path / "a.py").write_text("alpha_identifier = 1\n")
     (tmp_path / "b.py").write_text("bravo_identifier = 2\n")
     (tmp_path / "c.py").write_text("c = 3\n")
@@ -224,7 +224,7 @@ def test_corpus_byte_budget_reports_skips_and_can_use_later_space(
 
 
 def test_walk_work_budget_marks_unknown_remainder(tmp_path, monkeypatch):
-    monkeypatch.setattr("glossabet.scanner.MAX_WALK_ENTRIES", 2)
+    monkeypatch.setattr("glossabet.corpus.scanner.MAX_WALK_ENTRIES", 2)
     for name in ("a.py", "b.py", "c.py"):
         (tmp_path / name).write_text(f"{name[0]}_identifier = 1\n")
 
@@ -246,8 +246,8 @@ def test_walk_work_budget_marks_unknown_remainder(tmp_path, monkeypatch):
 
 
 def test_corpus_budget_skip_sample_is_itself_bounded(tmp_path, monkeypatch):
-    monkeypatch.setattr("glossabet.scanner.MAX_SOURCE_FILES", 1)
-    monkeypatch.setattr("glossabet.scanner.BUDGET_PATH_SAMPLE", 1)
+    monkeypatch.setattr("glossabet.corpus.scanner.MAX_SOURCE_FILES", 1)
+    monkeypatch.setattr("glossabet.corpus.scanner.BUDGET_PATH_SAMPLE", 1)
     for name in ("a.py", "b.py", "c.py"):
         (tmp_path / name).write_text(f"{name[0]}_identifier = 1\n")
 
@@ -261,7 +261,7 @@ def test_corpus_budget_skip_sample_is_itself_bounded(tmp_path, monkeypatch):
 def test_overfull_directory_is_skipped_whole_to_preserve_determinism(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr("glossabet.scanner.MAX_DIRECTORY_ENTRIES", 2)
+    monkeypatch.setattr("glossabet.corpus.scanner.MAX_DIRECTORY_ENTRIES", 2)
     for name in ("a.py", "b.py", "c.py"):
         (tmp_path / name).write_text(f"{name[0]}_identifier = 1\n")
 
@@ -367,7 +367,7 @@ def test_unicode_and_language_forms_round_trip_through_evidence(tmp_path):
 
 
 def test_scan_reports_partial_corpus_budget(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr("glossabet.scanner.MAX_SOURCE_FILES", 1)
+    monkeypatch.setattr("glossabet.corpus.scanner.MAX_SOURCE_FILES", 1)
     (tmp_path / "a.py").write_text("alpha_identifier = 1\n")
     (tmp_path / "b.py").write_text("bravo_identifier = 2\n")
 
@@ -442,7 +442,7 @@ def test_output_directory_symlink_cannot_redirect_writes(tmp_path, capsys):
 
 
 def test_oversized_root_workspace_manifest_is_skipped(tmp_path, monkeypatch):
-    monkeypatch.setattr("glossabet.scanner.MAX_FILE_BYTES", 50)
+    monkeypatch.setattr("glossabet.corpus.scanner.MAX_FILE_BYTES", 50)
     (tmp_path / "main.py").write_text("ordinary_identifier = 1\n")
     (tmp_path / "package.json").write_text(
         json.dumps({"workspaces": ["packages/*"], "padding": "x" * 100})
@@ -504,7 +504,7 @@ def test_oserror_during_read_is_confessed_as_unreadable(tmp_path, monkeypatch):
     (tmp_path / "core.py").write_text("core_service = 1\n")
     (tmp_path / "gone.py").write_text("vanished_service = 1\n")
 
-    import glossabet.extraction as extraction_module
+    import glossabet.corpus.extraction as extraction_module
 
     real_read = extraction_module.read_source
 
@@ -533,7 +533,7 @@ def test_pathological_single_identifier_is_bounded_not_a_dos(tmp_path):
     # the truncation recorded.
     import time
 
-    from glossabet.vocabulary import MAX_IDENTIFIER_TOKENS
+    from glossabet.analysis.vocabulary import MAX_IDENTIFIER_TOKENS
 
     huge = "_".join(f"t{i:05d}" for i in range(50000))
     (tmp_path / "main.py").write_text(huge + " = 1\n")
@@ -573,7 +573,7 @@ def test_exclusion_ledger_owns_every_skipped_key_and_sentence(tmp_path):
     but not in the ledger, or in the ledger but not collected, is a silent
     exclusion."""
     from dataclasses import fields
-    from glossabet.scanner import EXCLUSION_KINDS, WalkResult, exclusion_sentences
+    from glossabet.corpus.scanner import EXCLUSION_KINDS, WalkResult, exclusion_sentences
 
     collected = {f.name for f in fields(WalkResult) if f.name.startswith("skipped_")}
     assert {kind.attribute for kind in EXCLUSION_KINDS} == collected
@@ -596,7 +596,7 @@ def test_documentation_vocabulary_views_stay_in_step():
     # The doc-term table reads counts and per-file locations from the same
     # aggregate; a fold that updated one view and not the other would let
     # ``files`` disagree with ``count`` in evidence.
-    from glossabet.vocabulary import DocumentationVocabulary
+    from glossabet.analysis.vocabulary import DocumentationVocabulary
 
     documentation = DocumentationVocabulary()
     documentation.fold({"tenant": 2, "ledger": 1}, "README.md")

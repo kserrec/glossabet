@@ -204,14 +204,38 @@ list limit, a string ceiling, and at most 100 omission records.
 `coverage.corpus` preserves scanner coverage; `coverage.context` names the
 projection mode and every omitted section, item, string, or rolled-up file
 location. The routine projection has a repository-level regression target of
-80 KB; the universal 1 MB ceiling remains a hard failure backstop. If the
+100 KB (80 KB before Phase 39's subpackages lengthened Glossabet's own module
+paths); the universal 1 MB ceiling remains a hard failure backstop. If the
 final object cannot fit, the command exits as a user error instead of emitting
 partial JSON. This is a model-context boundary, not a replacement for the full
 deterministic artifact used by other engine commands.
 
 ## Module map
 
-The package is `glossabet/`. Grouped by role:
+The package is `glossabet/`, laid out as one entry point plus six layer
+subpackages (Phase 39). Imports flow downward through this list; a package
+name never repeats a module name, so no `x/x` doubling:
+
+```
+glossabet/
+  cli.py, __main__.py, __init__.py, _skill/     entry point
+  runtime/   engine_run, artifacts, display, coverage, git_state
+  corpus/    scanner, config, extraction, cache, tokenize, imports
+  analysis/  evidence, evidence_view, vocabulary, terminology, importance,
+             graphify, evidence_report
+  glossary/  store, glossary_commands, repository_glossary, matching,
+             findings, drift, reconcile
+  agent/     agent_context, brief, managed_block, managed_context, context_sync
+  install/   installer, claude_plugin
+```
+
+`runtime` is the plumbing every command shares; `corpus` walks, scopes,
+reads, caches, and tokenizes the repository; `analysis` turns that into
+RepositoryEvidence and its terminology/naming signals; `glossary` holds the
+persistent vocabulary state and every check against it; `agent` is what an
+agent host sees (`inspect`, `brief`, the managed block); `install` puts the
+skill in place. The entries below are grouped by role and named by module;
+prefix each with its subpackage (`glossabet.corpus.scanner`, …).
 
 **Entry point and shared plumbing**
 - `cli.py` — argparse dispatcher. Owns the exit-status contract: `0` success,
@@ -469,7 +493,7 @@ The package is `glossabet/`. Grouped by role:
   extraction; schema 3 previously invalidated pre-Unicode entries. Any doubt
   reads as a miss. An override that resolves inside the target repository
   disables caching.
-- `glossary.py` — the persistent glossary (`glossabet-out/glossary.json`):
+- `glossary/store.py` (was `glossary.py`) — the persistent glossary (`glossabet-out/glossary.json`):
   schema validation (`validate_glossary`) and confined load/save. Bindings may
   only target stable identities (`symbol:` / `file:` / `module:`), never graph
   community or node ids, which are not stable across rebuilds. Optional

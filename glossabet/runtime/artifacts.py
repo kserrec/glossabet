@@ -17,7 +17,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from glossabet.display import escape_terminal_text
+from glossabet.runtime.display import escape_terminal_text
 
 OUT_DIR = "glossabet-out"
 # The human-readable vocabulary-health report the /glossabet skill writes at

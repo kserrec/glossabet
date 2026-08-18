@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import sys
 
-from glossabet.artifacts import (
+from glossabet.runtime.artifacts import (
     MAX_JSON_BYTES,
     OUT_DIR,
     READ_OVERSIZED,
     ArtifactError,
     parse_bounded_json,
 )
-from glossabet.display import escape_terminal_text, print_error
-from glossabet.engine_run import GLOSSARY_OPTIONAL, open_run
-from glossabet.glossary import (
+from glossabet.runtime.display import escape_terminal_text, print_error
+from glossabet.runtime.engine_run import GLOSSARY_OPTIONAL, open_run
+from glossabet.glossary.store import (
     GLOSSARY_FILE,
     GlossaryError,
     concept_scope,

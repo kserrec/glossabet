@@ -17,10 +17,10 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from glossabet.brief import build_managed_brief
-from glossabet.display import escape_terminal_text
-from glossabet.glossary import glossary_sha256
-from glossabet.managed_block import (
+from glossabet.agent.brief import build_managed_brief
+from glossabet.runtime.display import escape_terminal_text
+from glossabet.glossary.store import glossary_sha256
+from glossabet.agent.managed_block import (
     AGENT_TARGETS,
     END_MARKER,
     MANAGED_BLOCK_FORMAT_VERSION,

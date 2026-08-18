@@ -17,7 +17,7 @@ import json
 import unicodedata
 from pathlib import Path
 
-from glossabet.artifacts import (
+from glossabet.runtime.artifacts import (
     READ_ABSENT,
     READ_OVERSIZED,
     ArtifactError,
@@ -26,7 +26,7 @@ from glossabet.artifacts import (
     read_bounded_json,
     write_artifact,
 )
-from glossabet.display import contains_terminal_control
+from glossabet.runtime.display import contains_terminal_control
 
 GLOSSARY_SCHEMA_VERSION = 1
 GLOSSARY_FILE = "glossary.json"

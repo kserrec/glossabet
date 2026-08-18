@@ -25,31 +25,31 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from glossabet import __version__  # noqa: E402
-from glossabet.artifacts import MAX_JSON_BYTES  # noqa: E402
-from glossabet.cache import CACHE_ROOT_ENV  # noqa: E402
-from glossabet.config import CONFIG_FILE  # noqa: E402
-from glossabet.drift import (  # noqa: E402
+from glossabet.runtime.artifacts import MAX_JSON_BYTES  # noqa: E402
+from glossabet.corpus.cache import CACHE_ROOT_ENV  # noqa: E402
+from glossabet.corpus.config import CONFIG_FILE  # noqa: E402
+from glossabet.glossary.drift import (  # noqa: E402
     DRIFT_SCHEMA_VERSION,
     DriftView,
     build_drift,
 )
-from glossabet.evidence import (  # noqa: E402
+from glossabet.analysis.evidence import (  # noqa: E402
     SCHEMA_VERSION as EVIDENCE_SCHEMA_VERSION,
     build_evidence,
 )
-from glossabet.evidence_view import EvidenceView  # noqa: E402
-from glossabet.glossary import validate_glossary  # noqa: E402
-from glossabet.graphify import GRAPH_PATH  # noqa: E402
-from glossabet.importance import (  # noqa: E402
+from glossabet.analysis.evidence_view import EvidenceView  # noqa: E402
+from glossabet.glossary.store import validate_glossary  # noqa: E402
+from glossabet.analysis.graphify import GRAPH_PATH  # noqa: E402
+from glossabet.analysis.importance import (  # noqa: E402
     NOMINATION_CANONICAL_NAME,
     NOMINATION_DISAMBIGUATION,
 )
-from glossabet.reconcile import (  # noqa: E402
+from glossabet.glossary.reconcile import (  # noqa: E402
     VALIDATION_SCHEMA_VERSION,
     ValidationView,
     build_validation,
 )
-from glossabet.tokenize import (  # noqa: E402
+from glossabet.corpus.tokenize import (  # noqa: E402
     STRUCTURED_IDENTIFIER_STYLES,
 )
 

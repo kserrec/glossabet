@@ -18,7 +18,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from glossabet.artifacts import OUT_DIR, REPORT_FILE
+from glossabet.runtime.artifacts import OUT_DIR, REPORT_FILE
 
 
 # Config keys that let a repository's own .git/config name a program git will

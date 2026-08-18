@@ -4,8 +4,8 @@ import json
 import os
 
 from glossabet.cli import main
-from glossabet.config import CONFIG_SHAPE
-from glossabet.evidence import build_evidence
+from glossabet.corpus.config import CONFIG_SHAPE
+from glossabet.analysis.evidence import build_evidence
 
 
 def _write(path, content="role_specific_name = 1\n"):
@@ -170,7 +170,7 @@ def test_symlinked_config_is_rejected_without_reading_target(tmp_path, capsys):
 
 
 def test_oversized_config_is_a_user_error(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr("glossabet.config.MAX_CONFIG_BYTES", 20)
+    monkeypatch.setattr("glossabet.corpus.config.MAX_CONFIG_BYTES", 20)
     (tmp_path / "glossabet.json").write_text(json.dumps({
         "schema_version": 1,
         "ignore_paths": ["too-large"],

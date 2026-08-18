@@ -22,7 +22,7 @@ from evaluation.run import (  # noqa: E402
     EvaluationError,
     verify_results as verify_engine_results,
 )
-from glossabet.artifacts import MAX_JSON_BYTES  # noqa: E402
+from glossabet.runtime.artifacts import MAX_JSON_BYTES  # noqa: E402
 
 PACKET_SCHEMA_VERSION = 1
 REVIEW_SCHEMA_VERSION = 2

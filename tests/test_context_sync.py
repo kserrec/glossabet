@@ -6,12 +6,12 @@ import stat
 
 import pytest
 
-import glossabet.context_sync as context_sync
+import glossabet.agent.context_sync as context_sync
 from glossabet.cli import main
-from glossabet.managed_block import END_MARKER, START_MARKER
-from glossabet.managed_context import MAX_HOST_FILE_BYTES, inspect_managed_context
-from glossabet.evidence import build_evidence
-from glossabet.glossary import load_glossary, save_glossary
+from glossabet.agent.managed_block import END_MARKER, START_MARKER
+from glossabet.agent.managed_context import MAX_HOST_FILE_BYTES, inspect_managed_context
+from glossabet.analysis.evidence import build_evidence
+from glossabet.glossary.store import load_glossary, save_glossary
 
 
 GLOSSARY = {
@@ -149,7 +149,7 @@ def test_current_block_is_an_exact_no_write(tmp_path, monkeypatch):
     def unexpected_write(*_args, **_kwargs):
         raise AssertionError("current synchronization must not write")
 
-    monkeypatch.setattr("glossabet.context_sync._write_bytes_atomic", unexpected_write)
+    monkeypatch.setattr("glossabet.agent.context_sync._write_bytes_atomic", unexpected_write)
 
     assert main(["sync-context", str(tmp_path)]) == 0
     assert target.read_bytes() == before
@@ -275,7 +275,7 @@ def test_atomic_replace_failure_preserves_original_and_cleans_temporary_file(
     def fail_replace(_source, _target):
         raise OSError("injected replace failure")
 
-    monkeypatch.setattr("glossabet.artifacts.os.replace", fail_replace)
+    monkeypatch.setattr("glossabet.runtime.artifacts.os.replace", fail_replace)
 
     assert main(["sync-context", str(tmp_path)]) == 1
     assert target.read_bytes() == before
@@ -297,7 +297,7 @@ def test_concurrent_target_change_is_not_overwritten(tmp_path, monkeypatch):
         return original_reader(path)
 
     monkeypatch.setattr(
-        "glossabet.context_sync._read_regular_target",
+        "glossabet.agent.context_sync._read_regular_target",
         change_before_commit,
     )
 

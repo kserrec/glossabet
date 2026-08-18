@@ -21,14 +21,14 @@ from __future__ import annotations
 from importlib import resources
 from pathlib import Path
 
-from glossabet.artifacts import replace_file_atomic
-from glossabet.claude_plugin import (
+from glossabet.runtime.artifacts import replace_file_atomic
+from glossabet.install.claude_plugin import (
     ClaudePluginError,
     claude_plugin_files,
     hook_command,
     resolve_cli_executable,
 )
-from glossabet.display import escape_terminal_text, print_error
+from glossabet.runtime.display import escape_terminal_text, print_error
 
 _DESTINATIONS = {
     "codex": Path(".agents") / "skills" / "glossabet",
@@ -53,7 +53,7 @@ def canonical_skill_text() -> str:
     try:
         return packaged.read_text(encoding="utf-8")
     except FileNotFoundError:
-        source = Path(__file__).resolve().parents[1] / "skill" / "SKILL.md"
+        source = Path(__file__).resolve().parents[2] / "skill" / "SKILL.md"
         try:
             return source.read_text(encoding="utf-8")
         except FileNotFoundError as exc:

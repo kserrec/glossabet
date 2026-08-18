@@ -3,7 +3,7 @@ derivation, and section renderer that drift and validation share."""
 
 import pytest
 
-from glossabet.findings import (
+from glossabet.glossary.findings import (
     empty_section,
     FindingsDocumentView,
     FINDINGS_CAP,
