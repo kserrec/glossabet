@@ -71,6 +71,39 @@ never diluted by machinery.
 - Ambiguous semantic choices stop with the competing options and their
   consequences rather than being decided by convenience.
 
+## Fixing bugs and findings (binding — Kyle, 2026-08-18)
+
+Every bughunt/audit round in this repo found gaps in the previous round's
+own fixes. The cause each time was structural — a fix shaped by the one
+demonstrated input, in a batch too large to verify well, checked by the
+same eyes that wrote it — so these are rules, not reminders:
+
+1. **A fix is fix + class-level test + cold review, in one pass.** No fix
+   is done, and no fix-carrying commit is made, until a fresh agent that
+   did not write the fix has read the diff with the brief "break it: which
+   sibling input still gets through, what did the fix change beyond the
+   bug, does it contradict its own comment/docstring/SECURITY.md claim",
+   and every proven finding from that review is itself fixed. This is not
+   an optional later round; it is the last step of the same pass.
+2. **Name the wrong assumption before writing code, and the test must
+   cover the class.** State the root cause in one sentence that does not
+   mention the demonstrated input. The regression test asserts the class —
+   the empty and the single-element, the zero and the maximum, the other
+   call site, the other encoding — never only the input that proved it. If
+   the test only encodes the proof, the fix is not done.
+3. **Small batches.** At most ~10 fixes between cold reviews. A 30-fix pass
+   is where the regressions came from; split it.
+4. **Hunters become tests.** A generator or driver that found something
+   (seeded fuzz over a trust boundary, an end-to-end flow on an odd repo)
+   is turned into a bounded test in the suite in the same pass, so the
+   class stays dead without waiting for the next hunter.
+
+*(Origin: rounds 4–5 and audit round 5. Round-4 fixes: a regression (root
+`GLOSSARY.md → docs/GLOSSARY.md` refused) and a coverage hole; audit fixes:
+a memory-only budget that left a 192-second in-budget shape, and a workflow
+checker with bypasses an hour after being hardened. Each was caught by a
+cold review that cost about a fifth of a hunt.)*
+
 ## Commands
 
 ```bash
