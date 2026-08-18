@@ -106,6 +106,36 @@ def test_alias_cannot_claim_another_concepts_canonical_term():
     assert any("maps to multiple concepts" in error for error in errors)
 
 
+def test_duplicate_vocabulary_within_one_concept_is_rejected():
+    """Two aliases that fold to the same word, or an alias that repeats the
+    concept's own term, are one entry declared twice with (possibly) two
+    statuses — the reader could not tell which status applies. Distinct
+    from the cross-concept rule, which the neighbouring tests pin."""
+    def concept(aliases):
+        return {"schema_version": 1, "concepts": [{
+            "id": "payment", "term": "Payment", "definition": "d",
+            "status": "canonical", "aliases": aliases,
+        }]}
+
+    for aliases in (
+        [{"term": "charge", "status": "discouraged"},
+         {"term": "Charge", "status": "deprecated"}],       # case fold
+        [{"term": "Cafe\u0301", "status": "alias"},
+         {"term": "Caf\u00e9", "status": "alias"}],           # NFKC fold
+        [{"term": "Payment", "status": "discouraged"}],      # own term
+        [{"term": "payments", "status": "alias"},
+         {"term": "Payments", "status": "alias"}],
+    ):
+        errors = validate_glossary(concept(aliases))
+        assert any("within concept 'payment'" in error for error in errors), (
+            aliases, errors
+        )
+    assert validate_glossary(concept(
+        [{"term": "charge", "status": "discouraged"},
+         {"term": "billing", "status": "alias"}]
+    )) == []
+
+
 def test_same_vocabulary_can_have_different_owners_in_disjoint_scopes():
     glossary = {
         "schema_version": 1,
@@ -146,6 +176,15 @@ def test_scope_prefixes_respect_path_component_boundaries():
         (None, {"path_prefixes": ["src/auth"]}),
         ({"path_prefixes": ["src"]}, {"path_prefixes": ["src/auth"]}),
         ({"path_prefixes": ["src/auth"]}, {"path_prefixes": ["src/auth"]}),
+        # Both orders: the check must not depend on which owner is declared
+        # first (descendant-then-ancestor, scoped-then-global).
+        ({"path_prefixes": ["src/auth"]}, {"path_prefixes": ["src"]}),
+        ({"path_prefixes": ["src/auth"]}, None),
+        # Multi-prefix scopes overlap on any one prefix.
+        ({"path_prefixes": ["docs", "src/auth/session"]},
+         {"path_prefixes": ["src/auth"]}),
+        ({"path_prefixes": ["src/auth"]},
+         {"path_prefixes": ["src/auth/session", "docs"]}),
     ],
 )
 def test_vocabulary_owners_must_be_unique_in_overlapping_scopes(
@@ -759,3 +798,260 @@ def test_default_ignorable_characters_are_refused_as_a_class():
     assert not any("invisible character" in e for e in validate_glossary(glossary))
     glossary["concepts"][0]["definition"] = "I \u2764\ufe0f this 1\ufe0f\u20e3"
     assert validate_glossary(glossary) == []
+
+
+def test_hostile_glossary_family_never_raises_and_accepted_documents_survive_every_consumer(tmp_path):
+    """Seeded family of glossary documents — from valid-but-odd (Kelvin sign,
+    ligatures, Turkish dotted I, full-width digits, RTL scripts, emoji,
+    long strings, scoped and bound concepts) to malformed (wrong types,
+    NaN, lone surrogates, RLO, NUL, managed-block markers inside terms).
+    Validation is deterministic and returns strings; every document it
+    ACCEPTS then survives every consumer: save→load→save is byte-stable,
+    `show` prints UTF-8, the brief stays under its byte cap, the managed
+    block re-analyzes as current and re-syncs as current for both agents,
+    and validation/drift are NaN-clean. No single test asserts that
+    multi-consumer invariant. Ported from a hunter (test-audit)."""
+    import contextlib
+    import copy
+    import random
+
+    from glossabet.agent.brief import MAX_BRIEF_BYTES, build_brief, build_managed_brief
+    from glossabet.agent.context_sync import sync_context
+    from glossabet.agent.managed_context import analyze_managed_block, render_block
+    from glossabet.analysis.evidence import build_evidence
+    from glossabet.glossary.drift import build_drift
+    from glossabet.glossary.glossary_commands import _print_glossary
+    from glossabet.glossary.store import glossary_sha256
+    from glossabet.glossary.reconcile import build_validation
+    from glossabet.glossary.repository_glossary import repository_glossary_section
+
+    rng = random.Random(20260818)
+    rlo, lone, low_lone, esc, nul, zwsp = (
+        "\u202e", "\ud800", "\udcff", "\x1b[0m", "\x00", "\u200b"
+    )
+    strings = [
+        "Payment Service", "payment service", "PAYMENT SERVICE", "Session",
+        "session", "Ledger", "K", "K", "k", "ﬁle", "file", "ﬁ",
+        "fi", "İstanbul", "istanbul", "ıstanbul", "I", "i", "ı", "ß", "ss",
+        "SS", "Café", "Café", "cafe", "ｆｕｌｌ", "full", "①", "1", "Ⅸ",
+        "ix", "", " ", "  x  ", "x" * 200, "x" * 1024, "x" * 1025, "\t",
+        "a\nb", "a\tb", "a b", rlo, esc, nul, rlo + "reversed", "עברית",
+        "مرحبا", "🙂", "a🙂b", lone, "a" + low_lone + "b",
+        "<!-- glossabet:managed-context", "<!-- glossabet:managed-context:end -->",
+        "-- glossabet", "\ufeff", "a" + zwsp + "b", zwsp, "src", "src/auth",
+        "symbol:x", "::", ":", "µ", "μ", "Ω", "Ω", "Å", "Å", "℮",
+        "ͅ", "ι", "ς", "σ", "Σ", "ǅ", "ǆ", "Ǆ", "…", "...", "1e400",
+        "\\n", "\\u202e", "* not markdown *", "`code`", "# heading", "payment",
+        "service", "sess ion", "Session Store", "session_token",
+        "SessionStore", "pay.py",
+    ]
+    sane = [
+        "Payment Service", "Session", "Ledger", "K", "K", "ﬁle", "file",
+        "İstanbul", "istanbul", "ı", "ß", "ss", "Café", "Café", "ｆｕｌｌ",
+        "full", "①", "1", "Ⅸ", "ix", "x" * 200, "x" * 1024, "עברית", "مرحبا",
+        "🙂", "a🙂b", "µ", "μ", "Ω", "Ω", "Å", "Å", "ς", "σ", "Σ",
+        "ǅ", "ǆ", "…", "payment", "service", "Session Store", "session_token",
+        "SessionStore", "pay.py", "Payment-Request", "payment_request",
+        "PaymentRequest", "sess ion", "Ledger Entry", "ledger", "auth session",
+        "Token",
+    ]
+    statuses = ["canonical", "proposed", "alias", "discouraged", "deprecated",
+                "unknown", "Canonical", "CANONICAL", "", "x", None, 1, True,
+                ["canonical"]]
+    valid_statuses = ["canonical", "canonical", "canonical", "proposed", "alias",
+                      "discouraged", "deprecated", "unknown"]
+    paths = [
+        "src", "src/auth", "src/billing", "src/auth/session.py", "docs", "src/",
+        "/src", "src/../x", "src//x", "*", "src\\x", "", " src", "x" * 1024,
+        "src/auth/x", "src/auth/x/y", "src" + nul, "src\n", "K", "K",
+        "src-old", "src/../src", ".", "..", "src/.", "срц", "src/🙂",
+        "src" + low_lone, "docs/g.md", "GLOSSARY.md", "glossabet-out",
+        "graphify-out/graph.json",
+    ]
+    sane_paths = ["src", "src/auth", "src/billing", "src/auth/session.py", "docs",
+                  "src-old", "K", "K", "src/🙂", "x" * 100, "srс"]
+    refs = [
+        "symbol:payment_service", "symbol:SessionStore", "file:src/billing/pay.py",
+        "module:src/billing", "module:src.billing", "file:docs/g.md", "symbol:",
+        "symbol: ", ":x", "::x", "symbol::x", "symbol:a:b", "graph:1",
+        "community:0", "Symbol:x", "symbol:K", "symbol:ﬁle",
+        "file:GLOSSARY.md", "file:src" + low_lone, "symbol:" + rlo + "x",
+        "file:../x", "file:/etc/passwd", "module:", "x", "", "symbol:x" * 300,
+    ]
+    sane_refs = [
+        "symbol:payment_service", "symbol:SessionStore", "file:src/billing/pay.py",
+        "module:src/billing", "module:src.billing", "file:docs/g.md",
+        "symbol:K", "symbol:ﬁle", "file:GLOSSARY.md", "symbol:a:b",
+        "module:src", "file:src/auth/session.py", "symbol:x" * 300,
+        "symbol:session_token", "symbol:PaymentRequest",
+    ]
+
+    def s():
+        return rng.choice(strings)
+
+    def ss():
+        return rng.choice(sane) if rng.random() < 0.75 else s()
+
+    def scalar():
+        return rng.choice([None, True, False, 0, 1, -1, 1.5, float("nan"), 10 ** 400,
+                           [], {}, [1], {"a": 1}, "x", ""])
+
+    def maybe(value, p=0.9):
+        return value if rng.random() < p else scalar()
+
+    def scope():
+        r = rng.random()
+        if r < 0.6:
+            return {"path_prefixes": maybe([
+                maybe(rng.choice(paths), 0.95)
+                for _ in range(rng.choice([1, 1, 1, 2, 3, 0, 50]))
+            ])}
+        if r < 0.7:
+            return {"path_prefixes": maybe(rng.choice(paths)), "extra": 1}
+        return scalar()
+
+    def alias():
+        entry = {}
+        if rng.random() < 0.95:
+            entry["term"] = maybe(s())
+        if rng.random() < 0.95:
+            entry["status"] = maybe(rng.choice(statuses))
+        if rng.random() < 0.3:
+            entry["note"] = maybe(s())
+        if rng.random() < 0.05:
+            entry["x"] = 1
+        return entry if rng.random() < 0.95 else scalar()
+
+    def binding():
+        entry = {}
+        if rng.random() < 0.95:
+            entry["ref"] = maybe(rng.choice(refs))
+        if rng.random() < 0.05:
+            entry["kind"] = "symbol"
+        return entry if rng.random() < 0.95 else scalar()
+
+    def concept(index):
+        entry = {}
+        if rng.random() < 0.97:
+            entry["id"] = maybe(rng.choice([f"c{index}", f"c{rng.randint(0, 3)}", s()]))
+        if rng.random() < 0.97:
+            entry["term"] = maybe(s())
+        if rng.random() < 0.97:
+            entry["definition"] = maybe(rng.choice([s(), "A definition.", "def\nwith\nlines"]))
+        if rng.random() < 0.97:
+            entry["status"] = maybe(rng.choice(statuses))
+        if rng.random() < 0.4:
+            entry["scope"] = scope()
+        if rng.random() < 0.5:
+            entry["aliases"] = maybe([alias() for _ in range(rng.choice([0, 1, 1, 2, 5]))])
+        if rng.random() < 0.5:
+            entry["bindings"] = maybe([binding() for _ in range(rng.choice([0, 1, 1, 2, 5]))])
+        if rng.random() < 0.2:
+            entry["notes"] = maybe(s())
+        if rng.random() < 0.05:
+            entry[s()] = scalar()
+        return entry if rng.random() < 0.96 else scalar()
+
+    def valid_concept(index):
+        entry = {
+            "id": rng.choice([f"c{index}", f"c{index}", s()]),
+            "term": ss(),
+            "definition": rng.choice(["A definition.", ss(), "def\nlines"]),
+            "status": rng.choice(valid_statuses),
+        }
+        if rng.random() < 0.4:
+            entry["scope"] = {"path_prefixes": [
+                rng.choice(sane_paths if rng.random() < 0.8 else paths)
+                for _ in range(rng.choice([1, 1, 2]))
+            ]}
+        if rng.random() < 0.5:
+            entry["aliases"] = [
+                {"term": ss(), "status": rng.choice(valid_statuses),
+                 **({"note": s()} if rng.random() < 0.3 else {})}
+                for _ in range(rng.choice([1, 1, 2, 4]))
+            ]
+        if rng.random() < 0.5:
+            entry["bindings"] = [
+                ({"ref": rng.choice(sane_refs)} if rng.random() < 0.8 else binding())
+                for _ in range(rng.choice([1, 1, 2]))
+            ]
+        if rng.random() < 0.2:
+            entry["notes"] = ss()
+        if rng.random() < 0.1:
+            entry[rng.choice(list(entry))] = scalar()
+        return entry
+
+    def glossary():
+        if rng.random() < 0.8:
+            return {"schema_version": 1, "concepts": [
+                valid_concept(i) for i in range(rng.choice([1, 2, 3, 4, 8, 30]))
+            ]}
+        doc = {}
+        if rng.random() < 0.95:
+            doc["schema_version"] = rng.choice([1, 1, 1, 1, "1", 1.0, True, 2, None])
+        if rng.random() < 0.97:
+            doc["concepts"] = maybe([concept(i) for i in range(rng.choice([0, 1, 2, 3, 4, 8, 30]))])
+        if rng.random() < 0.05:
+            doc[s()] = scalar()
+        return doc if rng.random() < 0.97 else scalar()
+
+    root = tmp_path
+    (root / "src" / "auth").mkdir(parents=True)
+    (root / "src" / "billing").mkdir(parents=True)
+    (root / "src" / "auth" / "session.py").write_text(
+        "session_token = 1\nclass SessionStore: pass\npayment_service=2\nledger=3\n"
+    )
+    (root / "src" / "billing" / "pay.py").write_text(
+        "payment_service = 1\nclass PaymentRequest: pass\nsession=1\n"
+    )
+    (root / "docs").mkdir()
+    (root / "docs" / "g.md").write_text("payment service session token ledger\n")
+    (root / "GLOSSARY.md").write_text(
+        "# Glossary\n\n**Payment Service** — thing\n\n**Session** — other\nLedger is old.\n"
+    )
+    evidence = build_evidence(root)
+
+    dumped = accepted = 0
+    for case in range(150):
+        doc = glossary()
+        try:
+            text = json.dumps(doc)
+        except (ValueError, TypeError):
+            continue
+        doc = json.loads(text)
+        dumped += 1
+        errors = validate_glossary(doc)
+        assert errors == validate_glossary(copy.deepcopy(doc)), f"case {case}: nondeterministic"
+        assert all(isinstance(error, str) for error in errors), case
+        if errors:
+            continue
+        accepted += 1
+        path = save_glossary(root, doc)
+        loaded = load_glossary(root)
+        assert loaded is not None, case
+        first_bytes = path.read_bytes()
+        save_glossary(root, loaded)
+        assert path.read_bytes() == first_bytes, f"case {case}: save not idempotent"
+        glossary_sha256(loaded)
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            _print_glossary(loaded)
+        buffer.getvalue().encode("utf-8")
+        brief = build_brief(loaded, {"head": "a" * 40, "dirty": False})
+        assert len(brief.encode("utf-8")) <= MAX_BRIEF_BYTES, case
+        build_managed_brief(loaded)
+        block = render_block(loaded)
+        assert analyze_managed_block(block, loaded).status == "current", case
+        for agent in ("codex", "claude"):
+            sync_context(root, loaded, agent)
+            _, outcome = sync_context(root, loaded, agent)
+            assert outcome == "current", f"case {case}: second sync {outcome}"
+        validation = build_validation(
+            evidence, loaded,
+            repository_glossary=repository_glossary_section(root, evidence, loaded),
+        )
+        json.dumps(validation, allow_nan=False)
+        json.dumps(build_drift(evidence, loaded), allow_nan=False)
+        for name in ("AGENTS.md", "CLAUDE.md"):
+            (root / name).unlink(missing_ok=True)
+    assert dumped >= 100 and accepted >= 15, (dumped, accepted)

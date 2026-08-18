@@ -124,6 +124,28 @@ def test_combining_marks_stay_inside_identifiers_and_doc_words():
     ]
     # Hebrew with niqqud: the points stay with their letters.
     assert tokenize_identifier("שָׁלוֹם_world") == ["שָׁלוֹם", "world"]
+    # In a *cased* script a combining mark takes its base letter's case for
+    # boundary purposes: a Cyrillic stress mark inside a lowercase run is
+    # not a case boundary (or `ударе́ниеService` shreds at the accent), and
+    # the same word without the mark splits identically.
+    assert tokenize_identifier("ударе\u0301ниеService") == ["ударе\u0301ние", "service"]
+    assert tokenize_identifier("Ударе\u0301ниеSlužba") == ["ударе\u0301ние", "služba"]
+    assert tokenize_identifier("УдарениеSlužba") == ["ударение", "služba"]
+
+
+def test_doc_words_apply_the_same_unicode_contract_as_identifiers():
+    """Documentation words fold exactly like identifier tokens (NFKC, then
+    casefold): a compatibility ligature, a full-width spelling, and the
+    German sharp s all land on the token an identifier would produce, so a
+    term seen in code and in docs is one term, not two."""
+    from glossabet.corpus.tokenize import doc_words
+
+    assert doc_words("Straße STRASSE ﬁle Ｆｕｌｌｗｉｄｔｈ Café CAFÉ") == [
+        "strasse", "strasse", "file", "fullwidth", "café", "café",
+    ]
+    assert tokenize_identifier("Straße_ﬁle_Ｆｕｌｌｗｉｄｔｈ") == [
+        "strasse", "file", "fullwidth",
+    ]
 
 
 def test_static_mark_table_matches_the_interpreter_when_versions_agree():
@@ -135,7 +157,9 @@ def test_static_mark_table_matches_the_interpreter_when_versions_agree():
     from glossabet.corpus.unicode_marks import MARK_RANGES, UNICODE_VERSION
 
     if unicodedata.unidata_version != UNICODE_VERSION:
-        return
+        pytest.skip(
+            f"interpreter Unicode {unicodedata.unidata_version} != table {UNICODE_VERSION}"
+        )
     from_table = {
         cp for start, end in MARK_RANGES for cp in range(start, end + 1)
     }

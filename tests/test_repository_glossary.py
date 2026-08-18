@@ -377,6 +377,31 @@ def test_divergence_folds_unicode_like_the_identifier_contract():
     assert result["canonical_missing_from_markdown"] == []
 
 
+def test_divergence_recognises_identifier_spellings_of_a_settled_term():
+    """GLOSSARY.md is written by people who paste identifiers: `ledger_entry`,
+    `ledger-entry`, `LedgerEntry`, a code span, or the words wrapped over a
+    line are all the settled term present, and must not be reported as
+    "canonical missing from markdown" with confidence."""
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{"id": "ledger-entry", "term": "Ledger Entry",
+                      "definition": "d", "status": "canonical"}],
+    }
+    for text in (
+        "- ledger_entry: one line of the ledger\n",
+        "The ledger-entry row.\n",
+        "See `ledger_entry` in code.\n",
+        "LedgerEntry is the class.\n",
+        "the ledger\nentry wraps\n",
+        "ledger  entry (double space)\n",
+    ):
+        result = repository_glossary_divergence(glossary, text.encode("utf-8"))
+        assert result["canonical_missing_from_markdown"] == [], text
+        assert result["complete"] is True
+    absent = repository_glossary_divergence(glossary, b"ledger and entry apart\n")
+    assert absent["canonical_missing_from_markdown"] == ["Ledger Entry"]
+
+
 def test_divergence_caps_its_work_and_says_so():
     glossary = {
         "schema_version": 1,

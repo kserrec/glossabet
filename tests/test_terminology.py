@@ -218,6 +218,28 @@ def test_bounds_are_reported(tmp_path):
     assert term["coverage"]["eligible_tokens"]["complete"] is True
 
 
+def test_terminology_cap_keeps_the_most_frequent_tokens_not_the_first_by_name():
+    """The top-N eligible tokens are the most frequent ones; a frequent
+    pair whose names sort last must still be analysed while 150 rare
+    fillers sorting first are the ones dropped — otherwise the strongest
+    parallel vocabulary in a large repository is silently never compared."""
+    fillers = {f"filler{index:03}": 2 for index in range(PAIR_TOP_N)}
+    alpha = {f"zzzalpha_{c}": 10 for c in ("record", "scheduler", "start")}
+    beta = {f"zzzbeta_{c}": 10 for c in ("record", "scheduler", "start")}
+    vocabulary = ProductionVocabulary.from_files([
+        ("a.py", "a", "python", fillers),
+        ("b.py", "b", "python", alpha),
+        ("c.py", "c", "python", beta),
+    ])
+    terminology = build_terminology(vocabulary, Counter())
+    pairs = {(s["a"], s["b"]) for s in terminology["synonym_candidates"]["items"]}
+    assert ("zzzalpha", "zzzbeta") in pairs
+    coverage = terminology["coverage"]["eligible_tokens"]
+    assert coverage["included_items"] == PAIR_TOP_N
+    assert coverage["dropped_items"] == len(fillers) + 5 - PAIR_TOP_N
+    assert coverage["complete"] is False
+
+
 def test_151st_eligible_token_is_counted_and_propagates_partial_coverage():
     # 151 single-token identifiers, each seen twice: 151 eligible tokens.
     vocabulary = ProductionVocabulary.from_files([
@@ -336,3 +358,17 @@ def test_clojure_repository_register_reports_kebab_case_and_exemplars(tmp_path):
     register = evidence["terminology"]["register"]
     assert register["identifier_styles_pct"] == {"kebab-case": 100.0}
     assert register["composition"]["used_by_reason"]["structurally_styled"] > 0
+
+    # Exemplars live in the bounded agent context (evidence carries none):
+    # every multi-token kebab identifier is offered as a kebab-case exemplar.
+    from glossabet.agent.agent_context import build_agent_context
+
+    context = build_agent_context(evidence, None)
+    exemplars = context["terminology"]["register"]["exemplars"]
+    assert exemplars["coverage"]["complete"] is True
+    by_name = {item["name"]: item["style"] for item in exemplars["items"]}
+    assert by_name == {
+        "pending-work": "kebab-case", "queue-state": "kebab-case",
+        "drain-queue": "kebab-case", "retry-limit": "kebab-case",
+        "worker-loop": "kebab-case", "job-runner": "kebab-case",
+    }

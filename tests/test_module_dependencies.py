@@ -28,15 +28,29 @@ def _qualified(module: str) -> str:
 
 def _imports(module: str) -> set[str]:
     path = PACKAGE / (_MODULE_NAMES[module].replace(".", "/") + ".py")
+    return _imports_of(path)
+
+
+def _imports_of(path: Path) -> set[str]:
+    """Absolute names of everything ``path`` imports, with relative imports
+    (``from .scanner import x``, ``from ..runtime import y``) resolved to
+    their absolute ``glossabet.…`` names — a relative spelling must not
+    slip past a forbidden direction (test-audit)."""
     tree = ast.parse(path.read_text(encoding="utf-8"))
+    package_parts = ["glossabet", *path.relative_to(PACKAGE).parent.parts]
     names: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module:
-            names.add(node.module)
-            if node.module.startswith("glossabet"):
-                names.update(
-                    f"{node.module}.{alias.name}" for alias in node.names
-                )
+        if isinstance(node, ast.ImportFrom):
+            if node.level:
+                base = package_parts[: len(package_parts) - (node.level - 1)]
+                module = ".".join(base + ([node.module] if node.module else []))
+            else:
+                module = node.module or ""
+            if not module:
+                continue
+            names.add(module)
+            if module.startswith("glossabet"):
+                names.update(f"{module}.{alias.name}" for alias in node.names)
         elif isinstance(node, ast.Import):
             names.update(alias.name for alias in node.names)
     return names

@@ -279,6 +279,33 @@ def test_plugin_runner_rejects_a_tampered_wheel(tmp_path):
     assert "integrity check" in result.stderr
 
 
+def test_plugin_runner_bundled_wheel_outranks_an_installed_glossabet(tmp_path):
+    """The digest guards the wheel that is *executed*: an importable
+    `glossabet` on any site-packages/dist-packages segment of sys.path — a
+    stale install, a squat — must lose to the bundled wheel, or the runner
+    would verify one artifact and run another. Under the real hook the
+    interpreter is `-I`, so a PYTHONPATH segment named site-packages is the
+    test's stand-in for a site directory; the executed version is what the
+    child prints. Sitting after the stdlib is the other half of the same
+    ordering; the version output proves only the site-packages half."""
+    site = tmp_path / "site-packages"
+    (site / "glossabet").mkdir(parents=True)
+    (site / "glossabet" / "__init__.py").write_text(
+        '__version__ = "0.0.0-squat"\n', encoding="utf-8"
+    )
+    (site / "glossabet" / "cli.py").write_text(
+        'def main(argv=None):\n    print("SQUATTED"); return 0\n', encoding="utf-8"
+    )
+    proc = subprocess.run(
+        [sys.executable, str(RUNNER), "--version"],
+        cwd=ROOT, text=True, capture_output=True,
+        env={**os.environ, "PYTHONPATH": str(site)},
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == f"glossabet {__version__}\n"
+    assert "SQUATTED" not in proc.stdout + proc.stderr
+
+
 def test_plugin_runner_pins_the_bundled_wheel_digest():
     import hashlib
     import re
@@ -300,18 +327,34 @@ def test_hook_interpreter_is_isolated_from_a_hostile_working_directory(tmp_path)
     import os
     import subprocess
 
+    import shlex
+
     hooks = json.loads((PLUGIN / "hooks" / "hooks.json").read_text())
     command = hooks["hooks"]["SessionStart"][0]["hooks"][0]["command"]
-    assert command.startswith("python3 -I -B ")
+    # Execute the hook's own command line (interpreter substituted, the
+    # plugin root expanded), so dropping `-I` from hooks.json — not merely
+    # from this test — is what makes the hostile module run.
+    argv = shlex.split(command.replace("$PLUGIN_ROOT", str(PLUGIN)))
+    assert argv[0] == "python3"
+    argv[0] = sys.executable
     (tmp_path / "encodings.py").write_text(
         'print("PWNED via encodings.py")\nraise SystemExit(99)\n'
     )
     (tmp_path / "a.py").write_text("x = 1\n")
-    runner = PLUGIN / "skills" / "glossabet" / "scripts" / "run_glossabet.py"
     proc = subprocess.run(
-        [sys.executable, "-I", "-B", str(runner), "brief", "."],
-        cwd=tmp_path, capture_output=True, text=True,
+        argv, cwd=tmp_path, capture_output=True, text=True,
         env={**os.environ, "PYTHONPATH": ":/opt/nothing"},
     )
     assert "PWNED" not in proc.stdout + proc.stderr
-    assert proc.returncode == 0
+    assert proc.returncode == 0, proc.stderr
+    # And the same command with the isolation flag removed is what would
+    # have executed the repository's module: the flag is doing the work.
+    naive = [arg for arg in argv if arg != "-I"]
+    proc = subprocess.run(
+        naive, cwd=tmp_path, capture_output=True, text=True,
+        env={**os.environ, "PYTHONPATH": ":/opt/nothing"},
+    )
+    # The hostile module runs before stdout exists, so its traceback (not
+    # its print) is the evidence; the exit is a Python startup failure.
+    assert proc.returncode != 0
+    assert str(tmp_path / "encodings.py") in proc.stderr

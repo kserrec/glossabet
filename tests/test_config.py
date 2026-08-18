@@ -263,3 +263,176 @@ def test_config_with_utf8_bom_loads(tmp_path):
         b"\xef\xbb\xbf" + json.dumps({"schema_version": 1, "ignore_paths": ["scratch"]}).encode()
     )
     assert load_config(tmp_path).ignore_paths == ("scratch",)
+
+
+def test_config_contract_rejects_what_the_shape_says_it_rejects(tmp_path):
+    """Every refusal `CONFIG_SHAPE`/SECURITY promise: unknown fields, unknown
+    roles, one path under two roles, more path rules than the stated cap, a
+    single path longer than the stated cap. Each names glossabet.json and
+    the reason; the cap cases sit exactly at the boundary (cap accepted,
+    cap + 1 refused) so a silently loosened or dropped cap fails here."""
+    from glossabet.corpus.config import MAX_PATH_LENGTH, MAX_PATH_RULES
+
+    def load(config):
+        (tmp_path / "glossabet.json").write_text(json.dumps(config))
+        return load_config(tmp_path)
+
+    for config, expected in (
+        ({"schema_version": 1, "ignore_pathz": ["x"]}, "unknown field(s): ignore_pathz"),
+        ({"schema_version": 1, "path_roles": {"prod": ["x"]}},
+         "unknown path role(s): prod"),
+        ({"schema_version": 1, "path_roles": {"test": ["qa"], "fixture": ["qa"]}},
+         "'qa' has both"),
+        ({"schema_version": 1, "ignore_paths": [f"p{i}" for i in range(MAX_PATH_RULES + 1)]},
+         f"at most {MAX_PATH_RULES} path rules"),
+        # counted across ignore_paths and every role together
+        ({"schema_version": 1,
+          "ignore_paths": [f"i{n}" for n in range(MAX_PATH_RULES // 2 + 1)],
+          "path_roles": {"test": [f"t{n}" for n in range(MAX_PATH_RULES // 2)]}},
+         f"at most {MAX_PATH_RULES} path rules"),
+        ({"schema_version": 1, "ignore_paths": ["x" * (MAX_PATH_LENGTH + 1)]},
+         f"exceeds {MAX_PATH_LENGTH} characters"),
+        ({"schema_version": 1, "path_roles": {"test": ["y" * (MAX_PATH_LENGTH + 1)]}},
+         f"exceeds {MAX_PATH_LENGTH} characters"),
+    ):
+        with pytest.raises(ConfigurationError) as info:
+            load(config)
+        assert "glossabet.json" in str(info.value)
+        assert expected in str(info.value), (expected, str(info.value))
+
+    # At the caps, accepted.
+    at_cap = load({
+        "schema_version": 1,
+        "ignore_paths": [f"p{i}" for i in range(MAX_PATH_RULES)],
+    })
+    assert len(at_cap.ignore_paths) == MAX_PATH_RULES
+    long_ok = load({"schema_version": 1, "ignore_paths": ["x" * MAX_PATH_LENGTH]})
+    assert long_ok.ignore_paths == ("x" * MAX_PATH_LENGTH,)
+
+
+def test_most_specific_configured_role_wins_regardless_of_role_or_declaration_order(tmp_path):
+    """Nested rules resolve by the deepest matching prefix — not by which
+    role is declared first, and not by the engine's own role order (a
+    production rule above a vendored one, or the reverse)."""
+    cases = (
+        ({"vendored": ["lib"], "production": ["lib/ours"]},
+         {"lib/ours/core.py": "production", "lib/other/dep.py": "vendored"}),
+        ({"production": ["lib/ours"], "vendored": ["lib"]},
+         {"lib/ours/core.py": "production", "lib/other/dep.py": "vendored"}),
+        ({"production": ["lib"], "vendored": ["lib/third"]},
+         {"lib/third/dep.py": "vendored", "lib/core.py": "production"}),
+        ({"test": ["lib"], "generated": ["lib/gen"], "production": ["lib/gen/keep"]},
+         {"lib/x.py": "test", "lib/gen/a.py": "generated",
+          "lib/gen/keep/b.py": "production"}),
+    )
+    for roles, expected in cases:
+        (tmp_path / "glossabet.json").write_text(json.dumps(
+            {"schema_version": 1, "path_roles": roles}
+        ))
+        config = load_config(tmp_path)
+        for path, role in expected.items():
+            assert config.role_for(path) == role, (roles, path)
+
+    # And end to end through the walk for the engine-order-inverting case.
+    (tmp_path / "glossabet.json").write_text(json.dumps(
+        {"schema_version": 1,
+         "path_roles": {"production": ["lib"], "vendored": ["lib/third"]}}
+    ))
+    _write(tmp_path / "lib" / "core.py")
+    _write(tmp_path / "lib" / "third" / "dep.py")
+    evidence = build_evidence(tmp_path)
+    assert {item["path"] for item in evidence["files"]["code"]} == {"lib/core.py"}
+    assert evidence["skipped"]["vendored"] == ["lib/third"]
+
+
+def test_hostile_config_family_is_user_error_or_deterministic_evidence(tmp_path):
+    """Seeded family of malformed, hostile, and merely odd glossabet.json
+    documents (wrong types, glob and traversal paths, NUL/newline/RLO/lone
+    surrogates in paths, at-cap and over-cap rule lists, invalid UTF-8 and
+    UTF-16): each is either a named user error or loads to the same
+    configuration twice and yields byte-identical evidence twice, and `scan`
+    exits 0/1 with no traceback. Ported from a hunter (test-audit)."""
+    import contextlib
+    import io
+    import random
+
+    rlo = "\u202e"
+    lone = "\ud800"
+    paths = [
+        "src", "src/", "/src", "./src", "src/../x", "tests", "vendor",
+        "src/generated", "тест", "ünïcode/dir", "a b/c", "a b", "*", "src/*",
+        "src?", "s[rc]", "", " ", " src", "src ", "src\\x", "x" * 512,
+        "x" * 513, "src\x00", "src\n", "K", "K", "ﬁ", "src/m.py",
+        "docs/r.md", "..", ".", "src//x", rlo + "src", lone, "src/" + lone,
+        "S", "SRC", "Src", "src/x/y/z/w", "\U0001f600",
+    ]
+    raw = ["", "{", "[]", "null", "\xff", '{"a":1,"a":2}', "{" * 5000 + "}" * 5000]
+    rng = random.Random(20260818)
+
+    def scalar():
+        return rng.choice([None, True, False, 0, 1, 1.0, -1, 2 ** 70, "1", "x",
+                           [], {}, [1], {"a": 1}, "src", float("nan")])
+
+    def path():
+        return rng.choice(paths) if rng.random() < 0.85 else scalar()
+
+    def path_list():
+        r = rng.random()
+        if r < 0.7:
+            return [path() for _ in range(rng.choice([0, 1, 2, 3, 10]))]
+        if r < 0.8:
+            return [path() for _ in range(rng.choice([499, 500, 501, 600]))]
+        return scalar()
+
+    def document():
+        config = {}
+        if rng.random() < 0.9:
+            config["schema_version"] = rng.choice([1, 1, 1, 1, "1", 1.0, True, 2, 0, None, -1])
+        if rng.random() < 0.7:
+            config["ignore_paths"] = path_list()
+        if rng.random() < 0.7:
+            if rng.random() < 0.85:
+                config["path_roles"] = {
+                    rng.choice(["production", "test", "fixture", "generated", "vendored",
+                                "Production", "prod", "", "nested"]):
+                    (path_list() if rng.random() < 0.9 else {"x": path_list()})
+                    for _ in range(rng.randint(0, 6))
+                }
+            else:
+                config["path_roles"] = scalar()
+        if rng.random() < 0.15:
+            config[str(scalar())] = scalar()
+        config = config if rng.random() < 0.95 else scalar()
+        text = (json.dumps(config) if rng.random() < 0.97
+                else rng.choice(raw + [json.dumps(config) + "\n\nx"]))
+        if rng.random() < 0.98:
+            return text.encode("utf-8", errors="surrogatepass")
+        return b"\xff\xfe" + text.encode("utf-16")
+
+    for directory in ("src", "tests", "vendor", "src/generated", "docs", "тест",
+                      "ünïcode/dir", "a b/c"):
+        (tmp_path / directory).mkdir(parents=True, exist_ok=True)
+        (tmp_path / directory / "m.py").write_text(
+            "payment_service = 1\ndef helper_thing(): pass\n"
+        )
+    (tmp_path / "docs" / "r.md").write_text("payment service docs\n")
+
+    loaded = 0
+    for case in range(150):
+        (tmp_path / "glossabet.json").write_bytes(document())
+        try:
+            first = load_config(tmp_path)
+        except ConfigurationError as exc:
+            assert "glossabet.json" in str(exc), case
+        else:
+            assert first == load_config(tmp_path), f"case {case}: load not deterministic"
+            evidence = json.dumps(build_evidence(tmp_path), sort_keys=True, allow_nan=False)
+            again = json.dumps(build_evidence(tmp_path), sort_keys=True, allow_nan=False)
+            assert evidence == again, f"case {case}: evidence not deterministic"
+            loaded += 1
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = main(["scan", str(tmp_path)])
+        assert code in (0, 1), f"case {case}: scan exit {code}: {err.getvalue()[-300:]}"
+        assert "Traceback" not in err.getvalue(), case
+    assert loaded >= 5

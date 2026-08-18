@@ -16,6 +16,32 @@ def test_version_matches_package(capsys):
     assert capsys.readouterr().out.strip() == f"glossabet {__version__}"
 
 
+def test_version_whose_output_cannot_be_written_is_not_a_success(monkeypatch):
+    """argparse's --version/--help exit 0 after printing; if that print never
+    reached the reader (disk full, pipe gone), reporting success would be a
+    lie. The guarded flush turns it into exit 1 and abandons stdout so the
+    interpreter's own exit-time flush stays quiet. A usage error keeps its
+    own status (the parser's user-error exit): it was never a success."""
+    import io
+    import sys
+
+    class FullDisk(io.StringIO):
+        def flush(self):
+            raise OSError(28, "No space left on device")
+
+    abandoned = []
+    monkeypatch.setattr("glossabet.cli._abandon_stdout", lambda: abandoned.append(True))
+    monkeypatch.setattr(sys, "stdout", FullDisk())
+    assert main(["--version"]) == EXIT_USER_ERROR
+    assert abandoned == [True]
+
+    monkeypatch.setattr(sys, "stderr", io.StringIO())
+    with pytest.raises(SystemExit) as usage:
+        main(["--no-such-flag"])
+    assert usage.value.code == EXIT_USER_ERROR
+    assert abandoned == [True, True]
+
+
 def test_no_command_is_user_error(capsys):
     assert main([]) == EXIT_USER_ERROR
     assert "usage" in capsys.readouterr().err.lower()
@@ -85,7 +111,7 @@ def test_permission_errors_are_user_errors_not_internal_defects(tmp_path, capsys
     locked.chmod(0)
     try:
         if os.access(locked / "repo", os.R_OK):
-            return  # running as root: nothing is unreadable
+            pytest.skip("running as root: nothing is unreadable")
         assert main(["brief", str(locked / "repo")]) == 1
         err = capsys.readouterr().err
         assert "Permission denied" in err and "Traceback" not in err
@@ -100,13 +126,18 @@ def test_stdout_write_failures_exit_one_quietly(monkeypatch, capsys):
     """A closed pipe (reader went away) exits 1 with nothing to say; a full
     disk exits 1 with the OS reason — neither is a defect, and neither may
     leave the interpreter to report an 'Exception ignored' exit 120."""
+    abandoned = []
+    monkeypatch.setattr("glossabet.cli._abandon_stdout", lambda: abandoned.append(True))
+
     def broken(_argv):
         raise BrokenPipeError(32, "Broken pipe")
 
     monkeypatch.setattr("glossabet.cli._run", broken)
-    monkeypatch.setattr("glossabet.cli._abandon_stdout", lambda: None)
     assert main([]) == 1
     assert capsys.readouterr().err == ""
+    # The quiet exit depends on stdout being abandoned before the interpreter's
+    # exit-time flush; a stub that merely swallowed the call proved nothing.
+    assert abandoned == [True]
 
     def full(_argv):
         raise OSError(28, "No space left on device")
@@ -115,6 +146,20 @@ def test_stdout_write_failures_exit_one_quietly(monkeypatch, capsys):
     assert main([]) == 1
     err = capsys.readouterr().err
     assert "No space left on device" in err and "Traceback" not in err
+
+    # End to end: a reader that closes the pipe early yields exit 1, not the
+    # interpreter's 120 from an unflushable stdout.
+    import subprocess
+    import sys
+    proc = subprocess.run(
+        [sys.executable, "-c",
+         "import os, sys; r, w = os.pipe(); os.close(r); os.dup2(w, 1)\n"
+         "from glossabet.cli import main; sys.exit(main(['--help']))"],
+        capture_output=True, timeout=30,
+    )
+    assert proc.returncode == 1, (proc.returncode, proc.stderr)
+    assert b"Exception ignored" not in proc.stderr
+    assert b"Traceback" not in proc.stderr
 
 
 def test_output_never_crashes_on_a_narrow_console_encoding(tmp_path, monkeypatch):
@@ -148,10 +193,20 @@ def test_output_never_crashes_on_a_narrow_console_encoding(tmp_path, monkeypatch
         assert "\\u2014" in text or "\\u2192" in text, command
 
 
-def test_root_inside_glossabet_out_is_refused(tmp_path):
+def test_root_inside_glossabet_out_is_refused(tmp_path, capsys):
+    """Scanning the output directory itself — or anything beneath it — would
+    write glossabet-out/glossabet-out/ and read Glossabet's own artifacts as
+    evidence. The refusal names that reason, so a bare exit 1 from any other
+    cause (no glossary, unreadable root) cannot stand in for it."""
     out = tmp_path / "glossabet-out"
-    out.mkdir()
-    assert main(["scan", str(out)]) == 1
+    nested = out / "deeper" / "repo"
+    nested.mkdir(parents=True)
+    (nested / "a.py").write_text("payment_service = 1\n")
+    for root in (out, nested):
+        assert main(["scan", str(root)]) == 1
+        err = capsys.readouterr().err
+        assert "inside a glossabet-out/ output directory" in err
+        assert not (root / "glossabet-out").exists()
 
 
 def test_lone_surrogates_in_repository_text_render_as_escapes(tmp_path):

@@ -305,6 +305,55 @@ def test_stamp_ignores_a_callers_git_dir_and_work_tree(tmp_path, monkeypatch):
     (a / "sub" / "x.py").write_text("y = 1\n")
     assert repository_git_stamp(a / "sub")["head"] == head_a
 
+    # The same class for the index: a hook's temporary or foreign index must
+    # not make ``dirty`` describe that index. Point GIT_INDEX_FILE at an
+    # index whose content disagrees with b's tree — the stamp still reads
+    # b as clean. (Under the mutation that inherits it, b reads dirty.)
+    monkeypatch.delenv("GIT_DIR")
+    monkeypatch.delenv("GIT_WORK_TREE")
+    foreign = tmp_path / "foreign-index"
+    foreign.write_bytes((a / ".git" / "index").read_bytes())
+    monkeypatch.setenv("GIT_INDEX_FILE", str(foreign))
+    assert repository_git_stamp(b) == {"head": head_b, "dirty": False}
+    # And the object-store selectors: an alternate object directory that
+    # cannot serve b's objects must not turn the stamp into head=None.
+    monkeypatch.setenv("GIT_OBJECT_DIRECTORY", str(tmp_path / "no-objects"))
+    monkeypatch.setenv("GIT_COMMON_DIR", str(a / ".git"))
+    assert repository_git_stamp(b) == {"head": head_b, "dirty": False}
+
+
+def test_git_calls_carry_a_timeout_and_no_prompt_and_degrade_when_git_stalls(
+    tmp_path, monkeypatch
+):
+    """Every git call runs with a timeout and credential prompts disabled;
+    a stalled git (network mount, a wrapper waiting on stdin) makes the
+    stamp unverified — head/dirty null — instead of hanging every command."""
+    import glossabet.runtime.git_state as git_state
+
+    _init_repo(tmp_path)
+    seen: list[dict] = []
+    real_run = subprocess.run
+
+    def recording_run(*args, **kwargs):
+        seen.append(kwargs)
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr(git_state.subprocess, "run", recording_run)
+    stamp = repository_git_stamp(tmp_path)
+    assert stamp["head"] and stamp["dirty"] is False
+    assert seen, "no git call recorded"
+    for kwargs in seen:
+        assert kwargs.get("timeout") == 30
+        assert kwargs["env"]["GIT_TERMINAL_PROMPT"] == "0"
+        assert not kwargs.get("shell")
+
+    def stalled_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], kwargs.get("timeout", 0))
+
+    monkeypatch.setattr(git_state.subprocess, "run", stalled_run)
+    assert repository_git_stamp(tmp_path) == {"head": None, "dirty": None}
+    assert git_state.path_git_state(tmp_path, "glossabet-out/glossary.json") is None
+
 
 def test_non_ascii_untracked_paths_never_crash_the_stamp(tmp_path):
     """git writes UTF-8 paths; under an ASCII/cp1252 locale the text-mode
@@ -348,16 +397,18 @@ def test_git_lookup_never_resolves_into_the_current_directory(tmp_path, monkeypa
     assert git_state.repository_git_stamp(tmp_path) == {"head": None, "dirty": None}
 
 
-def test_git_lookup_skips_unreadable_path_entries_and_links_into_the_repo(tmp_path, monkeypatch):
+def test_git_lookup_skips_unreadable_path_entries_and_links_into_the_repo(
+    tmp_path, tmp_path_factory, monkeypatch
+):
     from glossabet.runtime.executables import which_on_path
 
     _init_repo(tmp_path)
-    locked = tmp_path.parent / f"{tmp_path.name}-locked"
-    locked.mkdir()
+    # PATH entries must live off the repository root (tmp_path is the repo),
+    # in pytest-owned scratch rather than a sibling the fixture never reaps.
+    locked = tmp_path_factory.mktemp("locked")
     (locked / "git").write_text("#!/bin/sh\necho x\n")
     locked.chmod(0)
-    linkdir = tmp_path.parent / f"{tmp_path.name}-links"
-    linkdir.mkdir()
+    linkdir = tmp_path_factory.mktemp("links")
     (tmp_path / "git").write_text("#!/bin/sh\necho PWNED\n")
     (tmp_path / "git").chmod(0o755)
     os.symlink(tmp_path / "git", linkdir / "git")  # PATH dir link into the repo

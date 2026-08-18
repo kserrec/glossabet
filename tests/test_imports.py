@@ -433,3 +433,37 @@ def test_unresolved_import_specs_do_not_scan_every_code_file():
     section = build_imports_section(imports, files)
     assert time.monotonic() - start < 5, "import resolution was quadratic"
     assert section["external_top"][0]["count"] == 2000
+
+
+def test_one_word_bare_spec_never_resolves_to_a_nested_directory_of_that_name(tmp_path):
+    """`import os` / `import 'react'` must stay external even when some
+    nested directory happens to be called `os/` or `react/`; only a
+    top-level package of that name is an internal target (the OCaml
+    `open Translate` rule). Otherwise a test helper folder rewires the
+    dependency graph and a stdlib module reads as a repository module."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("import os\nimport json\napp_value = 1\n")
+    (tmp_path / "src" / "ui.js").write_text("import React from 'react';\nconst uiValue = 1;\n")
+    # Decoys under *production* paths, so the one-word rule — not the
+    # test/vendored role exclusion — is what keeps them out.
+    decoys = ("src/util/os", "src/lib/react", "src/json")
+    for nested in decoys:
+        (tmp_path / nested).mkdir(parents=True)
+        (tmp_path / nested / "helper.py").write_text("helper_value = 1\n")
+
+    evidence = build_evidence(tmp_path)
+    assert {item["path"] for item in evidence["files"]["code"]} >= {
+        f"{nested}/helper.py" for nested in decoys
+    }
+    imports = evidence["imports"]
+    edges = {(e["from"], e["to"]) for e in imports["internal_edges"]}
+    assert not any(to in set(decoys) for _, to in edges), edges
+    assert {"os", "json", "react"} <= {e["name"] for e in imports["external_top"]}
+
+    # A top-level package of that name is a legitimate internal target.
+    (tmp_path / "react").mkdir()
+    (tmp_path / "react" / "index.js").write_text("export const reactValue = 1;\n")
+    imports = build_evidence(tmp_path)["imports"]
+    edges = {(e["from"], e["to"]) for e in imports["internal_edges"]}
+    assert ("src", "react") in edges
+    assert "react" not in {e["name"] for e in imports["external_top"]}

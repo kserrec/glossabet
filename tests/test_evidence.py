@@ -4,6 +4,8 @@ evidence, nondeterminism, silent truncation, missed monorepo shape."""
 import json
 import os
 
+import pytest
+
 from glossabet.cli import main
 from glossabet.analysis.evidence import Limits, build_evidence, write_evidence
 
@@ -27,6 +29,16 @@ def make_repo(tmp_path):
     gout = tmp_path / "glossabet-out"
     gout.mkdir()
     (gout / "old.json").write_text('{"term": "contaminantword"}\n')
+    # Source-shaped canaries too: a `.json` is never read for vocabulary, so
+    # it alone cannot prove glossabet-out/ is excluded rather than skipped
+    # for its extension (test-audit). `.glossabet/` is a hidden directory,
+    # so its canary pins the outcome (no cache content in evidence), not
+    # which rule produced it.
+    (gout / "leak.py").write_text("outdirsourceword = 1\n")
+    (gout / "notes.md").write_text("outdirdocword is discussed here\n")
+    cache = tmp_path / ".glossabet"
+    cache.mkdir()
+    (cache / "cache.py").write_text("cachedirsourceword = 1\n")
     nm = tmp_path / "node_modules"
     nm.mkdir()
     (nm / "junk.js").write_text("var noisetokenword = 1;\n")
@@ -45,23 +57,66 @@ def test_sensitive_files_never_enter_evidence(tmp_path):
 
 
 def test_additional_private_key_and_credential_names_are_sensitive():
-    # Private-key / credential filename conventions beyond the original set.
+    """One representative per documented family (dotenv names and variants,
+    key/certificate extensions, SSH identities, credential stores, secret/
+    credential words), so dropping any one alternative from the pattern
+    set fails here rather than leaking through a family no test named."""
     from glossabet.corpus.scanner import is_sensitive
 
     for name in (
+        # dotenv: bare, prefixed, suffixed, and the .env.<stage> family
+        ".env", "prod.env", ".env.production", "app.env.local",
+        # private keys / certificates / stores, every extension alternative
+        "server.pem", "server.key", "cert.p12", "cert.pfx", "trust.jks",
+        "app.keystore", "cert.der", "private.p8", "server.ppk",
         "backup.kdbx", "key.asc", "key.gpg", "key.pgp",
-        "private.p8", "server.ppk", ".dockercfg",
-        "SERVER.PEM", "Key.GPG",  # case-insensitive
+        # SSH identities
+        "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519",
+        # credential stores
+        ".netrc", ".npmrc", ".pypirc", ".htpasswd", ".dockercfg",
+        # words anywhere in the name
+        "secrets.yaml", "my_secret_config.py", "credentials.json",
+        "SERVER.PEM", "Key.GPG", "ID_ED25519",  # case-insensitive
     ):
         assert is_sensitive(name), name
-    for name in ("main.py", "README.md", "data.json"):
+    for name in (
+        "main.py", "README.md", "data.json", "environment.py",
+        "id_card.py", "keyboard.py", "pemberton.md",
+    ):
+        # (`secretary.md` matches the `secret` word rule: over-exclusion is
+        # the safe direction and is deliberate.)
         assert not is_sensitive(name), name
+
+
+def test_sensitive_files_of_every_family_never_enter_evidence(tmp_path):
+    """End to end for the families the unit test names by pattern only: the
+    file bodies carry unique canary words that must appear nowhere in the
+    evidence document, and each file lands in the sensitive ledger."""
+    canaries = {
+        ".env.local": "DOTENVSTAGECANARY=1\n",
+        "deploy.env": "DOTENVSUFFIXCANARY=1\n",
+        "id_ed25519": "SSHIDENTITYCANARY\n",
+        ".npmrc": "//registry/:_authToken=NPMRCCANARY\n",
+        "client.p12": "PKCSCANARYBODY\n",
+        "credentials.json": '{"credentialcanary": 1}\n',
+    }
+    for name, body in canaries.items():
+        (tmp_path / name).write_text(body)
+    (tmp_path / "app.py").write_text("ordinary_module = 1\n")
+    evidence = build_evidence(tmp_path)
+    blob = json.dumps(evidence).casefold()
+    assert "canary" not in blob
+    assert sorted(evidence["skipped"]["sensitive"]) == sorted(canaries)
+    assert "ordinary" in blob
 
 
 def test_own_outputs_and_noise_dirs_excluded(tmp_path):
     blob = json.dumps(build_evidence(make_repo(tmp_path)))
     assert "zanzibar" not in blob  # GLOSSARY.md (contamination rule)
     assert "contaminantword" not in blob  # glossabet-out/
+    assert "outdirsourceword" not in blob  # glossabet-out/*.py
+    assert "outdirdocword" not in blob  # glossabet-out/*.md
+    assert "cachedirsourceword" not in blob  # .glossabet/
     assert "noisetokenword" not in blob  # node_modules/
 
 
@@ -665,7 +720,9 @@ def test_innocently_named_symlinks_cannot_launder_excluded_content(tmp_path):
     assert "innocent.txt" in evidence["skipped"]["sensitive"]
 
 
-def test_walk_reports_directory_symlinks_dangling_links_and_unlistable_dirs(tmp_path):
+def test_walk_reports_directory_symlinks_dangling_links_and_unlistable_dirs(
+    tmp_path, tmp_path_factory
+):
     """Nothing the walk meets and does not read is silent: an escaping
     directory link, a confined directory link (real path is walked), a
     dangling file link, and an unlistable directory each land in a ledger,
@@ -673,8 +730,7 @@ def test_walk_reports_directory_symlinks_dangling_links_and_unlistable_dirs(tmp_
     (tmp_path / "main.py").write_text("main_value = 1\n")
     (tmp_path / "real").mkdir()
     (tmp_path / "real" / "a.py").write_text("real_value = 1\n")
-    outside = tmp_path.parent / f"{tmp_path.name}-outside"
-    outside.mkdir()
+    outside = tmp_path_factory.mktemp("outside")  # pytest-owned, off the repo root
     (outside / "o.py").write_text("outsideleak = 1\n")
     os.symlink(outside, tmp_path / "docs_link")
     os.symlink(tmp_path / "real", tmp_path / "current")
@@ -699,7 +755,7 @@ def test_walk_reports_directory_symlinks_dangling_links_and_unlistable_dirs(tmp_
     ]
     budget = evidence["skipped"]["corpus_budget"]
     if listable:
-        return
+        pytest.skip("running as root: the locked directory is listable")
     assert budget["complete"] is False
     assert budget["walk_remainder"]["exact"] is False
     assert {"path": "locked", "reason": "unreadable-directory"} in (
@@ -724,11 +780,16 @@ def test_non_utf8_text_is_confessed_not_decoded_into_invented_vocabulary(tmp_pat
     assert budget["complete"] is False
     assert {"path": "legacy.py", "reason": "not-utf-8"} in budget["skipped"]["sample"]
     assert {"path": "notes.md", "reason": "not-utf-8"} in budget["skipped"]["sample"]
-    # A UTF-8 file with a BOM and real accents still reads normally.
-    (tmp_path / "legacy.py").write_bytes("\ufeffnaïve_value = 1\n".encode("utf-8"))
+    # A UTF-8 file with a BOM and real accents still reads normally, and the
+    # BOM is not content: a first-line `import` (anchored at line start)
+    # is still seen, so the module's dependency edge is not lost.
+    (tmp_path / "legacy.py").write_bytes(
+        "\ufeffimport os\nnaïve_value = 1\n".encode("utf-8")
+    )
     (tmp_path / "notes.md").unlink()
     evidence = build_evidence(tmp_path)
     assert "naïve" in json.dumps(evidence, ensure_ascii=False)
+    assert "os" in {e["name"] for e in evidence["imports"]["external_top"]}
 
 
 def test_fixture_package_manifests_are_not_monorepo_sub_roots(tmp_path):
@@ -765,7 +826,7 @@ def test_unstatable_source_files_make_the_corpus_incomplete(tmp_path):
     locked.chmod(0o444)  # listable, not traversable: stat fails with EACCES
     try:
         if os.access(locked / "a.py", os.R_OK):
-            return  # root: nothing is unstatable
+            pytest.skip("running as root: nothing is unstatable")
         evidence = build_evidence(tmp_path)
     finally:
         locked.chmod(0o755)

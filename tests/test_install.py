@@ -436,19 +436,36 @@ def test_claude_install_outside_a_skills_directory_does_not_promise_plugin_loadi
     assert "Every Claude Code session will run" in out
 
 
-def test_hook_never_persists_a_repository_local_glossabet(tmp_path, monkeypatch):
+@pytest.mark.skipif(os.name == "nt", reason="POSIX shell wrapper")
+def test_hook_never_persists_a_repository_local_glossabet(tmp_path, monkeypatch, capsys):
     """`install --agent claude` run from a hostile repository whose root ships
     a `glossabet` script (and a PATH that searches `.`) must not write that
-    file's path into hooks.json — every future session would execute it."""
-    from glossabet.install.claude_plugin import _candidate_executables
-
+    file's path into hooks.json — every future session would execute it.
+    Asserted on the hooks.json actually written, not on candidate selection:
+    a regression anywhere between choosing and persisting must show here."""
     repo = tmp_path / "hostile"
     repo.mkdir()
     fake = repo / "glossabet"
     fake.write_text(f"#!/bin/sh\necho 'glossabet {__version__}'\n")
     fake.chmod(0o755)
+    legitimate = _wrapper_executable(tmp_path / "tools")
+    home = tmp_path / "home"
     monkeypatch.chdir(repo)
-    monkeypatch.setenv("PATH", f".:{repo}:{os.environ.get('PATH', '')}")
     monkeypatch.setattr("sys.argv", ["python", "-m", "glossabet"])
-    for candidate in _candidate_executables():
-        assert not str(candidate.resolve()).startswith(str(repo.resolve()))
+
+    monkeypatch.setenv("PATH", f".:{repo}:{legitimate.parent}:{os.environ.get('PATH', '')}")
+    code, destination = _claude_install(home, executable=None)
+    assert code == EXIT_OK, capsys.readouterr()
+    hooks = json.loads((destination / CLAUDE_HOOKS_RELATIVE).read_text("utf-8"))
+    command = hooks["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+    assert command == f'"{legitimate}" brief .'
+    assert str(repo) not in json.dumps(hooks)
+
+    # With no legitimate install anywhere on PATH the hostile file still must
+    # not be chosen: the install refuses rather than persisting it.
+    monkeypatch.setenv("PATH", f".:{repo}")
+    other_home = tmp_path / "home2"
+    code, destination = _claude_install(other_home, executable=None)
+    assert code != EXIT_OK
+    assert not (destination / CLAUDE_HOOKS_RELATIVE).exists()
+    assert "cannot resolve the glossabet executable" in capsys.readouterr().err

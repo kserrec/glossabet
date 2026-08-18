@@ -417,8 +417,8 @@ Glossabet program or its output artifacts.
   `.gitignore`; it also works for subproject scans inside a larger worktree,
   and moving a file across the boundary still exposes the non-output side.
   Regressions:
-  `test_hostile_git_config_does_not_execute_code` and
-  `tests/test_freshness.py`.
+  `test_hostile_git_config_does_not_execute_code` and the freshness tests
+  in `tests/test_git_state.py`.
 - **Malformed JSON is classified, not blamed on an internal defect.** Graph
   problems warn and fall back to lexical evidence; configuration and glossary
   problems are user errors; cache problems are misses. This includes wrong

@@ -6,6 +6,8 @@ import hashlib
 import json
 import os
 
+import pytest
+
 from glossabet import __version__
 from glossabet.corpus.cache import CACHE_VERSION, cache_path, clear_cache, load_cache
 from glossabet.analysis.evidence import build_evidence
@@ -260,10 +262,56 @@ def test_cache_clear_reports_an_unlistable_entry_instead_of_crashing(tmp_path, m
     monkeypatch.setenv("GLOSSABET_CACHE_DIR", str(root))
     try:
         if os.access(locked, os.R_OK):
-            return  # root can list anything
+            pytest.skip("running as root: every directory is listable")
         report = clear_cache()
     finally:
         locked.chmod(0o755)
     assert report["removed_entries"] == 1
     assert report["unrecognized_left_in_place"] == ["c" * 64]
     assert report["root_removed"] is False
+
+
+def test_malformed_cache_entries_are_misses_never_crashes_or_stale_evidence(tmp_path):
+    """A cache whose envelope is valid but whose per-file entries are the
+    wrong shape (a hand edit, a crash mid-write, a future format) must read
+    as a miss for those files: the warm scan re-extracts them and stays
+    byte-identical to a cold scan. Without the entry-shape check every scan
+    would crash on the first malformed entry (probed by the audit)."""
+    root = make_repo(tmp_path)
+    build_evidence(root, cache=True)
+    path = cache_path(root)
+    good = json.loads(path.read_text(encoding="utf-8"))
+    cold = as_bytes(build_evidence(root, cache=False))
+    assert set(good["files"]) == {"a.py", "b.py", "README.md"}
+
+    def corrupt(mutate):
+        data = json.loads(json.dumps(good))
+        mutate(data["files"])
+        path.write_text(json.dumps(data), encoding="utf-8")
+        stats: dict = {}
+        warm = build_evidence(root, cache=True, stats=stats)
+        assert as_bytes(warm) == cold
+        return stats["extracted"]
+
+    # Every corruption family: wrong container, wrong field types, negative
+    # counts, booleans where ints belong, missing fields, wrong kind.
+    assert corrupt(lambda f: f.__setitem__("a.py", "not-a-dict")) == 1
+    assert corrupt(lambda f: f["a.py"].__setitem__("identifiers", ["x"])) == 1
+    assert corrupt(lambda f: f["a.py"]["identifiers"].__setitem__("payment", -1)) == 1
+    assert corrupt(lambda f: f["a.py"]["identifiers"].__setitem__("payment", True)) == 1
+    assert corrupt(lambda f: f["a.py"].__setitem__("imports", "os")) == 1
+    assert corrupt(lambda f: f["a.py"].__setitem__("size", "12")) == 1
+    assert corrupt(lambda f: f["a.py"].__setitem__("size", True)) == 1
+    assert corrupt(lambda f: f["a.py"].__setitem__("imports", [7])) == 1
+    assert corrupt(lambda f: f["a.py"].pop("language")) == 1
+    assert corrupt(lambda f: f["a.py"].__setitem__("kind", "doc")) == 1
+    assert corrupt(lambda f: f["README.md"].__setitem__("words", [["billing", 1]])) == 1
+    assert corrupt(lambda f: f["README.md"].__setitem__("word_total", -3)) == 1
+    assert corrupt(lambda f: f["README.md"].pop("word_total")) == 1
+    # Two entries broken at once: only those two are re-extracted.
+    def two(f):
+        f["a.py"]["identifiers"] = None
+        f["b.py"]["language"] = 7
+    assert corrupt(two) == 2
+    # And an intact cache re-extracts nothing.
+    assert corrupt(lambda f: None) == 0

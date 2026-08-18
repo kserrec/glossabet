@@ -1,6 +1,6 @@
 # Glossabet — Plan
 
-Status: **Phases 0–22, 24–32, 34–42 complete (36.8, live
+Status: **Phases 0–22, 24–32, 34–43 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
 in progress at 33.2; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-17.
@@ -923,6 +923,81 @@ launcher `py` is a bare name that `cmd.exe` would resolve through the
 current directory (a repo-shipped `py.bat`); a portable absolute-launcher
 form needs the Windows plugin probe (Phase 33.2 territory) — recorded as a
 known limit in SECURITY.md. R2 (hook quoting of `\`/UNC) unchanged.
+
+### Phase 43 — Test audit round 1 (whole suite) ✅ 2026-08-18
+
+The suite judged, not the product: five auditors ran ~330 product mutations
+across all 33 test files (every test added this session falsified) and
+checked every documented promise against the suite. Baseline 582 tests,
+deterministic across three runs. Repairs and additions landed in seven
+batches of ≤10, each cold-reviewed by a fresh agent before the next; every
+new or repaired test was falsified against a named product mutation.
+
+- **Repaired (proven worthless / wrong thing / fragile):** the "hostile
+  glossary" drift-budget test whose loop never ran and the alias-suppression
+  test whose token was never a candidate (both now exercise the loop and the
+  scoped rule); the reconcile clip test (unscoped concept short-circuited);
+  the 10.6 s stale-evidence test whose four assertions were satisfied by
+  lagging committed evidence regardless of mutation (now brought current
+  first, `build_evidence` memoized, every detector asserted as an *added*
+  error, and — for the first time — proof the currency gate can go green);
+  `test_partial_case_runs…` (would have overwritten committed
+  `evaluation/results.json` on regression); the plugin runner tests
+  (append-after-site-packages passed); the hook-isolation test (ran the
+  hook's own command line, not `-I` typed by the test); `_abandon_stdout`
+  no-op stub; happy-path-only evaluator tests (every failing side now
+  asserted); root-skip `return`s → `pytest.skip`; a Unicode-version check
+  that disabled itself; scratch dirs written beside `tmp_path`; brief
+  git-state test without git-config isolation.
+- **Proven gaps pinned (class-level, ~45):** drift/validate coverage flags
+  (orphan under partial corpus, unresolved ledger reason, watched "at least
+  N", vocabulary-omission reasons wired, contiguous compound match, compound
+  canonical not token-indexed, entry-level clip, ownership order, same-
+  concept duplicate alias, `_`/`-` divergence forms, NFC both directions,
+  non-canonical concepts excluded, over-long compound reason, ordering under
+  the findings cap); config contract (every refusal + caps at the boundary +
+  most-specific role wins in either engine order); sensitive-name families
+  (unit + end-to-end canaries); git timeout/no-prompt/stall degradation and
+  the full env scrub; artifact modes; brief/managed-block "untrusted
+  repository input" label; malformed cache entries; one-word bare import
+  spec; cased-script combining marks; doc-word NFKC+casefold contract; BOM
+  vs first-line import; member-token cap; top-N by frequency; damaged
+  managed blocks still stripped; `read_bounded_bytes` requests cap+1; every
+  reviewer/agent verifier gate (blinding, trace, usefulness, canary, hook
+  evidence, history coherence); run.py currency checks (case order, source
+  metadata, local register, threshold targets); distribution scan reaches
+  every archive layer; ~16 peripheral workflow-checker rules; relative
+  imports resolved in the dependency ratchet.
+- **New ratchets:** `tests/test_trust_ratchets.py` — no network module, no
+  eval/exec/dynamic import, subprocess only in the two documented modules
+  and never `shell=`, no `sys.path` mutation (the trust documents' promises,
+  previously enforced by nothing).
+- **Hunters → tests:** seeded verifier-mutation family (3 files, 400 cases;
+  finds the once-unguarded OverflowError), hostile config / glossary / graph
+  families (`tests/test_config.py`, `test_glossary.py`, `test_graphify.py`);
+  each ≤2 s.
+- **Docs:** SECURITY.md pointed at the real freshness tests.
+- Suite: 621 tests, ~60 s (slowest: the stale-evidence test at 6 s, sixteen currency mutations).
+
+**Product findings handed to a bughunt pass (not fixed here):**
+`scripts/plugin_smoke.py::_extract_sdist` `NameError` (`name` undefined) —
+the sdist smoke probe cannot run; workflow-checker bypasses in the checker
+itself (`|| true`, `continue-on-error: true`, `if: false` on a required
+step, `toJSON()/format()` wrappers, `curl … | sudo bash`, `secrets.` in a
+top-level `env:`); `evaluation/run.py` genuineness does not check
+`recall_true_positive ⊆ true_positive` (a phantom recall item with an empty
+`false_negative` list verifies clean); `EvidenceIndex.compound_complete` is
+index-wide (one over-cap glossary term marks every compound count inexact —
+over-conservative, not wrong).
+
+**Pending Kyle's ruling:** `examples/payment-service/glossabet-out/evidence.json`
+is a stale schema-7 artifact stamped with the dev repo's git head; nothing
+reads it (the walkthrough regenerates); recommend deleting it from the
+example (a derived report, not part of the sample).
+
+**Not deleted (proposed only, per the test-audit rule):** the ~6 redundant
+pairs listed in the report (cohesion NaN vs overflow; three invisible-
+character tests; two confined-symlink tests; two warm-cache tests).
 
 ### Owner self-testing pause — active, not an implementation phase
 

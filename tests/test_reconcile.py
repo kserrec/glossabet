@@ -5,9 +5,12 @@ concept."""
 
 import json
 
+import pytest
+
 from glossabet.cli import main
 from glossabet.analysis.evidence import Limits, build_evidence
 from glossabet.glossary.store import save_glossary, validate_glossary
+from glossabet.glossary.matching import EvidenceIndex
 from glossabet.glossary.reconcile import build_validation
 
 GLOSSARY = {
@@ -200,6 +203,14 @@ def test_partial_inventory_does_not_claim_missing_bindings_or_orphans(
                 ("file", "file:z/hidden.py"),
                 ("module", "module:z"),
             )
+        ] + [
+            # No bindings at all: the term lives only in the file the budget
+            # cut. Nothing may call it orphaned on a partial corpus.
+            {
+                "id": "unbound", "term": "Hidden Symbol",
+                "definition": "A concept with no bindings.",
+                "status": "canonical",
+            }
         ],
     }
 
@@ -209,9 +220,14 @@ def test_partial_inventory_does_not_claim_missing_bindings_or_orphans(
     assert validation["orphaned_concepts"]["items"] == []
     assert validation["coverage"]["production_corpus_complete"] is False
     assert validation["coverage"]["repository_corpus_complete"] is False
-    assert validation["coverage"]["collections"]["orphaned_concepts"][
-        "total_items_exact"
-    ] is False
+    collections = validation["coverage"]["collections"]
+    assert collections["orphaned_concepts"]["total_items_exact"] is False
+    # Every binding is merely uncertain here, and this ledger must say why.
+    assert collections["unresolved_bindings"]["total_items_exact"] is False
+    assert any(
+        "inventory" in reason
+        for reason in collections["unresolved_bindings"]["reasons"]
+    ), collections["unresolved_bindings"]
     assert validation["total_findings_complete"] is False
 
 
@@ -716,13 +732,17 @@ def test_scoped_sampled_fragmentation_is_confessed(tmp_path):
 
 
 def test_clip_only_compound_spread_is_not_reported_as_sampled(tmp_path):
-    # Six single-module files using a compound term: the display sample
+    # Six files in one module using a compound term: the display sample
     # clips to five locations but the module count is exact, so nothing
     # was suppressed and the ledger must stay complete.
     src = tmp_path / "src"
     src.mkdir()
     for index in range(6):
         (src / f"f{index}.py").write_text("payment_request = 1\n")
+    # The concept is SCOPED (the guard reads `scope is not None and
+    # match_kind == "token" and locations_truncated`): only a scoped compound
+    # reaches the match-kind branch this test exists to pin — an unscoped one
+    # short-circuits before it and proves nothing about compounds.
     glossary = {
         "schema_version": 1,
         "concepts": [{
@@ -730,6 +750,7 @@ def test_clip_only_compound_spread_is_not_reported_as_sampled(tmp_path):
             "term": "Payment Request",
             "definition": "d",
             "status": "canonical",
+            "scope": {"path_prefixes": ["src"]},
         }],
     }
     evidence = build_evidence(tmp_path)
@@ -738,24 +759,74 @@ def test_clip_only_compound_spread_is_not_reported_as_sampled(tmp_path):
     ledger = validation["fragmentation"]["coverage"]
     assert ledger["complete"] is True
     assert ledger["reasons"] == []
+    # And the single-token sibling in the same scope IS suppressed when its
+    # entry-level location sample was clipped: the guard fires for tokens.
+    for index in range(6, 12):
+        (tmp_path / "src" / f"f{index}.py").write_text("payment = 1\n")
+    glossary["concepts"][0]["term"] = "Payment"
+    from glossabet.analysis.evidence import Limits
+    evidence = build_evidence(tmp_path, Limits(locations_per_term=2))
+    ledger = build_validation(evidence, glossary)["fragmentation"]["coverage"]
+    assert ledger["complete"] is False
+    assert any("suppressed" in reason for reason in ledger["reasons"])
 
 
-def test_nfd_paths_match_nfc_scopes_and_bindings(tmp_path):
-    """macOS reports decomposed directory names; a scope or file binding the
-    author typed composed must still match, or a real concept reads as
-    'absent from code' and its binding as 'no longer resolves'."""
+@pytest.mark.parametrize("disk_form,typed_form", [("NFD", "NFC"), ("NFC", "NFD")])
+def test_paths_match_scopes_and_bindings_across_unicode_forms(
+    tmp_path, disk_form, typed_form
+):
+    """macOS reports decomposed directory names and authors paste either
+    form (a name copied from `ls` on macOS is NFD); whichever side is
+    composed, a scope or file binding must still match, or a real concept
+    reads as 'absent from code' and its binding as 'no longer resolves'."""
     import unicodedata
 
-    nfd_dir = unicodedata.normalize("NFD", "café")
-    nfc_dir = unicodedata.normalize("NFC", "café")
-    (tmp_path / nfd_dir).mkdir()
-    (tmp_path / nfd_dir / "latte.py").write_text("class CafeLatte:\n    pass\n")
+    on_disk = unicodedata.normalize(disk_form, "café")
+    typed = unicodedata.normalize(typed_form, "café")
+    assert on_disk != typed
+    (tmp_path / on_disk).mkdir()
+    (tmp_path / on_disk / "latte.py").write_text("class CafeLatte:\n    pass\n")
     glossary = {"schema_version": 1, "concepts": [{
         "id": "cafe", "term": "Cafe", "definition": "d", "status": "canonical",
-        "scope": {"path_prefixes": [nfc_dir]},
-        "bindings": [{"ref": f"file:{nfc_dir}/latte.py"}, {"ref": "symbol:CafeLatte"}],
+        "scope": {"path_prefixes": [typed]},
+        "bindings": [{"ref": f"file:{typed}/latte.py"}, {"ref": "symbol:CafeLatte"},
+                     {"ref": f"module:{typed}"}],
     }]}
     evidence = build_evidence(tmp_path)
     validation = build_validation(evidence, glossary)
     assert validation["unresolved_bindings"]["items"] == []
     assert validation["orphaned_concepts"]["items"] == []
+    occurrence = EvidenceIndex(evidence, ["Cafe"]).code_term_occurrence(
+        "Cafe", (typed,)
+    )
+    assert occurrence["count"] == 1 and occurrence["count_complete"] is True
+
+
+def test_only_canonical_concepts_are_judged_for_orphans_and_bindings(tmp_path):
+    """Proposed and deprecated concepts are not settled vocabulary: an absent
+    proposed term is not "orphaned" and its dangling binding is not a drift
+    signal — those findings would push a human toward treating a proposal
+    as a decision. Watched terms keep their own drift section."""
+    (tmp_path / "app.py").write_text("payment_service = 1\n")
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {"id": "payment", "term": "Payment", "definition": "d",
+             "status": "canonical", "bindings": [{"ref": "symbol:payment_service"}]},
+            {"id": "ledger", "term": "Ledger", "definition": "d",
+             "status": "proposed", "bindings": [{"ref": "symbol:GhostLedger"}]},
+            {"id": "voucher", "term": "Voucher", "definition": "d",
+             "status": "deprecated", "bindings": [{"ref": "file:missing.py"}]},
+        ],
+    }
+    assert validate_glossary(glossary) == []
+    validation = build_validation(build_evidence(tmp_path), glossary)
+    assert validation["orphaned_concepts"]["items"] == []
+    assert validation["unresolved_bindings"]["items"] == []
+    # Flip the proposal to canonical: now it is judged, and both fire.
+    glossary["concepts"][1]["status"] = "canonical"
+    judged = build_validation(build_evidence(tmp_path), glossary)
+    assert [f["concept_id"] for f in judged["orphaned_concepts"]["items"]] == ["ledger"]
+    assert [f["ref"] for f in judged["unresolved_bindings"]["items"]] == [
+        "symbol:GhostLedger"
+    ]

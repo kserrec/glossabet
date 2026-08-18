@@ -139,3 +139,82 @@ def test_bounded_text_redacts_repo_root_and_home(tmp_path):
     assert str(Path.home()) not in out
     assert "<REPO>" in out and "<HOME>" in out
     assert "<REVIEW_WORKSPACE>" in out
+
+
+def test_reviewer_verifier_enforces_every_blinding_trace_and_usefulness_gate(tmp_path):
+    """The verifier is the release CLI's only word on second-reviewer
+    evidence, so each gate it documents must be proven to fire on its own
+    input: an unblinded reviewer, a trace that ran anything but reading the
+    packet (or too many commands, or a failing one), limits outside their
+    ceilings, a packet carrying usefulness labels or a stale schema, and —
+    kept consistent with its own recomputation so no other error masks it —
+    a usefulness rate below the threshold. Genuineness mode throughout."""
+    from evaluation import review
+
+    original = json.loads(RESULTS.read_text(encoding="utf-8"))
+    packet = json.loads(PACKET.read_text(encoding="utf-8"))
+    assert review.verify_results(RESULTS, PACKET) == []
+
+    def verify(results_doc=None, packet_doc=None):
+        results_path = tmp_path / "results.json"
+        packet_path = tmp_path / "packet.json"
+        results_path.write_text(json.dumps(results_doc or original), encoding="utf-8")
+        packet_path.write_text(json.dumps(packet_doc or packet), encoding="utf-8")
+        return review.verify_results(results_path, packet_path)
+
+    def mutated(mutate):
+        doc = deepcopy(original)
+        mutate(doc)
+        return doc
+
+    metadata = "reviewer identity or blinding metadata is malformed"
+    trace = "second-reviewer trace is missing or unbounded"
+    for mutate, expected in (
+        (lambda d: d["reviewer"].__setitem__("blinded_to_primary_labels", False), metadata),
+        (lambda d: d["reviewer"].__setitem__("kind", "manual"), metadata),
+        (lambda d: d["reviewer"]["execution"].__setitem__("sandbox", "workspace-write"), metadata),
+        (lambda d: d["reviewer"]["execution"].__setitem__("repository_available", True), metadata),
+        (lambda d: d["reviewer"]["execution"]["trace_limits"].__setitem__("commands", 0), metadata),
+        (lambda d: d["reviewer"]["execution"]["trace_limits"].__setitem__(
+            "commands", review.TRACE_LIMIT_CEILINGS["commands"] + 1), metadata),
+        (lambda d: d["reviewer"]["input_identity"].__setitem__("prompt_sha256", "nothex"), metadata),
+        (lambda d: d["reviewer"].__setitem__("trace", []), trace),
+        (lambda d: d["reviewer"].__setitem__(
+            "trace", d["reviewer"]["trace"] * (d["reviewer"]["execution"]["trace_limits"]["commands"] + 1)
+        ), trace),
+        (lambda d: d["reviewer"]["trace"][0].__setitem__("command", "cat evaluation/results.json"), trace),
+        (lambda d: d["reviewer"]["trace"][0].__setitem__("exit_code", 1), trace),
+        (lambda d: d["reviewer"]["trace"][0].__setitem__(
+            "output_preview", "x" * (d["reviewer"]["execution"]["trace_limits"]["stored_output_characters"] + 2)
+        ), trace),
+        (lambda d: d.__setitem__("evaluation_results_sha256", "zz"), "evidence digests are malformed"),
+        (lambda d: d.__setitem__("schema_version", 0), "result schema is stale"),
+    ):
+        errors = verify(mutated(mutate))
+        assert any(expected in error for error in errors), (expected, errors)
+
+    # Packet gates: labels leaking through, or a stale schema.
+    leaking = deepcopy(packet)
+    leaking["findings"][0]["useful"] = True
+    assert any("contains a usefulness label" in e for e in verify(packet_doc=leaking))
+    stale = deepcopy(packet)
+    stale["schema_version"] = 0
+    assert any("packet schema is stale" in e for e in verify(packet_doc=stale))
+    duplicate = deepcopy(original)
+    duplicate["comparison"]["comparisons"].append(duplicate["comparison"]["comparisons"][0])
+    assert "reviewer comparison records are missing or malformed" in verify(duplicate)
+
+    # Usefulness threshold: mark every judgment useless and rebuild the
+    # comparison honestly, so the only remaining complaint is the threshold.
+    useless = deepcopy(original)
+    for judgment in useless["judgments"]:
+        judgment["useful"] = False
+    rebuilt = review._review_results(
+        packet, {"judgments": useless["judgments"]},
+        review._stored_primary_labels(useless),
+        evaluation_results_sha256=useless["evaluation_results_sha256"],
+        reviewer=useless["reviewer"],
+    )
+    errors = verify(rebuilt)
+    assert "second-reviewer usefulness threshold does not pass" in errors
+    assert not any("comparisons or input digests are stale" in e for e in errors)

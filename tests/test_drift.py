@@ -151,10 +151,50 @@ def test_canonical_overloaded(tmp_path):
 
 
 def test_terms_already_in_glossary_are_not_parallel_findings(tmp_path):
-    # "charge" parallels nothing as a *new* term — it's a known alias and
-    # belongs to the watched check, not the parallel check.
-    parallel = drift_for(tmp_path)["parallel_terms"]["items"]
-    assert all(f["new_term"] != "charge" for f in parallel)
+    """A token the glossary already owns — as a term or an alias — is a
+    *watched* matter, not a parallel-term finding, but only where the owner's
+    scope actually covers the occurrence: an alias owned in a disjoint scope
+    does not suppress the finding elsewhere. Built so `charge` really is a
+    synonym candidate of `payment` (shared contexts), so the suppression is
+    exercised rather than vacuous."""
+    (tmp_path / "pay").mkdir()
+    (tmp_path / "pay" / "pay.py").write_text(
+        "payment_record = 1\npayment_scheduler = 2\nstart_payment = 3\n"
+        "payment_record_id = 4\n"
+    )
+    (tmp_path / "pay" / "gw.py").write_text(  # the collision happens inside pay/
+        "charge_record = 1\ncharge_scheduler = 2\nstart_charge = 3\n"
+    )
+    evidence = build_evidence(tmp_path)
+    parallel_new_terms = lambda glossary: {
+        f["new_term"] for f in build_drift(evidence, glossary)["parallel_terms"]["items"]
+    }
+
+    unowned = {"schema_version": 1, "concepts": [{
+        "id": "payment", "term": "Payment", "definition": "d", "status": "canonical",
+    }]}
+    assert "charge" in parallel_new_terms(unowned)  # the candidate is real
+
+    owned = {"schema_version": 1, "concepts": [{
+        "id": "payment", "term": "Payment", "definition": "d", "status": "canonical",
+        "aliases": [{"term": "charge", "status": "discouraged"}],
+    }]}
+    assert "charge" not in parallel_new_terms(owned)
+
+    # Scoped canonical `Payment` (pay/): an alias owner of `charge` whose
+    # scope overlaps pay/ suppresses the finding; an alias owner in a disjoint
+    # scope (billing/) does not — the token is unowned where the collision
+    # happens. (A token canonical anywhere skips the pair outright, by design.)
+    scoped = {"schema_version": 1, "concepts": [
+        {"id": "payment", "term": "Payment", "definition": "d", "status": "canonical",
+         "scope": {"path_prefixes": ["pay"]}},
+        {"id": "other", "term": "Other", "definition": "d", "status": "canonical",
+         "scope": {"path_prefixes": ["pay"]},
+         "aliases": [{"term": "charge", "status": "discouraged"}]},
+    ]}
+    assert "charge" not in parallel_new_terms(scoped)
+    scoped["concepts"][1]["scope"] = {"path_prefixes": ["billing"]}
+    assert "charge" in parallel_new_terms(scoped)
 
 
 def test_bounds_and_determinism(tmp_path):
@@ -510,45 +550,50 @@ def test_scoped_zero_from_a_clipped_location_sample_is_confessed(tmp_path):
     assert any("location sample" in reason for reason in ledger["reasons"])
 
 
-def test_parallel_term_scope_checks_are_bounded_against_a_hostile_glossary(
-    tmp_path,
-):
-    # A glossary within the accepted concept/alias ceilings can otherwise make
-    # owner-scope overlap O(concepts x owner-scopes) — minutes of CPU. The
-    # comparison budget must bound it and the section report itself partial.
+def test_parallel_term_scope_checks_are_bounded_against_many_owner_scopes(tmp_path):
+    """The other side of the prefix-pair budget: not one concept with
+    thousands of prefixes but thousands of owner concepts, each with a few
+    prefixes, all owning the token a parallel candidate collides with. The
+    overlap check must reach the loop (the corpus makes `run`/`execution`
+    genuine synonym candidates), trip the budget, and report the section
+    partial — never spend minutes and never claim completeness."""
     import time
 
-    (tmp_path / "a.py").write_text(
-        "foo_value = 1\nbar_value = 2\n" * 5
-        + "def use(foo_value, bar_value):\n    return foo_value + bar_value\n"
+    (tmp_path / "runs.py").write_text(
+        "run_record = 1\nrun_scheduler = 2\nstart_run = 3\nrun_record_id = 4\n"
     )
+    (tmp_path / "exec_new.py").write_text(
+        "execution_record = 1\nexecution_scheduler = 2\nstart_execution = 3\n"
+    )
+    owners = 3000
     concepts = [
         {
-            "id": f"foo{i}",
-            "term": "foo",
+            "id": f"run{i}",
+            "term": "run",
             "definition": "d",
             "status": "canonical",
-            "scope": {"path_prefixes": [f"prod/d{i}"]},
+            "scope": {"path_prefixes": [f"prod/d{i}/{j}" for j in range(20)]},
         }
-        for i in range(4000)
+        for i in range(owners)
     ]
-    for i in range(400):
-        concepts.append({
-            "id": f"other{i}",
-            "term": "other",
-            "definition": "d",
-            "status": "canonical",
-            "scope": {"path_prefixes": [f"zone/z{i}"]},
-            "aliases": [
-                {"term": f"bar{j}", "status": "proposed"} for j in range(100)
-            ],
-        })
+    concepts.append({
+        "id": "other",
+        "term": "other",
+        "definition": "d",
+        "status": "canonical",
+        "scope": {"path_prefixes": [f"zone/z{i}" for i in range(200)]},
+        "aliases": [{"term": "execution", "status": "proposed"}],
+    })
     glossary = {"schema_version": 1, "concepts": concepts}
 
     evidence = build_evidence(tmp_path)
     start = time.monotonic()
-    build_drift(evidence, glossary)
-    assert time.monotonic() - start < 15, "parallel-term scope work was unbounded"
+    drift = build_drift(evidence, glossary)
+    elapsed = time.monotonic() - start
+    parallel = drift["coverage"]["collections"]["parallel_terms"]
+    assert not parallel["complete"], "many-owner overlap work must report partial"
+    assert any("budget" in reason for reason in parallel["reasons"])
+    assert elapsed < 10, f"owner-scope overlap work was unbounded ({elapsed:.1f}s)"
 
 
 def test_parallel_term_budget_charges_prefix_pair_work_not_owner_count(tmp_path):
@@ -651,3 +696,212 @@ def test_compound_occurrence_file_total_stays_exact_when_only_the_sample_is_clip
     assert occurrence["files"] == 6 and occurrence["files_complete"] is True
     assert len(occurrence["locations"]) == 5
     assert occurrence["locations_truncated"] is True
+
+
+def test_compound_terms_match_only_contiguous_token_runs(tmp_path):
+    """`Payment Request` is one lexical unit: an identifier that merely
+    contains both words (`payment_total_request`) is not an occurrence, or a
+    discouraged compound would read "still in use" and a canonical one
+    "present" on evidence that never used the term. Adjacent runs match at
+    any position; the class is contiguity, not the position (test-audit)."""
+    (tmp_path / "a.py").write_text(
+        "payment_total_request = 1\n"      # both words, not adjacent: no
+        "payment_request_total = 2\n"      # adjacent at the start: yes
+        "total_payment_request = 3\n"      # adjacent at the end: yes
+        "request_payment = 4\n"            # reversed: no
+    )
+    evidence = build_evidence(tmp_path)
+    occurrence = EvidenceIndex(evidence, ["Payment Request"]).code_term_occurrence(
+        "Payment Request"
+    )
+    assert occurrence["match_kind"] == "lexical-unit"
+    assert occurrence["count"] == 2 and occurrence["count_complete"] is True
+    assert occurrence["locations"] == [{"path": "a.py", "count": 2}]
+    # And which two: each adjacent form alone is one, each other form none.
+    for identifier, expected in (
+        ("payment_total_request", 0), ("request_payment", 0),
+        ("payment_request_total", 1), ("total_payment_request", 1),
+    ):
+        (tmp_path / "a.py").write_text(f"{identifier} = 1\n")
+        alone = EvidenceIndex(
+            build_evidence(tmp_path), ["Payment Request"]
+        ).code_term_occurrence("Payment Request")
+        assert alone["count"] == expected, identifier
+
+
+def test_watched_count_is_qualified_under_a_partial_corpus(tmp_path, monkeypatch):
+    """When the production corpus was cut by a budget, a watched term's
+    occurrence count is a floor, and the finding says so ("at least N");
+    an exact-looking count under a partial corpus is a coverage lie."""
+    monkeypatch.setattr("glossabet.corpus.scanner.MAX_SOURCE_FILES", 1)
+    (tmp_path / "a.py").write_text("charge_request = 1\ncharge_total = 2\n")
+    (tmp_path / "b.py").write_text("charge_more = 3\n")
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "payment", "term": "Payment", "definition": "d",
+            "status": "canonical",
+            "aliases": [{"term": "Charge", "status": "discouraged"}],
+        }],
+    }
+    evidence = build_evidence(tmp_path)
+    assert evidence["skipped"]["corpus_budget"]["complete"] is False
+    drift = build_drift(evidence, glossary)
+    (finding,) = drift["watched_terms_in_use"]["items"]
+    assert finding["evidence"]["count_complete"] is False
+    assert "at least 2 lexical occurrence(s)" in finding["summary"]
+    assert drift["watched_terms_in_use"]["coverage"]["complete"] is False
+
+    monkeypatch.setattr("glossabet.corpus.scanner.MAX_SOURCE_FILES", 10_000)
+    (finding,) = build_drift(build_evidence(tmp_path), glossary)[
+        "watched_terms_in_use"
+    ]["items"]
+    assert finding["evidence"]["count_complete"] is True
+    assert "3 lexical occurrence(s)" in finding["summary"]
+    assert "at least" not in finding["summary"]
+
+
+def test_truncated_vocabulary_tables_make_drift_ledgers_say_so(tmp_path):
+    """A tokens table cut at scan time hides occurrences the fading and
+    watched checks would have counted; those ledgers must be marked
+    incomplete with the vocabulary reason, not silently exact. The reason
+    itself is unit-tested in test_findings; this pins that drift wires it."""
+    for index in range(4):
+        (tmp_path / f"m{index}.py").write_text(
+            f"alpha_thing_{index} = 1\nbeta_thing_{index} = 2\ngamma_{index} = 3\n"
+        )
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "alpha", "term": "Alpha", "definition": "d",
+            "status": "canonical",
+            "aliases": [{"term": "Gamma", "status": "discouraged"}],
+        }],
+    }
+    full = build_evidence(tmp_path)
+    assert full["vocabulary"]["tokens"]["truncated"] is None
+    for section in ("canonical_fading", "watched_terms_in_use"):
+        assert build_drift(full, glossary)[section]["coverage"]["complete"] is True
+
+    cut = build_evidence(tmp_path, Limits(tokens=1))
+    assert cut["vocabulary"]["tokens"]["truncated"] is not None
+    drift = build_drift(cut, glossary)
+    for section in ("canonical_fading", "watched_terms_in_use"):
+        coverage = drift[section]["coverage"]
+        assert coverage["complete"] is False, section
+        assert any("tokens" in reason for reason in coverage["reasons"]), (
+            section, coverage
+        )
+
+
+def test_compound_canonical_terms_are_not_indexed_as_their_single_words(tmp_path):
+    """`Session Token` canonical must not make bare `session` a canonical
+    token: overload signals are token-level, and mapping one word of a
+    compound to the whole concept recreates the cross-unit false match the
+    exact occurrence checks exist to prevent. (Pinned on the overload axis;
+    make_repo has no synonym partner for `session`, so the parallel-term
+    axis is not exercised here.)"""
+    make_repo(tmp_path)  # canonical "Session" would be overloaded here
+    evidence = build_evidence(tmp_path)
+    single = {
+        "schema_version": 1,
+        "concepts": [{"id": "session", "term": "Session", "definition": "d",
+                      "status": "canonical"}],
+    }
+    compound = {
+        "schema_version": 1,
+        "concepts": [{"id": "session-token", "term": "Session Token",
+                      "definition": "d", "status": "canonical"}],
+    }
+    assert [
+        f["term"] for f in build_drift(evidence, single)["canonical_overloaded"]["items"]
+    ] == ["Session"]
+    assert build_drift(evidence, compound)["canonical_overloaded"]["items"] == []
+
+
+def test_entry_level_location_clip_makes_scoped_compound_counts_inexact(tmp_path):
+    """When the identifier index itself kept only a sample of an identifier's
+    locations, a scoped compound count derived from that sample is a lower
+    bound: the scope's own occurrences may be the ones clipped away. Both
+    the scoped count and the file total must be marked inexact — a confident
+    zero here would read as "absent from code" inside the scope."""
+    for index in range(4):
+        (tmp_path / "other").mkdir(exist_ok=True)
+        (tmp_path / "other" / f"a{index}.py").write_text("payment_request = 1\n")
+    (tmp_path / "pay").mkdir()
+    (tmp_path / "pay" / "z.py").write_text("payment_request = 1\n")
+    evidence = build_evidence(tmp_path, Limits(locations_per_term=2))
+    entry = next(
+        item for item in evidence["vocabulary"]["identifiers"]["items"]
+        if item["name"] == "payment_request"
+    )
+    assert entry["locations_truncated"] is True and entry["count"] == 5
+
+    index = EvidenceIndex(evidence, ["Payment Request"])
+    scoped = index.code_term_occurrence("Payment Request", ("pay",))
+    assert scoped["count_complete"] is False
+    assert scoped["files_complete"] is False
+    assert scoped["locations_truncated"] is True
+
+    unscoped = index.code_term_occurrence("Payment Request")
+    assert unscoped["count"] == 5 and unscoped["count_complete"] is True
+    assert unscoped["files"] == 2 and unscoped["files_complete"] is False
+
+
+def test_over_long_compound_terms_are_reported_as_unmatched_not_absent(tmp_path):
+    """A canonical term longer than the compound-matching cap cannot be
+    looked up; the engine must say so (ledger reason, count inexact) rather
+    than let a confident zero read as "absent from code". At the cap the
+    term is matched normally."""
+    from glossabet.glossary.matching import MAX_COMPOUND_TERM_TOKENS
+
+    (tmp_path / "a.py").write_text("payment_request = 1\n")
+    at_cap = " ".join(f"w{i}" for i in range(MAX_COMPOUND_TERM_TOKENS))
+    over = " ".join(f"w{i}" for i in range(MAX_COMPOUND_TERM_TOKENS + 1))
+    evidence = build_evidence(tmp_path)
+
+    index = EvidenceIndex(evidence, [at_cap, over])
+    ledger = index.coverage["compound_terms"]
+    assert ledger["total_items"] == 2 and ledger["included_items"] == 1
+    assert ledger["complete"] is False
+    assert any(f"{MAX_COMPOUND_TERM_TOKENS}-token" in r for r in ledger["reasons"])
+    alone = EvidenceIndex(evidence, [at_cap]).code_term_occurrence(at_cap)
+    assert alone["count_complete"] is True
+    unmatched = index.code_term_occurrence(over)
+    assert unmatched["count"] == 0 and unmatched["count_complete"] is False
+
+    glossary = {"schema_version": 1, "concepts": [
+        {"id": "long", "term": over, "definition": "d", "status": "canonical"},
+    ]}
+    drift = build_drift(evidence, glossary)
+    coverage = drift["canonical_fading"]["coverage"]
+    assert coverage["complete"] is False
+    assert any(f"{MAX_COMPOUND_TERM_TOKENS}-token" in r for r in coverage["reasons"])
+    # A "strong: absent" fading finding here would be the false claim.
+    assert [f["signal_strength"] for f in drift["canonical_fading"]["items"]
+            if f["term"] == over and f["signal_strength"] == "strong"] == []
+
+
+def test_parallel_term_findings_are_ordered_strongest_first_under_the_cap(
+    tmp_path, monkeypatch
+):
+    """The section keeps only the first FINDINGS_CAP findings in detail, so
+    ordering is a coverage promise: the strongest parallel is what survives
+    the cap, and the ledger says one was dropped."""
+    make_repo(tmp_path)
+    (tmp_path / "exec2.py").write_text(
+        "job_record = 1\njob_scheduler = 2\nstart_job = 3\njob_record_id = 4\n"
+    )
+    evidence = build_evidence(tmp_path)
+    full = build_drift(evidence, GLOSSARY)["parallel_terms"]
+    pairs = [(f["new_term"], f["evidence"]["similarity"]) for f in full["items"]]
+    assert [p[0] for p in pairs] == ["job", "execution"]
+    assert pairs[0][1] > pairs[1][1]
+
+    monkeypatch.setattr("glossabet.glossary.findings.FINDINGS_CAP", 1)
+    capped = build_drift(evidence, GLOSSARY)["parallel_terms"]
+    assert [f["new_term"] for f in capped["items"]] == ["job"]
+    assert capped["coverage"]["total_items"] == 2
+    assert capped["coverage"]["included_items"] == 1
+    assert capped["coverage"]["dropped_items"] == 1
+    assert capped["coverage"]["complete"] is False

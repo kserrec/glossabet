@@ -6,6 +6,8 @@ import sys
 from copy import deepcopy
 from pathlib import Path
 
+import pytest
+
 from evaluation.run import EVALUATION_SCHEMA_VERSION, verify_results
 
 
@@ -276,8 +278,58 @@ def test_genuineness_verifier_catches_internal_tampering_without_currency(
     )
 
 
-def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path):
-    original = json.loads(RESULTS.read_text(encoding="utf-8"))
+def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path, monkeypatch):
+    """Every staleness detector is proven on its own: the recorded results
+    are first brought current (engine digest, self evidence, aggregate and
+    thresholds recomputed from today's tree), that baseline is shown to carry
+    no currency errors, and then each mutation must ADD its message. A
+    test-audit found the earlier form passed vacuously whenever the working
+    tree had moved past the recorded results — four of its ten messages were
+    already in the baseline, so their mutations proved nothing.
+
+    The per-case records are taken verbatim from the committed results, so
+    this test also requires the committed local-corpus digests and scores to
+    describe today's fixture trees: editing an evaluation fixture without
+    regenerating results.json fails here, with the reasons listed."""
+    import evaluation.run as run
+
+    real_build = run.build_evidence
+    memo: dict = {}
+
+    def memoized_build(root, **kwargs):
+        key = (Path(root).resolve(), tuple(sorted(kwargs.items())))
+        if key not in memo:
+            memo[key] = real_build(root, **kwargs)
+        return deepcopy(memo[key])
+
+    monkeypatch.setattr(run, "build_evidence", memoized_build)
+
+    manifest, manifest_sha256 = run._read_manifest(MANIFEST)
+    current = json.loads(RESULTS.read_text(encoding="utf-8"))
+    current["engine"] = run._engine_metadata()
+    current["manifest_sha256"] = manifest_sha256
+    self_evidence = run.build_evidence(ROOT, cache=False, graphify=False)
+    current["self_register"] = run._evaluate_self_register(
+        manifest["self_register"], self_evidence
+    )
+    current["self_nominations"] = run._evaluate_self_nominations(
+        manifest["self_nominations"], self_evidence
+    )
+    current["aggregate"] = run._aggregate(
+        current["cases"], current["self_register"], current["self_nominations"]
+    )
+    current["release_thresholds"] = run._thresholds(
+        current["aggregate"], manifest["release_thresholds"]
+    )
+    gate_message = "evaluation release thresholds are not configured and passing"
+    baseline_path = tmp_path / "current.json"
+    baseline_path.write_text(json.dumps(current), encoding="utf-8")
+    baseline = verify_results(baseline_path, MANIFEST, current=True)
+    assert run._currency_errors(current, MANIFEST) == []
+    # Whether the release gate is green is a recorded fact about the engine
+    # (a threshold may legitimately be red between releases); nothing else
+    # may be wrong with a document that describes today's tree.
+    assert set(baseline) <= {gate_message}, baseline
 
     def engine_stale(result):
         result["engine"]["source_sha256"] = "0" * 64
@@ -300,11 +352,11 @@ def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path):
     def structural_stale(result):
         result["cases"][-2]["structural"]["contracts"]["passed"] = False
 
-    def thresholds_weakened(result):
-        result["release_thresholds"]["passed"] = False
-        # Whether they pass is a release-gate fact; genuineness only requires
-        # that the recorded checks recompute from the recorded metrics.
-        result["release_thresholds"]["checks"][0]["passed"] = False
+    def thresholds_tampered(result):
+        # Whether they pass is a release-gate fact; genuineness requires that
+        # the recorded checks recompute from the recorded metrics.
+        check = result["release_thresholds"]["checks"][0]
+        check["passed"] = not check["passed"]
 
     def register_stale(result):
         result["self_register"]["actual"]["dominant_style"] = "camelCase"
@@ -312,7 +364,32 @@ def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path):
     def nomination_stale(result):
         result["self_nominations"]["passed"] = not result["self_nominations"]["passed"]
 
+    def source_metadata_stale(result):
+        result["cases"][0]["source"] = {**result["cases"][0]["source"], "kind": "external"}
+
+    def local_register_stale(result):
+        result["cases"][0]["register"]["actual"]["dominant_style"] = "camelCase"
+
+    def threshold_targets_drifted(result):
+        # Consistent with its own recomputation (genuineness clean) but the
+        # stored targets no longer match the manifest: a currency matter.
+        stored = result["release_thresholds"]
+        stored["checks"][0]["target"] = 0.0
+        stored["checks"][0]["passed"] = True
+        stored["passed"] = all(check["passed"] for check in stored["checks"])
+
+    def cases_reordered(result):
+        result["cases"][0], result["cases"][1] = result["cases"][1], result["cases"][0]
+
+    def case_renamed(result):
+        result["cases"][0]["id"] = result["cases"][0]["id"] + "-renamed"
+
     mutations = [
+        (source_metadata_stale, "source metadata is stale"),
+        (local_register_stale, "local register evidence is stale"),
+        (threshold_targets_drifted, "evaluation release thresholds are stale"),
+        (cases_reordered, "case ids/order do not match the manifest"),
+        (case_renamed, "case ids/order do not match the manifest"),
         (engine_stale, "engine version, schema, or source digest is stale"),
         (manifest_stale, "evaluation manifest digest is stale"),
         (corpus_stale, "local corpus digest is stale"),
@@ -322,37 +399,55 @@ def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path):
         (structural_stale, "local structural evidence is stale"),
         (register_stale, "self register evidence is stale"),
         (nomination_stale, "self nomination evidence is stale"),
-        (thresholds_weakened, "thresholds are not configured and passing"),
+        (thresholds_tampered, "evaluation release thresholds are stale"),
     ]
     for index, (mutate, expected) in enumerate(mutations):
-        result = deepcopy(original)
+        result = deepcopy(current)
         mutate(result)
         path = tmp_path / f"results-{index}.json"
         path.write_text(json.dumps(result), encoding="utf-8")
-        assert any(
-            expected in error
-            for error in verify_results(path, MANIFEST, current=True)
-        )
+        added = set(verify_results(path, MANIFEST, current=True)) - set(baseline)
+        assert any(expected in error for error in added), (expected, added)
+
+    # The release gate itself: only a recorded pass is accepted, and the gate
+    # is wired into the --current path only (genuineness never judges it).
+    red = deepcopy(current)
+    red["release_thresholds"]["passed"] = False
+    red_path = tmp_path / "red.json"
+    red_path.write_text(json.dumps(red), encoding="utf-8")
+    assert gate_message in verify_results(red_path, MANIFEST, current=True)
+    assert gate_message not in verify_results(red_path, MANIFEST, current=False)
+    assert run._release_threshold_errors({"release_thresholds": {"passed": True}}) == []
+    assert run._release_threshold_errors(
+        {"release_thresholds": {"passed": False}}
+    ) == [gate_message]
+    assert run._release_threshold_errors({}) == [gate_message]
 
 
-def test_partial_case_runs_refuse_check_and_default_output(tmp_path):
-    base = [sys.executable, str(ROOT / "evaluation" / "run.py")]
+def test_partial_case_runs_refuse_check_and_default_output(tmp_path, monkeypatch, capsys):
+    """Run in-process against a scratch copy of the default output: if the
+    guard ever regressed, the earlier subprocess form would have overwritten
+    the committed evaluation/results.json while proving it (test-audit)."""
+    import evaluation.run as run
 
-    with_check = subprocess.run(
-        [*base, "--case", "calibration-fixture", "--runs", "1", "--check",
-         "--output", str(tmp_path / "r.json")],
-        cwd=ROOT, capture_output=True, text=True, timeout=30,
-    )
-    assert with_check.returncode == 2
-    assert "--check gates release thresholds" in with_check.stderr
+    scratch_default = tmp_path / "results.json"
+    committed = RESULTS.read_bytes()
+    scratch_default.write_bytes(committed)
+    monkeypatch.setattr(run, "DEFAULT_RESULTS", scratch_default)
 
-    default_output = subprocess.run(
-        [*base, "--case", "calibration-fixture", "--runs", "1"],
-        cwd=ROOT, capture_output=True, text=True, timeout=30,
-    )
-    assert default_output.returncode == 2
-    assert "committed release evidence" in default_output.stderr
-    committed = (ROOT / "evaluation" / "results.json").read_bytes()
+    with pytest.raises(SystemExit) as with_check:
+        run.main(["--case", "calibration-fixture", "--runs", "1", "--check",
+                  "--output", str(tmp_path / "r.json")])
+    assert with_check.value.code == 2
+    assert "--check gates release thresholds" in capsys.readouterr().err
+
+    with pytest.raises(SystemExit) as default_output:
+        run.main(["--case", "calibration-fixture", "--runs", "1"])
+    assert default_output.value.code == 2
+    assert "committed release evidence" in capsys.readouterr().err
+    assert scratch_default.read_bytes() == committed
+    assert RESULTS.read_bytes() == committed
+    assert not (tmp_path / "r.json").exists()
     assert b'"runtime_runs_per_case": 5' in committed
 
 

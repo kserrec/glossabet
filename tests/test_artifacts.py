@@ -60,6 +60,45 @@ def test_read_bounded_json_outcomes_are_named_and_bound_is_judged_from_bytes(tmp
     raw = read_bounded_bytes(exact, 100)
     assert raw.status == READ_OK and raw.payload == b'{"k":1}' and raw.value is None
 
+    # The bound is enforced by how much is *read*, not by trusting a size
+    # probe: an over-cap file costs at most cap + 1 bytes of memory, so a
+    # repository-controlled multi-gigabyte glossary or config cannot make
+    # the engine inflate it before refusing.
+    class CountingReader:
+        def __init__(self, handle):
+            self.handle, self.requested = handle, []
+
+        def read(self, size=-1):
+            self.requested.append(size)
+            return self.handle.read(size)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return self.handle.__exit__(*exc)
+
+    import builtins
+
+    opened = []
+    real_open = builtins.open
+
+    def spying_open(path_, mode="r", *args, **kwargs):
+        handle = real_open(path_, mode, *args, **kwargs)
+        if "b" in mode and str(path_) == str(exact):
+            reader = CountingReader(handle)
+            opened.append(reader)
+            return reader
+        return handle
+
+    monkeypatch_open = pytest.MonkeyPatch()
+    monkeypatch_open.setattr(builtins, "open", spying_open)
+    try:
+        assert read_bounded_bytes(exact, 3).status == READ_OVERSIZED
+    finally:
+        monkeypatch_open.undo()
+    assert opened and opened[-1].requested == [4]  # cap + 1, never the whole file
+
     if hasattr(os, "geteuid") and os.geteuid() != 0:
         locked = tmp_path / "locked.json"
         locked.write_text("{}")
@@ -68,3 +107,21 @@ def test_read_bounded_json_outcomes_are_named_and_bound_is_judged_from_bytes(tmp
             assert read_bounded_json(locked, 100).status == READ_UNREADABLE
         finally:
             locked.chmod(0o600)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits")
+def test_written_artifacts_get_the_modes_a_plain_open_would(tmp_path):
+    """Artifacts are written through a private temp file (mkstemp: 0o600),
+    then given 0o666 minus the caller's umask like any file the user's own
+    tools create — so another uid on a shared checkout or a later CI step
+    can read glossary.json/evidence.json. Two umasks, both must apply."""
+    import stat
+
+    original = os.umask(0o022)
+    try:
+        for umask, expected in ((0o022, 0o644), (0o002, 0o664), (0o077, 0o600)):
+            os.umask(umask)
+            path = write_artifact(tmp_path, f"artifact-{umask:o}.json", {"k": 1})
+            assert stat.S_IMODE(path.stat().st_mode) == expected, oct(umask)
+    finally:
+        os.umask(original)

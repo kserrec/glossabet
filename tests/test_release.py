@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from glossabet import __version__
 from scripts.check_workflows import check_workflows, validate_workflow_texts
 
@@ -109,6 +111,35 @@ def test_workflow_policy_rejects_meaningful_gate_weakening():
             "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33",
             "pypa/gh-action-pypi-publish@v1",
         ),
+        # The peripheral rules a test-audit found unpinned: each is a way
+        # the gate could be widened or the release made non-manual.
+        ("quality.yml", "on:\n  workflow_call:", "on:\n  workflow_call:\n  push:"),
+        ("quality.yml", "on:\n  workflow_call:", "on:\n  push:"),
+        ("quality.yml", "      fail-fast: false", "      fail-fast: true"),
+        ("quality.yml", "      - run: python scripts/check_workflows.py",
+         "      - run: python scripts/check_workflows.py --current"),
+        ("ci.yml", "    uses: ./.github/workflows/quality.yml",
+         "    uses: ./.github/workflows/quality.yml\n    run: echo shortcut"),
+        ("release.yml", "on:\n  workflow_dispatch:", "on:\n  push:\n  workflow_dispatch:"),
+        ("release.yml", "on:\n  workflow_dispatch:", "on:\n  push:"),
+        ("release.yml", "  quality:\n    uses: ./.github/workflows/quality.yml",
+         "  quality:\n    if: false\n    uses: ./.github/workflows/quality.yml"),
+        ("release.yml", "      id-token: write", "      id-token: write\n      packages: write"),
+        ("release.yml", "    permissions:\n      contents: read\n      id-token: write",
+         "    permissions: write-all"),
+        ("release.yml", "  publish:\n    needs: quality",
+         "  publish:\n    needs: quality\n    env:\n      TOKEN: ${{ secrets.PYPI_TOKEN }}"),
+        ("release.yml", "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2\n",
+         "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2\n"
+         "  extra:\n    runs-on: ubuntu-latest\n    steps: []\n"),
+        ("ci.yml", "    uses: ./.github/workflows/quality.yml\n",
+         "    uses: ./.github/workflows/quality.yml\n  extra:\n    runs-on: ubuntu-latest\n    steps: []\n"),
+        ("release.yml", "on:\n  workflow_dispatch:\n    inputs:\n      confirmation:\n        description: Type publish-glossabet-to-pypi to authorize the public upload\n        required: true\n        type: string\n",
+         "on: {}\n"),
+        ("quality.yml", "\n  package:\n",
+         "\n  extra:\n    runs-on: ubuntu-latest\n    steps: []\n  package:\n"),
+        ("release.yml", "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+         "      - uses: "),
     ]
 
     for filename, original, weakened in mutations:
@@ -229,3 +260,55 @@ def test_workflow_policy_ignores_comments_and_checks_every_workflow_file(tmp_pat
     assert check_workflows(tmp_path)
     (tmp_path / "backdoor.yml").unlink()
     assert check_workflows(tmp_path) == []
+
+
+def test_distribution_home_path_scan_reaches_every_archive_layer(tmp_path, monkeypatch):
+    """The regex alone is not the guard: the wheel scan must read every
+    wheel member, the sdist scan every tar member, and a wheel *nested*
+    inside the sdist (the plugin's bundled asset) must be opened and each
+    of its members scanned — its bytes are compressed, so the outer scan
+    cannot see them. A member declaring more than the nested-inflate bound
+    is refused, not inflated."""
+    import io
+    import tarfile
+    import zipfile
+
+    from scripts import check_distribution as dist
+
+    home = b"/home/" + b"alice/Projects/x"  # assembled: no literal in this file
+
+    def wheel_bytes(payload: bytes, name: str = "glossabet/leak.txt") -> bytes:
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("glossabet/__init__.py", "x = 1\n")
+            archive.writestr(name, payload)
+        return buffer.getvalue()
+
+    # A wheel member leaking a home path fails the wheel check by name.
+    wheel = tmp_path / "glossabet-0.0.0-py3-none-any.whl"
+    wheel.write_bytes(wheel_bytes(b"trace " + home))
+    with pytest.raises(SystemExit) as info:
+        dist._check_wheel(wheel, "0.0.0", b"")
+    assert "leaks a local home path" in str(info.value)
+    assert "glossabet/leak.txt" in str(info.value)
+
+    # A wheel nested in the sdist: the leak sits only inside the inner zip.
+    inner = wheel_bytes(b"trace " + home, "glossabet/inner.txt")
+    sdist = tmp_path / "glossabet-0.0.0.tar.gz"
+    with tarfile.open(sdist, "w:gz") as archive:
+        info_ = tarfile.TarInfo(
+            "glossabet-0.0.0/plugins/glossabet/skills/glossabet/assets/"
+            "glossabet-0.0.0-py3-none-any.whl"
+        )
+        info_.size = len(inner)
+        archive.addfile(info_, io.BytesIO(inner))
+    with pytest.raises(SystemExit) as info:
+        dist._check_sdist(sdist, wheel, "0.0.0", b"", current=False)
+    assert "leaks a local home path" in str(info.value)
+    assert "!glossabet/inner.txt" in str(info.value)
+
+    # The per-member inflate bound refuses an over-declared member.
+    monkeypatch.setattr(dist, "_MAX_NESTED_MEMBER_BYTES", 8)
+    with pytest.raises(SystemExit) as info:
+        dist._check_no_local_paths_in_zip(wheel_bytes(b"0123456789"), "asset.whl", "sdist")
+    assert "refusing to inflate" in str(info.value)
