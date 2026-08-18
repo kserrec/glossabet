@@ -29,7 +29,9 @@ REVIEW_SCHEMA_VERSION = 2
 DEFAULT_PACKET = PROJECT_ROOT / "evaluation" / "reviewer-packet.json"
 # A parent-directory path segment (``..``, ``../x``, ``"..\\x"``), not any two
 # dots: an ellipsis inside a quoted string is not path traversal.
-_PARENT_SEGMENT_RE = re.compile(r"""(?:^|[\s'"=/\\])\.\.(?:[/\\]|$|[\s'"])""")
+_PARENT_SEGMENT_RE = re.compile(
+    r"""(?:^|[\s'"=/\\;&|(])\.\.(?:[/\\]|$|[\s'"=;&|)])"""
+)
 DEFAULT_REVIEW_RESULTS = PROJECT_ROOT / "evaluation" / "reviewer-results.json"
 PROMPT_PATH = PROJECT_ROOT / "evaluation" / "reviewer-prompt.md"
 RESPONSE_SCHEMA_PATH = PROJECT_ROOT / "evaluation" / "reviewer-response-schema.json"

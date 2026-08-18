@@ -13,12 +13,12 @@ them, and nothing outside the skill folder is ever written.
 from __future__ import annotations
 
 import json
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 from glossabet import __version__
+from glossabet.runtime.executables import which_on_path
 
 # Fields shared with the checked-in Codex plugin manifest; a test pins them
 # to plugins/glossabet/.codex-plugin/plugin.json so the two hosts cannot drift.
@@ -118,14 +118,42 @@ def claude_plugin_files(executable: Path) -> list[tuple[str, Path, bytes]]:
 
 
 def _candidate_executables() -> list[Path]:
+    """The executable that ran this command (an explicit user choice), then
+    the first ``glossabet`` on ``PATH`` — looked up without ever resolving
+    into the current directory: the hook this path lands in runs in every
+    future session, so a repository-local ``glossabet.bat`` picked up from
+    a cwd-first search must never be the candidate."""
     candidates: list[Path] = []
     argv0 = sys.argv[0] if sys.argv else ""
     if argv0 and Path(argv0).name.lower() in _EXECUTABLE_NAMES:
         candidates.append(Path(argv0))
-    found = shutil.which("glossabet")
-    if found:
-        candidates.append(Path(found))
+    found = which_on_path("glossabet")
+    if found is not None:
+        candidates.append(found)
     return candidates
+
+
+def executable_location_warnings(path: Path) -> list[str]:
+    """Why persisting ``path`` into a session-start hook is fragile: it lives
+    inside the current directory or a project virtual environment, which the
+    project's own tooling rewrites or deletes."""
+    warnings = []
+    resolved = path.resolve()
+    try:
+        resolved.relative_to(Path.cwd().resolve())
+        warnings.append(
+            f"{path} is inside the current directory; the hook will run this "
+            "exact file from every project's sessions"
+        )
+    except ValueError:
+        pass
+    if any(part in (".venv", "venv") for part in resolved.parts):
+        warnings.append(
+            f"{path} is inside a virtual environment that its project's "
+            "tooling may rewrite or delete; prefer a tool install "
+            "(`uv tool install glossabet`) and rerun with --force"
+        )
+    return warnings
 
 
 def resolve_cli_executable() -> Path:

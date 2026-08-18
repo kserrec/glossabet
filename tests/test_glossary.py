@@ -687,12 +687,66 @@ def test_lone_surrogates_are_refused_at_save_so_brief_never_crashes(tmp_path):
         glossary = json.loads(json.dumps(GLOSSARY))
         glossary["concepts"][0][field] = "bad \udcff char"
         errors = validate_glossary(glossary)
+        # Now caught by the terminal-control check (a lone surrogate is a
+        # control character to every UTF-8 stream); either message is a refusal.
         assert any(
-            error.startswith(where) and "lone surrogate" in error
+            error.startswith(where)
+            and ("lone surrogate" in error or "terminal control" in error)
             for error in errors
         ), (field, errors)
     glossary = json.loads(json.dumps(GLOSSARY))
     glossary["concepts"][0]["aliases"] = [
         {"term": "x\udcff", "status": "alias"}
     ]
-    assert any("lone surrogate" in e for e in validate_glossary(glossary))
+    assert validate_glossary(glossary)
+
+
+def test_ownership_is_keyed_by_token_sequence_and_rejects_invisible_spellings():
+    """drift/validate/matching compare vocabulary by lexical tokens, so two
+    concepts owning `Alpha Beta` and `AlphaBeta` (or `alpha_beta`) would be
+    one ambiguous identity to every consumer; ownership is keyed the same
+    way. Invisible formatting characters (ZWSP) in a term are refused."""
+    glossary = {"schema_version": 1, "concepts": [
+        {"id": "a", "term": "Alpha Beta", "definition": "d", "status": "canonical"},
+        {"id": "b", "term": "AlphaBeta", "definition": "d", "status": "canonical"},
+        {"id": "c", "term": "alpha_beta", "definition": "d", "status": "canonical"},
+        {"id": "d", "term": "Alpha\u200bBeta", "definition": "d", "status": "canonical"},
+    ]}
+    errors = validate_glossary(glossary)
+    assert any("concepts[1] duplicate term 'AlphaBeta'" in e for e in errors)
+    assert any("concepts[2] duplicate term 'alpha_beta'" in e for e in errors)
+    assert any("concepts[3] field 'term' contains a terminal control" in e for e in errors)
+    # Disjoint scopes may still share the identity deliberately.
+    scoped = {"schema_version": 1, "concepts": [
+        {"id": "a", "term": "Alpha Beta", "definition": "d", "status": "canonical",
+         "scope": {"path_prefixes": ["x"]}},
+        {"id": "b", "term": "AlphaBeta", "definition": "d", "status": "canonical",
+         "scope": {"path_prefixes": ["y"]}},
+    ]}
+    assert validate_glossary(scoped) == []
+
+
+def test_default_ignorable_characters_are_refused_as_a_class():
+    """Not four enumerated code points but Unicode's Default_Ignorable set:
+    TAG-block letters, variation selectors, Hangul fillers, the combining
+    grapheme joiner, the Mongolian vowel separator, interlinear annotation
+    anchors — anything that renders as nothing and hides text from the human
+    while a model reads it. ZWNJ/ZWJ stay allowed (Persian, Indic, emoji)."""
+    hidden = {
+        "TAG": "Pay\U000E0041ment",
+        "VS16": "Payment\ufe0f",
+        "CGJ": "Pay\u034fment",
+        "filler": "Pay\u3164ment",
+        "MVS": "Pay\u180ement",
+        "annotation": "\ufff9IGNORE\ufffaPayment\ufffb",
+    }
+    for label, term in hidden.items():
+        glossary = json.loads(json.dumps(GLOSSARY))
+        glossary["concepts"][0]["term"] = term
+        assert any("terminal control" in e for e in validate_glossary(glossary)), label
+        glossary = json.loads(json.dumps(GLOSSARY))
+        glossary["concepts"][0]["definition"] = f"a {term} thing"
+        assert any("terminal control" in e for e in validate_glossary(glossary)), label
+    glossary = json.loads(json.dumps(GLOSSARY))
+    glossary["concepts"][0]["term"] = "نیم\u200cفاصله"
+    assert not any("terminal control" in e for e in validate_glossary(glossary))

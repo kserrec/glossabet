@@ -56,14 +56,34 @@ def cache_path(root: Path) -> Path:
     identity = _repository_identity(root)
     key = hashlib.sha256(os.fsencode(identity)).hexdigest()
     path = _platform_cache_root() / key / CACHE_FILE
-    try:
-        path.resolve(strict=False).relative_to(root)
-    except ValueError:
+    if not _inside(path.resolve(strict=False), root):
         return path
     raise CacheLocationError(
         "the selected Glossabet cache directory is inside the scanned "
         "repository"
     )
+
+
+def _inside(candidate: Path, root: Path) -> bool:
+    """Whether ``candidate`` lies under ``root`` — by identity, not spelling:
+    on a case-insensitive filesystem ``…/Repo/.cache`` and ``…/repo`` are one
+    tree though their strings differ."""
+    try:
+        candidate.relative_to(root)
+        return True
+    except ValueError:
+        pass
+    try:
+        root_stat = root.stat()
+    except OSError:
+        return False
+    for ancestor in (candidate, *candidate.parents):
+        try:
+            if os.path.samestat(ancestor.stat(), root_stat):
+                return True
+        except OSError:
+            continue  # not created yet: keep walking up
+    return False
 
 
 def load_cache(root: Path) -> dict | None:

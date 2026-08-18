@@ -5,8 +5,9 @@ identifier-continue characters (``("a" + "\u0947").isidentifier()`` is
 True) and integral to Devanagari, Bengali, Thai, Hebrew-with-niqqud, and
 Arabic-with-harakat words. The tokenizer therefore extends its word classes
 with this table. It is a static literal, not computed from
-``unicodedata`` at import, so every supported Python (each ships a
-different Unicode version) tokenizes identically and no session pays a
+``unicodedata`` at import, so the mark half of the word class is identical
+on every supported Python (each ships a different Unicode version — the
+letter half, ``\\w``, still follows the interpreter) and no session pays a
 ~0.5 s table build. Regenerate with ``scripts/gen_unicode_marks.py`` when
 the project deliberately moves to a newer Unicode version; the test suite
 checks the table against the running interpreter's data for drift only

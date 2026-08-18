@@ -30,7 +30,7 @@ from glossabet.analysis.terminology import build_terminology
 from glossabet.corpus.tokenize import tokenization_contract, tokenize_identifier
 from glossabet.analysis.vocabulary import DocumentationVocabulary, ProductionVocabulary
 
-EVIDENCE_SCHEMA_VERSION = 14
+EVIDENCE_SCHEMA_VERSION = 15
 
 EVIDENCE_FILE = "evidence.json"
 
@@ -301,7 +301,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
                 "doc_files": analyzed_production_doc_files,
             },
         },
-        "monorepo": detect_monorepo(root, walk),
+        "monorepo": detect_monorepo(root, walk, config),
         "skipped": {
             **walk.skipped_as_evidence(),
             "oversized_identifiers": vocabulary.oversized_identifiers,

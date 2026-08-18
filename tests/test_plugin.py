@@ -79,11 +79,11 @@ def test_plugin_session_start_hook_is_bounded_and_version_coupled():
     assert handler == {
         "type": "command",
         "command": (
-            'python3 -B "$PLUGIN_ROOT/skills/glossabet/scripts/'
+            'python3 -I -B "$PLUGIN_ROOT/skills/glossabet/scripts/'
             'run_glossabet.py" brief .'
         ),
         "commandWindows": (
-            'py -3 -B "%PLUGIN_ROOT%\\skills\\glossabet\\scripts\\'
+            'py -3 -I -B "%PLUGIN_ROOT%\\skills\\glossabet\\scripts\\'
             'run_glossabet.py" brief .'
         ),
         "timeout": 30,
@@ -289,3 +289,29 @@ def test_plugin_runner_pins_the_bundled_wheel_digest():
     assert match is not None
     wheel = next((PLUGIN / "skills" / "glossabet" / "assets").glob("*.whl"))
     assert match.group(1) == hashlib.sha256(wheel.read_bytes()).hexdigest()
+
+
+def test_hook_interpreter_is_isolated_from_a_hostile_working_directory(tmp_path):
+    """The SessionStart hook starts the runner with `-I`: a repository whose
+    root ships `encodings.py` (or any stdlib-named module) plus a shell rc
+    that leaves an empty PYTHONPATH entry (= cwd) must not get that module
+    executed before the runner's first line."""
+    import json
+    import os
+    import subprocess
+
+    hooks = json.loads((PLUGIN / "hooks" / "hooks.json").read_text())
+    command = hooks["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+    assert command.startswith("python3 -I -B ")
+    (tmp_path / "encodings.py").write_text(
+        'print("PWNED via encodings.py")\nraise SystemExit(99)\n'
+    )
+    (tmp_path / "a.py").write_text("x = 1\n")
+    runner = PLUGIN / "skills" / "glossabet" / "scripts" / "run_glossabet.py"
+    proc = subprocess.run(
+        [sys.executable, "-I", "-B", str(runner), "brief", "."],
+        cwd=tmp_path, capture_output=True, text=True,
+        env={**os.environ, "PYTHONPATH": ":/opt/nothing"},
+    )
+    assert "PWNED" not in proc.stdout + proc.stderr
+    assert proc.returncode == 0

@@ -12,6 +12,7 @@ automatic diagnosis.
 from __future__ import annotations
 
 import sys
+import unicodedata
 from collections import defaultdict
 from dataclasses import dataclass
 from itertools import combinations, islice
@@ -95,6 +96,7 @@ def _match_strength_from_tokens(
 def _path_binding_status(
     value: str, known_paths, scope, inventory_complete: bool
 ) -> str:
+    value = unicodedata.normalize("NFC", value)  # known_paths are NFC-keyed
     if value in known_paths and path_in_scope(value, scope):
         return "resolved"
     if value in known_paths:

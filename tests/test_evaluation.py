@@ -508,3 +508,15 @@ def test_recall_where_complete_counts_only_hits_inside_the_measured_set():
     aggregate = _aggregate(cases, block(), block())
     assert aggregate["quality"]["terminology_recall_where_complete"] == 0.25
     assert aggregate["quality"]["terminology_precision"] == 1.0
+
+
+def test_verifier_reports_rather_than_crashes_on_huge_integers(tmp_path):
+    """An OverflowError from a 10**400 count used to escape as a traceback;
+    every arithmetic failure in recomputation is a reported malformation."""
+    original = json.loads(RESULTS.read_text(encoding="utf-8"))
+    tampered = deepcopy(original)
+    tampered["cases"][0]["runtime_seconds"]["cold_median"] = 10 ** 400
+    path = tmp_path / "huge.json"
+    path.write_text(json.dumps(tampered), encoding="utf-8")
+    errors = verify_results(path, MANIFEST)
+    assert any("case metrics are malformed" in error for error in errors)

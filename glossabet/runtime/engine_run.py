@@ -48,6 +48,14 @@ def open_run(
     if not root.is_dir():
         raise RunError("not a directory: " + path_arg)
     root = root.resolve()
+    if OUT_DIR in root.parts:
+        # Glossabet's output directory is never a repository: scanning it
+        # would write glossabet-out/glossabet-out/... and read its own
+        # artifacts as evidence.
+        raise RunError(
+            f"{path_arg} is inside a {OUT_DIR}/ output directory; "
+            "run glossabet on the repository root instead"
+        )
     if glossary == GLOSSARY_NONE:
         return Run(root, None)
     try:

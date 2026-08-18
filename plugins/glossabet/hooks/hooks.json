@@ -7,8 +7,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -B \"$PLUGIN_ROOT/skills/glossabet/scripts/run_glossabet.py\" brief .",
-            "commandWindows": "py -3 -B \"%PLUGIN_ROOT%\\skills\\glossabet\\scripts\\run_glossabet.py\" brief .",
+            "command": "python3 -I -B \"$PLUGIN_ROOT/skills/glossabet/scripts/run_glossabet.py\" brief .",
+            "commandWindows": "py -3 -I -B \"%PLUGIN_ROOT%\\skills\\glossabet\\scripts\\run_glossabet.py\" brief .",
             "timeout": 30,
             "statusMessage": "Loading settled repository vocabulary",
             "additionalContextLimit": 0

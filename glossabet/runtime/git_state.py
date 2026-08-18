@@ -14,11 +14,11 @@ here to control freshness.
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from pathlib import Path
 
 from glossabet.runtime.artifacts import OUT_DIR, REPORT_FILE
+from glossabet.runtime.executables import which_on_path
 
 
 # Config keys that let a repository's own .git/config name a program git will
@@ -34,10 +34,14 @@ from glossabet.runtime.artifacts import OUT_DIR, REPORT_FILE
 SAFE_CONFIG = ("-c", "core.fsmonitor=", "-c", "core.hooksPath=/dev/null")
 
 
-def _resolve_git() -> str:
-    """Absolute git path so a repo-shipped git.exe on the cwd search path
-    (Windows resolves the current directory before PATH) cannot be run."""
-    return shutil.which("git") or "git"
+def _resolve_git() -> str | None:
+    """Absolute git path found on ``PATH`` only — never the current directory
+    (which is the repository under analysis: a repo-shipped ``git.exe`` must
+    not be run), and never a bare name (which Windows resolves through the
+    current directory too). ``None`` when git is not on ``PATH``: the stamp
+    is then honestly unverified."""
+    found = which_on_path("git")
+    return str(found) if found is not None else None
 
 
 # Freshness describes repository inputs, not Glossabet's own output. Keep the
@@ -70,6 +74,9 @@ FRESHNESS_STATUS_ARGS = (
 _REPOSITORY_SELECTION_VARIABLES = frozenset({
     "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY",
     "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    # A hook's temporary or foreign index would make ``dirty`` describe
+    # that index, not the repository's.
+    "GIT_INDEX_FILE",
 })
 
 
@@ -86,9 +93,19 @@ def _run_git(
         if key not in _REPOSITORY_SELECTION_VARIABLES
     }
     env["GIT_TERMINAL_PROMPT"] = "0"
-    return subprocess.run(
+    # Bytes, decoded as UTF-8 with replacement: git writes paths in UTF-8
+    # (``core.quotePath=false`` leaves them raw), and the locale's codec
+    # (ASCII in a bare CI shell, cp1252 on Windows) must not turn a
+    # non-ASCII untracked filename into a decode crash. Callers only test
+    # emptiness or read ASCII values, so replacement never changes a result.
+    proc = subprocess.run(
         [git_exe, *SAFE_CONFIG, *overrides, "-C", str(root), *args],
-        capture_output=True, text=True, timeout=30, env=env,
+        capture_output=True, timeout=30, env=env,
+    )
+    return subprocess.CompletedProcess(
+        proc.args, proc.returncode,
+        proc.stdout.decode("utf-8", "replace"),
+        proc.stderr.decode("utf-8", "replace"),
     )
 
 
@@ -121,6 +138,8 @@ def _filter_driver_overrides(git_exe: str, root: Path) -> tuple[str, ...]:
 
 def repository_git_stamp(root: Path) -> dict:
     git_exe = _resolve_git()
+    if git_exe is None:
+        return {"head": None, "dirty": None}
     filter_overrides = _filter_driver_overrides(git_exe, root)
 
     def git(*args: str) -> str | None:
@@ -138,3 +157,36 @@ def repository_git_stamp(root: Path) -> dict:
         "head": head.strip(),
         "dirty": bool(status.strip()) if status is not None else None,
     }
+
+
+def path_git_state(root: Path, relative: str) -> str | None:
+    """One repository-relative path's own Git state — ``committed``,
+    ``modified`` (tracked, differs from HEAD or index), ``untracked``,
+    ``ignored`` — or ``None`` when Git or the repository is unavailable.
+    Used where a document names one file the freshness stamp deliberately
+    excludes (``glossabet-out/glossary.json``), so "dirty=false" is never
+    read as "that file is committed"."""
+    git_exe = _resolve_git()
+    if git_exe is None:
+        return None
+    overrides = _filter_driver_overrides(git_exe, root)
+    try:
+        proc = _run_git(
+            git_exe, root,
+            ("status", "--porcelain=v1", "--ignored", "--untracked-files=all",
+             "--no-renames", "--", relative),
+            overrides=overrides,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    lines = [line for line in proc.stdout.splitlines() if line.strip()]
+    if not lines:
+        return "committed"
+    code = lines[0][:2]
+    if code == "??":
+        return "untracked"
+    if code == "!!":
+        return "ignored"
+    return "modified"

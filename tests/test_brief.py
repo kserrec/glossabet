@@ -1,6 +1,7 @@
 """The ambient glossary digest is read-only, bounded, and state-stamped."""
 
 import json
+import sys
 import os
 
 from glossabet.agent.brief import MAX_BRIEF_BYTES, build_brief
@@ -176,3 +177,38 @@ def test_brief_is_utf8_bounded_and_reports_every_omission():
     assert "canonical_omitted=0" not in output
     assert "entries_truncated=0" not in output
     assert f"max_bytes={MAX_BRIEF_BYTES}" in output
+
+
+def test_brief_names_the_glossary_files_own_git_state(tmp_path):
+    """`dirty` excludes glossabet-out/ by design; a reader must not infer from
+    `dirty=false` that glossary.json is committed. The brief names that
+    file's own state: committed, modified, or untracked."""
+    import subprocess
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(tmp_path), *args], check=True,
+                       capture_output=True)
+
+    (tmp_path / "a.py").write_text("payment_service = 1\n")
+    git("init", "-q")
+    git("config", "user.email", "t@example.invalid")
+    git("config", "user.name", "T")
+    git("add", "-A")
+    git("commit", "-qm", "seed")
+    glossary = {"schema_version": 1, "concepts": [{
+        "id": "payment", "term": "Payment", "definition": "d", "status": "canonical",
+    }]}
+    save_glossary(tmp_path, glossary)
+    proc = subprocess.run([sys.executable, "-m", "glossabet", "brief", str(tmp_path)],
+                          capture_output=True, text=True)
+    assert "glossary.json=untracked" in proc.stdout
+    git("add", "-A")
+    git("commit", "-qm", "glossary")
+    proc = subprocess.run([sys.executable, "-m", "glossabet", "brief", str(tmp_path)],
+                          capture_output=True, text=True)
+    assert "dirty=false; glossary.json=committed" in proc.stdout
+    glossary["concepts"][0]["definition"] = "changed"
+    save_glossary(tmp_path, glossary)
+    proc = subprocess.run([sys.executable, "-m", "glossabet", "brief", str(tmp_path)],
+                          capture_output=True, text=True)
+    assert "dirty=false; glossary.json=modified" in proc.stdout

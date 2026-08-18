@@ -8,6 +8,7 @@ file, module, or repository never establish a compound occurrence.
 
 from __future__ import annotations
 
+import unicodedata
 from collections import Counter
 from collections.abc import Iterable
 
@@ -126,13 +127,15 @@ class EvidenceIndex:
         self.doc_entries = {
             entry["term"]: entry for entry in self.doc_section["items"]
         }
+        # NFC-keyed for the same reason path_in_scope compares in NFC.
         self.file_paths = {
-            item["path"]
+            unicodedata.normalize("NFC", item["path"])
             for kind in ("code", "docs")
             for item in self.view.file_entries(kind)
         }
         self.module_paths = {
-            module["path"] for module in self.view.modules()
+            unicodedata.normalize("NFC", module["path"])
+            for module in self.view.modules()
         }
 
         requested: set[tuple[str, ...]] = set()
@@ -344,24 +347,24 @@ class EvidenceIndex:
     ) -> dict:
         wanted = tokenize_term(term)
         corpus_complete = self.view.production_corpus_complete()
-        if len(wanted) != 1:
+        # The documentation index is keyed by *doc words* (letters-only,
+        # apostrophes kept, at least MIN_DOC_WORD_LEN long), not identifier
+        # tokens: ``O'Brien`` is one doc word but tokenizes to ``brien``, and
+        # ``ID``/``S3`` are no doc word at all. Look the term up the way the
+        # index was built, and treat a term the index cannot hold as unproven.
+        doc_keys = doc_words(term)
+        if len(wanted) != 1 or len(doc_keys) != 1:
             return {
                 "count": 0,
                 "count_complete": False,
                 "scope": scope_evidence(scope),
             }
-        entry = self.doc_entries.get(wanted[0])
+        entry = self.doc_entries.get(doc_keys[0])
         if entry is None:
-            # Absence proves zero mentions only if the documentation index
-            # could hold this token at all: doc words are letters-only and
-            # at least MIN_DOC_WORD_LEN long, so ``ID``, ``S3``, ``OAuth2``
-            # never appear there however often the README uses them.
-            representable = doc_words(wanted[0]) == [wanted[0]]
             return {
                 "count": 0,
                 "count_complete": (
-                    representable
-                    and self.doc_section.get("truncated") is None
+                    self.doc_section.get("truncated") is None
                     and corpus_complete
                 ),
                 "scope": scope_evidence(scope),

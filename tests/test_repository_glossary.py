@@ -662,7 +662,9 @@ def test_presence_confirmation_never_materializes_the_root_listing(
     # Something is there (lexists) but its exact name could not be confirmed
     # within the cap: never "absent" — a false absence claim is the one
     # failure this channel must not produce.
-    monkeypatch.setattr(repository_glossary_module, "MAX_WALK_ENTRIES", 0)
+    import glossabet.corpus.scanner as scanner_module
+
+    monkeypatch.setattr(scanner_module, "MAX_WALK_ENTRIES", 0)
     assert discover_repository_glossary(tmp_path) == {
         "present": True,
         "path": "GLOSSARY.md",
@@ -670,7 +672,7 @@ def test_presence_confirmation_never_materializes_the_root_listing(
         "reason": "root-listing-unconfirmed",
     }
     # Sibling: the root cannot be listed at all.
-    monkeypatch.setattr(repository_glossary_module, "MAX_WALK_ENTRIES", 100)
+    monkeypatch.setattr(scanner_module, "MAX_WALK_ENTRIES", 100)
 
     def _unlistable(*_a, **_k):
         raise PermissionError("listing denied")
@@ -738,17 +740,40 @@ def test_discovery_name_is_the_scanner_exclusion_name():
     assert SELF_FILES == frozenset({REPOSITORY_GLOSSARY_FILE})
 
 
-def test_root_glossary_symlink_to_excluded_content_is_never_declared_readable(tmp_path):
-    """The root GLOSSARY.md discovery shares the walk's content rule: a link
-    at GLOSSARY.md pointing at vendored (or ignored, hidden, self-output)
-    content is present but unreadable, with the target's exclusion named."""
+def test_root_glossary_symlink_rule_follows_docs_but_refuses_glossabet_output(tmp_path):
+    """The discovery channel exists to read GLOSSARY.md, so a confined link
+    into `docs/GLOSSARY.md` (or a vendored/hidden folder) is followed; only
+    escaping, sensitive, and Glossabet's-own-output targets are refused."""
     (tmp_path / "a.py").write_text("x = 1\n")
-    (tmp_path / "node_modules").mkdir()
-    (tmp_path / "node_modules" / "doc.md").write_text("# vendored\n")
-    os.symlink(tmp_path / "node_modules" / "doc.md", tmp_path / "GLOSSARY.md")
-
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "GLOSSARY.md").write_text("# nested glossary\n")
+    os.symlink(tmp_path / "docs" / "GLOSSARY.md", tmp_path / "GLOSSARY.md")
     section = discover_repository_glossary(tmp_path)
+    assert section["readable"] is True and section["symlink"] is True
 
-    assert section["present"] is True
-    assert section["readable"] is False
-    assert section["reason"] == "symlink-to-excluded-content"
+    for target in ("glossabet-out/notes.md", "GLOSSABET.md"):
+        (tmp_path / "GLOSSARY.md").unlink()
+        (tmp_path / target).parent.mkdir(exist_ok=True)
+        (tmp_path / target).write_text("# derived output\n")
+        os.symlink(tmp_path / target, tmp_path / "GLOSSARY.md")
+        section = discover_repository_glossary(tmp_path)
+        assert section["present"] is True
+        assert section["readable"] is False
+        assert section["reason"] == "symlink-to-excluded-content", target
+
+
+def test_divergence_counts_code_cased_spellings_as_present(tmp_path):
+    """`LedgerEntry`/`ledger_entry` in GLOSSARY.md is the term `Ledger Entry`
+    by the engine's own compound rule; the presence check must not report it
+    missing with `complete: true`."""
+    (tmp_path / "ledger.py").write_text("ledger_entry = 1\n")
+    (tmp_path / "GLOSSARY.md").write_text("- `LedgerEntry`: append-only record\n")
+    glossary = {"schema_version": 1, "concepts": [{
+        "id": "ledger-entry", "term": "Ledger Entry", "definition": "d",
+        "status": "canonical",
+    }]}
+    save_glossary(tmp_path, glossary)
+    section = repository_glossary_module.repository_glossary_section(
+        tmp_path, build_evidence(tmp_path), glossary
+    )
+    assert section["divergence"]["canonical_missing_from_markdown"] == []

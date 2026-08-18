@@ -1,0 +1,19 @@
+# Automated update proposals for the two dependency surfaces the release
+# gate trusts: SHA-pinned GitHub Actions and the hash-locked uv dev tree.
+# Every proposal still goes through the full CI matrix and the workflow
+# policy check (which requires 40-hex SHA pins, so Dependabot's SHA bumps
+# pass and a tag bump would not).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps"

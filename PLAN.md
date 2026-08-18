@@ -1,6 +1,6 @@
 # Glossabet — Plan
 
-Status: **Phases 0–22, 24–32, 34–40 complete (36.8, live
+Status: **Phases 0–22, 24–32, 34–42 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
 in progress at 33.2; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-17.
@@ -790,6 +790,123 @@ attempt history; if that text ever carried the sensitive canary or a home path
 the history would fail its own checks. Not reproducible without a live
 authorized run; settle at the next Codex batch.
 
+### Phase 41 — Bughunt round 5 (differently aimed) ✅ 2026-08-18
+
+Four lenses on the committed round-4 tree: review-the-fixes, end-to-end
+flows on odd repositories, generated adversarial input at the trust
+boundaries (2,000 graphs, 1,200 glossaries, 3,000 verifier mutations, 300
+configs), and Windows/macOS reasoning with emulation. Fixed, each with a
+pinned test:
+
+- **Round-4 siblings/regressions:** the symlink rule was too broad for the
+  discovery channel (root `GLOSSARY.md → docs/GLOSSARY.md` refused) — a
+  narrower `glossary_link_refusal` (escape / sensitive / Glossabet's own
+  output); unstatable real files (EACCES) now charge the corpus budget
+  (`complete`/`production_complete` false); a symlinked file takes its
+  target's role; root manifests use the link rule; Rust `self::`/`super::`
+  item paths retry like `crate::`; one-word bare specs no longer attach to a
+  same-named directory anywhere (`import os` vs `tests/os/`); `GIT_INDEX_FILE`
+  scrubbed; doc-index lookup keys by doc word (`O'Brien`); `--version` to a
+  closed pipe quiet; UTF-8 BOM stripped from source text; ZWNJ/ZWJ continue a
+  word; commented list-dash `uses:` ignored; parent-segment regex covers
+  shell terminators; mark-table docstring claim corrected.
+- **Flows:** `inspect` no longer fails on 100+ long definitions (omission
+  records coalesce per pattern, `glossary.concepts.*.definition`);
+  subproject `AGENTS.md`/`CLAUDE.md` managed blocks stripped at any depth
+  (case-insensitive name); BOM before a block at byte 0 stays current and
+  repairable; vocabulary ownership keyed by token sequence (`Alpha Beta` =
+  `AlphaBeta` = `alpha_beta`; Settled decision 9 updated); zero-width
+  space/word joiner/soft hyphen/BOM refused in glossary strings; divergence
+  presence counts code-cased spellings; NFC comparison for scopes and file/
+  module bindings; `brief` names `glossary.json`'s own Git state
+  (`committed`/`modified`/`untracked`); artifacts written 0o666−umask, not
+  0o600; JSON reads tolerate a BOM; scan root inside `glossabet-out/` refused.
+- **Adversarial:** astronomically large `cohesion` (int beyond float range,
+  1e308) degrades instead of crashing/poisoning scores (`MAX_USABLE_COHESION`);
+  node/group labels capped at 512 chars (`label_truncated`), member tokens
+  at 2,000 with a ledger (evidence schema 14 → 15); lone surrogates are
+  terminal controls (escaped, never `UnicodeEncodeError`); verifiers report
+  `OverflowError` as malformed metrics; `glossabet.json` that is a directory
+  is an error, not "no configuration".
+- **Platform (emulated):** piped stdout under a narrow console encoding
+  (cp932/cp1252 on Windows) never raises — the safe stream renders
+  unencodable text as escapes; git output decoded as UTF-8 with replacement
+  (non-ASCII untracked names under an ASCII/cp1252 locale); cache-dir
+  containment by inode (case-insensitive filesystems); host-context files
+  found only under a different case are refused (would silently replace
+  them); Windows-absolute sdist member names rejected; case-insensitive
+  skills-directory check; README notes the plugin hook's `python3`/`py`
+  launcher requirement.
+
+**Deferred — Windows-only, cannot be settled here (record what would):**
+`sync-context` onto a read-only NTFS file fails and leaves a read-only
+`.AGENTS.md.*.tmp` (settle: `attrib +R AGENTS.md; glossabet sync-context .`
+on Windows); directory junctions are not `is_symlink()` and can escape the
+walk (settle: `mklink /J repo\link C:\Windows; glossabet scan repo`); R2
+hook quoting — concrete cases: UNC `\\server\share` collapses to
+`\server\share` under bash/sh; drive-letter paths are safe; PowerShell
+would need `&`.
+
+**Not bugs (recorded so they are not re-hunted):** `read_source` keeps a
+BOM out of content but `write_text` platform newlines are never used for
+artifacts; `OSError` → exit 1 is deliberate (documented) and does make the
+2 = defect contract unenforceable for that family; `inspect` on a
+read-only checkout cannot refresh evidence (documented); untracked
+`graphify-out/` legitimately makes Graphify freshness `unverified`; Turkish
+`İ` casefolds to `i̇` (Unicode-correct); tabs are already allowed in prose.
+
+### Phase 42 — Security audit round 5 ✅ 2026-08-18
+
+Four auditors (engine trust boundaries; install/plugin/hooks/CLI; repo
+hygiene + CI/CD + supply chain; resource exhaustion), every finding
+re-verified, all fixed with pinned tests. Highest-value:
+
+- **Repo-shipped `git.exe`/`git.bat` executed on Windows** — `shutil.which`
+  searches the current directory first (and a bare name resolves the same
+  way); an earlier round used it for exactly this defense. New
+  `runtime/executables.which_on_path`: PATH walked ourselves, absolute
+  entries only, never `.`/empty, never a hit inside cwd, never a bare name;
+  no git on PATH → stamp honestly unverified. Same lookup for the `glossabet`
+  the Claude hook persists (a repo-local `glossabet.bat` could otherwise be
+  written into every future session's hook); notes printed when the chosen
+  executable is inside cwd or a virtualenv.
+- **Codex runner isolation:** hook commands are `python3 -I -B` / `py -3 -I -B`
+  (no PYTHONPATH/user-site/script-dir); the bundled wheel sits after the
+  stdlib and before site-packages.
+- **Hostile graph fan-out DoS** (1.3 GB / 32 s from a 55 MB graph):
+  `GRAPH_WORK_BUDGET` judged from list lengths before any member is
+  materialized; over budget → present-but-unusable, lexical-only (1.8 s).
+- **Invisible characters refused as a class** (Default_Ignorable_Code_Point,
+  minus ZWNJ/ZWJ) instead of four enumerated code points; TAG-block text
+  hidden from the human but readable by a model was the demonstration.
+- **CI:** publish job passes the tag via `env:` (was inline `${{ github.ref_name }}`
+  in the one job holding the OIDC token; git accepts `$(…)`/backticks in tag
+  names); `persist-credentials: false` on the release checkout;
+  `check_workflows.py` strips comments first, reads every workflow file, and
+  enforces SHA pins / no `pull_request_target` / no untrusted expression in
+  `run:` / no `curl|sh` / no `write-all`/stored secret in publish — a crafted
+  bypass (all guards in comments + a fourth `backdoor.yml`) had passed the
+  old substring checker; `.github/dependabot.yml` added.
+- **Distribution scan** covers every release-wheel member and the plugin
+  wheel nested in the sdist (it promptly caught the username in a doc line
+  written during this very phase); root-manifest link probe uses the
+  configured ignore/role rules; `--version` to a full disk exits nonzero.
+- Verified clean: no secrets/keys in tree or history; hash-locked `uv.lock`;
+  Trusted Publishing; `--fetch` guards; hostile `.git/config` execution
+  attempts (`fsmonitor`, `hooksPath`, filter drivers, aliases, pager via
+  `include.path`) blocked; symlink families; regex linearity; cache-clear.
+
+**Recorded accepted risk (SECURITY.md):** the maintainer's absolute checkout
+path (OS username + layout) is in public git history from 2026-08-15/16
+transcripts/docs; not shipped anywhere; removal needs a history rewrite —
+**Kyle to rule** whether to rewrite before publication.
+
+**Deferred (Windows-only, unverifiable here):** the Codex `commandWindows`
+launcher `py` is a bare name that `cmd.exe` would resolve through the
+current directory (a repo-shipped `py.bat`); a portable absolute-launcher
+form needs the Windows plugin probe (Phase 33.2 territory). R2 (hook quoting
+of `\`/UNC) unchanged.
+
 ### Owner self-testing pause — active, not an implementation phase
 
 Kyle is keeping the current build to himself while he runs it and performs
@@ -929,8 +1046,10 @@ Each finding was verified against the engine's own output on this repository.
 9. **Concept scopes are literal path regions.** An omitted glossary scope is
    repository-wide; `scope.path_prefixes` names one or more literal
    repository-relative subsystem regions. Aliases inherit scope, and
-   NFKC-casefolded vocabulary ownership must be unique wherever regions
-   overlap. Drift and lexical reconciliation enforce the same boundary.
+   vocabulary ownership must be unique wherever regions overlap — keyed,
+   since Phase 41 (2026-08-18), by the term's normalized word sequence
+   (before the lexical keyword filter) rather than its NFKC-casefolded
+   string, because every consumer compares by words. Drift and lexical reconciliation enforce the same boundary.
 10. **Unicode remains lexical; no parser dependency.** Phase 16's NFKC,
     casefold, acronym/digit, and language-form implementation passes all 15
     new lexical labels without a parser. The measured Tree-sitter candidate

@@ -12,15 +12,15 @@ import tarfile
 import zipfile
 from email import policy
 from email.parser import BytesParser
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 ROOT = Path(__file__).resolve().parents[1]
 HOOK_PATH = "./hooks/hooks.json"
 SESSION_START_COMMAND = (
-    'python3 -B "$PLUGIN_ROOT/skills/glossabet/scripts/run_glossabet.py" brief .'
+    'python3 -I -B "$PLUGIN_ROOT/skills/glossabet/scripts/run_glossabet.py" brief .'
 )
 SESSION_START_COMMAND_WINDOWS = (
-    'py -3 -B "%PLUGIN_ROOT%\\skills\\glossabet\\scripts\\run_glossabet.py" brief .'
+    'py -3 -I -B "%PLUGIN_ROOT%\\skills\\glossabet\\scripts\\run_glossabet.py" brief .'
 )
 
 
@@ -110,7 +110,12 @@ def _dotenv_part(name: str) -> bool:
 def _check_names(names: list[str], label: str) -> None:
     for name in names:
         path = PurePosixPath(name)
-        if path.is_absolute() or ".." in path.parts:
+        if (
+            path.is_absolute()
+            or PureWindowsPath(name).is_absolute()  # drive-letter or UNC
+            or "\\" in name
+            or ".." in path.parts
+        ):
             _fail(f"{label} contains an unsafe member path: {name}")
         if any(_dotenv_part(part) for part in path.parts):
             _fail(f"{label} contains a forbidden dotenv path: {name}")
@@ -154,10 +159,20 @@ def _source_version() -> str:
     return match.group(1)
 
 
+def _check_no_local_paths_in_zip(data: bytes, member: str, label: str) -> None:
+    import io
+
+    with zipfile.ZipFile(io.BytesIO(data)) as inner:
+        for name in inner.namelist():
+            _check_no_local_paths(inner.read(name), f"{member}!{name}", label)
+
+
 def _check_wheel(wheel: Path, version: str, canonical_skill: bytes) -> None:
     with zipfile.ZipFile(wheel) as archive:
         names = archive.namelist()
         _check_names(names, "wheel")
+        for name in names:  # every shipped member, not only the sdist's copy
+            _check_no_local_paths(archive.read(name), name, "wheel")
         required = {
             "glossabet/__main__.py",
             "glossabet/agent/brief.py",
@@ -338,9 +353,15 @@ def _check_sdist(
             if member.isfile():
                 handle = archive.extractfile(member)
                 if handle is not None:
-                    _check_no_local_paths(
-                        handle.read(), member.name, "source distribution"
-                    )
+                    data = handle.read()
+                    _check_no_local_paths(data, member.name, "source distribution")
+                    if member.name.endswith(".whl"):
+                        # The plugin's bundled wheel is a zip inside the
+                        # tarball: its members are compressed, so the scan
+                        # above cannot see them — open it and scan each.
+                        _check_no_local_paths_in_zip(
+                            data, member.name, "source distribution"
+                        )
 
         required_relative = SDIST_REQUIRED_RELATIVE
         required = {prefix + name for name in required_relative}

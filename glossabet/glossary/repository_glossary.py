@@ -21,15 +21,14 @@ import unicodedata
 
 from glossabet.runtime.artifacts import READ_OVERSIZED, read_bounded_bytes
 from glossabet.analysis.evidence_view import EvidenceView
-from glossabet.corpus.config import load_config
 from glossabet.corpus.scanner import (
     LINK_ESCAPES_REPOSITORY,
     LINK_TO_EXCLUDED_CONTENT,
     LINK_TO_SENSITIVE_FILE,
     MAX_FILE_BYTES,
-    MAX_WALK_ENTRIES,
     SKIPPED_SELF_GLOSSARIES,
-    symlink_content_refusal,
+    entry_named_exactly,
+    glossary_link_refusal,
 )
 
 REPOSITORY_GLOSSARY_FILE = "GLOSSARY.md"
@@ -68,52 +67,25 @@ def _unreadable(reason: str, size: int | None) -> dict:
     return section
 
 
-def _entry_named_exactly(root: Path, full: str) -> bool | None:
-    """Presence is the exact directory-entry name, as in the scanner's
-    SELF_FILES exclusion — not a path lookup, which on a case-insensitive
-    filesystem would also find "glossary.md", a file the walk still counts as
-    ordinary evidence. The path lookup is the cheap fast path (absent → done,
-    no directory scan); the exact-name confirmation iterates ``scandir`` under
-    the walk-entry cap instead of materializing the whole listing, so a root
-    with millions of entries costs no memory.
-
-    Returns True/False when the answer is known, and None when something is
-    there but its exact name could not be confirmed (the root cannot be
-    listed, or the cap was reached first). None is never reported as absent:
-    a false absence claim is the one failure this channel must not produce.
-    """
-    if not os.path.lexists(full):
-        return False
-    try:
-        with os.scandir(root) as entries:
-            for index, entry in enumerate(entries):
-                if index >= MAX_WALK_ENTRIES:
-                    return None
-                if entry.name == REPOSITORY_GLOSSARY_FILE:
-                    return True
-    except OSError:
-        return None
-    return False
-
-
 def _read_repository_glossary(root: Path) -> tuple[dict, bytes | None]:
     """Discovery record plus the complete bytes when — and only when — the
     file was read safely and completely."""
     root = root.resolve()
     path = root / REPOSITORY_GLOSSARY_FILE
     full = str(path)
-    named_exactly = _entry_named_exactly(root, full)
+    named_exactly = entry_named_exactly(root, REPOSITORY_GLOSSARY_FILE)
     if named_exactly is False:
         return {"present": False}, None
     if named_exactly is None:
         return _unreadable(REASON_LISTING_UNCONFIRMED, None), None
     if os.path.islink(full):
-        # The scanner's content rule, not a re-derivation of it: an escaping
-        # link is not repository content, and a link with an innocent name
-        # pointing at an in-repo sensitive file (GLOSSARY.md -> .env) must
-        # not be declared readable — the skill reads what the engine
-        # declares readable.
-        refusal = symlink_content_refusal(full, root, load_config(root))
+        # The scanner's link rule for this channel, not a re-derivation of
+        # it: an escaping link is not repository content, a link with an
+        # innocent name pointing at an in-repo sensitive file (GLOSSARY.md
+        # -> .env) or at Glossabet's own output must not be declared readable
+        # — the skill reads what the engine declares readable. A confined
+        # link into docs/ (or any other ordinary location) is followed.
+        refusal = glossary_link_refusal(full, root)
         if refusal is not None:
             return _unreadable(refusal, None), None
     if not os.path.isfile(full):
@@ -148,8 +120,10 @@ def discover_repository_glossary(root: Path) -> dict:
 
     Presence is judged from the directory entry itself (``lexists``), so a
     dangling or escaping symlink is still *present*. Symlinks follow the
-    walked-file rule: confined inside the root they are followed, escaping
-    ones are refused. The bound is applied to the bytes actually read
+    scanner's glossary-link rule: confined inside the root they are followed
+    (a link into ``docs/GLOSSARY.md`` is fine); escaping ones, links to a
+    sensitive path, and links to Glossabet's own output (``glossabet-out/``,
+    ``GLOSSABET.md``) are refused. The bound is applied to the bytes actually read
     (``cap + 1``), not to a racy ``stat``.
     """
     return _read_repository_glossary(root)[0]
@@ -247,7 +221,13 @@ def repository_glossary_divergence(glossary: dict, payload: bytes) -> dict:
             skipped += 1
             return None
         checked += 1
-        return _fold(candidate) in text
+        folded = _fold(candidate)
+        # A code-cased or joined spelling of a multi-word term counts as
+        # present: the engine's own compound rule treats ``LedgerEntry`` and
+        # ``ledger_entry`` as the term ``Ledger Entry``.
+        variants = {folded, folded.replace(" ", ""), folded.replace(" ", "_"),
+                    folded.replace(" ", "-")}
+        return any(variant in text for variant in variants)
 
     for concept in canonical:
         term = concept["term"]

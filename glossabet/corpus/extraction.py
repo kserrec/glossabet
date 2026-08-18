@@ -32,7 +32,7 @@ def read_source(path: Path) -> tuple[bytes, str, str] | str:
     if b"\0" in content[:1024]:  # binary despite its extension
         return "binary-content"
     try:
-        text = content.decode("utf-8")
+        text = content.decode("utf-8-sig")  # a leading BOM is not content
     except UnicodeDecodeError:
         return "not-utf-8"
     return content, hashlib.sha256(content).hexdigest(), text

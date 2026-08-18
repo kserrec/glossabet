@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from glossabet.runtime.artifacts import ArtifactError
+from pathlib import Path
+
+from glossabet.runtime.artifacts import OUT_DIR, ArtifactError
 from glossabet.runtime import git_state
 from glossabet.runtime.display import escape_terminal_text, join_escaped
 from glossabet.runtime.engine_run import GLOSSARY_OPTIONAL, open_run
 from glossabet.glossary.store import (
+    GLOSSARY_FILE,
     GLOSSARY_SCHEMA_VERSION,
     concept_scope,
     glossary_sha256,
@@ -199,6 +202,15 @@ def _render_brief(glossary: dict, state_line: str, origin: str) -> str:
     return output
 
 
+def _brief_git_stamp(root: Path) -> dict:
+    stamp = dict(git_state.repository_git_stamp(root))
+    if stamp.get("head") is not None:
+        stamp["glossary_json"] = git_state.path_git_state(
+            root, f"{OUT_DIR}/{GLOSSARY_FILE}"
+        )
+    return stamp
+
+
 def build_brief(glossary: dict, git_stamp: dict) -> str:
     """Build deterministic ambient text from one already validated glossary.
 
@@ -207,12 +219,17 @@ def build_brief(glossary: dict, git_stamp: dict) -> str:
     ``glossabet brief`` and was injected into session context by a Glossabet
     ``SessionStart`` hook rather than typed or pasted by anyone.
     """
-    return _render_brief(
-        glossary,
+    line = (
         f"git: head={_git_value(git_stamp.get('head'))}; "
-        f"dirty={_git_value(git_stamp.get('dirty'))}\n",
-        LIVE_BRIEF_ORIGIN,
+        f"dirty={_git_value(git_stamp.get('dirty'))}"
     )
+    glossary_state = git_stamp.get("glossary_json")
+    if glossary_state is not None:
+        # ``dirty`` excludes glossabet-out/ by design (evidence freshness);
+        # the one file there that is not derived output gets its own state
+        # so a reader never infers "committed" from "dirty=false".
+        line += f"; glossary.json={_git_value(glossary_state)}"
+    return _render_brief(glossary, line + "\n", LIVE_BRIEF_ORIGIN)
 
 
 def build_managed_brief(glossary: dict) -> str:
@@ -236,7 +253,7 @@ def brief_command(path_arg: str) -> int:
     if run.glossary is None:
         return 0
     print(
-        build_brief(run.glossary, git_state.repository_git_stamp(run.root)),
+        build_brief(run.glossary, _brief_git_stamp(run.root)),
         end="",
     )
     return 0

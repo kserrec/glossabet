@@ -26,6 +26,7 @@ from glossabet.runtime.artifacts import (
     read_bounded_json,
     write_artifact,
 )
+from glossabet.corpus.tokenize import term_words
 from glossabet.runtime.display import contains_terminal_control
 
 GLOSSARY_SCHEMA_VERSION = 1
@@ -81,6 +82,14 @@ def glossary_sha256(glossary: dict) -> str:
 
 
 def _fold_vocabulary(term: str) -> str:
+    """The identity a term or alias is owned by: its normalized word sequence
+    (``Alpha Beta``, ``AlphaBeta``, and ``alpha_beta`` are one identity, since
+    every consumer compares vocabulary by words), taken *before* the lexical
+    keyword filter so ``Limit Function`` and ``Limit`` stay distinct terms.
+    A term with no words falls back to its NFKC-casefolded string."""
+    words = term_words(term)
+    if words:
+        return " ".join(words)
     return unicodedata.normalize("NFKC", term.strip()).casefold()
 
 
@@ -364,9 +373,17 @@ def concept_scope(concept: dict) -> tuple[str, ...] | None:
 
 
 def path_in_scope(path: str, scope: tuple[str, ...] | None) -> bool:
-    """Whether a repository-relative file/module path falls inside scope."""
-    return scope is None or any(
-        path == prefix or path.startswith(prefix + "/") for prefix in scope
+    """Whether a repository-relative file/module path falls inside scope.
+
+    Compared in NFC: macOS reports decomposed (NFD) names for a directory a
+    glossary author typed composed (``café``), and a scope that silently
+    matched nothing would turn into confident false drift."""
+    if scope is None:
+        return True
+    path = unicodedata.normalize("NFC", path)
+    return any(
+        path == prefix or path.startswith(prefix + "/")
+        for prefix in (unicodedata.normalize("NFC", p) for p in scope)
     )
 
 

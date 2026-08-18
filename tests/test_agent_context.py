@@ -29,7 +29,7 @@ def test_inspect_emits_versioned_context_and_refreshes_evidence(tmp_path, capsys
     context = json.loads(captured.out)
     assert captured.err == ""
     assert context["context_schema_version"] == 3
-    assert context["evidence_schema_version"] == 14
+    assert context["evidence_schema_version"] == 15
     assert context["freshness"]["status"] == "current"
     assert context["files"]["code"] == [
         {"language": "python", "path": "service.py", "role": "production"}
@@ -81,7 +81,7 @@ def test_glossary_projection_truncation_is_visible_at_section_level(
     assert coverage["complete"] is False
     assert "glossary" in coverage["affected_sections"]
     assert any(
-        omission["path"] == "glossary.concepts.0.definition"
+        omission["path"] == "glossary.concepts.*.definition"
         and omission["kind"] == "string_characters"
         for omission in coverage["omissions"]
     )
@@ -242,3 +242,27 @@ def test_inspect_rejects_oversized_glossary(tmp_path, capsys, monkeypatch):
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "larger than 20 bytes" in captured.err
+
+
+def test_many_long_glossary_strings_do_not_exhaust_the_omission_ceiling(tmp_path):
+    """`save` accepts 16 KB definitions and 10,000 concepts; `inspect` used
+    to spend one omission record per over-long string and fail with 'requires
+    more than 100 omission records' for a glossary the engine itself accepted
+    — which the skill reads as a broken engine. Records coalesce per pattern."""
+    (tmp_path / "a.py").write_text("payment_service = 1\n")
+    concepts = [
+        {"id": f"c{i}", "term": f"Term{i}", "definition": "x" * 600,
+         "status": "canonical"}
+        for i in range(150)
+    ]
+    glossary = {"schema_version": 1, "concepts": concepts}
+    save_glossary(tmp_path, glossary)
+    context = agent_context.build_agent_context(build_evidence(tmp_path), glossary)
+    records = [
+        o for o in context["coverage"]["context"]["omissions"]
+        if o["path"] == "glossary.concepts.*.definition"
+    ]
+    assert len(records) == 1
+    assert records[0]["kind"] == "string_characters"
+    assert records[0]["amount"] == 150 * (600 - 512)
+    assert context["coverage"]["context"]["omission_counts"]["string_characters"] == 150

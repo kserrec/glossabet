@@ -155,11 +155,15 @@ class Resolver:
         rel = self.by_slug_suffix.get(slug)
         if rel is not None:
             return "internal", module_of(rel)
-        # A spec naming a package directory (``crate::config`` ->
-        # ``src/config/mod.rs``, ``pkg.sub`` -> ``pkg/sub/__init__.py``).
-        directory = self.by_dir_suffix.get(slug)
-        if directory is not None:
-            return "internal", directory
+        # A dotted/pathed spec naming a package directory (``crate::config``
+        # -> ``src/config/mod.rs``, ``pkg.sub`` -> ``pkg/sub/__init__.py``).
+        # A one-word bare spec is not looked up here: ``import os`` or
+        # ``import 'react'`` must not become an edge to some ``tests/os/`` or
+        # ``src/react/`` directory (top-level packages resolve below).
+        if "/" in slug or language == "rust":
+            directory = self.by_dir_suffix.get(slug)
+            if directory is not None:
+                return "internal", directory
         stem = slug.rsplit("/", 1)[-1].lower()
         if stem in self.by_stem:
             return "internal", module_of(self.by_stem[stem])
@@ -190,7 +194,14 @@ class Resolver:
             if parts[0] == "super":
                 segments = segments[:-1]
             parts = parts[1:]
-        return self._resolve_segments(segments + parts)
+        # ``super::error::Kind`` names an item inside module ``error``: like
+        # the ``crate::`` branch, retry with trailing item segments dropped.
+        while parts:
+            kind, module = self._resolve_segments(segments + parts)
+            if module is not None:
+                return kind, module
+            parts = parts[:-1]
+        return "internal", None
 
     def _resolve_relative(
         self,

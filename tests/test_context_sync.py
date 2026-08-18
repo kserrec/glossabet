@@ -402,3 +402,47 @@ def test_every_other_repository_command_leaves_host_file_byte_identical(
         assert main(command) == 0
         capsys.readouterr()
         assert target.read_bytes() == before
+
+
+def test_bom_prefixed_block_at_byte_zero_stays_current_and_repairable(tmp_path):
+    """A fresh host file starts with the block at byte 0; an editor that adds
+    a UTF-8 BOM must not turn it into an 'unrepairable' malformed block."""
+    save_glossary(tmp_path, GLOSSARY)
+    assert main(["sync-context", str(tmp_path)]) == 0
+    agents = tmp_path / "AGENTS.md"
+    agents.write_bytes(b"\xef\xbb\xbf" + agents.read_bytes())
+
+    report = inspect_managed_context(tmp_path, load_glossary(tmp_path))
+    assert _target(report, "AGENTS.md")["status"] == "current"
+
+    # A stale block behind a BOM is resynced in place, BOM preserved.
+    changed = json.loads(json.dumps(GLOSSARY))
+    changed["concepts"][0]["definition"] = "A new definition."
+    save_glossary(tmp_path, changed)
+    assert main(["sync-context", str(tmp_path)]) == 0
+    text = agents.read_bytes()
+    assert text.startswith(b"\xef\xbb\xbf" + START_MARKER.encode())
+    assert b"A new definition." in text
+    assert _target(
+        inspect_managed_context(tmp_path, load_glossary(tmp_path)), "AGENTS.md"
+    )["status"] == "current"
+
+
+def test_subproject_managed_blocks_are_stripped_from_the_parent_scan(tmp_path):
+    """A subproject's own sync-context block (the per-subproject use the skill
+    recommends for monorepos) must not echo its canonical vocabulary into the
+    parent repository's evidence."""
+    sub = tmp_path / "packages" / "billing"
+    sub.mkdir(parents=True)
+    (sub / "billing.py").write_text("billing_value = 1\n")
+    (tmp_path / "app.py").write_text("app_value = 1\n")
+    glossary = json.loads(json.dumps(GLOSSARY))
+    glossary["concepts"][0]["definition"] = "zorbquux collects money"
+    save_glossary(sub, glossary)
+    assert main(["sync-context", str(sub)]) == 0
+    assert main(["sync-context", str(sub), "--agent", "claude"]) == 0
+
+    evidence = build_evidence(tmp_path)
+    blob = json.dumps(evidence["vocabulary"])
+    assert "zorbquux" not in blob
+    assert "managed" not in blob

@@ -25,6 +25,7 @@ from glossabet.runtime.artifacts import replace_file_atomic
 from glossabet.install.claude_plugin import (
     ClaudePluginError,
     claude_plugin_files,
+    executable_location_warnings,
     hook_command,
     resolve_cli_executable,
 )
@@ -210,6 +211,8 @@ def install_command(
             f"{_VERBS[file_outcome]} {label}: "
             f"{escape_terminal_text(str(written))}"
         )
+    for warning in executable_location_warnings(executable):
+        print(f"Note: {escape_terminal_text(warning)}")
     folder = escape_terminal_text(str(path.parent))
     command = escape_terminal_text(hook_command(executable))
     if not _is_claude_skills_directory(path.parent):
@@ -240,6 +243,6 @@ def _is_claude_skills_directory(skill_dir: Path) -> bool:
     """Whether ``skill_dir`` sits where Claude Code scans for skills-directory
     plugins: ``<...>/.claude/skills/<name>``."""
     return (
-        skill_dir.parent.name == "skills"
-        and skill_dir.parent.parent.name == ".claude"
+        skill_dir.parent.name.lower() == "skills"
+        and skill_dir.parent.parent.name.lower() == ".claude"
     )

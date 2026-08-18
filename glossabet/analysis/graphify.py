@@ -29,6 +29,24 @@ from glossabet.corpus.tokenize import tokenize_term
 GRAPH_PATH = "graphify-out/graph.json"
 GROUP_CAP = 50
 GOD_NODE_CAP = 8
+# A node label longer than this is not a name; a group's member-token set
+# larger than this is not a matchable context. Both are stated bounds with
+# their own ledger entries — a repository-controlled 29 MB label must not
+# become a 100 MB evidence artifact.
+MAX_NODE_LABEL_CHARS = 512
+MEMBER_TOKEN_CAP = 2_000
+# Graphify's cohesion is a fraction; anything beyond this magnitude is not a
+# usable score (an astronomically large JSON number would overflow float
+# math and poison every derived score).
+MAX_USABLE_COHESION = 1_000_000.0
+# Input-work ceiling, judged from list lengths BEFORE any node, edge, or
+# member is materialized: a repository-controlled graph under the 64 MB size
+# cap could otherwise list a few thousand communities × a few thousand
+# members and cost gigabytes and tens of seconds while the output caps only
+# trim what is emitted afterwards. Real Graphify graphs are thousands of
+# references, not millions; beyond this the graph is reported present but
+# unusable and the run proceeds lexical-only.
+GRAPH_WORK_BUDGET = 1_000_000
 MEMBER_SAMPLE = 6
 STRUCTURE_CANDIDATE_CAP = 10
 
@@ -108,7 +126,34 @@ def _load_graph(root: Path) -> tuple[dict | None, bool, list[str]]:
         return None, True, [
             f"{GRAPH_PATH}: no recognizable node list — proceeding lexical-only"
         ]
+    references = _graph_references(data)
+    if references > GRAPH_WORK_BUDGET:
+        return None, True, [
+            f"{GRAPH_PATH}: {references} node/edge/member references exceed "
+            f"the adapter's work budget of {GRAPH_WORK_BUDGET} — proceeding "
+            "lexical-only"
+        ]
     return data, True, []
+
+
+def _graph_references(data: dict) -> int:
+    """Nodes + edges + community member references, counted from list
+    lengths only — the input work a graph would cost, known before any of
+    it is done."""
+    total = len(data["nodes"])
+    for key in ("links", "edges"):
+        value = data.get(key)
+        if isinstance(value, list):
+            total += len(value)
+    communities = data.get("communities")
+    if isinstance(communities, list):
+        total += len(communities)
+        for community in communities:
+            if isinstance(community, dict):
+                members = community.get("nodes")
+                if isinstance(members, list):
+                    total += len(members)
+    return total
 
 
 def _normalized_source(value: str) -> str:
@@ -145,6 +190,19 @@ def _provenance(node: dict) -> str:
     ):
         return "doc"
     return "code"
+
+
+def _usable_cohesion(value: object) -> bool:
+    """A finite, bounded, non-bool number. ``json.loads`` accepts bare NaN/
+    Infinity, bool passes ``isinstance(int)``, and an integer beyond float
+    range makes ``math.isfinite`` itself raise — none is a usable cohesion."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        number = float(value)
+    except OverflowError:
+        return False
+    return math.isfinite(number) and abs(number) <= MAX_USABLE_COHESION
 
 
 def _same_commit(built: str, current: str) -> bool:
@@ -222,8 +280,10 @@ def _normalize_nodes(graph: dict) -> dict[str, dict]:
         if node_id is None:
             continue
         node_id = str(node_id)
+        label = str(_first_value(raw, ("label", "name", "id")))
         nodes[node_id] = {
-            "label": str(_first_value(raw, ("label", "name", "id"))),
+            "label": label[:MAX_NODE_LABEL_CHARS],
+            "label_truncated": len(label) > MAX_NODE_LABEL_CHARS,
             "prov": _provenance(raw),
             "community": raw.get("community"),
             "community_name": _first_value(raw, ("community_name",), str),
@@ -297,11 +357,7 @@ def _groups_from_communities(
         # json.loads accepts bare NaN/Infinity and bool passes isinstance
         # (int); neither is a usable cohesion and NaN would poison scores
         # and emit non-conformant JSON downstream.
-        usable_cohesion = (
-            isinstance(cohesion, (int, float))
-            and not isinstance(cohesion, bool)
-            and math.isfinite(cohesion)
-        )
+        usable_cohesion = _usable_cohesion(cohesion)
         if group_id in groups:
             # Two entries claiming one id are one community written twice:
             # merge the members rather than letting the later entry silently
@@ -388,14 +444,20 @@ def _group_items(
                 f"structural member display cap is {MEMBER_SAMPLE} items"
             ),
         )
-        member_tokens = sorted({
+        all_member_tokens = sorted({
             token
             for member in visible
             for token in tokenize_term(nodes[member]["label"])
         })
+        member_tokens, member_token_coverage = capped_collection(
+            all_member_tokens,
+            MEMBER_TOKEN_CAP,
+            cap_reason=f"structural member-token cap is {MEMBER_TOKEN_CAP} items",
+        )
         items.append({
             "id": group_id,
-            "label": group["label"],
+            "label": group["label"][:MAX_NODE_LABEL_CHARS],
+            "label_truncated": len(group["label"]) > MAX_NODE_LABEL_CHARS,
             "cohesion": group["cohesion"],
             "size": len(visible),
             "members_sample": members_sample,
@@ -405,9 +467,7 @@ def _group_items(
             "member_tokens": member_tokens,
             "coverage": {
                 "members_sample": sample_coverage,
-                "member_tokens": coverage_ledger(
-                    len(member_tokens), len(member_tokens)
-                ),
+                "member_tokens": member_token_coverage,
             },
             "provenance": {
                 "code": provenance.get("code", 0),

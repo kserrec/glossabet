@@ -8,6 +8,7 @@ pruned before a lexical read and reported.
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import re
@@ -122,6 +123,53 @@ def _target_relative(full: str, root: Path) -> str | None:
         return Path(os.path.realpath(full)).relative_to(root).as_posix()
     except ValueError:
         return None
+
+
+def entry_named_exactly(root: Path, name: str) -> bool | None:
+    """Whether ``root`` holds a directory entry spelled exactly ``name`` — as
+    the walk's fixed-name rules see it — not a path lookup, which on a
+    case-insensitive filesystem would also find ``glossary.md`` or
+    ``agents.md``, files the walk treats as ordinary evidence. The path lookup
+    is the cheap fast path (absent → done, no directory scan); the exact-name
+    confirmation iterates ``scandir`` under the walk-entry cap instead of
+    materializing the whole listing, so a root with millions of entries costs
+    no memory.
+
+    Returns True/False when the answer is known, and None when something is
+    there but its exact name could not be confirmed (the root cannot be
+    listed, or the cap was reached first). Callers never report None as
+    absent: a false absence claim is the one failure to avoid.
+    """
+    if not os.path.lexists(os.path.join(root, name)):
+        return False
+    try:
+        with os.scandir(root) as entries:
+            for index, entry in enumerate(entries):
+                if index >= MAX_WALK_ENTRIES:
+                    return None
+                if entry.name == name:
+                    return True
+    except OSError:
+        return None
+    return False
+
+
+def glossary_link_refusal(full: str, root: Path) -> str | None:
+    """Why a symlinked root ``GLOSSARY.md`` may not be read as the repository
+    glossary, or ``None``. The discovery channel exists to read that file,
+    so only the rules that protect *what* is read apply: an escaping target,
+    a sensitive target, or Glossabet's own output posing as the glossary. A
+    link into ``docs/GLOSSARY.md`` or a hidden/vendored directory is the
+    maintainers' choice and is followed."""
+    target = _target_relative(full, root)
+    if target is None:
+        return LINK_ESCAPES_REPOSITORY
+    parts = target.split("/")
+    if any(is_sensitive(part) for part in parts):
+        return LINK_TO_SENSITIVE_FILE
+    if any(part in SELF_DIRS for part in parts[:-1]) or parts[-1] in SELF_REPORT_FILES:
+        return LINK_TO_EXCLUDED_CONTENT
+    return None
 
 
 def symlink_content_refusal(
@@ -303,7 +351,8 @@ EXCLUSION_KINDS: tuple[ExclusionKind, ...] = (
     # walked); reported so the non-descent is not silent.
     ExclusionKind("symlinked_directories", "skipped_symlinked_directories",
                   "did not descend into {n} symlinked director(ies) inside "
-                  "the repository (their real paths are walked)"),
+                  "the repository (content is read at its real path, if that "
+                  "path is not itself excluded)"),
     # Entries the walk met but could not stat or read at all: dangling
     # links, permission denied. Not source evidence and not silently gone.
     ExclusionKind("unreadable", "skipped_unreadable",
@@ -561,10 +610,24 @@ def _classify_files(
             if refusal == LINK_TO_EXCLUDED_CONTENT:
                 result.skipped_symlinks_to_excluded.append(rel)
                 continue
+            # The content is the target's, so its role is the target's too:
+            # ``src/data.py -> tests/fixtures/data.py`` is fixture content,
+            # ``tests/x.py -> src/x.py`` is production content.
+            target = _target_relative(full, root)
+            if target is not None:
+                role = config.role_for(target)
         try:
             size = os.path.getsize(full)
-        except OSError:
+        except OSError as exc:
             result.skipped_unreadable.append(rel)
+            if exc.errno != errno.ENOENT:
+                # A real source-extension file the walk cannot stat (EACCES)
+                # is inventory that went unread: charge the corpus ledger so
+                # ``complete``/``production_complete`` turn false. A dangling
+                # link (ENOENT) is not source and only needs the ledger.
+                result.corpus_budget.skip_source(
+                    rel, 0, "unreadable", production=role == "production"
+                )
             continue
         if size > MAX_FILE_BYTES:
             result.skipped_oversized.append(rel)
@@ -631,7 +694,7 @@ def walk_repository(root: Path, config: RepositoryConfig) -> WalkResult:
 
 
 def _read_root_manifest(
-    root: Path, path: Path, walk: WalkResult
+    root: Path, path: Path, walk: WalkResult, config: RepositoryConfig
 ) -> str | None:
     """Read a root manifest under the same bounds as walked source files."""
     rel = path.name
@@ -641,10 +704,12 @@ def _read_root_manifest(
         | set(walk.skipped_vendored)
     ):
         return None
-    if path.is_symlink() and _resolves_outside_root(str(path), root):
-        if rel not in walk.skipped_symlinks:
+    if path.is_symlink():
+        refusal = symlink_content_refusal(str(path), root, config)
+        if refusal == LINK_ESCAPES_REPOSITORY and rel not in walk.skipped_symlinks:
             walk.skipped_symlinks.append(rel)
-        return None
+        if refusal is not None:  # escaping, sensitive, or Glossabet's own output
+            return None
     if not path.is_file():
         return None
     try:
@@ -657,15 +722,17 @@ def _read_root_manifest(
         return None
 
 
-def _root_workspace_config(root: Path, walk: WalkResult) -> list[str]:
+def _root_workspace_config(
+    root: Path, walk: WalkResult, config: RepositoryConfig
+) -> list[str]:
     """Workspace declarations that need bounded inspection at the root."""
     reasons = []
     cargo = root / "Cargo.toml"
-    cargo_text = _read_root_manifest(root, cargo, walk)
+    cargo_text = _read_root_manifest(root, cargo, walk, config)
     if cargo_text is not None and "[workspace]" in cargo_text:
         reasons.append("Cargo.toml declares [workspace]")
     pkg = root / "package.json"
-    package_text = _read_root_manifest(root, pkg, walk)
+    package_text = _read_root_manifest(root, pkg, walk, config)
     if package_text is not None:
         try:
             data = json.loads(package_text)
@@ -676,9 +743,9 @@ def _root_workspace_config(root: Path, walk: WalkResult) -> list[str]:
     return reasons
 
 
-def detect_monorepo(root: Path, walk: WalkResult) -> dict:
+def detect_monorepo(root: Path, walk: WalkResult, config: RepositoryConfig) -> dict:
     reasons = [f"workspace manifest {m}" for m in sorted(walk.workspace_manifests)]
-    reasons += _root_workspace_config(root.resolve(), walk)
+    reasons += _root_workspace_config(root.resolve(), walk, config)
     sub_roots = sorted(set(walk.sub_roots))
     if len(sub_roots) >= MONOREPO_SUBROOT_THRESHOLD:
         reasons.append(

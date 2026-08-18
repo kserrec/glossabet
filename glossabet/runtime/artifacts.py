@@ -95,7 +95,8 @@ def parse_bounded_json(raw: bytes | str, cap: int) -> BoundedRead:
     if len(payload) > cap:
         return BoundedRead(READ_OVERSIZED, cap, size=len(payload))
     try:
-        value = json.loads(payload.decode("utf-8"))
+        # A UTF-8 BOM (Notepad, PowerShell ``Set-Content``) is not content.
+        value = json.loads(payload.decode("utf-8-sig"))
     except (ValueError, RecursionError) as exc:
         return BoundedRead(READ_MALFORMED, cap, payload=payload, error=str(exc))
     return BoundedRead(READ_OK, cap, payload=payload, value=value)
@@ -140,6 +141,13 @@ def confined_artifact_path(root: Path, relative: str) -> Path:
     return current
 
 
+def _default_file_mode() -> int:
+    """0o666 minus the process umask: what a plain ``open()`` would create."""
+    current = os.umask(0)
+    os.umask(current)
+    return 0o666 & ~current
+
+
 def replace_file_atomic(
     path: Path,
     payload: bytes,
@@ -152,7 +160,10 @@ def replace_file_atomic(
     The temporary is flushed and fsynced before the swap so an interrupted
     command cannot leave a partial file, and it is unlinked on any failure.
     ``mode`` is applied to the temporary when given; without it the file
-    keeps mkstemp's owner-only permissions. ``before_replace``, when given,
+    gets the permissions an ordinary ``open(..., "w")`` would give (0o666
+    minus the umask), not mkstemp's owner-only 0o600 — a committed
+    ``glossary.json`` rewritten by one user must stay readable to the others
+    who share the checkout. ``before_replace``, when given,
     runs after the temporary is durable and immediately before the swap —
     the caller's last chance to abort the replacement.
     """
@@ -164,8 +175,7 @@ def replace_file_atomic(
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
-        if mode is not None:
-            os.chmod(temporary, mode)
+        os.chmod(temporary, _default_file_mode() if mode is None else mode)
         if before_replace is not None:
             before_replace()
         os.replace(temporary, path)

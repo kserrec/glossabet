@@ -30,6 +30,26 @@ _BIDI_FORMAT_CHARACTERS = frozenset(
     }
 )
 _LINE_SEPARATORS = frozenset({"\u2028", "\u2029"})
+# Characters that render as nothing yet make two strings distinct — a
+# spoofing and silent-duplicate vector in identity fields, and a way to hide
+# text from the human whose approval is the product's trust anchor while a
+# model still reads it. This is Unicode's Default_Ignorable_Code_Point
+# property (zero-width space/joiners, soft hyphen, BOM, Hangul fillers,
+# Mongolian vowel separator, interlinear annotation, variation selectors,
+# the TAG block, ...) rather than an enumeration, so a variation is not one
+# code point away. ZWNJ/ZWJ (U+200C/U+200D) are excluded on purpose: they are
+# legitimate inside Persian, Indic, and emoji text.
+_DEFAULT_IGNORABLE_RANGES = (
+    (0x00AD, 0x00AD), (0x034F, 0x034F), (0x061C, 0x061C), (0x115F, 0x1160),
+    (0x17B4, 0x17B5), (0x180B, 0x180F), (0x200B, 0x200B), (0x200E, 0x200F),
+    (0x202A, 0x202E), (0x2060, 0x206F), (0x3164, 0x3164), (0xFE00, 0xFE0F),
+    (0xFEFF, 0xFEFF), (0xFFA0, 0xFFA0), (0xFFF0, 0xFFF8), (0x1BCA0, 0x1BCA3),
+    (0x1D173, 0x1D17A), (0xE0000, 0xE0FFF),
+)
+
+
+def _is_default_ignorable(codepoint: int) -> bool:
+    return any(start <= codepoint <= end for start, end in _DEFAULT_IGNORABLE_RANGES)
 
 
 def is_terminal_control(character: str) -> bool:
@@ -38,8 +58,15 @@ def is_terminal_control(character: str) -> bool:
     return (
         codepoint < 0x20
         or 0x7F <= codepoint <= 0x9F
+        # A lone surrogate (from a JSON \udXXX escape or a surrogate-escaped
+        # non-UTF-8 filename) cannot be encoded by any UTF-8 stream.
+        or 0xD800 <= codepoint <= 0xDFFF
         or character in _BIDI_FORMAT_CHARACTERS
         or character in _LINE_SEPARATORS
+        or _is_default_ignorable(codepoint)
+        # Interlinear annotation anchors/separators (Cf, not in the
+        # default-ignorable list) hide their annotation text likewise.
+        or 0xFFF9 <= codepoint <= 0xFFFB
     )
 
 
@@ -103,6 +130,18 @@ class _SafeTerminalStream:
 
     def write(self, text: str) -> int:
         safe = escape_terminal_text(text, preserve_line_feeds=True)
+        # A piped/redirected stdout on Windows is encoded with the ANSI code
+        # page (cp1252, cp932, ...) with strict errors: one em dash or accented
+        # letter would raise and read as an internal defect. Anything the
+        # stream cannot encode is rendered as a visible escape instead.
+        encoding = getattr(self._stream, "encoding", None)
+        if encoding:
+            try:
+                safe.encode(encoding)
+            except (UnicodeEncodeError, LookupError):
+                safe = safe.encode(encoding, "backslashreplace").decode(
+                    encoding, "replace"
+                )
         return self._stream.write(safe)
 
     def __getattr__(self, name: str):

@@ -168,7 +168,12 @@ The preferred future Codex artifact is the version-coupled plugin prototype at
 `plugins/glossabet/`. It carries the canonical skill and a matching wheel that
 runs from the plugin cache without adding a command to `PATH`. Its declared
 Codex `SessionStart` hook runs the bundled `brief .` boundary at startup,
-resume, clear, and compaction. Once the user trusts that installed hook, its
+resume, clear, and compaction. The hook's launcher is `python3` (POSIX) or
+the `py` launcher (`commandWindows`), Python 3.10+; a host without either on
+`PATH` — a macOS machine whose `python3` is Apple's install-tools stub, or a
+Windows Python installed without the launcher — gets a visible per-session
+hook failure rather than a glossary, and the standalone install route
+(`glossabet install`) does not depend on either. Once the user trusts that installed hook, its
 bounded stdout becomes developer context for the session; an absent glossary
 contributes nothing. No public marketplace entry exists yet. For local use
 from a source checkout, the standalone fallback installs the CLI and then
@@ -286,7 +291,10 @@ loads only the confined, strictly validated glossary and the hardened live Git
 stamp; it does not scan source files, refresh evidence, or write any repository
 file. With no glossary it emits nothing. Otherwise it emits at most 4,096 UTF-8
 bytes of deterministic plain text: canonical terms with one-line definitions,
-scopes, alias statuses, a semantic glossary SHA-256, `{head, dirty}` Git state,
+scopes, alias statuses, a semantic glossary SHA-256, `{head, dirty}` Git state
+plus `glossary.json`'s own state (`committed`/`modified`/`untracked` — `dirty`
+deliberately excludes `glossabet-out/`, so it must never be read as "the
+glossary is committed"),
 and explicit coverage when entries or details do not fit. Its first line
 names its origin — that it was emitted by `glossabet brief .` and that an
 installed Glossabet `SessionStart` hook injects it into agent context
@@ -502,8 +510,15 @@ be drawn from it.
   identifier positions or overlong compound terms omitted by its budgets. A
   Graphify structural group is the separate, explicitly defined local context
   used for structural matching.
-- One NFKC-casefolded canonical term or alias may belong to only one concept
-  in overlapping scopes. Ambiguous aliases are rejected before the glossary
+- One canonical term or alias identity may belong to only one concept in
+  overlapping scopes, where identity is the term's normalized word sequence
+  (`Alpha Beta`, `AlphaBeta`, and `alpha_beta` are one identity, because
+  drift, validation, and matching compare vocabulary by words; `Limit` and
+  `Limit Function` stay distinct — the identity is taken before the lexical
+  keyword filter); a term with no words is keyed by its NFKC-casefolded
+  spelling. Invisible
+  formatting characters (zero-width space, word joiner, soft hyphen, BOM)
+  are refused in every glossary string. Ambiguous aliases are rejected before the glossary
   is saved or consumed. Every glossary object rejects unknown fields, and
   concept/alias/binding/scope/string counts have documented semantic ceilings.
   Ownership validation uses an indexed path-prefix lookup rather than comparing

@@ -505,7 +505,7 @@ prefix each with its subpackage (`glossabet.corpus.scanner`, …).
   only target stable identities (`symbol:` / `file:` / `module:`), never graph
   community or node ids, which are not stable across rebuilds. Optional
   `scope.path_prefixes` are literal repository-relative subsystem boundaries;
-  aliases inherit the concept scope. NFKC-casefolded vocabulary has one owner
+  aliases inherit the concept scope. Vocabulary identity (the normalized word sequence before the keyword filter; NFKC-casefolded string when wordless) has one owner
   within overlapping scopes, while disjoint scopes may deliberately reuse it.
 - `glossary_commands.py` — the `show` and `save` commands: `show` renders the
   loaded glossary; `save` reads one bounded JSON document from standard input
@@ -622,10 +622,12 @@ prefix each with its subpackage (`glossabet.corpus.scanner`, …).
   the built wheel, installs its skill into a temporary target, runs the
   walkthrough, uninstalls the package, and proves the import and CLI entry
   point are gone.
-- `scripts/check_workflows.py` — fail-closed, standard-library policy checks
-  for the supported matrix and the CI → quality → package / release → quality
-  → publish dependency chains. Mutation tests prove the important weakenings
-  are rejected without adding a YAML dependency.
+- `scripts/check_workflows.py` — standard-library policy checks over every
+  workflow file (comments stripped first) for the supported matrix, the CI →
+  quality → package / release → quality → publish dependency chains, SHA-pinned
+  actions, no fork-PR secret exposure, and no untrusted expression in a shell
+  line. A bounded checker of a small YAML subset, not a parser: mutation tests
+  prove the important weakenings are rejected without adding a YAML dependency.
 - `.github/workflows/quality.yml` — the reusable CPython 3.10–3.14 ×
   Linux/macOS/Windows matrix followed by evidence, build, distribution, and
   wheel checks. Both `ci.yml` and the manual-only, tag-and-confirmation-gated
@@ -690,7 +692,7 @@ canonical-vocabulary digest. It never scans source, refreshes evidence, or
 writes the repository. An absent glossary produces no output; malformed,
 oversized, or symlinked glossary input exits `1`. Output is deterministic,
 plain text, and at most 4,096 UTF-8 bytes, with a semantic glossary SHA-256,
-Git `{head, dirty}` state, canonical terms, one-line definitions, scopes,
+Git `{head, dirty}` state and `glossary.json`'s own Git state (`git_state.path_git_state`), canonical terms, one-line definitions, scopes,
 alias statuses, and explicit projection coverage.
 
 **Plugin `SessionStart` delivery** (`plugins/glossabet/hooks/hooks.json` →

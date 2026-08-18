@@ -19,7 +19,9 @@ _KEBAB_IDENTIFIER_LANGUAGES = frozenset({"clojure"})
 # ``\w`` misses combining marks (Devanagari vowel signs, Thai tone marks,
 # niqqud, harakat), which are legal identifier-continue characters and part
 # of the word; every word class below admits them after a first letter.
-_MARK = f"[{mark_class_body()}]"
+# ZWNJ/ZWJ (category Cf) are legal identifier characters that join or
+# separate glyphs inside one Persian/Indic word; they continue a word too.
+_MARK = f"[{mark_class_body()}\u200c\u200d]"
 _WORD_CHAR = rf"(?:\w|{_MARK})"
 _LETTER = r"[^\W\d_]"
 _LETTER_RUN = rf"{_LETTER}(?:{_LETTER}|{_MARK})*"
@@ -129,6 +131,23 @@ def token_origin(token: str, language: str | None) -> str:
     if token in language_tokens:
         return TOKEN_ORIGIN_LANGUAGE
     return TOKEN_ORIGIN_DOMAIN
+
+
+def term_words(term: str) -> list[str]:
+    """Every normalized word of a term, in order, *before* the keyword,
+    stopword, and length filters ``tokenize_identifier`` applies. This is the
+    identity a human means by a term: ``Limit Function`` and ``Limit`` are
+    different terms even though the lexical matcher drops ``function`` as a
+    keyword; ``AlphaBeta``, ``Alpha Beta``, and ``alpha_beta`` are the same."""
+    normalized = (
+        term if term.isascii() else unicodedata.normalize("NFKC", term)
+    )
+    return [
+        word.lower() if word.isascii()
+        else unicodedata.normalize("NFKC", word).casefold()
+        for hunk in _identifier_hunks(normalized)
+        for word in _split_case_and_digits(hunk)
+    ]
 
 
 def tokenize_identifier(name: str) -> list[str]:

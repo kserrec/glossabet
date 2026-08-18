@@ -190,6 +190,24 @@ supported platform.
   same-directory temporary file plus `os.replace`. Regressions:
   `test_install_refuses_symlinked_destination_components` and
   `test_force_replaces_only_the_skill_file_and_leaves_no_temporary_file`.
+- **A hook never persists a repository-local executable.** `install --agent
+  claude` binds its `SessionStart` hook to an absolute `glossabet` path: the
+  one that ran the installer (`sys.argv[0]`, an explicit user choice, with a
+  printed note when it lies inside the current directory or a virtual
+  environment) or the first on `PATH` by the same `PATH`-only lookup as git —
+  never a `glossabet`/`glossabet.bat` picked up from the current directory,
+  which in a hostile checkout would run in every future session of every
+  project. Regression: `test_hook_never_persists_a_repository_local_glossabet`.
+- **The Codex plugin runner starts isolated.** Its hook command is
+  `python3 -I -B …` (`py -3 -I -B` on Windows): isolated mode ignores
+  `PYTHONPATH`, the user site directory, and the script directory, so a
+  repository whose root ships `encodings.py` or `sitecustomize.py` beside a
+  shell rc that leaves an empty `PYTHONPATH` entry (= cwd) cannot execute
+  before the runner's first line. The runner inserts the integrity-checked
+  wheel after the standard library and before any site-packages, so a stale
+  or squatted `glossabet` elsewhere cannot be the one executed while the
+  digest guards another. Regression:
+  `test_hook_interpreter_is_isolated_from_a_hostile_working_directory`.
 - **Package data is pinned to the repository source of truth.** Hatch maps
   `skill/SKILL.md` directly to `glossabet/_skill/SKILL.md`; focused tests and
   the built-wheel smoke test compare the bytes rather than maintaining an
@@ -243,6 +261,18 @@ supported platform.
   unverified.
 
 ### Agent context and terminal output
+
+- **Invisible characters are refused as a class.** Every glossary string
+  (terms, ids, aliases, definitions, notes) rejects Unicode's
+  Default_Ignorable_Code_Point set (zero-width space, word joiner, soft
+  hyphen, BOM, Hangul fillers, Mongolian vowel separator, variation
+  selectors, the TAG block, interlinear annotation anchors) — characters that
+  render as nothing yet make two strings distinct or hide text from the human
+  reviewer whose approval is the product's trust anchor while a model still
+  reads it. ZWNJ/ZWJ stay allowed (Persian, Indic, emoji). Lone surrogates
+  and these characters are also rendered as visible escapes wherever
+  repository text reaches a terminal or a hook. Regression:
+  `test_default_ignorable_characters_are_refused_as_a_class`.
 
 - **The skill consumes CLI output, not repository artifacts.** The installed
   skill starts with `glossabet inspect .`. The command loads the optional
@@ -361,9 +391,18 @@ Glossabet program or its output artifacts.
   directives resolved exactly as `git status` resolves them — not just the
   literal `.git/config` — and overridden per name), because `git status`
   runs those commands during content conversion of a modified tracked file.
-  The `git` executable is resolved to an absolute path so a repository that
-  ships `git.exe` cannot be run through Windows's current-directory search.
-  Every call uses no shell, disables credential prompts, and has a timeout.
+  The `git` executable is located by walking `PATH` ourselves
+  (`runtime/executables.py`): only absolute entries, never `.`/an empty
+  entry, never a hit inside the current directory, and never a bare name —
+  because `shutil.which` on Windows searches the current directory *first*
+  and `CreateProcess` resolves a bare name the same way, so a repository
+  shipping `git.exe`/`git.bat` would otherwise be run by every command and
+  both session-start hooks (an earlier round used `shutil.which` for exactly
+  this purpose and inherited that behavior). With no git on `PATH` the stamp
+  is honestly unverified. Every call uses no shell, disables credential
+  prompts, has a timeout, and inherits no `GIT_DIR`/`GIT_WORK_TREE`/
+  `GIT_INDEX_FILE`; its output is decoded as UTF-8 with replacement.
+  Regression: `test_git_lookup_never_resolves_into_the_current_directory`.
   The status call uses stable porcelain output, requests all
   untracked files, disables rename detection, and excludes only the
   top-level, Glossabet-owned `glossabet-out/` path relative to the directory
@@ -495,6 +534,20 @@ the opt-in developer/release operations that do use the network.
   quadratic in the count of `import` tokens. Real code never approaches either
   bound; both exist to keep a hostile
   glossary or source file from exhausting CPU/memory.
+- **Graphify input work is budgeted before it is done.** A graph under the
+  64 MB size cap could still list a few thousand communities × a few thousand
+  members; stringifying, sorting, and tokenizing every pair cost ~1.3 GB and
+  30 s before the adapter's *output* caps trimmed the result. The adapter now
+  counts nodes + edges + community member references from list lengths
+  alone (`GRAPH_WORK_BUDGET`, 1,000,000) and, over budget, reports the graph
+  present but unusable with a warning and proceeds lexical-only, without
+  materializing a member. Node labels are bounded (512 chars,
+  `label_truncated`), member-token sets are capped (2,000, with a ledger),
+  and cohesion is usable only within `MAX_USABLE_COHESION`. The remaining
+  cost of a maximal graph is `json.loads` of the file itself, which the size
+  cap governs. Regression:
+  `test_graph_input_work_is_bounded_before_any_member_is_materialized`,
+  `test_astronomical_cohesion_and_giant_labels_degrade_instead_of_crashing`.
 - The managed-mode term-presence check (`repository_glossary.divergence`)
   is bounded on both factors: at most `MAX_DIVERGENCE_TERMS` (500) folded
   substring searches over a normalized document of at most
@@ -542,9 +595,33 @@ the opt-in developer/release operations that do use the network.
   other dependency is hash-locked in `uv.lock`; the shipped wheel declares
   zero runtime dependencies.
 - Published distributions are scanned at build time for absolute local home
-  paths (`/home/<user>/`, `/Users/<user>/`, `C:\Users\<user>`) so a machine
-  trace can never leak a maintainer's username or layout onto PyPI; internal
-  planning docs are excluded from the source distribution.
+  paths (`/home/<user>`, `/Users/<user>`, the superuser's home, `C:\Users\<user>`,
+  with or without a trailing separator) in every sdist member, every release-wheel
+  member, and every member of the plugin wheel nested inside the sdist, so a
+  machine trace can never leak a maintainer's username or layout onto PyPI;
+  internal planning docs are excluded from the source distribution.
+- **Accepted risk — the maintainer's home path is in public git history.**
+  Commits from 2026-08-15/16 carried committed agent transcripts and planning
+  docs containing the maintainer's absolute checkout path; later commits
+  redacted the transcripts to `<REPO>` and the distribution scanner keeps it
+  out of anything shipped, but the history itself discloses an OS username
+  and directory layout. Removing it would take a history rewrite of a
+  repository others may have cloned; it is recorded here as accepted unless
+  Kyle rules for a rewrite before publication.
+- **Workflow policy is checked with comments stripped, over every workflow
+  file.** `scripts/check_workflows.py` reads the whole `.github/workflows/`
+  directory, strips `#` comments before any check (a guard present only in
+  a comment does not count), requires the publish job's tag to reach the
+  shell through `env:` rather than an inline `${{ … }}` expression, and
+  holds every file to: SHA-pinned actions, no `pull_request_target`, no
+  event/ref/input expression interpolated into a `run:` line, no download
+  piped into a shell, and no `write-all`/stored-secret use in the publish
+  job. It is still a bounded checker over a small YAML subset, not a parser
+  — a maintainer with write access can always change the workflows; the
+  check exists to make an accidental or careless weakening fail loudly.
+  Dependabot proposes SHA bumps for actions and updates for the uv-locked
+  dev tree weekly (`.github/dependabot.yml`); every proposal runs the full
+  matrix and this policy check.
 
 ## Reporting
 

@@ -20,6 +20,7 @@ from pathlib import Path
 from glossabet.agent.brief import build_managed_brief
 from glossabet.runtime.display import escape_terminal_text
 from glossabet.glossary.store import glossary_sha256
+from glossabet.corpus.scanner import entry_named_exactly
 from glossabet.agent.managed_block import (
     AGENT_TARGETS,
     END_MARKER,
@@ -85,6 +86,10 @@ def analyze_managed_block(text: str, glossary: dict) -> _Analysis:
             "edited",
             "managed-context markers or metadata are malformed",
         )
+    # The regex tolerates a leading BOM before a block at byte 0; the block
+    # itself (what is compared, and what a resync replaces) starts after it.
+    block_start = match.start() + (1 if match.group(0).startswith("\ufeff") else 0)
+    block_text = text[block_start:match.end()]
 
     metadata = METADATA_RE.fullmatch(match.group("metadata"))
     if metadata is None:  # Kept explicit even though BLOCK_RE embeds the pattern.
@@ -96,7 +101,7 @@ def analyze_managed_block(text: str, glossary: dict) -> _Analysis:
         return _Analysis(
             "edited",
             "managed-context content no longer matches its content stamp",
-            match.start(),
+            block_start,
             match.end(),
         )
 
@@ -107,7 +112,7 @@ def analyze_managed_block(text: str, glossary: dict) -> _Analysis:
         return _Analysis(
             "edited",
             "managed-context block uses a newer unsupported format",
-            match.start(),
+            block_start,
             match.end(),
         )
     if (
@@ -117,26 +122,26 @@ def analyze_managed_block(text: str, glossary: dict) -> _Analysis:
         return _Analysis(
             "stale",
             "managed-context block does not render the current glossary format/state",
-            match.start(),
+            block_start,
             match.end(),
         )
 
     try:
         expected = render_block(glossary)
     except ContextSyncError as exc:
-        return _Analysis("edited", str(exc), match.start(), match.end())
-    actual = _normalized_newlines(match.group(0))
+        return _Analysis("edited", str(exc), block_start, match.end())
+    actual = _normalized_newlines(block_text)
     if actual != expected:
         return _Analysis(
             "edited",
             "managed-context content differs from the current deterministic projection",
-            match.start(),
+            block_start,
             match.end(),
         )
     return _Analysis(
         "current",
         "managed-context block matches the current glossary",
-        match.start(),
+        block_start,
         match.end(),
     )
 
@@ -149,6 +154,14 @@ def read_regular_target(path: Path) -> tuple[bytes | None, int]:
         return None, 0o644
     except OSError as exc:
         raise ContextSyncError(f"cannot inspect {path.name}: {exc}") from exc
+    if entry_named_exactly(path.parent, path.name) is False:
+        # On a case-insensitive filesystem the lookup found ``agents.md``
+        # while the exact ``AGENTS.md`` does not exist. Writing "a new
+        # AGENTS.md" would silently replace that other file's contents.
+        raise ContextSyncError(
+            f"a host-context file exists at {path.name} under a different "
+            "spelling of its name; rename it to exactly that name first"
+        )
     if stat.S_ISLNK(info.st_mode):
         raise ContextSyncError(f"refusing symlinked host-context target: {path.name}")
     if not stat.S_ISREG(info.st_mode):

@@ -7,7 +7,7 @@ import json
 import os
 
 from glossabet.cli import main
-from glossabet.analysis.evidence import build_evidence
+from glossabet.analysis.evidence import build_evidence, write_evidence
 from glossabet.analysis.graphify import build_structural_groups
 
 GRAPH = {
@@ -499,3 +499,64 @@ def test_fallback_communities_shape_tolerates_duplicates_empties_and_report_node
     assert group["size"] == 3  # n1, n2, n3 once each; the report node discounted
     assert sorted(group["members_sample"]) == ["Alpha", "Beta", "Gamma"]
     assert group["provenance"] == {"code": 3, "doc": 0, "glossary": 1}
+
+
+def test_astronomical_cohesion_and_giant_labels_degrade_instead_of_crashing(tmp_path):
+    """A JSON integer beyond float range used to make math.isfinite raise
+    (exit 2); a finite-but-huge float made the derived score `inf` and the
+    evidence unwritable; a 1 MB label ballooned the artifact. Cohesion is
+    usable only within a stated bound; labels and member-token sets are
+    capped with their own ledgers."""
+    huge_label = "L" * 5000
+    graph = {
+        "nodes": [
+            {"id": "n1", "label": "Alpha", "source_file": "a.py"},
+            {"id": "n2", "label": huge_label, "source_file": "b.py"},
+            {"id": "n3", "label": "Gamma", "source_file": "c.py"},
+        ],
+        "edges": [],
+        "communities": [
+            {"id": 0, "nodes": ["n1", "n2"], "cohesion": 10 ** 400},
+            {"id": 1, "nodes": ["n3"], "cohesion": 1e308, "label": huge_label},
+        ],
+    }
+    root = make_repo(tmp_path, graph)
+    evidence = build_evidence(root)  # must serialize: allow_nan=False downstream
+    write_evidence(root, evidence)
+    groups = {g["id"]: g for g in evidence["structural_groups"]["groups"]}
+    assert groups["0"]["cohesion"] is None and groups["1"]["cohesion"] is None
+    assert len(groups["1"]["label"]) == 512 and groups["1"]["label_truncated"] is True
+    assert groups["0"]["label_truncated"] is False
+    for candidate in evidence["naming_candidates"]["structures"]:
+        assert candidate["score"] < 10 ** 6
+    assert all(
+        len(label) <= 512 for g in groups.values() for label in g["members_sample"]
+    )
+
+
+def test_graph_input_work_is_bounded_before_any_member_is_materialized(tmp_path):
+    """A hostile graph under the size cap can list communities × members in
+    the millions; the adapter used to stringify, sort, and tokenize every
+    pair (1.3 GB, 30 s) before its output caps applied. The reference count
+    is judged from list lengths first; over budget, the graph is present but
+    unusable and the run stays lexical-only — quickly."""
+    import time
+
+    graph = {
+        "nodes": [{"id": i, "label": f"n{i}", "source_file": "a.py"} for i in range(1000)],
+        "edges": [],
+        "communities": [
+            {"id": c, "nodes": list(range(1000))} for c in range(1100)
+        ],
+    }
+    root = make_repo(tmp_path, graph)
+    start = time.monotonic()
+    structural = build_structural_groups(root, {"head": None, "dirty": None})
+    assert time.monotonic() - start < 5
+    assert structural["present"] is True
+    assert structural["available"] is False
+    assert any("work budget" in w for w in structural["warnings"])
+    # A graph just under the budget still loads.
+    graph["communities"] = graph["communities"][:900]
+    (root / "graphify-out" / "graph.json").write_text(json.dumps(graph))
+    assert build_structural_groups(root, {"head": None, "dirty": None})["available"] is True

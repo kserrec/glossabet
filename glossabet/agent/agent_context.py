@@ -72,13 +72,25 @@ class _ProjectionOmissions:
     omitted_amounts: dict[str, int] = field(default_factory=dict)
 
     def record(self, path: tuple[str, ...], kind: str, amount: int) -> None:
-        if len(self.omissions) >= MAX_AGENT_CONTEXT_OMISSION_RECORDS:
-            raise AgentContextError(
-                "agent context requires more than "
-                f"{MAX_AGENT_CONTEXT_OMISSION_RECORDS} omission records"
+        # One record per (pattern, kind): every list index folds to ``*``,
+        # so 500 long glossary definitions are one
+        # ``glossary.concepts.*.definition`` record whose amount is the sum,
+        # not 500 records that exhaust the ceiling and fail the command for
+        # a glossary the engine itself accepted.
+        pattern = ".".join("*" if part.isdigit() else part for part in path)
+        for record in self.omissions:
+            if record["path"] == pattern and record["kind"] == kind:
+                record["amount"] += amount
+                break
+        else:
+            if len(self.omissions) >= MAX_AGENT_CONTEXT_OMISSION_RECORDS:
+                raise AgentContextError(
+                    "agent context requires more than "
+                    f"{MAX_AGENT_CONTEXT_OMISSION_RECORDS} omission records"
+                )
+            self.omissions.append(
+                {"path": pattern, "kind": kind, "amount": amount}
             )
-        record = {"path": ".".join(path), "kind": kind, "amount": amount}
-        self.omissions.append(record)
         self.affected_sections.add(path[0] if path else "<root>")
         self.omission_counts[kind] = self.omission_counts.get(kind, 0) + 1
         self.omitted_amounts[kind] = self.omitted_amounts.get(kind, 0) + amount

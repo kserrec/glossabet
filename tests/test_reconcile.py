@@ -738,3 +738,24 @@ def test_clip_only_compound_spread_is_not_reported_as_sampled(tmp_path):
     ledger = validation["fragmentation"]["coverage"]
     assert ledger["complete"] is True
     assert ledger["reasons"] == []
+
+
+def test_nfd_paths_match_nfc_scopes_and_bindings(tmp_path):
+    """macOS reports decomposed directory names; a scope or file binding the
+    author typed composed must still match, or a real concept reads as
+    'absent from code' and its binding as 'no longer resolves'."""
+    import unicodedata
+
+    nfd_dir = unicodedata.normalize("NFD", "café")
+    nfc_dir = unicodedata.normalize("NFC", "café")
+    (tmp_path / nfd_dir).mkdir()
+    (tmp_path / nfd_dir / "latte.py").write_text("class CafeLatte:\n    pass\n")
+    glossary = {"schema_version": 1, "concepts": [{
+        "id": "cafe", "term": "Cafe", "definition": "d", "status": "canonical",
+        "scope": {"path_prefixes": [nfc_dir]},
+        "bindings": [{"ref": f"file:{nfc_dir}/latte.py"}, {"ref": "symbol:CafeLatte"}],
+    }]}
+    evidence = build_evidence(tmp_path)
+    validation = build_validation(evidence, glossary)
+    assert validation["unresolved_bindings"]["items"] == []
+    assert validation["orphaned_concepts"]["items"] == []

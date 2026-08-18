@@ -18,6 +18,21 @@ SUPPORTED_OSES = ["ubuntu-latest", "macos-latest", "windows-latest"]
 SUPPORTED_PYTHONS = ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
 
+def _strip_comments(workflow: str) -> str:
+    """Drop comment lines and trailing ``# ...`` so a required fragment or a
+    guard condition present only inside a comment cannot satisfy a check,
+    and a forbidden construct cannot hide behind one. YAML has no ``#`` inside
+    the plain scalars these workflows use except in quoted strings, which the
+    workflows here do not contain a ``#`` inside."""
+    kept = []
+    for line in workflow.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith("#") or stripped.startswith("- #"):
+            continue
+        kept.append(line.split(" #", 1)[0].rstrip())
+    return "\n".join(kept)
+
+
 def _job_block(workflow: str, name: str) -> str | None:
     lines = workflow.splitlines()
     marker = f"  {name}:"
@@ -73,8 +88,12 @@ def _check_pinned_actions(name: str, workflow: str, errors: list[str]) -> None:
     for line in workflow.splitlines():
         # A commented-out ``uses:`` is not a step; a trailing comment after
         # the target still is (``uses: x@sha  # note``).
-        line = line.split("#", 1)[0] if line.lstrip().startswith("#") else line
-        match = re.search(r"\buses:\s*([^\s#]+)", line)
+        stripped = line.lstrip()
+        if stripped.startswith("- "):
+            stripped = stripped[2:].lstrip()
+        if stripped.startswith("#"):
+            continue  # a commented-out step, with or without its list dash
+        match = re.search(r"""\buses:\s*["']?([^\s#"']+)""", line)
         if match is None:
             continue
         target = match.group(1)
@@ -85,8 +104,14 @@ def _check_pinned_actions(name: str, workflow: str, errors: list[str]) -> None:
 
 
 def validate_workflow_texts(workflows: dict[str, str]) -> list[str]:
-    """Return every release-gate policy violation in supplied workflow text."""
+    """Return every release-gate policy violation in supplied workflow text.
+
+    ``workflows`` must hold EVERY file in the workflows directory: the three
+    named ones carry the release gate; any other file is still held to the
+    global rules (pinned actions, no fork-PR secret exposure, no expression
+    interpolated into a shell line)."""
     errors: list[str] = []
+    workflows = {name: _strip_comments(text) for name, text in workflows.items()}
     missing = sorted({"quality.yml", "ci.yml", "release.yml"} - workflows.keys())
     if missing:
         return [f"missing workflow file(s): {', '.join(missing)}"]
@@ -172,6 +197,13 @@ def validate_workflow_texts(workflows: dict[str, str]) -> list[str]:
             errors.append(f"release publish guard is missing {condition!r}")
     if "id-token: write" not in publish:
         errors.append("release publish job lacks scoped Trusted Publishing permission")
+    if "write-all" in publish or re.search(r"contents:\s*write", publish):
+        errors.append("release publish job permissions are broader than read + id-token")
+    if "secrets." in publish:
+        errors.append(
+            "release publish job references a stored secret; publishing uses "
+            "Trusted Publishing only"
+        )
     _requires_in_order(
         publish,
         [
@@ -182,7 +214,8 @@ def validate_workflow_texts(workflows: dict[str, str]) -> list[str]:
             "uv build --no-sources --clear",
             "python scripts/build_plugin.py dist",
             "git diff --exit-code -- plugins/glossabet",
-            'python scripts/check_distribution.py dist --tag "${{ github.ref_name }}" --current',
+            'python scripts/check_distribution.py dist --tag "$RELEASE_TAG" --current',
+            "RELEASE_TAG: ${{ github.ref_name }}",
             "python scripts/wheel_smoke.py dist",
             "pypa/gh-action-pypi-publish@",
         ],
@@ -192,13 +225,42 @@ def validate_workflow_texts(workflows: dict[str, str]) -> list[str]:
 
     for name, workflow in workflows.items():
         _check_pinned_actions(name, workflow, errors)
+        _check_global_rules(name, workflow, errors)
     return errors
 
 
+_EVENT_EXPRESSION = re.compile(
+    r"\$\{\{\s*(?:github\.event\.|github\.head_ref|github\.ref_name|"
+    r"inputs\.|steps\.[^}]*outputs)"
+)
+
+
+def _check_global_rules(name: str, workflow: str, errors: list[str]) -> None:
+    """Rules every workflow file obeys, whatever its job: no fork-PR trigger
+    that exposes secrets, no attacker-influenced expression interpolated into
+    a shell line (pass it through ``env:`` instead), no ``curl | sh``."""
+    if re.search(r"(?m)^\s*pull_request_target\s*:", workflow):
+        errors.append(f"{name} uses pull_request_target (secrets exposed to fork PRs)")
+    for line in workflow.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("- run:", "run:")) and _EVENT_EXPRESSION.search(stripped):
+            errors.append(
+                f"{name} interpolates an untrusted expression into a shell line: "
+                f"{stripped[:80]}"
+            )
+        if re.search(r"curl[^|\n]*\|\s*(?:ba)?sh\b", stripped) or re.search(
+            r"wget[^|\n]*\|\s*(?:ba)?sh\b", stripped
+        ):
+            errors.append(f"{name} pipes a download into a shell: {stripped[:80]}")
+
+
 def check_workflows(directory: Path = WORKFLOWS) -> list[str]:
+    """Every ``*.yml``/``*.yaml`` in the directory — an extra workflow file
+    is checked, never ignored."""
     return validate_workflow_texts({
-        name: (directory / name).read_text(encoding="utf-8")
-        for name in ("quality.yml", "ci.yml", "release.yml")
+        path.name: path.read_text(encoding="utf-8")
+        for path in sorted(directory.iterdir())
+        if path.suffix in (".yml", ".yaml") and path.is_file()
     })
 
 

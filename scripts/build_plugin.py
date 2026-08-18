@@ -17,10 +17,10 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_ROOT = ROOT / "plugins" / "glossabet"
 HOOK_PATH = "./hooks/hooks.json"
 SESSION_START_COMMAND = (
-    'python3 -B "$PLUGIN_ROOT/skills/glossabet/scripts/run_glossabet.py" brief .'
+    'python3 -I -B "$PLUGIN_ROOT/skills/glossabet/scripts/run_glossabet.py" brief .'
 )
 SESSION_START_COMMAND_WINDOWS = (
-    'py -3 -B "%PLUGIN_ROOT%\\skills\\glossabet\\scripts\\run_glossabet.py" brief .'
+    'py -3 -I -B "%PLUGIN_ROOT%\\skills\\glossabet\\scripts\\run_glossabet.py" brief .'
 )
 
 

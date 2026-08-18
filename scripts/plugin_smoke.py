@@ -14,7 +14,7 @@ import sys
 import tarfile
 import tempfile
 import uuid
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugins" / "glossabet"
@@ -96,7 +96,12 @@ def _extract_sdist(sdist: Path, destination: Path) -> Path:
         members = archive.getmembers()
         for member in members:
             path = PurePosixPath(member.name)
-            if path.is_absolute() or ".." in path.parts:
+            if (
+            path.is_absolute()
+            or PureWindowsPath(name).is_absolute()  # C:/x, C:\\x, \\\\server
+            or "\\" in name
+            or ".." in path.parts
+        ):
                 _fail(f"source distribution has unsafe path: {member.name}")
             if member.issym() or member.islnk() or member.isdev():
                 _fail(f"source distribution has link/device: {member.name}")

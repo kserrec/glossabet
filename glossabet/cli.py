@@ -294,7 +294,16 @@ def _main(argv: list[str] | None = None) -> int:
         code = _run(argv)
         sys.stdout.flush()  # a full disk or closed pipe is reported here
         return code
-    except SystemExit:
+    except SystemExit as exc:
+        # argparse's --version/--help/usage-error paths: still flush inside
+        # the guarded region so a closed pipe stays quiet, and a successful
+        # exit whose output could not be written is not reported as success.
+        try:
+            sys.stdout.flush()
+        except OSError:
+            _abandon_stdout()
+            if not exc.code:
+                return EXIT_USER_ERROR
         raise
     except BrokenPipeError:
         # The reader went away (a pager closed, a hook host stopped

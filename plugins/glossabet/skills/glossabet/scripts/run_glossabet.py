@@ -15,7 +15,7 @@ EXPECTED_VERSION = "0.1.0"
 # swap in a tampered wheel and matching hash together. build_plugin.py keeps
 # this in sync with the bundled wheel.
 EXPECTED_WHEEL_SHA256 = (
-    "3f1c5b94e5b7bafd01482cb08a085bfebe5abc9a7aebd6caac7f31c7b37495e3"
+    "aaf45af55afd65ab01e3b10ab5b9312b7bf8059c91f883eb05d0ce1e91b9e1f2"
 )
 
 
@@ -64,15 +64,28 @@ def _load_wheel() -> Path:
     return wheel
 
 
+def _insert_before_site_packages(entry: str) -> None:
+    for index, path in enumerate(sys.path):
+        lowered = path.replace("\\", "/").lower()
+        if "site-packages" in lowered or "dist-packages" in lowered:
+            sys.path.insert(index, entry)
+            return
+    sys.path.append(entry)
+
+
 def run() -> int:
     if sys.version_info < (3, 10):
         return _fail("Python 3.10 or newer is required")
     try:
         wheel = _load_wheel()
-        # Append, not insert(0): the integrity-checked bundle must never
-        # outrank the stdlib, so a wheel that somehow carried a top-level
-        # module name (e.g. subprocess.py) cannot shadow it.
-        sys.path.append(str(wheel))
+        # After the standard library, before any site-packages: the
+        # integrity-checked bundle must never outrank the stdlib (a wheel that
+        # somehow carried a top-level module name such as subprocess.py cannot
+        # shadow it), but it must outrank a stale or squatted `glossabet`
+        # installed elsewhere — otherwise the digest guards a wheel that is
+        # not the one executed. The hook also starts this interpreter with
+        # ``-I`` (isolated: no PYTHONPATH, no user site, no script directory).
+        _insert_before_site_packages(str(wheel))
         from glossabet import __version__
         from glossabet.cli import main
     except (ImportError, OSError, RuntimeError, ValueError) as exc:

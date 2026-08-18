@@ -8,6 +8,7 @@ configured role wins over conservative built-in conventions.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -205,6 +206,11 @@ def load_config(root: Path) -> RepositoryConfig:
         raise ConfigurationError(f"{CONFIG_FILE}: {exc}") from exc
     read = read_bounded_json(path, MAX_CONFIG_BYTES)
     if read.status == READ_ABSENT:
+        if os.path.lexists(path):
+            # Something is there under the configuration's name but it is not
+            # a regular file (a directory, FIFO, dangling link): a malformed
+            # configuration is an error, never silently "no configuration".
+            raise ConfigurationError(f"{CONFIG_FILE}: not a regular file")
         return _empty_config()
     if read.status == READ_OVERSIZED:
         raise ConfigurationError(

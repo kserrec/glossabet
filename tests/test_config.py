@@ -248,3 +248,18 @@ def test_config_rejects_trailing_slash_with_the_real_reason_and_non_integer_vers
         )
         with pytest.raises(ConfigurationError, match="schema_version must be 1"):
             load_config(tmp_path)
+
+
+def test_config_named_directory_is_an_error_not_no_configuration(tmp_path):
+    (tmp_path / "a.py").write_text("x = 1\n")
+    (tmp_path / "glossabet.json").mkdir()
+    with pytest.raises(ConfigurationError, match="not a regular file"):
+        load_config(tmp_path)
+
+
+def test_config_with_utf8_bom_loads(tmp_path):
+    (tmp_path / "a.py").write_text("x = 1\n")
+    (tmp_path / "glossabet.json").write_bytes(
+        b"\xef\xbb\xbf" + json.dumps({"schema_version": 1, "ignore_paths": ["scratch"]}).encode()
+    )
+    assert load_config(tmp_path).ignore_paths == ("scratch",)

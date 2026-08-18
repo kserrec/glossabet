@@ -30,6 +30,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
@@ -43,7 +45,13 @@ jobs:
       - run: uv build --no-sources --clear
       - run: python scripts/build_plugin.py dist
       - run: git diff --exit-code -- plugins/glossabet
-      - run: python scripts/check_distribution.py dist --tag "${{ github.ref_name }}" --current
+      # The tag reaches the shell through an environment variable, never by
+      # interpolating the expression into the command line: git accepts tag
+      # names containing `$(...)`, backticks, and `;`, and this is the one job
+      # holding the PyPI publish token.
+      - run: python scripts/check_distribution.py dist --tag "$RELEASE_TAG" --current
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
       - run: python scripts/wheel_smoke.py dist
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2

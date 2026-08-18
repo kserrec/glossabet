@@ -105,10 +105,10 @@ MARKDOWN_GLOSSARY_TEXT = (
     f"{MARKDOWN_GLOSSARY_CANARY}\n"
 )
 SESSION_START_COMMAND = (
-    'python3 -B "$PLUGIN_ROOT/skills/glossabet/scripts/run_glossabet.py" brief .'
+    'python3 -I -B "$PLUGIN_ROOT/skills/glossabet/scripts/run_glossabet.py" brief .'
 )
 SESSION_START_COMMAND_WINDOWS = (
-    'py -3 -B "%PLUGIN_ROOT%\\skills\\glossabet\\scripts\\run_glossabet.py" brief .'
+    'py -3 -I -B "%PLUGIN_ROOT%\\skills\\glossabet\\scripts\\run_glossabet.py" brief .'
 )
 HOOK_PROMPT = """This is a bounded fresh-session context evaluation.
 Do not run commands, call tools, inspect files, or use outside knowledge. From

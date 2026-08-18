@@ -1427,7 +1427,7 @@ def _genuineness_errors(results: dict) -> list[str]:
             expected_aggregate = _aggregate(
                 cases, self_register, self_nominations
             )
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError, ArithmeticError):
         errors.append("evaluation case metrics are malformed")
     if expected_aggregate is not None and aggregate != expected_aggregate:
         errors.append("evaluation aggregate is stale or internally inconsistent")
@@ -1445,7 +1445,7 @@ def _genuineness_errors(results: dict) -> list[str]:
         try:
             if isinstance(aggregate, dict):
                 expected_thresholds = _thresholds(aggregate, stored_targets)
-        except (KeyError, TypeError, ValueError):
+        except (KeyError, TypeError, ValueError, ArithmeticError):
             errors.append("evaluation release metrics are malformed")
         if expected_thresholds is not None and thresholds != expected_thresholds:
             errors.append("evaluation release thresholds are stale")
@@ -1563,7 +1563,7 @@ def _currency_errors(results: dict, manifest_path: Path) -> list[str]:
             "release_thresholds"
         ) != _thresholds(aggregate, manifest.get("release_thresholds")):
             errors.append("evaluation release thresholds are stale")
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError, ArithmeticError):
         errors.append("evaluation release metrics are malformed")
     return errors
 

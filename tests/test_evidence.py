@@ -749,3 +749,60 @@ def test_fixture_package_manifests_are_not_monorepo_sub_roots(tmp_path):
     mono = build_evidence(tmp_path)["monorepo"]
     assert mono["detected"] is True
     assert mono["sub_roots"] == ["packages/api", "packages/web", "packages/worker"]
+
+
+def test_unstatable_source_files_make_the_corpus_incomplete(tmp_path):
+    """A real code file the walk cannot stat (EACCES) is inventory that went
+    unread: reported under `unreadable` AND charged to the corpus budget, so
+    `complete`/`production_complete` are false — unlike a dangling link,
+    which is not source at all."""
+    (tmp_path / "main.py").write_text("main_value = 1\n")
+    locked = tmp_path / "noexec"
+    locked.mkdir()
+    (locked / "a.py").write_text("hidden_value = 1\n")
+    (locked / "b.md").write_text("hidden words\n")
+    os.symlink(tmp_path / "missing.py", tmp_path / "dangling.py")
+    locked.chmod(0o444)  # listable, not traversable: stat fails with EACCES
+    try:
+        if os.access(locked / "a.py", os.R_OK):
+            return  # root: nothing is unstatable
+        evidence = build_evidence(tmp_path)
+    finally:
+        locked.chmod(0o755)
+    budget = evidence["skipped"]["corpus_budget"]
+    assert sorted(evidence["skipped"]["unreadable"]) == [
+        "dangling.py", "noexec/a.py", "noexec/b.md"
+    ]
+    assert budget["complete"] is False
+    assert budget["production_complete"] is False
+    assert budget["skipped"]["source_files"] == 2  # the dangling link is not source
+
+
+def test_symlinked_file_takes_its_targets_role(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "tests" / "fixtures").mkdir(parents=True)
+    (tmp_path / "tests" / "fixtures" / "data.py").write_text("fixtureleak = 1\n")
+    (tmp_path / "src" / "real.py").write_text("real_value = 1\n")
+    os.symlink(tmp_path / "tests" / "fixtures" / "data.py", tmp_path / "src" / "data.py")
+    evidence = build_evidence(tmp_path)
+    roles = {f["path"]: f["role"] for f in evidence["files"]["code"]}
+    assert roles["src/data.py"] == "fixture"
+    assert "fixtureleak" not in json.dumps(evidence["vocabulary"])
+
+
+def test_root_manifest_probe_applies_the_configured_ignore_rules_to_links(tmp_path):
+    """The monorepo probe reads root Cargo.toml/package.json through the same
+    link rule as the walk — including the repository's own ignore/role
+    configuration — so a link at the root cannot make it read a file the
+    configuration excludes."""
+    (tmp_path / "a.py").write_text("x = 1\n")
+    (tmp_path / "scratch").mkdir()
+    (tmp_path / "scratch" / "manifest.json").write_text(
+        json.dumps({"workspaces": ["packages/*"]})
+    )
+    (tmp_path / "glossabet.json").write_text(
+        json.dumps({"schema_version": 1, "ignore_paths": ["scratch"]})
+    )
+    os.symlink(tmp_path / "scratch" / "manifest.json", tmp_path / "package.json")
+    mono = build_evidence(tmp_path)["monorepo"]
+    assert mono["detected"] is False

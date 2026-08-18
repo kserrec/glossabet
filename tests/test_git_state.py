@@ -5,6 +5,7 @@ pathspec — hides only Glossabet-owned output, never executes a hostile
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -303,3 +304,45 @@ def test_stamp_ignores_a_callers_git_dir_and_work_tree(tmp_path, monkeypatch):
     (a / "sub").mkdir()
     (a / "sub" / "x.py").write_text("y = 1\n")
     assert repository_git_stamp(a / "sub")["head"] == head_a
+
+
+def test_non_ascii_untracked_paths_never_crash_the_stamp(tmp_path):
+    """git writes UTF-8 paths; under an ASCII/cp1252 locale the text-mode
+    decode used to raise UnicodeDecodeError and turn scan/inspect/brief into
+    exit 2. The stamp is decoded as UTF-8 with replacement."""
+    _init_repo(tmp_path)
+    _git(tmp_path, "config", "core.quotePath", "false")
+    (tmp_path / "čitanje.py").write_text("x = 1\n", encoding="utf-8")
+    proc = subprocess.run(
+        [sys.executable, "-m", "glossabet", "scan", str(tmp_path)],
+        capture_output=True,
+        env={**os.environ, "LC_ALL": "C", "PYTHONCOERCECLOCALE": "0",
+             "PYTHONUTF8": "0", "PYTHONIOENCODING": "ascii"},
+    )
+    assert proc.returncode == 0, proc.stderr.decode("ascii", "replace")
+    assert repository_git_stamp(tmp_path)["dirty"] is True
+
+
+def test_git_lookup_never_resolves_into_the_current_directory(tmp_path, monkeypatch):
+    """A hostile repository shipping its own `git` at the root (or PATH
+    containing `.`/an empty entry, or a bare name Windows resolves through
+    the cwd) must never be the git the stamp runs. Lookup walks PATH itself,
+    skips relative entries, and refuses hits inside the cwd; without git on
+    PATH the stamp is honestly unverified rather than run from the repo."""
+    from glossabet.runtime import git_state
+    from glossabet.runtime.executables import which_on_path
+
+    _init_repo(tmp_path)
+    fake = tmp_path / "git"
+    fake.write_text("#!/bin/sh\necho PWNED-git-from-repo\n")
+    fake.chmod(0o755)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PATH", f".:{tmp_path}:{os.environ.get('PATH', '')}")
+    found = which_on_path("git")
+    assert found is not None
+    assert not str(found).startswith(str(tmp_path))
+    assert git_state.repository_git_stamp(tmp_path)["head"] is not None
+    # Only the repository's git on PATH: nothing to run — unverified, not PWNED.
+    monkeypatch.setenv("PATH", f".:{tmp_path}")
+    assert which_on_path("git") is None
+    assert git_state.repository_git_stamp(tmp_path) == {"head": None, "dirty": None}

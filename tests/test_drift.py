@@ -626,6 +626,11 @@ def test_terms_the_doc_index_cannot_hold_are_not_reported_as_fading(tmp_path):
     assert matcher.doc_term_occurrence("Tenant") == {
         "count": 3, "count_complete": True, "scope": {"kind": "repository"},
     }
+    # A term that is one doc word but splits on its apostrophe as an
+    # identifier is looked up the way the doc index was built.
+    (tmp_path / "README.md").write_text("O'Brien wrote it. Ask O'Brien. O'Brien.\n")
+    matcher = EvidenceIndex(build_evidence(tmp_path), ["O'Brien"])
+    assert matcher.doc_term_occurrence("O'Brien")["count"] == 3
     fading = build_drift(evidence, glossary)["canonical_fading"]["items"]
     assert [f["term"] for f in fading] == []
 
