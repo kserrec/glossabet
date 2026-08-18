@@ -286,7 +286,7 @@ def test_concurrent_target_change_is_not_overwritten(tmp_path, monkeypatch):
     save_glossary(tmp_path, GLOSSARY)
     target = tmp_path / "AGENTS.md"
     target.write_text("Original human text.\n", encoding="utf-8")
-    original_reader = context_sync._read_regular_target
+    original_reader = context_sync.read_regular_target
     calls = 0
 
     def change_before_commit(path):
@@ -297,7 +297,7 @@ def test_concurrent_target_change_is_not_overwritten(tmp_path, monkeypatch):
         return original_reader(path)
 
     monkeypatch.setattr(
-        "glossabet.agent.context_sync._read_regular_target",
+        "glossabet.agent.context_sync.read_regular_target",
         change_before_commit,
     )
 

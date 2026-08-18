@@ -12,6 +12,7 @@ from itertools import combinations
 
 from glossabet.corpus.tokenize import (
     TOKEN_ORIGIN_DOMAIN,
+    TOKEN_ORIGIN_LANGUAGE,
     token_origin,
     tokenize_identifier,
 )
@@ -110,6 +111,14 @@ class ProductionVocabulary:
                         seen.add(neighbor)
                     else:
                         self.module_neighbor_truncated.add((token, module))
+
+    def language_token_count(self) -> int:
+        """Vocabulary tokens tagged as language builtins — excluded from the
+        term-nomination pool and terminology eligibility."""
+        return sum(
+            self.token_origins.get(term) == TOKEN_ORIGIN_LANGUAGE
+            for term in self.token_counts
+        )
 
     @classmethod
     def from_files(

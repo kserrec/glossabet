@@ -533,8 +533,6 @@ def test_pathological_single_identifier_is_bounded_not_a_dos(tmp_path):
     # the truncation recorded.
     import time
 
-    from glossabet.analysis.vocabulary import MAX_IDENTIFIER_TOKENS
-
     huge = "_".join(f"t{i:05d}" for i in range(50000))
     (tmp_path / "main.py").write_text(huge + " = 1\n")
 

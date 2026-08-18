@@ -318,7 +318,7 @@ prefix each with its subpackage (`glossabet.corpus.scanner`, …).
   a `ProductionVocabulary` and production doc words into a
   `DocumentationVocabulary`, then build the imports/structural/terminology/
   naming sections and the evidence dict. It owns the evidence schema
-  (`SCHEMA_VERSION`, `Limits`, the capped vocabulary tables with their
+  (`EVIDENCE_SCHEMA_VERSION`, `Limits`, the capped vocabulary tables with their
   location samples) and `write_evidence()`; no printer lives here.
 - `extraction.py` — per-file extraction beneath the hub: `read_source()`
   (bytes + digest, or the corpus-budget skip reason), `extract_code_entry()`
@@ -467,10 +467,10 @@ prefix each with its subpackage (`glossabet.corpus.scanner`, …).
   block, `context_sync` writes it, the scanner's read path in `evidence`
   strips it — so the aggregation hub never imports a command module.
 - `managed_context.py` — the managed block as an *inspected* thing:
-  `_render_block()` (the exact block one glossary deserves, with its format,
-  glossary and content stamps), `_read_regular_target()` (bounded,
+  `render_block()` (the exact block one glossary deserves, with its format,
+  glossary and content stamps), `read_regular_target()` (bounded,
   identity-checked read of a regular UTF-8 root host file that never follows
-  a symlink), `_analyze_managed_block()` (absent / current / stale / edited),
+  a symlink), `analyze_managed_block()` (absent / current / stale / edited),
   `inspect_managed_context()` (both root targets, read-only; `uninspectable`
   when the file cannot be read), `unchecked_managed_context()`, and
   `print_managed_context_issues()`. `drift` and `reconcile` import the

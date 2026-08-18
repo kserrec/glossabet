@@ -27,7 +27,10 @@ from glossabet.glossary.findings import (
     capped_section,
     finding,
     collection_limitations,
+    glossary_terms,
     matching_reasons,
+    production_corpus_reasons,
+    suppressed_reason,
     print_sections,
     vocabulary_omission_reasons,
 )
@@ -132,14 +135,6 @@ def _sampled_to_zero(occurrence: dict) -> bool:
     )
 
 
-def _suppressed_reason(suppressed: int, name: str) -> list[str]:
-    if not suppressed:
-        return []
-    return [
-        f"{suppressed} {name} check(s) suppressed because scoped occurrence "
-        "evidence retains only a location sample"
-    ]
-
 
 def _parallel_terms(
     view: EvidenceView, canonical: dict, known_scopes: dict, matcher: EvidenceIndex
@@ -207,7 +202,7 @@ def _parallel_terms(
     findings.sort(key=lambda f: (
         -f["evidence"]["similarity"], f["new_term"], f["concept_id"]
     ))
-    reasons = _suppressed_reason(suppressed, "parallel-term")
+    reasons = suppressed_reason(suppressed, "parallel-term")
     if budget_exhausted:
         reasons.append(
             "parallel-term scope checks reached their comparison budget; "
@@ -242,7 +237,7 @@ def _watched_in_use(
             concept_id=entry["concept_id"],
         ))
     findings.sort(key=lambda f: (-f["evidence"]["count"], f["term"]))
-    return findings, _suppressed_reason(suppressed, "watched-term")
+    return findings, suppressed_reason(suppressed, "watched-term")
 
 
 def _canonical_fading(
@@ -372,17 +367,6 @@ def _canonical_overloaded(view: EvidenceView, canonical: dict) -> list[dict]:
     return findings
 
 
-def _glossary_terms(glossary: dict) -> list[str]:
-    return [
-        term
-        for concept in glossary["concepts"]
-        for term in (
-            concept["term"],
-            *(alias["term"] for alias in concept.get("aliases", [])),
-        )
-    ]
-
-
 def _terminology_reasons(view: EvidenceView, section: str) -> list[str]:
     candidate = view.terminology_section(section)
     ledger = candidate.get("coverage")
@@ -418,13 +402,11 @@ def build_drift(
     managed_context: dict | None = None,
 ) -> dict:
     canonical, watched, known_scopes = _index_glossary(glossary)
-    matcher = matcher or EvidenceIndex(evidence, _glossary_terms(glossary))
+    matcher = matcher or EvidenceIndex(evidence, glossary_terms(glossary))
     view = matcher.view
 
     corpus_complete = view.production_corpus_complete()
-    corpus_reasons = [] if corpus_complete else [
-        "production corpus budget omitted accepted source evidence"
-    ]
+    corpus_reasons = production_corpus_reasons(corpus_complete)
     vocabulary_reasons = vocabulary_omission_reasons(
         evidence, ("tokens", "identifiers", "doc_terms")
     )
@@ -508,8 +490,6 @@ _TITLES = {
 
 class DriftView(FindingsDocumentView):
     """The read side of a drift document (`build_drift` writes it)."""
-
-    SECTIONS = tuple(_TITLES)
 
     def checked_concepts(self) -> int:
         return self._d["checked_concepts"]

@@ -23,16 +23,16 @@ AGENT_TARGETS = {
 
 START_MARKER = "<!-- glossabet:managed-context:start -->"
 END_MARKER = "<!-- glossabet:managed-context:end -->"
-_MARKER_PREFIX = "<!-- glossabet:managed-context"
-_METADATA_RE = re.compile(
+MARKER_PREFIX = "<!-- glossabet:managed-context"
+METADATA_RE = re.compile(
     r"<!-- glossabet:managed-context "
     r"format=(?P<format>[0-9]{1,9}) "
     r"glossary-sha256=(?P<glossary>[0-9a-f]{64}) "
     r"content-sha256=(?P<content>[0-9a-f]{64}) -->"
 )
-_BLOCK_RE = re.compile(
+BLOCK_RE = re.compile(
     rf"(?m)^{re.escape(START_MARKER)}\r?\n"
-    rf"(?P<metadata>{_METADATA_RE.pattern})\r?\n"
+    rf"(?P<metadata>{METADATA_RE.pattern})\r?\n"
     rf"(?P<body>.*?)"
     rf"^{re.escape(END_MARKER)}(?=\r?$)",
     re.DOTALL,

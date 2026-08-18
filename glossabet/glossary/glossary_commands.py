@@ -11,7 +11,7 @@ from glossabet.runtime.artifacts import (
     ArtifactError,
     parse_bounded_json,
 )
-from glossabet.runtime.display import escape_terminal_text, print_error
+from glossabet.runtime.display import escape_terminal_text, join_escaped, print_error
 from glossabet.runtime.engine_run import GLOSSARY_OPTIONAL, open_run
 from glossabet.glossary.store import (
     GLOSSARY_FILE,
@@ -54,10 +54,7 @@ def _print_glossary(glossary: dict) -> None:
             print(f"{term} — {definition}")
             scope = concept_scope(concept)
             if scope is not None:
-                print(
-                    "    scope: "
-                    + ", ".join(escape_terminal_text(path) for path in scope)
-                )
+                print("    scope: " + join_escaped(scope))
             for alias in concept.get("aliases", []):
                 alias_term = escape_terminal_text(alias["term"])
                 alias_status = escape_terminal_text(alias["status"])
@@ -74,35 +71,24 @@ def _read_glossary_from_stdin() -> dict | None:
     """One bounded glossary JSON document from standard input, or ``None``
     after reporting why there is none usable."""
     if sys.stdin.isatty():
-        print(
-            "glossabet: save requires one glossary JSON document on "
-            "standard input",
-            file=sys.stderr,
-        )
+        print_error("save requires one glossary JSON document on standard input")
         return None
     stream = getattr(sys.stdin, "buffer", sys.stdin)
     try:
         raw = stream.read(MAX_JSON_BYTES + 1)
     except (OSError, UnicodeError) as exc:
-        print(
-            "glossabet: cannot read glossary JSON from standard input: "
-            + escape_terminal_text(str(exc)),
-            file=sys.stderr,
-        )
+        print_error(f"cannot read glossary JSON from standard input: {exc}")
         return None
     parsed = parse_bounded_json(raw, MAX_JSON_BYTES)
     if parsed.status == READ_OVERSIZED:
-        print(
-            "glossabet: glossary JSON on standard input is larger than "
-            f"{MAX_JSON_BYTES} bytes",
-            file=sys.stderr,
+        print_error(
+            "glossary JSON on standard input is larger than "
+            f"{MAX_JSON_BYTES} bytes"
         )
         return None
     if not parsed.ok:
-        print(
-            "glossabet: glossary JSON on standard input is unreadable ("
-            + escape_terminal_text(parsed.error) + ")",
-            file=sys.stderr,
+        print_error(
+            f"glossary JSON on standard input is unreadable ({parsed.error})"
         )
         return None
     return parsed.value

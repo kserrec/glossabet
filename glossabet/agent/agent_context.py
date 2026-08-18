@@ -286,10 +286,11 @@ def build_agent_context(
     omissions.record(("imports",), "section_excluded", 1)
 
     view = EvidenceView(evidence)
-    vocabulary = deepcopy(view.vocabulary())
     terminology = deepcopy(view.terminology())
-    naming_candidates = deepcopy(view.naming_candidates())
-    if not full:
+    if full:
+        vocabulary = deepcopy(view.vocabulary())
+        naming_candidates = deepcopy(view.naming_candidates())
+    else:
         vocabulary = {
             "normalization": deepcopy(view.normalization()),
             "tokens": _module_rollup_section(

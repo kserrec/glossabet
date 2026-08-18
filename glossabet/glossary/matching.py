@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Iterable
 
-from glossabet.runtime.coverage import coverage_ledger
+from glossabet.runtime.coverage import coverage_ledger, location_sample
 from glossabet.analysis.evidence_view import EvidenceView
 from glossabet.glossary.store import path_in_scope, scope_evidence
 from glossabet.corpus.imports import module_of
@@ -203,39 +203,51 @@ class EvidenceIndex:
         }
         if not wanted:
             return empty
-
         if len(wanted) == 1:
-            entry = self.token_entries.get(wanted[0])
-            if entry is None:
-                complete = (
-                    self.token_section.get("truncated") is None
-                    and corpus_complete
-                )
-                return {
-                    **empty,
-                    "count_complete": complete,
-                    "files_complete": complete,
-                }
-            if scope is not None:
-                return {
-                    "term_tokens": wanted,
-                    "match_kind": "token",
-                    **_scoped_entry_occurrence(entry, scope, corpus_complete),
-                    "scope": scope_evidence(scope),
-                }
+            return self._single_token_occurrence(
+                wanted, scope, corpus_complete, empty
+            )
+        return self._compound_occurrence(wanted, scope, corpus_complete)
+
+    def _single_token_occurrence(
+        self, wanted: list[str], scope: tuple[str, ...] | None,
+        corpus_complete: bool, empty: dict,
+    ) -> dict:
+        entry = self.token_entries.get(wanted[0])
+        if entry is None:
+            complete = (
+                self.token_section.get("truncated") is None
+                and corpus_complete
+            )
+            return {
+                **empty,
+                "count_complete": complete,
+                "files_complete": complete,
+            }
+        if scope is not None:
             return {
                 "term_tokens": wanted,
                 "match_kind": "token",
-                "count": entry["count"],
-                "count_complete": corpus_complete,
-                "files": entry["files"],
-                "files_complete": corpus_complete,
-                "modules": entry["modules"],
-                "locations": list(entry["locations"]),
-                "locations_truncated": entry["locations_truncated"],
+                **_scoped_entry_occurrence(entry, scope, corpus_complete),
                 "scope": scope_evidence(scope),
             }
+        return {
+            "term_tokens": wanted,
+            "match_kind": "token",
+            "count": entry["count"],
+            "count_complete": corpus_complete,
+            "files": entry["files"],
+            "files_complete": corpus_complete,
+            "modules": entry["modules"],
+            "locations": list(entry["locations"]),
+            "locations_truncated": entry["locations_truncated"],
+            "scope": scope_evidence(scope),
+        }
 
+    def _compound_occurrence(
+        self, wanted: list[str], scope: tuple[str, ...] | None,
+        corpus_complete: bool,
+    ) -> dict:
         wanted_tuple = tuple(wanted)
         entries = self._compound_matches.get(wanted_tuple, [])
         count = 0
@@ -265,11 +277,8 @@ class EvidenceIndex:
                 if scope is not None:
                     scoped_count_complete = False
 
-        ranked_locations = sorted(
-            locations.items(), key=lambda item: (-item[1], item[0])
-        )
-        kept = ranked_locations[:LOCATION_SAMPLE]
-        if len(ranked_locations) > len(kept):
+        kept, sample_truncated = location_sample(locations, LOCATION_SAMPLE)
+        if sample_truncated:
             locations_truncated = True
             files_complete = False
         return {
@@ -285,9 +294,7 @@ class EvidenceIndex:
             "files": len(locations),
             "files_complete": files_complete,
             "modules": len({module_of(path) for path in locations}),
-            "locations": [
-                {"path": path, "count": uses} for path, uses in kept
-            ],
+            "locations": kept,
             "locations_truncated": locations_truncated,
             "scope": scope_evidence(scope),
         }

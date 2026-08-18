@@ -8,14 +8,14 @@ recorded in the artifact so truncated never reads as complete.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from glossabet import __version__
 from glossabet.runtime.artifacts import write_artifact
 from glossabet.corpus.cache import load_cache, save_cache
 from glossabet.corpus.config import load_config
-from glossabet.runtime.coverage import capped_collection
+from glossabet.runtime.coverage import capped_collection, location_sample
 from glossabet.corpus.extraction import SourceExtractor
 from glossabet.runtime import git_state
 from glossabet.analysis.graphify import (
@@ -25,12 +25,12 @@ from glossabet.analysis.graphify import (
 )
 from glossabet.corpus.imports import build_imports_section, module_of
 from glossabet.analysis.importance import build_naming_candidates
-from glossabet.corpus.scanner import detect_monorepo, walk_repository
+from glossabet.corpus.scanner import WalkResult, detect_monorepo, walk_repository
 from glossabet.analysis.terminology import build_terminology
 from glossabet.corpus.tokenize import tokenization_contract, tokenize_identifier
 from glossabet.analysis.vocabulary import DocumentationVocabulary, ProductionVocabulary
 
-SCHEMA_VERSION = 13
+EVIDENCE_SCHEMA_VERSION = 13
 
 EVIDENCE_FILE = "evidence.json"
 
@@ -62,13 +62,154 @@ def _capped(counter: Counter, cap: int, entry) -> dict:
     }
 
 
-def _location_sample(per_file: Counter, cap: int) -> tuple[list[dict], bool]:
-    ranked = sorted(per_file.items(), key=lambda item: (-item[1], item[0]))
-    kept = ranked[:cap]
-    return (
-        [{"path": path, "count": count} for path, count in kept],
-        len(ranked) > len(kept),
-    )
+@dataclass
+class _CodeFold:
+    """What one pass over the walk's code files accumulates besides the
+    production vocabulary itself."""
+    languages: Counter = field(default_factory=Counter)
+    modules: dict[str, dict] = field(default_factory=lambda: defaultdict(
+        lambda: {
+            "code_files": 0,
+            "languages": set(),
+            "code_files_by_role": Counter(),
+        }
+    ))
+    file_imports: list[tuple[str, str, list[str]]] = field(default_factory=list)
+    production_code_files: list[tuple[str, str]] = field(default_factory=list)
+    analyzed_production_files: int = 0
+    code_bytes: int = 0
+
+
+def _fold_code_files(
+    walk: WalkResult, extractor: SourceExtractor,
+    vocabulary: ProductionVocabulary,
+) -> _CodeFold:
+    code = _CodeFold()
+    for rel, language, role in walk.code_files:
+        entry = extractor.code_entry(rel, language, role)
+        if entry is None:
+            continue
+        code.code_bytes += entry["size"]  # on-disk bytes, not decoded characters
+        code.languages[language] += 1
+        module = module_of(rel)
+        code.modules[module]["code_files"] += 1
+        code.modules[module]["languages"].add(language)
+        code.modules[module]["code_files_by_role"][role] += 1
+        if role == "production":
+            code.analyzed_production_files += 1
+            code.production_code_files.append((rel, language))
+            if entry["imports"]:
+                code.file_imports.append((rel, language, entry["imports"]))
+            vocabulary.fold(entry["identifiers"], rel, module, language)
+    return code
+
+
+def _fold_doc_files(
+    walk: WalkResult, extractor: SourceExtractor,
+    documentation: DocumentationVocabulary,
+) -> tuple[list[dict], int, int]:
+    """Doc inventory entries, total words, and the production doc count."""
+    doc_entries = []
+    doc_word_total = 0
+    analyzed_production_doc_files = 0
+    for rel, role in walk.doc_files:
+        entry = extractor.doc_entry(rel, role)
+        if entry is None:
+            # Keep the inventory consistent with totals: the file exists and
+            # is counted; the budget skip above names why no words were read.
+            doc_entries.append({"path": rel, "role": role, "words": 0})
+            continue
+        doc_word_total += entry["word_total"]
+        if role == "production":
+            analyzed_production_doc_files += 1
+            documentation.fold(entry["words"], rel)
+        doc_entries.append({
+            "path": rel,
+            "role": role,
+            "words": entry["word_total"],
+        })
+    return doc_entries, doc_word_total, analyzed_production_doc_files
+
+
+def _module_lists(modules: dict[str, dict]) -> tuple[list[dict], list[dict]]:
+    """All modules, and the production-scoped modules naming ranks over."""
+    modules_list = [
+        {
+            "path": path,
+            "code_files": info["code_files"],
+            "code_files_by_role": dict(sorted(info["code_files_by_role"].items())),
+            "languages": sorted(info["languages"]),
+        }
+        for path, info in sorted(modules.items())
+    ]
+    production_modules_list = [
+        {
+            "path": path,
+            "code_files": info["code_files_by_role"].get("production", 0),
+            "languages": sorted(info["languages"]),
+        }
+        for path, info in sorted(modules.items())
+        if info["code_files_by_role"].get("production", 0)
+    ]
+    return modules_list, production_modules_list
+
+
+def _vocabulary_section(
+    vocabulary: ProductionVocabulary, documentation: DocumentationVocabulary,
+    limits: Limits,
+) -> dict:
+    def token_entry(term: str, count: int) -> dict:
+        per_file = vocabulary.token_files[term]
+        locations, locations_truncated = location_sample(
+            per_file, limits.locations_per_term
+        )
+        return {
+            "term": term,
+            "origin": vocabulary.token_origins[term],
+            "count": count,
+            "files": len(per_file),
+            "modules": len(vocabulary.token_modules.get(term, ())),
+            "locations": locations,
+            "locations_truncated": locations_truncated,
+        }
+
+    def identifier_entry(name: str, count: int) -> dict:
+        per_file = vocabulary.identifier_files[name]
+        locations, locations_truncated = location_sample(
+            per_file, limits.locations_per_term
+        )
+        return {
+            "name": name,
+            "tokens": tokenize_identifier(name),
+            "count": count,
+            "files": len(per_file),
+            "locations": locations,
+            "locations_truncated": locations_truncated,
+        }
+
+    def doc_term_entry(term: str, count: int) -> dict:
+        per_file = documentation.term_files[term]
+        locations, locations_truncated = location_sample(
+            per_file, limits.locations_per_term
+        )
+        return {
+            "term": term,
+            "count": count,
+            "files": len(per_file),
+            "locations": locations,
+            "locations_truncated": locations_truncated,
+        }
+
+    return {
+        "normalization": tokenization_contract(),
+        "tokens": _capped(vocabulary.token_counts, limits.tokens, token_entry),
+        "identifiers": _capped(
+            vocabulary.identifier_counts, limits.identifiers, identifier_entry,
+        ),
+        "doc_terms": _capped(
+            documentation.term_counts, limits.doc_terms, doc_term_entry,
+        ),
+    }
 
 
 def build_evidence(root: Path, limits: Limits = Limits(),
@@ -90,57 +231,10 @@ def build_evidence(root: Path, limits: Limits = Limits(),
     # their path as production. Generated and vendored content is not read.
     vocabulary = ProductionVocabulary()
     documentation = DocumentationVocabulary()
-    languages: Counter = Counter()
-    modules: dict[str, dict] = defaultdict(
-        lambda: {
-            "code_files": 0,
-            "languages": set(),
-            "code_files_by_role": Counter(),
-        }
+    code = _fold_code_files(walk, extractor, vocabulary)
+    doc_entries, doc_word_total, analyzed_production_doc_files = (
+        _fold_doc_files(walk, extractor, documentation)
     )
-    file_imports: list[tuple[str, str, list[str]]] = []
-    production_code_files: list[tuple[str, str]] = []
-    code_files_by_role = Counter(role for _, _, role in walk.code_files)
-    doc_files_by_role = Counter(role for _, role in walk.doc_files)
-    analyzed_production_code_files = 0
-    analyzed_production_doc_files = 0
-    code_bytes = 0
-
-    for rel, language, role in walk.code_files:
-        entry = extractor.code_entry(rel, language, role)
-        if entry is None:
-            continue
-        code_bytes += entry["size"]  # on-disk bytes, not decoded characters
-        languages[language] += 1
-        module = module_of(rel)
-        modules[module]["code_files"] += 1
-        modules[module]["languages"].add(language)
-        modules[module]["code_files_by_role"][role] += 1
-        if role == "production":
-            analyzed_production_code_files += 1
-            production_code_files.append((rel, language))
-            if entry["imports"]:
-                file_imports.append((rel, language, entry["imports"]))
-            vocabulary.fold(entry["identifiers"], rel, module, language)
-
-    doc_entries = []
-    doc_word_total = 0
-    for rel, role in walk.doc_files:
-        entry = extractor.doc_entry(rel, role)
-        if entry is None:
-            # Keep the inventory consistent with totals: the file exists and
-            # is counted; the budget skip above names why no words were read.
-            doc_entries.append({"path": rel, "role": role, "words": 0})
-            continue
-        doc_word_total += entry["word_total"]
-        if role == "production":
-            analyzed_production_doc_files += 1
-            documentation.fold(entry["words"], rel)
-        doc_entries.append({
-            "path": rel,
-            "role": role,
-            "words": entry["word_total"],
-        })
 
     if cache:
         save_cache(root, extractor.cache_files, git_stamp)
@@ -149,67 +243,10 @@ def build_evidence(root: Path, limits: Limits = Limits(),
             "reused": extractor.reused, "extracted": extractor.extracted,
         })
 
-    def token_entry(term: str, count: int) -> dict:
-        per_file = vocabulary.token_files[term]
-        locations, locations_truncated = _location_sample(
-            per_file, limits.locations_per_term
-        )
-        return {
-            "term": term,
-            "origin": vocabulary.token_origins[term],
-            "count": count,
-            "files": len(per_file),
-            "modules": len(vocabulary.token_modules.get(term, ())),
-            "locations": locations,
-            "locations_truncated": locations_truncated,
-        }
-
-    def identifier_entry(name: str, count: int) -> dict:
-        per_file = vocabulary.identifier_files[name]
-        locations, locations_truncated = _location_sample(
-            per_file, limits.locations_per_term
-        )
-        return {
-            "name": name,
-            "tokens": tokenize_identifier(name),
-            "count": count,
-            "files": len(per_file),
-            "locations": locations,
-            "locations_truncated": locations_truncated,
-        }
-
-    def doc_term_entry(term: str, count: int) -> dict:
-        per_file = documentation.term_files[term]
-        locations, locations_truncated = _location_sample(
-            per_file, limits.locations_per_term
-        )
-        return {
-            "term": term,
-            "count": count,
-            "files": len(per_file),
-            "locations": locations,
-            "locations_truncated": locations_truncated,
-        }
-
-    modules_list = [
-        {
-            "path": path,
-            "code_files": info["code_files"],
-            "code_files_by_role": dict(sorted(info["code_files_by_role"].items())),
-            "languages": sorted(info["languages"]),
-        }
-        for path, info in sorted(modules.items())
-    ]
-    production_modules_list = [
-        {
-            "path": path,
-            "code_files": info["code_files_by_role"].get("production", 0),
-            "languages": sorted(info["languages"]),
-        }
-        for path, info in sorted(modules.items())
-        if info["code_files_by_role"].get("production", 0)
-    ]
-    imports_section = build_imports_section(file_imports, production_code_files)
+    modules_list, production_modules_list = _module_lists(code.modules)
+    imports_section = build_imports_section(
+        code.file_imports, code.production_code_files
+    )
     structural = (
         build_structural_groups(root, git_stamp) if graphify
         else disabled_structural_groups()
@@ -224,7 +261,7 @@ def build_evidence(root: Path, limits: Limits = Limits(),
     naming.update(structural_naming)
 
     return {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": EVIDENCE_SCHEMA_VERSION,
         "generator": {"name": "glossabet", "version": __version__},
         "repository": {"git": git_stamp},
         "configuration": config.as_evidence(),
@@ -233,13 +270,17 @@ def build_evidence(root: Path, limits: Limits = Limits(),
             "source_bytes": walk.corpus_budget.source_bytes,
             "code_files": len(walk.code_files),
             "doc_files": len(walk.doc_files),
-            "code_files_by_role": dict(sorted(code_files_by_role.items())),
-            "doc_files_by_role": dict(sorted(doc_files_by_role.items())),
+            "code_files_by_role": dict(sorted(
+                Counter(role for _, _, role in walk.code_files).items()
+            )),
+            "doc_files_by_role": dict(sorted(
+                Counter(role for _, role in walk.doc_files).items()
+            )),
             "other_files": walk.other_files,
-            "code_bytes": code_bytes,
+            "code_bytes": code.code_bytes,
             "doc_words": doc_word_total,
         },
-        "languages": dict(sorted(languages.items())),
+        "languages": dict(sorted(code.languages.items())),
         "modules": modules_list,
         "imports": imports_section,
         "naming_candidates": naming,
@@ -251,22 +292,12 @@ def build_evidence(root: Path, limits: Limits = Limits(),
             ],
             "docs": sorted(doc_entries, key=lambda d: d["path"]),
         },
-        "vocabulary": {
-            "normalization": tokenization_contract(),
-            "tokens": _capped(vocabulary.token_counts, limits.tokens, token_entry),
-            "identifiers": _capped(
-                vocabulary.identifier_counts, limits.identifiers,
-                identifier_entry,
-            ),
-            "doc_terms": _capped(
-                documentation.term_counts, limits.doc_terms, doc_term_entry,
-            ),
-        },
+        "vocabulary": _vocabulary_section(vocabulary, documentation, limits),
         "terminology": {
             **terminology,
             "scope": {
                 "roles": ["production"],
-                "code_files": analyzed_production_code_files,
+                "code_files": code.analyzed_production_files,
                 "doc_files": analyzed_production_doc_files,
             },
         },

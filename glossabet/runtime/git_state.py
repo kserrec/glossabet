@@ -67,6 +67,18 @@ FRESHNESS_STATUS_ARGS = (
 )
 
 
+def _run_git(
+    git_exe: str, root: Path, args, *, overrides=()
+) -> subprocess.CompletedProcess:
+    """The one hardened git invocation: safe config, no prompts, a timeout.
+    Callers own their own returncode policy and catch OSError/timeout."""
+    return subprocess.run(
+        [git_exe, *SAFE_CONFIG, *overrides, "-C", str(root), *args],
+        capture_output=True, text=True, timeout=30,
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+    )
+
+
 def _filter_driver_overrides(git_exe: str, root: Path) -> tuple[str, ...]:
     """`-c filter.<name>.<op>=` for every content-filter driver the repository
     defines, so `git status` cannot execute an attacker-named clean/smudge/
@@ -79,11 +91,9 @@ def _filter_driver_overrides(git_exe: str, root: Path) -> tuple[str, ...]:
         # reads, then trip it during status content conversion. Reading config
         # runs no filter. Clearing the user's own global/system filter names as
         # a side effect is harmless: this probe never wants any filter to run.
-        proc = subprocess.run(
-            [git_exe, *SAFE_CONFIG, "-C", str(root),
-             "config", "--name-only", "--get-regexp", r"^filter\."],
-            capture_output=True, text=True, timeout=30,
-            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        proc = _run_git(
+            git_exe, root,
+            ("config", "--name-only", "--get-regexp", r"^filter\."),
         )
     except (OSError, subprocess.TimeoutExpired):
         return ()
@@ -102,12 +112,7 @@ def repository_git_stamp(root: Path) -> dict:
 
     def git(*args: str) -> str | None:
         try:
-            proc = subprocess.run(
-                [git_exe, *SAFE_CONFIG, *filter_overrides,
-                 "-C", str(root), *args],
-                capture_output=True, text=True, timeout=30,
-                env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
-            )
+            proc = _run_git(git_exe, root, args, overrides=filter_overrides)
         except (OSError, subprocess.TimeoutExpired):
             return None
         return proc.stdout if proc.returncode == 0 else None

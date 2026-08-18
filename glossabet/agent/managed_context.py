@@ -25,9 +25,9 @@ from glossabet.agent.managed_block import (
     END_MARKER,
     MANAGED_BLOCK_FORMAT_VERSION,
     START_MARKER,
-    _BLOCK_RE,
-    _MARKER_PREFIX,
-    _METADATA_RE,
+    BLOCK_RE,
+    MARKER_PREFIX,
+    METADATA_RE,
 )
 
 
@@ -55,9 +55,9 @@ def _content_sha256(text: str) -> str:
     return hashlib.sha256(_normalized_newlines(text).encode("utf-8")).hexdigest()
 
 
-def _render_block(glossary: dict, *, newline: str = "\n") -> str:
+def render_block(glossary: dict, *, newline: str = "\n") -> str:
     body = build_managed_brief(glossary)
-    if any(marker in body for marker in (START_MARKER, END_MARKER, _MARKER_PREFIX)):
+    if any(marker in body for marker in (START_MARKER, END_MARKER, MARKER_PREFIX)):
         raise ContextSyncError(
             "the glossary renders reserved managed-context marker text"
         )
@@ -71,23 +71,23 @@ def _render_block(glossary: dict, *, newline: str = "\n") -> str:
     return block if newline == "\n" else block.replace("\n", newline)
 
 
-def _analyze_managed_block(text: str, glossary: dict) -> _Analysis:
-    if _MARKER_PREFIX not in text:
+def analyze_managed_block(text: str, glossary: dict) -> _Analysis:
+    if MARKER_PREFIX not in text:
         return _Analysis("absent", "no Glossabet managed context block")
     if text.count(START_MARKER) != 1 or text.count(END_MARKER) != 1:
         return _Analysis(
             "edited",
             "managed-context markers are unmatched, duplicated, or changed",
         )
-    match = _BLOCK_RE.search(text)
-    if match is None or text.count(_MARKER_PREFIX) != 3:
+    match = BLOCK_RE.search(text)
+    if match is None or text.count(MARKER_PREFIX) != 3:
         return _Analysis(
             "edited",
             "managed-context markers or metadata are malformed",
         )
 
-    metadata = _METADATA_RE.fullmatch(match.group("metadata"))
-    if metadata is None:  # Kept explicit even though _BLOCK_RE embeds the pattern.
+    metadata = METADATA_RE.fullmatch(match.group("metadata"))
+    if metadata is None:  # Kept explicit even though BLOCK_RE embeds the pattern.
         return _Analysis("edited", "managed-context metadata is malformed")
 
     body = _normalized_newlines(match.group("body"))
@@ -122,7 +122,7 @@ def _analyze_managed_block(text: str, glossary: dict) -> _Analysis:
         )
 
     try:
-        expected = _render_block(glossary)
+        expected = render_block(glossary)
     except ContextSyncError as exc:
         return _Analysis("edited", str(exc), match.start(), match.end())
     actual = _normalized_newlines(match.group(0))
@@ -141,7 +141,7 @@ def _analyze_managed_block(text: str, glossary: dict) -> _Analysis:
     )
 
 
-def _read_regular_target(path: Path) -> tuple[bytes | None, int]:
+def read_regular_target(path: Path) -> tuple[bytes | None, int]:
     """Return existing bytes and the mode to preserve; reject unsafe targets."""
     try:
         info = path.lstat()
@@ -196,7 +196,7 @@ def _read_regular_target(path: Path) -> tuple[bytes | None, int]:
 
 def _inspect_target(path: Path, glossary: dict) -> dict:
     try:
-        existing, _mode = _read_regular_target(path)
+        existing, _mode = read_regular_target(path)
     except ContextSyncError as exc:
         return {"path": path.name, "status": "uninspectable", "detail": str(exc)}
     if existing is None:
@@ -207,7 +207,7 @@ def _inspect_target(path: Path, glossary: dict) -> dict:
         except UnicodeError:
             analysis = _Analysis("uninspectable", "host-context file is not valid UTF-8")
         else:
-            analysis = _analyze_managed_block(text, glossary)
+            analysis = analyze_managed_block(text, glossary)
     return {"path": path.name, "status": analysis.status, "detail": analysis.detail}
 
 

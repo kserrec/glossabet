@@ -87,6 +87,13 @@ DOC_STOPWORDS = frozenset("""
 MIN_TOKEN_LEN = 2
 MIN_DOC_WORD_LEN = 3
 
+STRUCTURED_IDENTIFIER_STYLES = frozenset({
+    "snake_case",
+    "camelCase",
+    "PascalCase",
+    "UPPER_SNAKE",
+})
+
 
 def tokenization_contract() -> dict:
     """Machine-readable summary of the lexical normalization semantics."""
@@ -267,13 +274,6 @@ def doc_words(text: str) -> list[str]:
             words.append(word)
     return words
 
-
-STRUCTURED_IDENTIFIER_STYLES = frozenset({
-    "snake_case",
-    "camelCase",
-    "PascalCase",
-    "UPPER_SNAKE",
-})
 
 
 def identifier_style(name: str) -> str:

@@ -83,6 +83,11 @@ def escape_terminal_text(text: str, *, preserve_line_feeds: bool = False) -> str
     return "".join(rendered)
 
 
+def join_escaped(values, separator: str = ", ") -> str:
+    """Join repository-controlled strings for one terminal line, escaping each."""
+    return separator.join(escape_terminal_text(value) for value in values)
+
+
 def print_error(error: object) -> None:
     """Print one command error to stderr with unsafe characters escaped."""
     print("glossabet: " + escape_terminal_text(str(error)), file=sys.stderr)

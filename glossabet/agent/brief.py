@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from glossabet.runtime.artifacts import ArtifactError
 from glossabet.runtime import git_state
-from glossabet.runtime.display import escape_terminal_text
+from glossabet.runtime.display import escape_terminal_text, join_escaped
 from glossabet.runtime.engine_run import GLOSSARY_OPTIONAL, open_run
 from glossabet.glossary.store import (
     GLOSSARY_SCHEMA_VERSION,
@@ -96,7 +96,7 @@ def _render_entry(concept: dict, byte_limit: int) -> tuple[str, bool]:
     scope_text = (
         "repository"
         if scope is None
-        else ", ".join(escape_terminal_text(prefix) for prefix in scope)
+        else join_escaped(scope)
     )
     if not append(f" | scope: {scope_text}"):
         return "".join(parts) + "\n", truncated

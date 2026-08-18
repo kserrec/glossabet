@@ -547,7 +547,7 @@ def test_parallel_term_scope_checks_are_bounded_against_a_hostile_glossary(
 
     evidence = build_evidence(tmp_path)
     start = time.monotonic()
-    drift = build_drift(evidence, glossary)
+    build_drift(evidence, glossary)
     assert time.monotonic() - start < 15, "parallel-term scope work was unbounded"
 
 

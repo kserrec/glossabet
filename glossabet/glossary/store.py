@@ -379,6 +379,90 @@ def scope_evidence(scope: tuple[str, ...] | None) -> dict:
     return {"kind": "path-prefixes", SCOPE_PATHS_KEY: list(scope)}
 
 
+def _validate_aliases(
+    concept: dict, i: int, where: str, owner_id: str,
+    scope: tuple[str, ...] | None, scope_valid: bool,
+    claim_vocabulary, errors: _ValidationErrors,
+) -> None:
+    aliases = concept.get("aliases", [])
+    if not isinstance(aliases, list):
+        errors.add(f"{where}.aliases must be a list")
+        aliases = []
+    for j, alias in enumerate(aliases):
+        aw = f"{where}.aliases[{j}]"
+        if not isinstance(alias, dict):
+            errors.add(f"{aw} must be an object")
+            continue
+        _unknown_fields(alias, _ALIAS_KEYS, aw, errors)
+        alias_term = _string_field(
+            alias.get("term"), f"{aw}.term", errors, required=True
+        )
+        alias_status = _string_field(
+            alias.get("status"), f"{aw}.status", errors, required=True
+        )
+        if "note" in alias:
+            _string_field(
+                alias["note"], f"{aw}.note", errors,
+                required=False, prose=True,
+            )
+        if alias_status is not None and alias_status not in STATUSES:
+            errors.add(
+                f"{aw} status {alias_status!r} not one of "
+                f"{sorted(STATUSES)}"
+            )
+        if alias_term is None or not scope_valid:
+            continue
+        folded_alias = _fold_vocabulary(alias_term)
+        previous = claim_vocabulary(
+            folded_alias, (i, owner_id, "alias"), scope
+        )
+        if previous is not None:
+            if previous[0] != i:
+                errors.add(
+                    f"{aw} alias term {alias_term!r} maps to multiple "
+                    f"concepts in overlapping scopes "
+                    f"({previous[1]!r} and {owner_id!r})"
+                )
+            else:
+                errors.add(
+                    f"{aw} duplicate vocabulary term {alias_term!r} "
+                    f"within concept {owner_id!r}"
+                )
+
+
+def _validate_bindings(
+    concept: dict, where: str, errors: _ValidationErrors
+) -> None:
+    bindings = concept.get("bindings", [])
+    if not isinstance(bindings, list):
+        errors.add(f"{where}.bindings must be a list")
+        bindings = []
+    for j, binding in enumerate(bindings):
+        bw = f"{where}.bindings[{j}]"
+        if not isinstance(binding, dict):
+            errors.add(f"{bw} must be an object")
+            continue
+        _unknown_fields(binding, _BINDING_KEYS, bw, errors)
+        ref = _string_field(
+            binding.get("ref"), f"{bw}.ref", errors, required=True
+        )
+        if ref is None:
+            continue
+        if ":" not in ref:
+            errors.add(f"{bw} needs a 'ref' like 'symbol:Name'")
+            continue
+        kind, _, target = ref.partition(":")
+        if not target.strip():
+            errors.add(f"{bw} needs a 'ref' like 'symbol:Name'")
+            continue
+        if kind not in BINDING_KINDS:
+            errors.add(
+                f"{bw} unsupported ref kind {kind!r} — bindings target "
+                f"stable identities only ({sorted(BINDING_KINDS)}); "
+                "community/node ids are not stable across graph rebuilds"
+            )
+
+
 def validate_glossary(glossary: object) -> list[str]:
     errors = _ValidationErrors()
     if not isinstance(glossary, dict):
@@ -458,78 +542,11 @@ def validate_glossary(glossary: object) -> list[str]:
                         f"in overlapping scopes ({previous[1]!r} and "
                         f"{owner_id!r})"
                     )
-        aliases = concept.get("aliases", [])
-        if not isinstance(aliases, list):
-            errors.add(f"{where}.aliases must be a list")
-            aliases = []
-        for j, alias in enumerate(aliases):
-            aw = f"{where}.aliases[{j}]"
-            if not isinstance(alias, dict):
-                errors.add(f"{aw} must be an object")
-                continue
-            _unknown_fields(alias, _ALIAS_KEYS, aw, errors)
-            alias_term = _string_field(
-                alias.get("term"), f"{aw}.term", errors, required=True
-            )
-            alias_status = _string_field(
-                alias.get("status"), f"{aw}.status", errors, required=True
-            )
-            if "note" in alias:
-                _string_field(
-                    alias["note"], f"{aw}.note", errors,
-                    required=False, prose=True,
-                )
-            if alias_status is not None and alias_status not in STATUSES:
-                errors.add(
-                    f"{aw} status {alias_status!r} not one of "
-                    f"{sorted(STATUSES)}"
-                )
-            if alias_term is None or not scope_valid:
-                continue
-            folded_alias = _fold_vocabulary(alias_term)
-            previous = claim_vocabulary(
-                folded_alias, (i, owner_id, "alias"), scope
-            )
-            if previous is not None:
-                if previous[0] != i:
-                    errors.add(
-                        f"{aw} alias term {alias_term!r} maps to multiple "
-                        f"concepts in overlapping scopes "
-                        f"({previous[1]!r} and {owner_id!r})"
-                    )
-                else:
-                    errors.add(
-                        f"{aw} duplicate vocabulary term {alias_term!r} "
-                        f"within concept {owner_id!r}"
-                    )
-        bindings = concept.get("bindings", [])
-        if not isinstance(bindings, list):
-            errors.add(f"{where}.bindings must be a list")
-            bindings = []
-        for j, binding in enumerate(bindings):
-            bw = f"{where}.bindings[{j}]"
-            if not isinstance(binding, dict):
-                errors.add(f"{bw} must be an object")
-                continue
-            _unknown_fields(binding, _BINDING_KEYS, bw, errors)
-            ref = _string_field(
-                binding.get("ref"), f"{bw}.ref", errors, required=True
-            )
-            if ref is None:
-                continue
-            if ":" not in ref:
-                errors.add(f"{bw} needs a 'ref' like 'symbol:Name'")
-                continue
-            kind, _, target = ref.partition(":")
-            if not target.strip():
-                errors.add(f"{bw} needs a 'ref' like 'symbol:Name'")
-                continue
-            if kind not in BINDING_KINDS:
-                errors.add(
-                    f"{bw} unsupported ref kind {kind!r} — bindings target "
-                    f"stable identities only ({sorted(BINDING_KINDS)}); "
-                    "community/node ids are not stable across graph rebuilds"
-                )
+        _validate_aliases(
+            concept, i, where, owner_id, scope, scope_valid,
+            claim_vocabulary, errors,
+        )
+        _validate_bindings(concept, where, errors)
     return errors.finish()
 
 

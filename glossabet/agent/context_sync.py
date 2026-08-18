@@ -16,9 +16,9 @@ from glossabet.runtime.engine_run import GLOSSARY_REQUIRED, open_run
 from glossabet.agent.managed_block import AGENT_TARGETS
 from glossabet.agent.managed_context import (
     ContextSyncError,
-    _analyze_managed_block,
-    _read_regular_target,
-    _render_block,
+    analyze_managed_block,
+    read_regular_target,
+    render_block,
 )
 
 
@@ -36,7 +36,7 @@ def _write_bytes_atomic(
     expected: bytes | None,
 ) -> None:
     def _require_unchanged_target() -> None:
-        current, current_mode = _read_regular_target(path)
+        current, current_mode = read_regular_target(path)
         if current != expected or (
             expected is not None and current_mode != mode
         ):
@@ -82,7 +82,7 @@ def sync_context(
         raise ContextSyncError(f"unsupported agent: {agent}") from exc
     root = root.resolve()
     target = root / filename
-    existing_bytes, mode = _read_regular_target(target)
+    existing_bytes, mode = read_regular_target(target)
     if existing_bytes is None:
         existing = ""
     else:
@@ -91,9 +91,9 @@ def sync_context(
         except UnicodeError as exc:
             raise ContextSyncError(f"{filename} is not valid UTF-8") from exc
 
-    analysis = _analyze_managed_block(existing, glossary)
+    analysis = analyze_managed_block(existing, glossary)
     newline = _detect_newline(existing)
-    block = _render_block(glossary, newline=newline)
+    block = render_block(glossary, newline=newline)
 
     if analysis.status == "current":
         return target, "current"

@@ -8,7 +8,7 @@ from __future__ import annotations
 import sys
 
 from glossabet.corpus.config import CONFIG_FILE, PATH_ROLES
-from glossabet.runtime.display import escape_terminal_text
+from glossabet.runtime.display import escape_terminal_text, join_escaped
 from glossabet.runtime.engine_run import open_run
 from glossabet.analysis.evidence import build_evidence, write_evidence
 from glossabet.analysis.evidence_view import EvidenceView
@@ -31,26 +31,35 @@ def configuration_hint(configuration: dict) -> str:
     )
 
 
+def _print_candidates(
+    kind: str, candidates: list[dict], name_key: str, *, tag_key: str | None = None
+) -> None:
+    for candidate in candidates:
+        name = escape_terminal_text(candidate[name_key])
+        tag = (
+            f" [{escape_terminal_text(candidate[tag_key])}]" if tag_key else ""
+        )
+        reasons = join_escaped(candidate["reasons"], "; ")
+        print(f"{kind} {name}{tag} — {reasons}")
+
+
 def _print_terminology_report(view: EvidenceView) -> None:
-    term = view.terminology()
-    reg = term["register"]
+    terminology = view.terminology()
+    reg = terminology["register"]
     print(
         f"\n== house register ({reg['unique_identifiers']} unique identifiers, "
-        f"top {term['considered_tokens']} of "
-        f"{term.get('domain_vocabulary_size', term['vocabulary_size'])} "
-        f"domain tokens analyzed from {term['scope']['code_files']} production "
-        f"code file(s)) =="
+        f"top {terminology['considered_tokens']} of "
+        f"{terminology.get('domain_vocabulary_size', terminology['vocabulary_size'])} "
+        f"domain tokens analyzed from {terminology['scope']['code_files']} "
+        f"production code file(s)) =="
     )
-    token_coverage = term.get("coverage", {}).get("eligible_tokens")
+    token_coverage = terminology.get("coverage", {}).get("eligible_tokens")
     if isinstance(token_coverage, dict) and not token_coverage.get("complete", True):
         print(
             "terminology coverage: partial — "
             f"{token_coverage['included_items']} of "
             f"{token_coverage['total_items']} eligible token(s) analyzed; "
-            + "; ".join(
-                escape_terminal_text(reason)
-                for reason in token_coverage.get("reasons", [])
-            )
+            + join_escaped(token_coverage.get("reasons", []), "; ")
         )
     composition = reg.get("composition", {})
     used_by_reason = composition.get("used_by_reason", {})
@@ -84,14 +93,14 @@ def _print_terminology_report(view: EvidenceView) -> None:
         )
         print(f"common {label}: {affixes or 'none'}")
 
-    layers = term["layers"]
+    layers = terminology["layers"]
     print("\n== code vs docs vocabulary ==")
     for label, key in (("shared", "shared_top"), ("code-only", "code_only_top"),
                        ("doc-only", "doc_only_top")):
-        values = ", ".join(escape_terminal_text(item) for item in layers[key])
+        values = join_escaped(layers[key])
         print(f"{label}: {values or 'none'}")
 
-    syn = term["synonym_candidates"]
+    syn = terminology["synonym_candidates"]
     print(f"\n== possible vocabulary overlaps "
           f"({syn['considered_pairs']} pairs considered) ==")
     if not syn["items"]:
@@ -99,9 +108,7 @@ def _print_terminology_report(view: EvidenceView) -> None:
     for item in syn["items"]:
         left = escape_terminal_text(item["a"])
         right = escape_terminal_text(item["b"])
-        contexts = ", ".join(
-            escape_terminal_text(context) for context in item["shared_contexts"]
-        )
+        contexts = join_escaped(item["shared_contexts"])
         print(
             f"{left} ~ {right} (similarity {item['similarity']}; "
             f"shared contexts: {contexts})"
@@ -109,15 +116,12 @@ def _print_terminology_report(view: EvidenceView) -> None:
     if syn["dropped_items"]:
         print(f"... and {syn['dropped_items']} more not shown")
 
-    over = term["overload_candidates"]
+    over = terminology["overload_candidates"]
     print("\n== possibly overloaded terms ==")
     if not over["items"]:
         print("none nominated")
     for item in over["items"]:
-        mods = ", ".join(
-            escape_terminal_text(module["path"])
-            for module in item["modules"]
-        )
+        mods = join_escaped(module["path"] for module in item["modules"])
         term_name = escape_terminal_text(item["term"])
         print(f"{term_name} across {mods} (dispersion {item['dispersion']})")
     if over["dropped_items"]:
@@ -125,25 +129,9 @@ def _print_terminology_report(view: EvidenceView) -> None:
 
     naming = view.naming_candidates()
     print("\n== naming candidates (import graph is best-effort) ==")
-    for cand in naming["modules"]:
-        path = escape_terminal_text(cand["path"])
-        reasons = "; ".join(
-            escape_terminal_text(reason) for reason in cand["reasons"]
-        )
-        print(f"module {path} — {reasons}")
-    for cand in naming["terms"]:
-        term_name = escape_terminal_text(cand["term"])
-        nomination_kind = escape_terminal_text(cand["nomination_kind"])
-        reasons = "; ".join(
-            escape_terminal_text(reason) for reason in cand["reasons"]
-        )
-        print(f"term {term_name} [{nomination_kind}] — {reasons}")
-    for cand in naming["structures"]:
-        label = escape_terminal_text(cand["label"])
-        reasons = "; ".join(
-            escape_terminal_text(reason) for reason in cand["reasons"]
-        )
-        print(f"structure {label} — {reasons}")
+    _print_candidates("module", naming["modules"], "path")
+    _print_candidates("term", naming["terms"], "term", tag_key="nomination_kind")
+    _print_candidates("structure", naming["structures"], "label")
     dropped = (naming["modules_dropped"] + naming["terms_dropped"]
                + naming["structures_dropped"])
     if dropped:
@@ -163,15 +151,7 @@ def _print_terminology_report(view: EvidenceView) -> None:
     )
 
 
-def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
-    run = open_run(path_arg)
-    stats: dict = {}
-    evidence = build_evidence(
-        run.root, cache=True, stats=stats, graphify=graphify
-    )
-    out_path = write_evidence(run.root, evidence)
-    view = EvidenceView(evidence)
-    structural = view.structural_groups()
+def _print_graphify_summary(structural: dict) -> None:
     for warning in structural.get("warnings", []):
         print(
             f"graphify adapter: {escape_terminal_text(warning)}",
@@ -193,6 +173,49 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
         )
     elif structural.get("present"):
         print("graphify graph present, but no usable structural groups loaded")
+
+
+def _print_corpus_budget_warning(budget: dict) -> None:
+    if budget["complete"]:
+        return
+    omitted = budget["skipped"]["source_files"]
+    details = []
+    if omitted:
+        details.append(f"excluded {omitted} source file(s)")
+    if budget["walk_remainder"]["truncated"]:
+        details.append("directory walk omitted an inexact remainder")
+    # Skips cover budget caps and read failures alike; the sample
+    # entries name each file's reason.
+    print(
+        "corpus coverage incomplete: " + "; ".join(details)
+        + "; evidence is partial",
+        file=sys.stderr,
+    )
+
+
+def _print_monorepo_notice(mono: dict) -> None:
+    if not mono["detected"]:
+        return
+    print(
+        "monorepo detected: " + join_escaped(mono["reasons"], "; ") + ".",
+        file=sys.stderr,
+    )
+    print(
+        "Vocabulary is usually healthier per sub-project — consider "
+        "running glossabet at a lower level for each sub-project.",
+        file=sys.stderr,
+    )
+
+
+def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
+    run = open_run(path_arg)
+    stats: dict = {}
+    evidence = build_evidence(
+        run.root, cache=True, stats=stats, graphify=graphify
+    )
+    out_path = write_evidence(run.root, evidence)
+    view = EvidenceView(evidence)
+    _print_graphify_summary(view.structural_groups())
     if stats.get("reused"):
         print(
             f"cache: reused {stats['reused']} extraction(s), "
@@ -209,35 +232,8 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
     for sentence in exclusion_sentences(view.skipped()):
         print(sentence, file=sys.stderr)
     print(configuration_hint(view.configuration()))
-    budget = view.corpus_budget()
-    if not budget["complete"]:
-        omitted = budget["skipped"]["source_files"]
-        details = []
-        if omitted:
-            details.append(f"excluded {omitted} source file(s)")
-        if budget["walk_remainder"]["truncated"]:
-            details.append("directory walk omitted an inexact remainder")
-        # Skips cover budget caps and read failures alike; the sample
-        # entries name each file's reason.
-        print(
-            "corpus coverage incomplete: " + "; ".join(details)
-            + "; evidence is partial",
-            file=sys.stderr,
-        )
-    mono = view.monorepo()
-    if mono["detected"]:
-        reasons = "; ".join(
-            escape_terminal_text(reason) for reason in mono["reasons"]
-        )
-        print(
-            "monorepo detected: " + reasons + ".",
-            file=sys.stderr,
-        )
-        print(
-            "Vocabulary is usually healthier per sub-project — consider "
-            "running glossabet at a lower level for each sub-project.",
-            file=sys.stderr,
-        )
+    _print_corpus_budget_warning(view.corpus_budget())
+    _print_monorepo_notice(view.monorepo())
     if report:
         _print_terminology_report(view)
     return 0

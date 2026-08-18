@@ -82,6 +82,17 @@ def capped_collection(
     )
 
 
+def location_sample(per_file, cap: int) -> tuple[list[dict], bool]:
+    """The top-``cap`` (path, count) locations by (-count, path) as
+    ``{"path", "count"}`` records, and whether any were left out."""
+    ranked = sorted(per_file.items(), key=lambda item: (-item[1], item[0]))
+    kept = ranked[:cap]
+    return (
+        [{"path": path, "count": count} for path, count in kept],
+        len(ranked) > len(kept),
+    )
+
+
 def capped_section(
     items: Sequence,
     cap: int,

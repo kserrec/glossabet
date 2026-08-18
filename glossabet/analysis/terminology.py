@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
+from dataclasses import dataclass, field
 from itertools import combinations
 
 from glossabet.runtime.coverage import (
@@ -44,6 +45,7 @@ OVERLOAD_MIN_MODULES = 3
 OVERLOAD_MIN_DISPERSION = 0.8
 OVERLOAD_REPORT_CAP = 10
 OVERLOAD_MODULE_ANALYSIS_CAP = 50
+OVERLOAD_MODULE_DISPLAY_CAP = 4
 SHARED_CONTEXT_SAMPLE = 5
 SHARED_PATTERN_SAMPLE = 5
 MODULE_CONTEXT_SAMPLE = 5
@@ -51,34 +53,39 @@ REGISTER_AFFIX_CAP = 8
 LAYER_CAP = 10
 
 
-def _register(
-    identifier_counts: Counter,
-    doc_term_counts: Counter,
-    token_origins: dict[str, str],
-) -> dict:
-    styles: Counter = Counter()
-    token_counts_dist: Counter = Counter()
-    suffixes: Counter = Counter()
-    prefixes: Counter = Counter()
-    used_by_reason = Counter({
+@dataclass
+class _RegisterTally:
+    """Which identifier spellings the house register admits, and why."""
+    styles: Counter = field(default_factory=Counter)
+    token_counts_dist: Counter = field(default_factory=Counter)
+    suffixes: Counter = field(default_factory=Counter)
+    prefixes: Counter = field(default_factory=Counter)
+    used_by_reason: Counter = field(default_factory=lambda: Counter({
         "structurally_styled": 0,
         "corroborated_flat": 0,
-    })
-    excluded_by_reason = Counter({
+    }))
+    excluded_by_reason: Counter = field(default_factory=lambda: Counter({
         "no_lexical_tokens": 0,
         "language_tagged_flat": 0,
         "prose_dominated_flat": 0,
-    })
+    }))
 
-    def count_affixes(tokens: list[str]) -> None:
+    def count_affixes(self, tokens: list[str]) -> None:
         if len(tokens) >= 2:
-            suffixes[tokens[-1]] += 1
-            prefixes[tokens[0]] += 1
+            self.suffixes[tokens[-1]] += 1
+            self.prefixes[tokens[0]] += 1
 
+
+def _register_tally(
+    identifier_counts: Counter,
+    doc_term_counts: Counter,
+    token_origins: dict[str, str],
+) -> _RegisterTally:
+    tally = _RegisterTally()
     for name, code_count in identifier_counts.items():
         tokens = tokenize_identifier(name)
         if not tokens:
-            excluded_by_reason["no_lexical_tokens"] += 1
+            tally.excluded_by_reason["no_lexical_tokens"] += 1
             continue
 
         style = identifier_style(name)
@@ -87,11 +94,11 @@ def _register(
             # a multi-token snake/camel/Pascal spelling cannot be ordinary
             # prose. A one-token capitalized or uppercase word remains flat
             # and must pass the corroboration gates below.
-            used_by_reason["structurally_styled"] += 1
-            styles[style] += 1
+            tally.used_by_reason["structurally_styled"] += 1
+            tally.styles[style] += 1
             bucket = str(len(tokens)) if len(tokens) <= 3 else "4+"
-            token_counts_dist[bucket] += 1
-            count_affixes(tokens)
+            tally.token_counts_dist[bucket] += 1
+            tally.count_affixes(tokens)
             continue
 
         if any(
@@ -99,7 +106,7 @@ def _register(
             == TOKEN_ORIGIN_LANGUAGE
             for token in tokens
         ):
-            excluded_by_reason["language_tagged_flat"] += 1
+            tally.excluded_by_reason["language_tagged_flat"] += 1
             continue
 
         # Flat spellings carry no structural evidence that they are code.
@@ -111,40 +118,51 @@ def _register(
             default=0,
         )
         if doc_count > code_count:
-            excluded_by_reason["prose_dominated_flat"] += 1
+            tally.excluded_by_reason["prose_dominated_flat"] += 1
             continue
 
-        used_by_reason["corroborated_flat"] += 1
-        count_affixes(tokens)
+        tally.used_by_reason["corroborated_flat"] += 1
+        tally.count_affixes(tokens)
+    return tally
 
+
+def _pct(counter: Counter, total: int) -> dict:
+    return {
+        k: round(100.0 * v / total, 1)
+        for k, v in sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
+    } if total else {}
+
+
+def _top_affixes(counter: Counter) -> tuple[list[dict], dict]:
+    ranked = [
+        {"token": token, "identifiers": count}
+        for token, count in sorted(
+            counter.items(), key=lambda kv: (-kv[1], kv[0])
+        )
+        if count >= 2
+    ]
+    return capped_collection(
+        ranked,
+        REGISTER_AFFIX_CAP,
+        cap_reason=(
+            f"register affix display cap is {REGISTER_AFFIX_CAP} items"
+        ),
+    )
+
+
+def _register(
+    identifier_counts: Counter,
+    doc_term_counts: Counter,
+    token_origins: dict[str, str],
+) -> dict:
+    tally = _register_tally(identifier_counts, doc_term_counts, token_origins)
+    used_by_reason = tally.used_by_reason
+    excluded_by_reason = tally.excluded_by_reason
     headline_total = used_by_reason["structurally_styled"]
     used_total = sum(used_by_reason.values())
     excluded_total = sum(excluded_by_reason.values())
-
-    def pct(counter: Counter, total: int) -> dict:
-        return {
-            k: round(100.0 * v / total, 1)
-            for k, v in sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
-        } if total else {}
-
-    def top_affixes(counter: Counter) -> tuple[list[dict], dict]:
-        ranked = [
-            {"token": token, "identifiers": count}
-            for token, count in sorted(
-                counter.items(), key=lambda kv: (-kv[1], kv[0])
-            )
-            if count >= 2
-        ]
-        return capped_collection(
-            ranked,
-            REGISTER_AFFIX_CAP,
-            cap_reason=(
-                f"register affix display cap is {REGISTER_AFFIX_CAP} items"
-            ),
-        )
-
-    suffix_items, suffix_coverage = top_affixes(suffixes)
-    prefix_items, prefix_coverage = top_affixes(prefixes)
+    suffix_items, suffix_coverage = _top_affixes(tally.suffixes)
+    prefix_items, prefix_coverage = _top_affixes(tally.prefixes)
 
     return {
         # Kept for consumers of the pre-v9 field; it now means the spellings
@@ -157,9 +175,9 @@ def _register(
             "used_by_reason": dict(used_by_reason),
             "excluded_by_reason": dict(excluded_by_reason),
         },
-        "identifier_styles_pct": pct(styles, headline_total),
-        "token_count_distribution_pct": pct(
-            token_counts_dist, headline_total
+        "identifier_styles_pct": _pct(tally.styles, headline_total),
+        "token_count_distribution_pct": _pct(
+            tally.token_counts_dist, headline_total
         ),
         "common_suffix_tokens": suffix_items,
         "common_prefix_tokens": prefix_items,
@@ -437,8 +455,11 @@ def _overload_candidates(
             })
         kept_modules, module_coverage = capped_collection(
             module_items,
-            4,
-            cap_reason="overload-candidate module display cap is 4 items",
+            OVERLOAD_MODULE_DISPLAY_CAP,
+            cap_reason=(
+                "overload-candidate module display cap is "
+                f"{OVERLOAD_MODULE_DISPLAY_CAP} items"
+            ),
         )
         items.append({
             "term": token,
@@ -471,10 +492,7 @@ def build_terminology(vocabulary: ProductionVocabulary,
     module_neighbor_sets = vocabulary.module_neighbor_sets
     module_neighbor_truncated = vocabulary.module_neighbor_truncated
     token_origins = vocabulary.token_origins
-    language_tokens_excluded = sum(
-        token_origins.get(term) == TOKEN_ORIGIN_LANGUAGE
-        for term in token_counts
-    )
+    language_tokens_excluded = vocabulary.language_token_count()
     eligibility_reasons = []
     if language_tokens_excluded:
         eligibility_reasons.append(

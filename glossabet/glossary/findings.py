@@ -17,7 +17,7 @@ from collections.abc import Iterable
 
 from glossabet.runtime import coverage
 from glossabet.runtime.coverage import coverage_ledger, coverage_reasons
-from glossabet.runtime.display import escape_terminal_text
+from glossabet.runtime.display import escape_terminal_text, join_escaped
 from glossabet.analysis.evidence_view import EvidenceView
 
 # Per-section detail cap for every findings document. Totals stay exact;
@@ -28,6 +28,34 @@ VOCABULARY_MATCHING_OMISSION = (
     "vocabulary.{name} omitted entries needed for exact matching"
 )
 
+
+
+def glossary_terms(glossary: dict) -> list[str]:
+    """Every concept term and alias term, in document order — the term set
+    the evidence matcher indexes for drift and validation."""
+    return [
+        term
+        for concept in glossary["concepts"]
+        for term in (
+            concept["term"],
+            *(alias["term"] for alias in concept.get("aliases", [])),
+        )
+    ]
+
+
+def suppressed_reason(suppressed: int, name: str) -> list[str]:
+    if not suppressed:
+        return []
+    return [
+        f"{suppressed} {name} check(s) suppressed because scoped occurrence "
+        "evidence retains only a location sample"
+    ]
+
+
+def production_corpus_reasons(production_complete: bool) -> list[str]:
+    return [] if production_complete else [
+        "production corpus budget omitted accepted source evidence"
+    ]
 
 def finding(
     kind: str,
@@ -175,35 +203,19 @@ def _print_finding_line(finding_record: dict) -> None:
 
 def _print_finding_details(finding_record: dict) -> None:
     if finding_record.get("scope", {}).get("kind") == "path-prefixes":
-        print(
-            "    scope: "
-            + ", ".join(
-                escape_terminal_text(path)
-                for path in finding_record["scope"]["path_prefixes"]
-            )
-        )
+        print("    scope: " + join_escaped(finding_record["scope"]["path_prefixes"]))
     detail = finding_record.get("evidence", {})
     if "shared_contexts" in detail:
-        print(
-            "    shared contexts: "
-            + ", ".join(
-                escape_terminal_text(context)
-                for context in detail["shared_contexts"]
-            )
-        )
+        print("    shared contexts: " + join_escaped(detail["shared_contexts"]))
     if "locations" in detail and detail["locations"]:
-        sample = ", ".join(
-            escape_terminal_text(location["path"])
-            for location in detail["locations"][:3]
+        sample = join_escaped(
+            location["path"] for location in detail["locations"][:3]
         )
         print(f"    e.g. {sample}")
     if isinstance(detail.get("modules"), list):
         print(
             "    modules: "
-            + ", ".join(
-                escape_terminal_text(module["path"])
-                for module in detail["modules"]
-            )
+            + join_escaped(module["path"] for module in detail["modules"])
         )
 
 

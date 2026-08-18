@@ -93,9 +93,10 @@ def _term_candidates(token_counts: Counter, token_files: dict,
             tokenize_identifier(PurePosixPath(path).stem) == [term]
             for path in token_files.get(term, ())
         )
-        reasons = [f"{count} use(s) across {files} file(s)"]
-        if spread > 1:
-            reasons.append(f"spread across {spread} module(s)")
+        reasons = [
+            f"{count} use(s) across {files} file(s)",
+            f"spread across {spread} module(s)",
+        ]
         if doc_mentions:
             reasons.append(f"mentioned {doc_mentions} time(s) in docs")
         reasons.append(
@@ -155,10 +156,7 @@ def build_naming_candidates(imports_section: dict, modules: list[dict],
     token_origins = vocabulary.token_origins
     token_patterns = vocabulary.token_patterns
     context_dispersion = context_dispersion or {}
-    language_tokens_excluded = sum(
-        token_origins.get(term) == TOKEN_ORIGIN_LANGUAGE
-        for term in token_counts
-    )
+    language_tokens_excluded = vocabulary.language_token_count()
     untagged_tokens_excluded = sum(
         term not in token_origins for term in token_counts
     )

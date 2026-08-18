@@ -12,12 +12,10 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from glossabet.runtime.display import escape_terminal_text
 
 OUT_DIR = "glossabet-out"
 # The human-readable vocabulary-health report the /glossabet skill writes at
@@ -111,18 +109,6 @@ def read_bounded_json(path: Path | str, cap: int | None = None) -> BoundedRead:
     if not read.ok:
         return read
     return parse_bounded_json(read.payload, cap)
-
-
-def repo_root(path_arg: str) -> Path | None:
-    """Resolved repository root, or None after reporting the user error."""
-    root = Path(path_arg)
-    if not root.is_dir():
-        print(
-            "glossabet: not a directory: " + escape_terminal_text(path_arg),
-            file=sys.stderr,
-        )
-        return None
-    return root.resolve()
 
 
 def confined_artifact_path(root: Path, relative: str) -> Path:

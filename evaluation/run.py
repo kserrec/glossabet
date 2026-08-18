@@ -34,7 +34,7 @@ from glossabet.glossary.drift import (  # noqa: E402
     build_drift,
 )
 from glossabet.analysis.evidence import (  # noqa: E402
-    SCHEMA_VERSION as EVIDENCE_SCHEMA_VERSION,
+    EVIDENCE_SCHEMA_VERSION,
     build_evidence,
 )
 from glossabet.analysis.evidence_view import EvidenceView  # noqa: E402

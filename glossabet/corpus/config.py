@@ -79,7 +79,7 @@ def _matches_prefix(relative: str, prefix: str) -> bool:
     return relative == prefix or relative.startswith(prefix + "/")
 
 
-def _normalize_path(value: object, where: str) -> str:
+def _validated_path(value: object, where: str) -> str:
     if not isinstance(value, str) or not value or value != value.strip():
         raise ConfigurationError(f"{CONFIG_FILE}: {where} must be a non-empty path")
     if len(value) > MAX_PATH_LENGTH:
@@ -105,7 +105,7 @@ def _normalize_path(value: object, where: str) -> str:
 def _path_list(value: object, where: str) -> tuple[str, ...]:
     if not isinstance(value, list):
         raise ConfigurationError(f"{CONFIG_FILE}: {where} must be a list")
-    return tuple(sorted({_normalize_path(item, f"{where}[]") for item in value}))
+    return tuple(sorted({_validated_path(item, f"{where}[]") for item in value}))
 
 
 def _default_role(relative: str, *, is_dir: bool) -> str:
