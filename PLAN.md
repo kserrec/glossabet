@@ -3,7 +3,7 @@
 Status: **Phases 0–22, 24–32, 34–44 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
 in progress at 33.2; owner self-testing pause active before the trusted-alpha
-gate** as of 2026-08-17.
+gate** as of 2026-08-18.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
 Phases 24–28 were added 2026-08-15 from Kyle's self-testing findings and run

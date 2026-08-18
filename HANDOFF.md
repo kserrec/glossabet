@@ -1,8 +1,19 @@
-# Session handoff — 2026-08-18
+# Session handoff — 2026-08-18 (late)
 
-Refreshed at the end of the 2026-08-18 session (Phase 36 complete except
-36.8; docs synced; PLAN pruned — completed phases now live verbatim in
-`PLAN-ARCHIVE.md`). It becomes stale when the next phase begins. `PLAN.md` remains the
+Refreshed at the end of the 2026-08-18 evening session (Phases 38–44 done:
+config discoverability + skill shortening, layer subpackages, refactor pass,
+bughunt rounds 4–6, audit round 5, **test audit round 1**; all rulings that
+were open are settled — see PLAN Phase 42/44 and "Rulings"). It becomes stale
+when the next phase begins. State on disk: `main` = `origin/main`, tree
+clean, 623 tests green (~40–60 s), wheel and plugin rebuilt after Phase 44,
+`glossabet check_distribution dist --tag v0.1.0` passes, the CLI at
+`~/.local/bin/glossabet` is the current build. Nothing is pending from Kyle;
+the owner self-testing pause is still active (never prompt him to test).
+Kyle's standing rule from today: no "future bughunts" — a known-needed
+bughunt runs now, or as soon as its open questions are settled.
+
+Earlier text below (Phase 36/37 era) is kept for orientation; where it
+disagrees with the paragraph above, the paragraph above wins. `PLAN.md` remains the
 authoritative durable roadmap; read its status line, the Phase 36 plan, and
 the owner self-testing pause before doing anything.
 
