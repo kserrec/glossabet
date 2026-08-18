@@ -134,7 +134,8 @@ in [`evaluation/results.json`](evaluation/results.json).
 
 **Status: 0.1.0 source alpha under an owner self-testing pause; not yet
 published to PyPI or a plugin directory and not yet a trusted-alpha release.**
-Phases 0–22 and Phases 24–28 are implemented; `PLAN.md` records their exact
+Phases 0–22, 24–32, and 34–36 are implemented (36.8 and the Claude Code
+live-hook evidence of 33.2 remain); `PLAN.md` records their exact
 acceptance and commit state. The installed-agent harness
 separately probes fresh-session hook delivery, the installed skill, and the
 non-login, profile-disabled missing-CLI boundary. Its offline gate checks the
@@ -144,8 +145,10 @@ selecting a green retry. See [`EVALUATION.md`](EVALUATION.md) for every observed
 attempt and its provenance limits. Owner-run testing and the trusted-alpha
 evidence gate stay before any outside maintainer invitation.
 Package metadata and the embedded plugin wheel are bound to the renamed GitHub
-repository; the checked-in wheel matches the Phase 28.3 executable source and
-canonical skill.
+repository; the checked-in wheel and plugin were rebuilt from the current
+source and canonical skill on 2026-08-18, and the installed-agent evidence
+recorded that day (Codex CLI 0.147.0 on Linux, 14/14 scenarios) passes the
+currency check against them.
 The trusted-alpha evidence gate and Phase 23 remain later work; do not describe
 the current stopping point as release-ready. See
 [`NAME-CLEARANCE.md`](NAME-CLEARANCE.md) for the

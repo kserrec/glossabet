@@ -48,7 +48,7 @@ require his explicit authorization.
   of eight, plugin scenarios in all seven applicable completed batches, and
   the missing-CLI boundary eight of ten. All eleven safety records show no
   canary exposure, unexpected repository write, or post-failure `inspect`,
-  plus verified cleanup. Six raw results remain; five older entries are
+  plus verified cleanup. Seven raw results remain; five older entries are
   explicitly labelled as weaker session records because
   the earlier harness overwrote its single output path. Both Phase 28.2
   12-scenario batches passed fresh-session hook delivery with no user mention
@@ -56,7 +56,11 @@ require his explicit authorization.
   metadata-only rebuilt wheel. The authorized Phase 28.3 retry passed 12/12
   against the managed-context artifact after an earlier 11/12 procedural miss;
   the offline gate directly smokes those current bytes and requires the
-  selected result's complete input identity to match.
+  selected result's complete input identity to match. The Phase 36.7 batch
+  (2026-08-18) passed 14/14 on its first attempt against the plugin rebuilt
+  from the current source, so the agent evidence is current again; the
+  engine-evaluation and reviewer artifacts still lag the tree and must be
+  regenerated at the release gate.
   Agent-command reliability remains a reported small sample. Future runs use
   unique raw paths and append their outcomes. The deterministic seven-case
   evaluation and separate blinded Codex reviewer also pass their recorded

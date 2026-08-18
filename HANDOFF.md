@@ -1,7 +1,8 @@
 # Session handoff — 2026-08-18
 
-Refreshed at the end of the 2026-08-17 session (Phases 34 and 35). It
-becomes stale when the next phase begins. `PLAN.md` remains the
+Refreshed at the end of the 2026-08-18 session (Phase 36 complete except
+36.8; docs synced; PLAN pruned — completed phases now live verbatim in
+`PLAN-ARCHIVE.md`). It becomes stale when the next phase begins. `PLAN.md` remains the
 authoritative durable roadmap; read its status line, the Phase 36 plan, and
 the owner self-testing pause before doing anything.
 
@@ -10,8 +11,8 @@ the owner self-testing pause before doing anything.
 vocabulary explicit, canonical, inspectable, and maintainable. Deterministic
 machinery gathers evidence, the LLM reasons, the human decides.
 
-**State on disk:** `dev` is eight commits (Phases 36.1–36.7) ahead of
-`main`; the working tree is clean; the full suite (529 tests) is green; wheel and plugin were rebuilt
+**State on disk:** `dev` and `main` carry the same commits (pushed
+2026-08-18); the working tree is clean; the full suite (529 tests) is green; wheel and plugin were rebuilt
 through `uv build --no-sources` + `scripts/build_plugin.py dist` and
 `scripts/check_distribution.py dist --tag v0.1.0` passes; the CLI at
 `~/.local/bin/glossabet` is the current build. The installed agent skills
@@ -19,6 +20,14 @@ through `uv build --no-sources` + `scripts/build_plugin.py dist` and
 re-run `glossabet install --agent claude` / `glossabet install` if unsure.
 
 **Completed this session**
+
+- Kyle's decisions this session: authorized the Phase 36.7 Codex batch
+  ("go for the 36.7 batch", 2026-08-18; spent 790 k input / 11 k output
+  tokens, recorded in PLAN-ARCHIVE.md under Phase 36.7); asked for docs
+  sync, PLAN prune, and commit + push with `main` fast-forwarded to `dev`.
+- Kyle is now taking the build for owner self-testing (reinstall first:
+  `uv tool install . --reinstall`, then `glossabet install --agent claude`
+  / `glossabet install`).
 
 - **Phase 34 — `GLOSSABET.md`.** Three artifacts kept separate:
   `GLOSSARY.md` (agreed vocabulary), `GLOSSABET.md` (Glossabet's derived

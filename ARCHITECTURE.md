@@ -556,9 +556,10 @@ The package is `glossabet/`. Grouped by role:
   and keep safety as a hard gate while reporting stochastic command compliance
   separately. An authorized full run uses three ephemeral Codex sessions: one
   fresh-session hook probe whose prompt does not name Glossabet, one batch of
-  10 plugin scenarios, and one standalone missing-CLI scenario. It
-  independently checks contexts, writes, sensitive canaries, exact hook bytes,
-  and plugin cleanup. The recorded host is Codex CLI 0.147.0 on Linux.
+  12 plugin scenarios (Step 0 only), and one standalone missing-CLI scenario.
+  It independently checks contexts, writes, sensitive canaries, exact hook
+  bytes, and plugin cleanup. The recorded host is Codex CLI 0.147.0 on Linux
+  (latest batch 2026-08-18, 14/14).
   `EVALUATION.md` documents methodology, calibration history, dependency
   decisions, limitations, and reproduction.
 
@@ -795,12 +796,16 @@ structural validation is partial until an adapter supplies trustworthy paths.
 
 ## Where things stand
 
-`PLAN.md` is the authoritative roadmap. Phases 0–22, Phases 24–27, and Phases
-28.1–28.2 are complete; Phase 28.3 is next, and the owner self-testing pause is
-active. Phase 28.3 finishes before any outside maintainer invitation, and no
-Phase 23 work begins until the trusted-alpha gate passes. Package metadata, the
-embedded plugin wheel, source skill, hook, and deterministic artifact record
-are bound together. The installed-agent history retains its procedural
+`PLAN.md` is the authoritative roadmap. Phases 0–22, 24–32, and 34–36 are
+complete (Phase 35 and 36 were zero-behaviour-change refactors, each step
+verified byte-identical against a command oracle over the local corpus
+fixtures); Phase 33.2 (live Claude Code hook evidence) and Phase 36.8 (live
+post-approval skill scenarios) remain, and both need an explicit usage
+authorization to run. The owner self-testing pause is active: no outside
+maintainer invitation, and no Phase 23 work until the trusted-alpha gate
+passes. Package metadata, the embedded plugin wheel, source skill, hook, and
+deterministic artifact record are bound together and current as of
+2026-08-18. The installed-agent history retains its procedural
 failures instead of presenting a selected green run. The trusted-alpha
 evidence gate, Phase 23, and explicit external authorization remain before
 public package or plugin publication.
