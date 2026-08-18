@@ -8,6 +8,14 @@ subsystems, entities, boundaries, protocols, surfaces — and keep that
 vocabulary healthy as the code evolves. Deterministic machinery gathers
 lexical and structural evidence; an agent skill (`/glossabet`) brainstorms
 names grounded in that evidence; **the human decides what becomes canonical**.
+Stated honestly, that last rule is an instruction to the agent, not a
+mechanical guarantee: the `/glossabet` skill is written to persist only terms
+the human has confirmed, and to write a project's `AGENTS.md`/`CLAUDE.md`
+block (`sync-context`) only on explicit request, but the `glossabet save`
+command validates structure and trusts its caller — it cannot tell whether
+the agent piping to it really obtained your approval. Review what lands in
+`glossabet-out/glossary.json` the way you would review any agent-written
+change.
 
 **Glossabet is the project and product name.** It keeps three different
 things separate:
@@ -219,6 +227,7 @@ glossabet save <repo>       validate/save glossary JSON from standard input
 glossabet show <repo>       display the current glossary
 glossabet drift <repo>      live vocabulary vs the canonical glossary
 glossabet validate <repo>   reconcile glossary vs evidence and the Graphify graph
+glossabet cache-clear       remove Glossabet's user cache directory (never the repo)
 ```
 
 The installed skill requires `glossabet inspect .` from the exact repository
@@ -272,7 +281,11 @@ stamp; it does not scan source files, refresh evidence, or write any repository
 file. With no glossary it emits nothing. Otherwise it emits at most 4,096 UTF-8
 bytes of deterministic plain text: canonical terms with one-line definitions,
 scopes, alias statuses, a semantic glossary SHA-256, `{head, dirty}` Git state,
-and explicit coverage when entries or details do not fit. The text can be
+and explicit coverage when entries or details do not fit. Its first line
+names its origin — that it was emitted by `glossabet brief .` and that an
+installed Glossabet `SessionStart` hook injects it into agent context
+automatically — so months after installing a plugin, anyone reading a
+transcript can tell where the text came from. The text can be
 piped or pasted into an ordinary agent context, and the Codex plugin supplies
 it automatically through its trusted `SessionStart` hook. It is context for
 using settled words, never permission to nominate, coin, finalize, save, edit,
@@ -356,8 +369,11 @@ untrusted process is mutating the checkout.
 Glossabet never creates or edits the target repository's `.gitignore`.
 Repository owners decide which artifacts to track. Removing the derived
 reports is sufficient cleanup when the glossary should be retained; the
-user-cache directory can be removed independently because it is only a
-performance optimization.
+user-cache directory is only a performance optimization and can be removed
+independently with `glossabet cache-clear`, which deletes only Glossabet's
+own cache layout under the platform cache directory (or `GLOSSABET_CACHE_DIR`),
+never touches any repository, and reports anything unrecognized that it left
+in place.
 
 A synchronized block lives in a project-owned `AGENTS.md` or `CLAUDE.md`, not
 under `glossabet-out/`. It is therefore normal repository state: review and
@@ -547,6 +563,8 @@ the evidence may honestly lag the source tree; the release gate reruns each
 verifier with `--current` to additionally require that the evidence describes
 the exact code being shipped (see `RELEASING.md`).
 
+- `CONTRIBUTING.md` — how contributions are accepted (Apache-2.0 inbound,
+  Developer Certificate of Origin sign-off).
 - `ARCHITECTURE.md` — how the engine is built and how to work on it (start here
   to take ownership).
 - `SECURITY.md` — the threat model and the enforced trust boundaries.
@@ -559,3 +577,17 @@ the exact code being shipped (see `RELEASING.md`).
 - `CHANGELOG.md` — release-facing change history.
 - `PLAN.md` — the authoritative roadmap and the binding design principles.
 - `skill/SKILL.md` — the canonical `/glossabet` agent skill.
+
+## Provenance and affiliation
+
+Glossabet is an independent open-source project by Kyle Serrecchia, released
+under the Apache License 2.0 (`LICENSE`). It is not affiliated with, endorsed
+by, or sponsored by OpenAI, Anthropic, GitHub, or Graphify Labs; "Codex",
+"Claude Code", and "Graphify" are named only to identify the third-party
+hosts and tools it integrates with, and each remains its owner's mark.
+
+Glossabet is developed with AI coding assistants working under human
+direction and review — Claude (via Claude Code) writes much of the code and
+documentation, and ChatGPT contributed to the initial 2026-08-14 plan; commit
+history records that co-authorship. Contributions are accepted under the
+terms in `CONTRIBUTING.md`.

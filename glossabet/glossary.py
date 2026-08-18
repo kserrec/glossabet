@@ -2,8 +2,10 @@
 
 Deliberately minimal schema (PLAN.md: the ontology grows only when a consumer
 needs a field). The status lifecycle exists from day one because drift
-detection is defined against it. Only a human-approved term is ever
-"canonical" — the engine validates and persists; it never promotes. An
+detection is defined against it. A term is meant to be "canonical" only after
+human approval — the engine validates and persists; it never promotes on its
+own. That is the skill's instruction, not a mechanical guarantee: `save`
+cannot verify that the agent piping to it really obtained approval. An
 optional path-prefix scope lets a term have different owners in disjoint
 subsystems; an omitted scope retains the original repository-wide meaning.
 """

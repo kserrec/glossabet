@@ -28,6 +28,7 @@ SESSION_START_COMMAND_WINDOWS = (
 SDIST_REQUIRED_RELATIVE = frozenset({
     ".github/workflows/quality.yml",
     "CHANGELOG.md",
+    "CONTRIBUTING.md",
     "DISTRIBUTION.md",
     "LICENSE",
     "NAME-CLEARANCE.md",

@@ -8,7 +8,32 @@ clearance opinion.
 
 Kyle selected **Glossabet**, pronounced “GLOSS-uh-bet,” as the replacement
 for the repository's pre-rename working title. The coinage joins `glossa`
-(language or tongue) with the ending of `alphabet`.
+(Greek: language or tongue) with `bet` (Amharic ቤት: house, home) — a
+"glossary home."
+
+**Correction, 2026-08-17.** Until this date the paragraph above read that the
+coinage joined `glossa` "with the ending of `alphabet`." That was Claude's
+inference when writing this record on 2026-08-15, made without asking Kyle
+how he had arrived at the name, and it was wrong. Kyle's actual derivation,
+in his words: he was working from the idea of a *home* for a project's
+terms — earlier candidates were *termstead* (from homestead) and *nomenbase*
+(base, as in home base), then *glossacasa* (Spanish *casa*, house), and then,
+via a close Ethiopian friend's language, Amharic *bet* for house — which
+produced *Glossabet*. The resemblance to the ending of *alphabet* was
+something Kyle had not noticed; Claude pointed it out afterward, and Kyle
+regarded it as a pleasant coincidence. Git history preserves the earlier,
+incorrect wording; this paragraph exists so the two versions are not read as
+contradictory records of the same fact.
+
+**Note on "Alphabet."** The coined word is phonetically close to *Alphabet*,
+the name of Google's parent company. That proximity is coincidental (above)
+and, in Kyle's and Claude's non-lawyer reading, not confusingly similar in
+this goods/services context: a local command-line vocabulary tool for
+codebases is not the class of goods or services for which that mark is known,
+the leading element `glossa-` is distinctive, and there is no use in commerce
+that could suggest affiliation. It is recorded here because a clearance
+opinion would at least consider it, and because a reader who notices the
+echo should find it already acknowledged rather than overlooked.
 
 The Phase 21 exit is **rename**: the source distribution, Python package and
 import, command, agent skill, Codex plugin, configuration file, output

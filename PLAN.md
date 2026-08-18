@@ -1,9 +1,9 @@
 # Glossabet — Plan
 
-Status: **Phases 0–22, 24–32, and 34–36 complete (36.8, live post-approval
-skill scenarios, planned); Phase 33 (Claude Code ambient parity) in progress
-at 33.2; owner self-testing pause active before the trusted-alpha gate** as
-of 2026-08-18.
+Status: **Phases 0–22, 24–32, 34–36, and 37 complete (36.8, live
+post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
+in progress at 33.2; owner self-testing pause active before the trusted-alpha
+gate** as of 2026-08-17.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
 Phases 24–28 were added 2026-08-15 from Kyle's self-testing findings and run
@@ -71,8 +71,15 @@ source-agnostic; future adapters (LSP, other analyzers) plug in the same way.
 ## Principles (all binding)
 
 1. **The human names the world.** Machinery nominates and grounds; the LLM
-   proposes and reasons; only human approval makes a term canonical. Glossabet
-   never mass-renames code and never finalizes unilaterally.
+   proposes and reasons; a term is meant to become canonical only after human
+   approval. Glossabet never mass-renames code. **How this is enforced, stated
+   honestly:** the rule is a behavioral instruction to the agent — the skill
+   is written to persist only human-confirmed terms and to invoke
+   `sync-context` only on explicit request — not a mechanical guarantee. The
+   CLI's `save` command validates structure and budgets and trusts its caller;
+   it cannot tell whether the agent piping to it really obtained approval.
+   Docs must therefore say "the skill is instructed to…", never "Glossabet
+   cannot…", about human approval (decided 2026-08-17).
 2. **Lexical-first scanner identity.** The built-in scanner is *the lexical
    evidence provider*: files, directories, docs inventory, identifier
    vocabulary, plus cheap best-effort import edges. It never grows into a
@@ -170,6 +177,7 @@ glossabet show          display current glossary                  (Phase 6)
 glossabet drift .       compare live vocabulary vs canonical      (Phase 7)
 glossabet validate .    glossary ↔ evidence/graph reconciliation  (Phase 10)
 glossabet install       install canonical agent skill             (Phase 17)
+glossabet cache-clear   remove Glossabet's own user cache          (Phase 37)
 ```
 
 Users normally never type these — the skill orchestrates them.
@@ -545,6 +553,54 @@ one recorded live scenario each.
 **Acceptance:** both scenarios recorded live and passing (or their misses
 in the reliability ledger); `--current` agent verification passes.
 
+### Phase 37 — Trust, legal, and provenance review actions ✅ 2026-08-17
+
+**Origin:** Kyle asked, before starting owner testing, for any legal or
+ethical considerations not yet thought of and anything else that could come
+back to bite. Eleven items were raised; Kyle ruled on each (questions first,
+then a single go). Executed in one pass:
+
+1. **Human-approval claims reworded** (Principle 1, CLAUDE.md, README,
+   ARCHITECTURE.md, PRIVACY.md, `glossary.py` docstring): the rule is an
+   instruction to the skill, not a mechanical guarantee; `save` trusts its
+   caller. No machine gate added (Kyle: reword only). Verified the skill
+   already invokes `sync-context` only on explicit request.
+2. **AI-assisted development disclosed** in README "Provenance and
+   affiliation" (Claude via Claude Code; ChatGPT on the initial plan).
+3. **DCO adopted, doc-only:** new `CONTRIBUTING.md` (Apache-2.0 inbound,
+   `git commit -s`, no CI check, no history rewrite), shipped in the sdist and
+   required by `check_distribution.py`. License decision recorded as Kyle's
+   (Settled decision 3).
+4. **LLM-proposed names vs. trademarks — dropped** as a non-issue: in-house
+   names are not use in commerce (Kyle's ruling; Claude agreed).
+5. **Not-affiliated line** added (OpenAI, Anthropic, GitHub, Graphify Labs).
+6. **`NAME-CLEARANCE.md` corrected** with the true derivation (Amharic
+   *bet*, "house"; the *alphabet* echo was noticed afterward), written as a
+   dated correction so history is not read as contradictory, plus a note on
+   the coincidental proximity to "Alphabet."
+7. Eval artifacts contain Codex model outputs — noted, no action.
+8. **`brief` first-line origin marker** (`glossabet/brief.py`): live output
+   states it was emitted by `glossabet brief .` and that an installed
+   `SessionStart` hook injects it automatically; the managed
+   `sync-context` block gets its own truthful marker. Existing managed
+   blocks stay self-consistent (content hash is declared in-block).
+9. **Skill Step 6** now tells the user, every finalize, that
+   `glossabet-out/glossary.json` holds decisions that exist nowhere else and
+   must be committed (offering the `.gitignore` negation, never editing it).
+10. **`RELEASING.md` claims-consistency checklist:** status statements
+    agree, name probes rerun, trust statements true, provenance present.
+11. **`glossabet cache-clear`** (`cache.py`, `cli.py`): removes only
+    Glossabet's own `<root>/<64-hex>/cache.json` layout, never follows
+    symlinks, leaves and reports anything unrecognized, so a misconfigured
+    `GLOSSABET_CACHE_DIR` can never be wiped. Tests: foreign files, a
+    non-hex directory, and a symlinked directory all survive.
+
+**Consequences:** the checked-in plugin wheel was rebuilt from this source;
+the installed-agent evidence's `--current` currency lapses (skill, source,
+README, and evaluator changed) until the next authorized Codex batch — the
+genuineness form still passes. Deterministic and reviewer evidence already
+lagged and are regenerated at the release gate as before.
+
 ### Owner self-testing pause — active, not an implementation phase
 
 Kyle is keeping the current build to himself while he runs it and performs
@@ -645,7 +701,7 @@ Each finding was verified against the engine's own output on this repository.
 - Public package/plugin publication only after Phase 23, the trusted-alpha
   gate, and explicit authorization.
 
-## Settled decisions (through 2026-08-16)
+## Settled decisions (through 2026-08-17)
 
 1. **Implementation language: Python.** Same distribution story as Graphify
    (`uv tool install`), mature ecosystem if tree-sitter is ever wanted.
@@ -657,8 +713,16 @@ Each finding was verified against the engine's own output on this repository.
    twice was invalidated by the post-Phase-17 boundary audit: Phase 18 changes
    the evidence transport from direct artifact reads to a required CLI-owned
    context. The philosophy remains untouched.
-3. **Public, Apache-2.0** — matching Graphify (verified: Graphify is
-   Apache-2.0, not MIT).
+3. **Public, Apache-2.0.** Originally recorded in Phase 0 (2026-08-14) as
+   "matching Graphify" — a choice made by inference in a working session,
+   not one Kyle had asked for or signed off on; Kyle had assumed the project
+   was MIT. On 2026-08-17, after the differences were explained (Apache adds
+   an explicit patent grant, §5 default contribution terms, and a trademark
+   carve-out; MIT is shorter; matching Graphify was never legally necessary
+   because Glossabet only reads its JSON output), **Kyle explicitly chose to
+   keep Apache-2.0.** This is now his decision, not a default. Contributions
+   are accepted under Apache-2.0 with a Developer Certificate of Origin
+   sign-off (`CONTRIBUTING.md`, doc-only, no CI enforcement).
 4. **Test framework: pytest** (dev-only dependency; cost accepted for
    convention and fixtures).
 5. **Runtime dependencies: stdlib-only through Phase 5** (argparse over

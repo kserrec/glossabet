@@ -19,6 +19,21 @@ through `uv build --no-sources` + `scripts/build_plugin.py dist` and
 (`~/.claude/skills`, `~/.agents/skills`) are whatever Kyle last installed —
 re-run `glossabet install --agent claude` / `glossabet install` if unsure.
 
+**Addendum 2026-08-17 (pre-testing trust/legal review — Phase 37, done):**
+before starting owner testing Kyle asked for overlooked legal/ethical/trust
+items; eleven were raised, each ruled on by Kyle, then executed in one pass
+and committed as Phase 37 (see PLAN.md). Net effect for testing: `glossabet
+brief` output now opens with an origin line; `glossabet cache-clear` exists;
+the skill's Step 6 tells the user to commit `glossabet-out/glossary.json`;
+README/PLAN/CLAUDE.md say human approval is a skill instruction, not a
+mechanical guarantee; `CONTRIBUTING.md` (DCO), README "Provenance and
+affiliation", `NAME-CLEARANCE.md` correction (Amharic *bet*), RELEASING
+claims checklist; Apache-2.0 confirmed as Kyle's own choice. Wheel/plugin
+rebuilt; suite 531 green; installed-agent `--current` currency lapses until
+the next authorized Codex batch (genuineness still passes). **Reinstall
+before testing:** `uv tool install . --reinstall`, then
+`glossabet install --agent claude` / `glossabet install`.
+
 **Completed this session**
 
 - Kyle's decisions this session: authorized the Phase 36.7 Codex batch

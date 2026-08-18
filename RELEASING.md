@@ -134,6 +134,32 @@ Before a real release, replace `Unreleased` beside `0.1.0` in `CHANGELOG.md`
 with the publication date, commit that change, and rerun the gate from the
 exact commit to be tagged.
 
+### Claims-consistency checklist (manual, before tagging)
+
+The commands above cannot check prose. Read these by hand from the exact
+commit to be tagged; each is a public claim that has drifted independently
+before:
+
+- **Status statements agree.** The `PLAN.md` header status line, the
+  `README.md` "Status:" paragraph, and the `CHANGELOG.md` version heading
+  must describe the same release state (same version, same "unreleased" or
+  publication date, same pause/gate wording). One of them changing without
+  the others is an inaccurate public claim on `main`.
+- **Name and identity probes rerun.** Repeat the exact package-index,
+  plugin-directory, domain, GitHub, and USPTO probes recorded in
+  `NAME-CLEARANCE.md` from the release candidate and append the new
+  point-in-time results; do not publish on the 2026-08-15 results alone.
+- **Trust statements still true.** `PRIVACY.md` (no network path, no
+  telemetry, hook disclosure), `SECURITY.md` (threat model), and the
+  README's "human decides / the skill is instructed to…" wording must still
+  match the shipped code — the human-approval rule is behavioral, not
+  mechanical, and no doc may promise otherwise.
+- **Provenance and affiliation.** README "Provenance and affiliation"
+  (independent project, no affiliation with OpenAI/Anthropic/GitHub/Graphify
+  Labs, AI-assisted development) and `CONTRIBUTING.md` (Apache-2.0 inbound,
+  DCO sign-off) are present in the sdist (`check_distribution.py` requires
+  `CONTRIBUTING.md`) and current.
+
 ## Hosted repository identity — completed
 
 On 2026-08-15, with Kyle's explicit authorization, the public GitHub

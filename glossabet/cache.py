@@ -157,3 +157,95 @@ def save_cache(root: Path, files: dict, git_stamp: dict) -> bool:
     except (CacheLocationError, OSError):
         return False
     return True
+
+
+def clear_cache() -> dict:
+    """Remove Glossabet's own incremental-extraction cache and report it.
+
+    Only the layout Glossabet writes is removed: ``<root>/<64-hex>/cache.json``
+    entries (plus any ``cache.json.*`` temporaries left by an interrupted
+    atomic write) and the per-repository directories once empty, then the
+    cache root itself once empty. Directory symlinks are never followed and
+    nothing else under the root is deleted; anything unrecognized is left in
+    place and reported so a misconfigured ``GLOSSABET_CACHE_DIR`` (say, a home
+    directory) can never be wiped by this command.
+    """
+    root = _platform_cache_root()
+    report = {
+        "cache_root": str(root),
+        "existed": False,
+        "removed_entries": 0,
+        "unrecognized_left_in_place": [],
+        "root_removed": False,
+    }
+    if root.is_symlink() or not root.is_dir():
+        return report
+    report["existed"] = True
+    try:
+        children = sorted(os.scandir(root), key=lambda entry: entry.name)
+    except OSError:
+        return report
+    for child in children:
+        if (
+            child.is_symlink()
+            or not child.is_dir(follow_symlinks=False)
+            or len(child.name) != 64
+            or any(c not in "0123456789abcdef" for c in child.name)
+        ):
+            report["unrecognized_left_in_place"].append(child.name)
+            continue
+        entry_dir = Path(child.path)
+        removed_here = False
+        leftovers = False
+        for item in os.scandir(entry_dir):
+            is_cache_file = (
+                not item.is_symlink()
+                and item.is_file(follow_symlinks=False)
+                and (item.name == CACHE_FILE or item.name.startswith(CACHE_FILE + "."))
+            )
+            if is_cache_file:
+                try:
+                    os.unlink(item.path)
+                    removed_here = True
+                except OSError:
+                    leftovers = True
+            else:
+                leftovers = True
+        if removed_here:
+            report["removed_entries"] += 1
+        if leftovers:
+            report["unrecognized_left_in_place"].append(child.name)
+            continue
+        try:
+            entry_dir.rmdir()
+        except OSError:
+            report["unrecognized_left_in_place"].append(child.name)
+    if not report["unrecognized_left_in_place"]:
+        try:
+            root.rmdir()
+            report["root_removed"] = True
+        except OSError:
+            pass
+    return report
+
+
+def cache_clear_command() -> int:
+    """CLI: remove Glossabet's user cache and print exactly what happened."""
+    from glossabet.display import escape_terminal_text
+
+    report = clear_cache()
+    root = escape_terminal_text(report["cache_root"])
+    if not report["existed"]:
+        print(f"glossabet cache: nothing to remove ({root} does not exist)")
+        return 0
+    entries = report["removed_entries"]
+    noun = "repository entry" if entries == 1 else "repository entries"
+    print(f"glossabet cache: removed {entries} {noun} under {root}")
+    if report["root_removed"]:
+        print("glossabet cache: cache directory removed")
+    for name in report["unrecognized_left_in_place"]:
+        print(
+            "glossabet cache: left in place (not Glossabet's layout): "
+            + escape_terminal_text(name)
+        )
+    return 0

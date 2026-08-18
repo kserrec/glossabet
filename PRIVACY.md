@@ -54,7 +54,9 @@ represented in lexical evidence. Outputs are not anonymized or sanitized.
 
 The CLI writes derived reports and the human-governed machine glossary under
 `<repository>/glossabet-out/`. It writes incremental extraction state to the
-current user's platform cache directory. These files can contain repository
+current user's platform cache directory; `glossabet cache-clear` removes that
+cache (only Glossabet's own layout, never a repository) and prints what it
+removed or left in place. These files can contain repository
 paths, identifiers, import strings, documentation terms, Graphify labels,
 configuration paths, and human-written definitions. Handle them with the same
 confidentiality as the repository. `README.md` documents exact ownership and
@@ -94,10 +96,11 @@ falling back to unrestricted recursive reading. The context includes sampled
 repository paths, identifiers, documentation vocabulary, Graphify labels, and
 the validated optional glossary; it records both scanner and context
 omissions. The agent may then read production files named by the context to
-understand real components and propose names. After the human approves terms,
-the agent passes the complete machine-readable glossary to `glossabet save .`
-on standard input; the skill does not write the repository JSON artifact
-directly.
+understand real components and propose names. The skill is instructed that,
+only after the human approves terms, the agent passes the complete
+machine-readable glossary to `glossabet save .` on standard input; the skill
+does not write the repository JSON artifact directly, and `save` itself
+validates structure but cannot verify that approval happened.
 
 The agent host may send the CLI context and those selected files to its model
 provider or other configured tools according to that host's current privacy,
@@ -107,7 +110,11 @@ The same warning applies to `glossabet brief` output whether a user pipes or
 pastes it manually or the trusted Codex plugin hook supplies it automatically.
 The hook remains read-only, but read-only does not mean private from the model
 provider: the canonical terms, definitions, scopes, aliases, and Git state in
-the digest become session context.
+the digest become session context. So that this stays visible long after
+installation, the digest's first line states that it was emitted by
+`glossabet brief .` and that an installed Glossabet `SessionStart` hook
+injects it into agent context automatically; anyone reading a transcript can
+see where the text came from.
 
 Before invoking the skill on confidential code:
 

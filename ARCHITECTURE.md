@@ -23,7 +23,9 @@ what becomes canonical. Once a glossary exists, the engine can detect **drift**
 
 The central rule, repeated everywhere in the code and the plan: **the machinery
 gathers and grounds, the LLM proposes, the human decides.** The engine never
-finalizes vocabulary and never renames code.
+promotes vocabulary on its own and never renames code. The "human decides"
+half is enforced as an instruction to the skill, not by the engine: `save`
+validates and trusts its caller.
 
 ## The division of labor
 
@@ -608,6 +610,15 @@ given, preserves different existing content unless `--force` is present, and
 atomically writes only `SKILL.md`. It does not inspect a repository or contact
 an agent host.
 
+**`cache-clear`** (`cli.py` → `cache.cache_clear_command` → `cache.clear_cache`).
+Removes the user-owned extraction cache and nothing else: it unlinks
+`cache.json` (and `cache.json.*` atomic-write temporaries) inside
+64-hex-named per-repository directories under Glossabet's cache root, removes
+those directories and then the root only once empty, never follows a
+symlink, and reports every unrecognized entry it left in place — so a
+misconfigured `GLOSSABET_CACHE_DIR` pointing at, say, a home directory can
+never be wiped. It reads no repository.
+
 **`scan` / `analyze`** (`cli.py` → `evidence_report._scan` → `evidence.build_evidence`).
 `build_evidence` loads `glossabet.json`, walks and role-classifies the repo
 (`scanner.walk_repository`), reads each included code/doc file and hashes its
@@ -674,8 +685,9 @@ before replacement and preserves every byte outside the managed range.
 standard input (reading one additional byte only to detect overflow), parses
 exactly one JSON document, applies the strict glossary schema and semantic
 budgets, then calls `save_glossary()` for a confined, atomic replacement. The
-skill uses this flow after human approval and never writes the machine artifact
-directly.
+skill is instructed to use this flow only after human approval and never to
+write the machine artifact directly; `save` itself cannot verify that approval
+happened.
 
 **`drift`** (`cli.py` → `drift.drift_command` → `build_drift`). Requires a
 glossary (`open_run(..., glossary=required)`, exits `1` if absent). Builds

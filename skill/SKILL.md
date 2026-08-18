@@ -586,6 +586,18 @@ carries the reasoning for people, glossary.json carries the state for
 machines (resumption, `glossabet show`, and future drift detection).
 `GLOSSABET.md` is neither: it reports on them.
 
+**Tell the user, in your own words at the end of Step 6, that
+`glossabet-out/glossary.json` now holds decisions that exist nowhere else and
+must be committed to version control alongside `GLOSSARY.md`.** The
+directory name says "out", and people habitually ignore or delete output
+directories; the rest of `glossabet-out/` (evidence, reports) is disposable
+and regenerable, but `glossary.json` is not — losing it loses the settled
+vocabulary's machine state, and `drift`, `validate`, `brief`, `sync-context`,
+and every later `/glossabet` session depend on it. If the repository's
+`.gitignore` covers `glossabet-out/`, say so and suggest the negation
+`!glossabet-out/glossary.json` (offer it; do not edit `.gitignore`
+unasked). Say this every time you finalize, even for regulars.
+
 Optionally offer to rename code comments/identifiers and update docs to match —
 but only the ones the user approves, and as its own reviewable change.
 

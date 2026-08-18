@@ -52,7 +52,8 @@ def test_brief_emits_only_canonical_vocabulary_with_exact_state_stamp(
     assert main(["brief", str(tmp_path)]) == 0
 
     output = capsys.readouterr().out
-    assert output.startswith("Glossabet vocabulary brief v1\n")
+    assert output.startswith("Glossabet vocabulary brief v1 (emitted by `glossabet brief .`; ")
+    assert "SessionStart hook" in output.splitlines()[0]
     assert "policy: read-only" in output
     assert "changes require a human /glossabet session" in output
     assert "schema=1" in output

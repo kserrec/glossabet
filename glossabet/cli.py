@@ -127,6 +127,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_repository_path(validate)
 
+    sub.add_parser(
+        "cache-clear",
+        help="remove Glossabet's user cache directory (never the repository)",
+        description=(
+            "Remove the incremental extraction cache Glossabet keeps in the "
+            "current user's platform cache directory (or GLOSSABET_CACHE_DIR). "
+            "Only Glossabet's own cache layout is deleted; the repository and "
+            "glossabet-out/ are never touched, and anything unrecognized under "
+            "the cache root is left in place and reported."
+        ),
+    )
+
     install = sub.add_parser(
         "install",
         help="install the canonical agent skill (Codex by default)",
@@ -222,6 +234,11 @@ def _run(argv: list[str] | None) -> int:
         from glossabet.reconcile import validate_command
 
         return validate_command(args.path)
+
+    if args.command == "cache-clear":
+        from glossabet.cache import cache_clear_command
+
+        return cache_clear_command()
 
     if args.command == "install":
         from glossabet.installer import install_command

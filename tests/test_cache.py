@@ -195,3 +195,52 @@ def test_cache_is_disabled_if_configured_inside_scanned_repo(
 
     assert stats == {"reused": 0, "extracted": 3}
     assert not unsafe.exists()
+
+
+def test_cache_clear_removes_only_glossabet_layout(tmp_path, capsys):
+    from glossabet.cli import main
+
+    (tmp_path / "repo").mkdir()
+    repo = make_repo(tmp_path / "repo")
+    build_evidence(repo, cache=True)
+    path = cache_path(repo)
+    assert path.is_file()
+    root = path.parent.parent
+
+    # Foreign content under the same root must survive: a stray file, a
+    # non-hex directory, and a symlinked directory pointing at user data.
+    (root / "notes.txt").write_text("mine")
+    (root / "other-tool").mkdir()
+    (root / "other-tool" / "data").write_text("x")
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    (victim / "keep").write_text("keep")
+    os.symlink(victim, root / ("a" * 64), target_is_directory=True)
+
+    assert main(["cache-clear"]) == 0
+    out = capsys.readouterr().out
+    assert "removed 1 repository entry" in out
+    assert not path.exists()
+    assert not path.parent.exists()
+    assert (root / "notes.txt").read_text() == "mine"
+    assert (root / "other-tool" / "data").read_text() == "x"
+    assert (victim / "keep").read_text() == "keep"
+    assert (root / ("a" * 64)).is_symlink()
+    assert "left in place" in out
+    assert root.is_dir()
+
+
+def test_cache_clear_removes_empty_root_and_reports_absence(tmp_path, capsys):
+    from glossabet.cli import main
+
+    (tmp_path / "repo").mkdir()
+    repo = make_repo(tmp_path / "repo")
+    build_evidence(repo, cache=True)
+    root = cache_path(repo).parent.parent
+
+    assert main(["cache-clear"]) == 0
+    assert "cache directory removed" in capsys.readouterr().out
+    assert not root.exists()
+
+    assert main(["cache-clear"]) == 0
+    assert "nothing to remove" in capsys.readouterr().out

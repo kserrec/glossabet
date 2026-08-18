@@ -17,7 +17,10 @@ never diluted by machinery.
 ## Binding rules (digest — full versions in PLAN.md)
 
 - **Human authority.** Never finalize vocabulary unilaterally; never
-  mass-rename code. Only human approval makes a term canonical.
+  mass-rename code. A term is meant to become canonical only after human
+  approval — enforced as an instruction to the skill, not mechanically:
+  `glossabet save` trusts its caller. Docs say "the skill is instructed
+  to…", never "Glossabet cannot…".
 - **Lexical-first scanner.** The built-in scanner provides lexical evidence
   and cheap import edges only. It must not grow into a static analyzer or a
   Graphify clone; rich structure comes from optional adapters.
@@ -84,6 +87,7 @@ glossabet sync-context <repo> --agent claude # explicit root CLAUDE.md target
 glossabet show <repo>           # display the current glossary
 glossabet drift <repo>          # live vocabulary vs canonical glossary
 glossabet validate <repo>       # reconcile glossary vs evidence + graph
+glossabet cache-clear           # remove Glossabet's own user cache (never a repo)
 uv build --no-sources            # build wheel + source distribution, do not publish
 uv run python scripts/build_plugin.py dist
 uv run python scripts/check_workflows.py

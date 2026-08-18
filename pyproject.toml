@@ -59,6 +59,7 @@ include = [
   "/.github/workflows",
   "/ARCHITECTURE.md",
   "/CHANGELOG.md",
+  "/CONTRIBUTING.md",
   "/DISTRIBUTION.md",
   "/EVALUATION.md",
   "/LICENSE",

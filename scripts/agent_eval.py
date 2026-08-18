@@ -448,7 +448,7 @@ def _artifact_errors(recorded: object) -> list[str]:
         if (
             brief.returncode != 0
             or brief.stderr != ""
-            or not brief.stdout.startswith("Glossabet vocabulary brief v1\n")
+            or not brief.stdout.startswith("Glossabet vocabulary brief v1 (emitted by ")
             or "coverage: complete=true" not in brief.stdout
             or len(brief.stdout.encode("utf-8")) > 4_096
         ):

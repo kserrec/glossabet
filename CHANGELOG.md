@@ -18,6 +18,16 @@ This first alpha is prepared but has not been published to PyPI.
   `glossabet-out/glossary.json`. The engine excludes it from lexical
   evidence at any depth (`skipped.self_reports`) and from the freshness
   stamp at the root; `GLOSSARY.md` stays visible to freshness.
+- `glossabet cache-clear`: removes only Glossabet's own user-cache layout,
+  never follows symlinks, and reports anything unrecognized it left in place.
+- `glossabet brief` output opens with an origin line stating it was emitted
+  by `glossabet brief .` and that an installed `SessionStart` hook injects it
+  into agent context automatically; the `sync-context` managed block carries
+  its own origin line.
+- `CONTRIBUTING.md` (Apache-2.0 inbound, Developer Certificate of Origin
+  sign-off) and a README "Provenance and affiliation" section (independent
+  project; not affiliated with OpenAI, Anthropic, GitHub, or Graphify Labs;
+  developed with AI coding assistants under human review).
 - Claude Code ambient parity: `glossabet install --agent claude` makes the
   personal skill folder a skills-directory plugin with a `SessionStart` hook
   that runs `brief .`, writing nothing outside that folder; `--skill-only`
@@ -80,6 +90,13 @@ This first alpha is prepared but has not been published to PyPI.
 
 ### Changed
 
+- Documentation states honestly that "the human decides what becomes
+  canonical" is an instruction to the `/glossabet` skill, not a mechanical
+  guarantee: `glossabet save` validates structure and trusts its caller. The
+  skill's Step 6 now tells the user every time it finalizes that
+  `glossabet-out/glossary.json` must be committed. `NAME-CLEARANCE.md`
+  records the name's true derivation (Amharic *bet*, "house") as a dated
+  correction. `RELEASING.md` gains a manual claims-consistency checklist.
 - Internal restructuring with no behaviour change (every command's output on
   the local corpus fixtures is byte-identical): the hardened Git stamp and
   freshness pathspec live in `glossabet.git_state`; one bounded read
