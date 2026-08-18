@@ -54,22 +54,58 @@ def capped_collection(
     cap: int,
     *,
     cap_reason: str,
+    total_items: int | None = None,
     total_items_exact: bool = True,
     incomplete_reasons: Iterable[str] = (),
 ) -> tuple[list, dict]:
-    """Keep a deterministic prefix and return its shared coverage ledger."""
+    """Keep a deterministic prefix and return its shared coverage ledger.
+
+    This is the one way to "cap this list and say so": the ledger's reasons
+    are the caller's upstream ``incomplete_reasons`` followed by
+    ``cap_reason`` whenever anything was left out. ``total_items`` defaults
+    to ``len(items)``; pass a larger known total when the producer stopped
+    collecting detail early.
+    """
     if cap < 0:
         raise ValueError("collection cap must be non-negative")
     kept = list(items[:cap])
+    if total_items is None:
+        total_items = len(items)
     reasons = list(incomplete_reasons)
-    if len(items) > cap:
+    if total_items > len(kept):
         reasons.append(cap_reason)
     return kept, coverage_ledger(
-        len(items),
+        total_items,
         len(kept),
         total_items_exact=total_items_exact,
         reasons=reasons,
     )
+
+
+def capped_section(
+    items: Sequence,
+    cap: int,
+    *,
+    cap_reason: str,
+    total_items: int | None = None,
+    total_items_exact: bool = True,
+    incomplete_reasons: Iterable[str] = (),
+) -> dict:
+    """``{items, dropped_items, coverage}`` — the section shape every
+    capped list in an artifact takes — from ``capped_collection``."""
+    kept, coverage = capped_collection(
+        items,
+        cap,
+        cap_reason=cap_reason,
+        total_items=total_items,
+        total_items_exact=total_items_exact,
+        incomplete_reasons=incomplete_reasons,
+    )
+    return {
+        "items": kept,
+        "dropped_items": coverage["dropped_items"],
+        "coverage": coverage,
+    }
 
 
 def coverage_reasons(ledger: object, prefix: str = "") -> list[str]:

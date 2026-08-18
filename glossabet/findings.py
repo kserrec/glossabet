@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from glossabet import coverage
 from glossabet.coverage import coverage_ledger, coverage_reasons
 from glossabet.display import escape_terminal_text
 from glossabet.evidence_view import EvidenceView
@@ -69,8 +70,8 @@ def capped_section(
     total_items_exact: bool | None = None,
     cap: int | None = None,
 ) -> dict:
-    """``{items, dropped_items, coverage}`` for one section: the first
-    ``cap`` findings in detail, the ledger honest about the rest.
+    """``{items, dropped_items, coverage}`` for one findings section: the
+    first ``cap`` findings in detail, the ledger honest about the rest.
 
     ``total_items`` defaults to the number of findings given; pass a larger
     known total when the producer stopped collecting detail early.
@@ -79,23 +80,28 @@ def capped_section(
     reasons = list(incomplete_reasons)
     if cap is None:
         cap = FINDINGS_CAP  # resolved at call time so tests can lower it
-    if total_items is None:
-        total_items = len(items)
     if total_items_exact is None:
         total_items_exact = not reasons
-    kept = items[:cap]
-    if total_items > len(kept):
-        reasons.append(f"{name} finding detail cap is {cap} items")
-    coverage = coverage_ledger(
-        total_items,
-        len(kept),
+    return coverage.capped_section(
+        items,
+        cap,
+        cap_reason=f"{name} finding detail cap is {cap} items",
+        total_items=total_items,
         total_items_exact=total_items_exact,
-        reasons=reasons,
+        incomplete_reasons=reasons,
     )
+
+
+def empty_section(reason: str, *, total_items_exact: bool = True) -> dict:
+    """A section holding no findings *for a stated reason* — the check was
+    skipped (``total_items_exact`` true: nothing was there to count) or
+    could not be run over some inputs (false: the zero is a lower bound)."""
     return {
-        "items": kept,
-        "dropped_items": coverage["dropped_items"],
-        "coverage": coverage,
+        "items": [],
+        "dropped_items": 0,
+        "coverage": coverage_ledger(
+            0, 0, total_items_exact=total_items_exact, reasons=[reason]
+        ),
     }
 
 

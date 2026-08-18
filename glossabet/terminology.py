@@ -14,6 +14,7 @@ from itertools import combinations
 
 from glossabet.coverage import (
     capped_collection,
+    capped_section,
     coverage_ledger,
     coverage_reasons,
 )
@@ -295,7 +296,7 @@ def _synonym_candidates(top_tokens: list[str], token_counts: Counter,
             },
         })
     items.sort(key=lambda i: (-i["similarity"], i["a"], i["b"]))
-    kept, coverage = capped_collection(
+    section = capped_section(
         items,
         SYNONYM_REPORT_CAP,
         cap_reason=(
@@ -307,10 +308,10 @@ def _synonym_candidates(top_tokens: list[str], token_counts: Counter,
         ),
     )
     return {
-        "items": kept,
+        "items": section["items"],
         "considered_pairs": considered,
-        "dropped_items": coverage["dropped_items"],
-        "coverage": coverage,
+        "dropped_items": section["dropped_items"],
+        "coverage": section["coverage"],
     }
 
 
@@ -446,21 +447,15 @@ def _overload_candidates(
             "coverage": {"modules": module_coverage},
         })
     items.sort(key=lambda i: (-i["dispersion"], i["term"]))
-    incomplete_reasons = coverage_reasons(dispersion_coverage)
-    kept, coverage = capped_collection(
+    return capped_section(
         items,
         OVERLOAD_REPORT_CAP,
         cap_reason=(
             f"overload-candidate detail cap is {OVERLOAD_REPORT_CAP} items"
         ),
         total_items_exact=dispersion_coverage["complete"],
-        incomplete_reasons=incomplete_reasons,
+        incomplete_reasons=coverage_reasons(dispersion_coverage),
     )
-    return {
-        "items": kept,
-        "dropped_items": coverage["dropped_items"],
-        "coverage": coverage,
-    }
 
 
 def build_terminology(vocabulary: ProductionVocabulary,

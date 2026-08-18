@@ -9,10 +9,9 @@ from __future__ import annotations
 import math
 from collections import Counter, defaultdict
 from collections.abc import Iterable
-from heapq import nsmallest
 from pathlib import PurePosixPath
 
-from glossabet.coverage import coverage_ledger
+from glossabet.coverage import capped_collection
 from glossabet.vocabulary import ProductionVocabulary
 from glossabet.tokenize import (
     TOKEN_ORIGIN_DOMAIN,
@@ -136,19 +135,12 @@ def _ranked(
     candidates: Iterable[dict], cap: int, key, label: str,
     *, incomplete_reasons: Iterable[str] = (),
 ) -> tuple[list[dict], dict]:
-    total = 0
-
-    def counted():
-        nonlocal total
-        for candidate in candidates:
-            total += 1
-            yield candidate
-
-    kept = nsmallest(cap, counted(), key=key)
-    reasons = list(incomplete_reasons)
-    if total > len(kept):
-        reasons.append(f"{label} candidate detail cap is {cap} items")
-    return kept, coverage_ledger(total, len(kept), reasons=reasons)
+    return capped_collection(
+        sorted(candidates, key=key),
+        cap,
+        cap_reason=f"{label} candidate detail cap is {cap} items",
+        incomplete_reasons=incomplete_reasons,
+    )
 
 
 def build_naming_candidates(imports_section: dict, modules: list[dict],

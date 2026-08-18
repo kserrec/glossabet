@@ -15,7 +15,7 @@ from glossabet import __version__
 from glossabet.artifacts import write_artifact
 from glossabet.cache import load_cache, save_cache
 from glossabet.config import load_config
-from glossabet.coverage import coverage_ledger
+from glossabet.coverage import capped_collection
 from glossabet.extraction import SourceExtractor
 from glossabet import git_state
 from glossabet.graphify import (
@@ -48,19 +48,17 @@ class Limits:
 def _capped(counter: Counter, cap: int, entry) -> dict:
     """Top-`cap` entries by (-count, key), with the remainder logged."""
     ranked = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
-    kept, dropped = ranked[:cap], ranked[cap:]
-    reasons = []
-    if dropped:
-        reasons.append(f"evidence detail cap is {cap} items")
+    kept, coverage = capped_collection(
+        ranked, cap, cap_reason=f"evidence detail cap is {cap} items"
+    )
+    dropped = ranked[cap:]
     return {
         "items": [entry(term, count) for term, count in kept],
         "truncated": None if not dropped else {
             "dropped_terms": len(dropped),
             "dropped_occurrences": sum(c for _, c in dropped),
         },
-        "coverage": coverage_ledger(
-            len(ranked), len(kept), reasons=reasons
-        ),
+        "coverage": coverage,
     }
 
 

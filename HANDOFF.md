@@ -10,7 +10,7 @@ the owner self-testing pause before doing anything.
 vocabulary explicit, canonical, inspectable, and maintainable. Deterministic
 machinery gathers evidence, the LLM reasons, the human decides.
 
-**State on disk:** `dev` is five commits (Phases 36.1–36.5) ahead of
+**State on disk:** `dev` is six commits (Phases 36.1–36.6) ahead of
 `main`; the working tree is clean; the full suite (527 tests) is green; wheel and plugin were rebuilt
 through `uv build --no-sources` + `scripts/build_plugin.py dist` and
 `scripts/check_distribution.py dist --tag v0.1.0` passes; the CLI at
@@ -52,15 +52,18 @@ re-run `glossabet install --agent claude` / `glossabet install` if unsure.
   (render / safe read / analysis / inspector / printer) beneath
   `context_sync`; drift and reconcile no longer import a command module.
   **36.5 done:** `tests/test_finding_producers.py` (15 producer-level
-  tests over hand-built evidence, one per finding kind). Remaining: 36.6
-  ledger ceremony, 36.7 verification weight onto the skill (needs Kyle). Each sub-phase is one pass under Phase 35
+  tests over hand-built evidence, one per finding kind). **36.6 done:**
+  `coverage.capped_collection(total_items=…)` + `coverage.capped_section`,
+  `findings.empty_section`; ledger construction sites 22 → 13. Remaining:
+  36.7 verification weight onto the skill (needs Kyle's authorization to
+  spend usage). Each sub-phase is one pass under Phase 35
   rules.
 
 **How to resume**
 
 - `$next` / `/next` → the first incomplete phase whose dependencies are
   complete is Phase 33.2 (needs Kyle's authorization to spend usage) or
-  Phase 36.6 (no external needs). Both honour the owner self-testing pause.
+  Phase 36.7 (needs Kyle's authorization to spend usage). Both honour the owner self-testing pause.
 - Before any Phase 36 sub-phase, rebuild the byte-identical oracle: copy the
   four local fixtures from `evaluation/corpus.json` (`path` sources) to a
   scratch dir, `glossabet save` each source's `glossary`, run every command

@@ -101,7 +101,10 @@ This first alpha is prepared but has not been published to PyPI.
   `ValidationView`) so no consumer outside the owning module spells a
   document key; managed-context inspection (render, safe read, analysis,
   printer) lives in `managed_context` beneath the `sync-context` command,
-  so drift and validation no longer import a command module.
+  so drift and validation no longer import a command module; every
+  "cap this list and say so" ledger goes through
+  `coverage.capped_collection` / `capped_section`, and skipped or
+  scope-limited validation sections through `findings.empty_section`.
 - The pre-release working identity was renamed atomically from Glossarize to
   Glossabet across the package, import, command, skill, artifacts,
   configuration, cache, tests, and documentation. Pre-rename output/cache

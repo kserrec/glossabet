@@ -14,7 +14,7 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 
 from glossabet.artifacts import ArtifactError
-from glossabet.coverage import coverage_ledger, coverage_reasons
+from glossabet.coverage import capped_collection, coverage_reasons
 from glossabet.engine_run import GLOSSARY_OPTIONAL, open_run
 from glossabet.evidence import persist_evidence
 from glossabet.evidence_view import EvidenceView
@@ -202,28 +202,23 @@ def _register_exemplars(
         if len(item["tokens"]) < 2 or style not in STRUCTURED_IDENTIFIER_STYLES:
             continue
         eligible.append({**deepcopy(item), "style": style})
-    kept = eligible[:REGISTER_EXEMPLAR_LIMIT]
+    source_ledger = identifier_section["coverage"]
+    kept, coverage = capped_collection(
+        eligible,
+        REGISTER_EXEMPLAR_LIMIT,
+        cap_reason=(
+            f"register exemplar display cap is {REGISTER_EXEMPLAR_LIMIT} items"
+        ),
+        total_items_exact=source_ledger["complete"],
+        incomplete_reasons=coverage_reasons(source_ledger, "identifier input"),
+    )
     if len(eligible) > len(kept):
         omissions.record(
             ("terminology", "register", "exemplars", "items"),
             "list_items",
             len(eligible) - len(kept),
         )
-    source_ledger = identifier_section["coverage"]
-    reasons = coverage_reasons(source_ledger, "identifier input")
-    if len(eligible) > REGISTER_EXEMPLAR_LIMIT:
-        reasons.append(
-            f"register exemplar display cap is {REGISTER_EXEMPLAR_LIMIT} items"
-        )
-    return {
-        "items": kept,
-        "coverage": coverage_ledger(
-            len(eligible),
-            len(kept),
-            total_items_exact=source_ledger["complete"],
-            reasons=reasons,
-        ),
-    }
+    return {"items": kept, "coverage": coverage}
 
 
 def _naming_with_locations(

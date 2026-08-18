@@ -3,7 +3,7 @@
 Status: **phases 0–22, Phases 24–32, Phase 34 (`GLOSSABET.md` report), and
 Phase 35 (deepening refactor) complete; Phase 33 (Claude Code ambient
 parity) in progress; Phase 36 (good-to-great structural debts) in progress —
-36.1–36.5 complete; owner self-testing pause active before the trusted-alpha
+36.1–36.6 complete; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-17.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1981,7 +1981,7 @@ integration proofs, not stdout theater. Deleted:
 run contract). Suite 527 tests, ~24 s (unchanged; the new tests run in
 0.25 s). No engine change, so no oracle run was needed.
 
-#### Phase 36.6 — Ledger ceremony
+#### Phase 36.6 — Ledger ceremony ✅ 2026-08-17
 
 **Problem:** the coverage-ledger philosophy is right, but
 `coverage_ledger(total, included, total_items_exact=…, reasons=…)` appears
@@ -1996,6 +1996,26 @@ walk-remainder) alone and say why in a comment.
 
 **Acceptance:** ledger construction sites drop by at least a third; no
 ledger semantics change (oracle identical).
+
+**Completion evidence (2026-08-17):** the audit found 22 construction
+sites (17 bare `coverage_ledger` calls outside `coverage.py` plus 5
+hand-assembled `{items, dropped_items, coverage}` dicts), not the ~30
+estimated — the terminology and Graphify display caps already went
+through `capped_collection`. `coverage.capped_collection` gained
+`total_items` (a known larger total, cap reason appended when anything is
+left out) and a `capped_section` companion returning the section shape;
+`findings.capped_section` delegates to it and `findings.empty_section`
+names the skipped / scope-limited case. Routed: evidence vocabulary tables
+(`_capped`), Graphify group cap, register exemplars, naming-candidate
+ranking (`importance._ranked`, `heapq.nsmallest` → sorted prefix, which
+the docs define as equivalent), the synonym/overload sections, and the two
+skipped structural sections in `reconcile`. Left bare, with a comment
+where it was not obvious: matching and structural-matching work budgets,
+Graphify's disabled/unnormalized empty ledgers, `member_tokens`
+(complete-by-construction), context-dispersion (a threshold filter, not a
+prefix cap), and structure candidates (two drop mechanisms reported in a
+fixed order). 22 → 13 sites (−41 %). Oracle identical; local evaluation
+cases identical; suite 527 green.
 
 #### Phase 36.7 — Verification weight onto the skill
 

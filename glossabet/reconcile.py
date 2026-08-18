@@ -31,6 +31,7 @@ from glossabet import findings
 from glossabet.findings import (
     FindingsDocumentView,
     capped_section,
+    empty_section,
     finding,
     collection_limitations,
     mark_incomplete,
@@ -440,27 +441,14 @@ def build_validation(
             structural, global_canonical, vocab, structural_source_reasons
         )
     else:
-        skipped_coverage = coverage_ledger(
-            0, 0, reasons=[skip_reason]
-        )
-        unnamed = boundary = overloaded = {
-            "items": [],
-            "dropped_items": 0,
-            "coverage": skipped_coverage,
-        }
-        structural_work = coverage_ledger(0, 0)
+        unnamed = boundary = overloaded = empty_section(skip_reason)
+        structural_work = coverage_ledger(0, 0)  # no work budget was spent
 
     unnamed_scope_limited = bool(scoped_canonical) and graph_ok
     if unnamed_scope_limited:
-        coverage = coverage_ledger(
-            0,
-            0,
-            total_items_exact=False,
-            reasons=[scoped_structure_reason],
+        unnamed = empty_section(
+            scoped_structure_reason, total_items_exact=False
         )
-        unnamed = {
-            "items": [], "dropped_items": 0, "coverage": coverage
-        }
     if scoped_canonical and graph_ok:
         boundary = mark_incomplete(boundary, scoped_structure_reason)
         overloaded = mark_incomplete(overloaded, scoped_structure_reason)

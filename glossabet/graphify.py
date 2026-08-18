@@ -451,16 +451,12 @@ def build_structural_groups(
             f"{GRAPH_PATH}: no usable community members — groups unavailable"
         )
 
-    retained_groups = group_items[:GROUP_CAP]
-    dropped_groups = group_items[GROUP_CAP:]
-    group_coverage = coverage_ledger(
-        len(group_items),
-        len(retained_groups),
-        reasons=(
-            [f"structural group detail cap is {GROUP_CAP} items"]
-            if dropped_groups else []
-        ),
+    retained_groups, group_coverage = capped_collection(
+        group_items,
+        GROUP_CAP,
+        cap_reason=f"structural group detail cap is {GROUP_CAP} items",
     )
+    dropped_groups = group_items[GROUP_CAP:]
     god_nodes, god_coverage = _god_nodes(nodes, degree, glossary_nodes)
     return {
         "adapter_enabled": True,
@@ -528,6 +524,9 @@ def structure_candidates(structural: dict) -> dict:
             "reasons": reasons,
         })
     candidates.sort(key=lambda c: (-c["score"], c["label"]))
+    # Not `capped_collection`: two mechanisms drop structures here — this
+    # module's candidate cap and Graphify's upstream group cap — and the
+    # ledger reports them separately, in that order.
     known_total = len(candidates) + source_groups_dropped
     included = min(len(candidates), STRUCTURE_CANDIDATE_CAP)
     reasons = []

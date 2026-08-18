@@ -390,7 +390,13 @@ The package is `glossabet/`. Grouped by role:
 - `coverage.py` — the common bounded-collection ledger. Known totals, retained
   details, known drops, total exactness, completeness, and reasons have one
   shape across evidence, candidates, terminology, Graphify, drift, and
-  validation.
+  validation. `capped_collection()` is the one way to "cap this list and
+  say so" (upstream reasons first, then the cap reason, optional known
+  larger total); `capped_section()` returns it in the
+  `{items, dropped_items, coverage}` section shape. Bare `coverage_ledger()`
+  calls remain only where the ledger is not a list cap: work budgets
+  (matching, structural matching), empty/skipped states, and the
+  structure-candidate ledger whose drops come from two mechanisms.
 - `matching.py` — the shared glossary-to-code occurrence rule and downstream
   `EvidenceIndex`. One-token, symbol, file, module, and doc lookups are indexed;
   all requested compound terms share one bounded trie pass over identifier
@@ -476,8 +482,10 @@ The package is `glossabet/`. Grouped by role:
   ownership uses a per-term path-prefix trie rather than pairwise owner scans.
 - `findings.py` — the findings document drift and validation share:
   `finding()` (exactly one of `certainty` / `signal_strength`, the status
-  the renderer keys on), `capped_section()` with the shared coverage ledger
-  and reported cap (`FINDINGS_CAP`), `mark_incomplete()`, the
+  the renderer keys on), `capped_section()` (the findings-flavoured
+  `coverage.capped_section` with the reported `FINDINGS_CAP`),
+  `empty_section()` (a skipped or scope-limited check with its reason),
+  `mark_incomplete()`, the
   evidence-limitation derivation that alone reads RepositoryEvidence's
   `vocabulary[*].truncated` markers and the matcher's work ledgers
   (`vocabulary_omission_reasons()`, `matching_reasons()`,

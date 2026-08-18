@@ -4,6 +4,7 @@ derivation, and section renderer that drift and validation share."""
 import pytest
 
 from glossabet.findings import (
+    empty_section,
     FindingsDocumentView,
     FINDINGS_CAP,
     capped_section,
@@ -45,6 +46,19 @@ def test_capped_section_reports_the_cap_and_keeps_totals_honest():
     # A known-larger total is honoured without inventing detail.
     known = capped_section(items[:1], "demo", incomplete_reasons=[], total_items=5)
     assert known["dropped_items"] == 4
+    assert known["coverage"]["reasons"] == [
+        f"demo finding detail cap is {FINDINGS_CAP} items"
+    ]
+    # A skipped or scope-limited check is an empty section with its reason.
+    skipped = empty_section("no graph")
+    assert skipped == {
+        "items": [], "dropped_items": 0,
+        "coverage": {"total_items": 0, "included_items": 0, "dropped_items": 0,
+                     "total_items_exact": True, "complete": False,
+                     "reasons": ["no graph"]},
+    }
+    assert empty_section("scoped", total_items_exact=False)["coverage"][
+        "total_items_exact"] is False
     marked = mark_incomplete(section, "scope limited")
     assert marked["coverage"]["total_items_exact"] is False
     assert marked["coverage"]["reasons"][-1] == "scope limited"
