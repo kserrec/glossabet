@@ -1,6 +1,8 @@
 """Skill/engine interface: the CLI context fields named by the protocol must
 exist, and the skill must never bypass that boundary for artifact reads."""
 
+import json
+import re
 from pathlib import Path
 
 from glossabet.agent_context import (
@@ -8,8 +10,30 @@ from glossabet.agent_context import (
     build_agent_context,
 )
 from glossabet.evidence import build_evidence
+from glossabet.glossary import save_glossary
+from glossabet.repository_glossary import repository_glossary_section
 
 SKILL = Path(__file__).resolve().parents[1] / "skill" / "SKILL.md"
+
+# The skill's H2 sections, in protocol order. Step 4½ sits between Step 4
+# and Step 5 by design (the baseline is proposed before GLOSSARY.md is read),
+# Step 7 is the last step, and Principles closes the document.
+SECTION_ORDER = [
+    "Audience — write for regulars",
+    "Stance (read this first)",
+    "Ambient vocabulary is read-only",
+    "Three artifacts, kept separate",
+    "Step 0 — Ground through the engine boundary",
+    "Step 1 — Scan the repo from its root",
+    "Step 2 — Infer the house register",
+    "Step 3 — Decide what warrants a name",
+    "Step 4 — Propose three ranked names per thing",
+    "Step 4½ — Only now, read the repository's `GLOSSARY.md` and reconcile",
+    "Step 5 — Brainstorm to a decision, with the user",
+    "Step 6 — Finalize (only when asked)",
+    "Step 7 — Write or refresh `GLOSSABET.md`",
+    "Principles",
+]
 
 
 def test_skill_exists_with_cli_context_protocol():
@@ -20,8 +44,90 @@ def test_skill_exists_with_cli_context_protocol():
         f"`context_schema_version` other than `{AGENT_CONTEXT_SCHEMA_VERSION}`"
         in normalized
     )
-    assert "monorepo" in text
-    assert "freshly generated" in text.lower()
+
+
+def test_skill_sections_are_in_protocol_order():
+    text = SKILL.read_text(encoding="utf-8")
+    headings = re.findall(r"^## (.+)$", text, flags=re.MULTILINE)
+    assert headings == SECTION_ORDER
+    # Every step keeps its number: renumbering silently breaks the cross-
+    # references the rest of the skill (and the harness prompt) make.
+    steps = [h.split(" — ")[0] for h in headings if h.startswith("Step ")]
+    assert steps == ["Step 0", "Step 1", "Step 2", "Step 3", "Step 4",
+                     "Step 4½", "Step 5", "Step 6", "Step 7"]
+    # The Step 0 sub-sections the harness scenarios key on still exist.
+    assert "### Monorepo alert" in text
+    assert "### Which glossary state you are in (read both channels)" in text
+
+
+def _maximal_context(tmp_path):
+    """A lean agent context built over a fixture that fills every optional
+    channel: structured glossary, root GLOSSARY.md, and a Graphify graph."""
+    (tmp_path / "a.py").write_text("payment_service = 1\npayment_worker = 2\n")
+    (tmp_path / "GLOSSARY.md").write_text("# Glossary\n\n- Payment Service — x\n")
+    gout = tmp_path / "graphify-out"
+    gout.mkdir()
+    (gout / "graph.json").write_text(json.dumps({
+        "nodes": [{"id": 1, "label": "PaymentFlow", "community": 0},
+                  {"id": 2, "label": "PaymentWorker", "community": 0}],
+        "edges": [{"source": 1, "target": 2}],
+    }))
+    glossary = {"schema_version": 1, "concepts": [{
+        "id": "payment-service", "term": "Payment Service",
+        "definition": "d", "status": "canonical",
+        "scope": {"path_prefixes": ["billing"]},
+    }]}
+    save_glossary(tmp_path, glossary)
+    evidence = build_evidence(tmp_path)
+    return build_agent_context(
+        evidence, glossary,
+        repository_glossary=repository_glossary_section(tmp_path, evidence, glossary),
+    )
+
+
+def _resolves(node, parts) -> bool:
+    if not parts:
+        return True
+    head, rest = parts[0], parts[1:]
+    if head == "[*]":
+        # ``files[*]`` means the entries of the ``code``/``docs`` collections
+        # under ``files``: a list, or a mapping of lists.
+        members = node if isinstance(node, list) else (
+            [x for v in node.values() for x in (v if isinstance(v, list) else [])]
+            if isinstance(node, dict) else []
+        )
+        return any(_resolves(x, rest) for x in members)
+    return isinstance(node, dict) and head in node and _resolves(node[head], rest)
+
+
+def _resolves_anywhere(node, parts) -> bool:
+    if _resolves(node, parts):
+        return True
+    children = node.values() if isinstance(node, dict) else (
+        node if isinstance(node, list) else ())
+    return any(_resolves_anywhere(child, parts) for child in children)
+
+
+def test_every_dotted_field_the_skill_names_exists_in_a_real_context(tmp_path):
+    # Every backticked dotted path in the skill (``coverage.corpus.complete``,
+    # ``files[*].role``, ``walk_remainder.exact``, ...) must resolve in a
+    # context the engine actually emits — at the root, or as a sub-path
+    # somewhere in the tree when the skill spells it relative to a section it
+    # has already introduced. A renamed engine field can no longer leave the
+    # skill pointing at nothing.
+    text = SKILL.read_text(encoding="utf-8")
+    refs = sorted(set(re.findall(
+        r"`([a-z_]+(?:\[\*\]|\.[a-z_]+)+)`", text
+    )))
+    refs = [ref for ref in refs if not ref.endswith(".json")]  # file names
+    assert len(refs) >= 20  # the protocol names many fields; a shrink is news
+    context = _maximal_context(tmp_path)
+    missing = []
+    for ref in refs:
+        parts = [p for p in re.split(r"\.|(\[\*\])", ref) if p]
+        if not _resolves_anywhere(context, parts):
+            missing.append(ref)
+    assert not missing, missing
 
 
 def test_distribution_skill_copy_is_declared_from_the_canonical_source():

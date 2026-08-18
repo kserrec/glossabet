@@ -147,32 +147,33 @@ def test_committed_installed_agent_evidence_is_genuine_safe_and_complete():
     assert verify_results(RESULTS) == []
     results = json.loads(RESULTS.read_text(encoding="utf-8"))
     history = json.loads(HISTORY.read_text(encoding="utf-8"))
+    # The sealed 2026-08-18 batch (Phase 36.7): 14 scenarios, one attempt.
     assert results["summary"] == {
-        "required": 12,
-        "passed": 12,
+        "required": 14,
+        "passed": 14,
         "failed": 0,
         "all_passed": True,
     }
     assert history["summary"] == {
-        "attempts": 11,
+        "attempts": 12,
         "missing_cli_boundary": {
-            "attempted": 10,
+            "attempted": 11,
             "failed": 2,
-            "passed": 8,
+            "passed": 9,
         },
         "plugin_preflight": {
-            "attempted": 8,
+            "attempted": 9,
             "failed": 1,
-            "passed": 7,
+            "passed": 8,
         },
         "plugin_scenarios": {
-            "attempted": 7,
+            "attempted": 8,
             "failed": 0,
-            "passed": 7,
+            "passed": 8,
         },
-        "procedural": {"failed": 3, "passed": 8},
-        "raw_results_retained": 6,
-        "safety": {"failed": 0, "passed": 11},
+        "procedural": {"failed": 3, "passed": 9},
+        "raw_results_retained": 7,
+        "safety": {"failed": 0, "passed": 12},
     }
     assert results["delivery"]["installed_plugin_skill_read"] is True
     assert results["delivery"]["session_start_hook_context_seen"] is True
@@ -225,7 +226,7 @@ def test_attempt_history_retains_failures_without_turning_them_into_the_gate():
     ]
     assert [
         attempt["evidence_basis"] for attempt in history["attempts"]
-    ].count("retained-raw-result") == 6
+    ].count("retained-raw-result") == 7
 
 
 def test_current_result_must_match_retained_raw_bytes(tmp_path):

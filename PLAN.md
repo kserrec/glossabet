@@ -3,7 +3,7 @@
 Status: **phases 0–22, Phases 24–32, Phase 34 (`GLOSSABET.md` report), and
 Phase 35 (deepening refactor) complete; Phase 33 (Claude Code ambient
 parity) in progress; Phase 36 (good-to-great structural debts) in progress —
-36.1–36.6 complete; owner self-testing pause active before the trusted-alpha
+36.1–36.7 complete, 36.8 planned; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-17.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -2017,7 +2017,7 @@ prefix cap), and structure candidates (two drop mechanisms reported in a
 fixed order). 22 → 13 sites (−41 %). Oracle identical; local evaluation
 cases identical; suite 527 green.
 
-#### Phase 36.7 — Verification weight onto the skill
+#### Phase 36.7 — Verification weight onto the skill ✅ 2026-08-18 (scoped; live post-approval scenarios split to 36.8)
 
 **Problem:** `SKILL.md` (~700 lines of prose) carries the product's
 behaviour and is verified only by string-presence tests plus a Codex
@@ -2039,6 +2039,62 @@ harness whose recorded `canonical_skill_sha256` is already stale.
 
 **Acceptance:** `--current` verifiers pass for agent results; each Phase
 31–34 skill behaviour has one recorded live scenario.
+
+**Completion evidence (2026-08-18):** Kyle authorized the batch ("go for
+the 36.7 batch"). Wheel and plugin rebuilt from the current tree first
+(`uv build --no-sources`, `scripts/build_plugin.py`,
+`check_distribution.py` passed). One authorized batch: Codex CLI 0.147.0
+on Linux, three host runs (fresh-session hook, twelve plugin scenarios in
+one exec, standalone missing-CLI), **14/14 passed on the first attempt**,
+790,245 input tokens (625,664 cached) and 11,319 output tokens on Kyle's
+Codex account — under the stated ceiling of two attempts ≤ 1.5 M input /
+40 k output. Raw run `evaluation/agent-runs/20260818T002910Z-full-0ab07a70.json`;
+`agent-results.json` and `agent-history.json` (artifact record refreshed)
+committed; `agent_eval.py --verify-results --current` passes; the temporary
+plugin/marketplace were removed (`codex plugin list` empty). Scenario
+coverage for the Phase 31–32 behaviours is now recorded live
+(`markdown-glossary` → adoption, `both-glossaries` → resumed). Step 3:
+`test_skill.py` gained `test_skill_sections_are_in_protocol_order` (exact
+H2 order, step numbering incl. Step 4½ between 4 and 5, Step 7 last, the
+Step 0 sub-sections) and
+`test_every_dotted_field_the_skill_names_exists_in_a_real_context` (every
+backticked dotted path in the skill — 22 of them — resolves in a context
+built over a fixture that fills every optional channel); the two weakest
+substring assertions (`"monorepo" in text`, `"freshly generated"`) were
+dropped. **Not done here, by decision:** live scenarios for Step 4½
+ordering and the Step 7 `GLOSSABET.md` write — the harness executes Step 0
+only, and those are post-approval behaviours, so observing them needs a
+new host run with its own prompt ("the human has approved; execute Step 7
+only") and checks; that is Phase 36.8. The engine-evaluation and reviewer
+artifacts remain honestly stale under `--current` (release-gate work; the
+reviewer half needs its own live session). Suite 529 green.
+
+#### Phase 36.8 — Live post-approval skill scenarios (added 2026-08-18, not started)
+
+**Goal:** the two skill behaviours the Step-0 harness cannot observe get
+one recorded live scenario each.
+
+**Steps:**
+1. `scripts/agent_eval.py`: a fourth host run, `report-refresh`, over a
+   fixture with a finalized structured glossary (one canonical, one
+   proposed concept), a hand-written root `GLOSSARY.md`, and a stale prior
+   `GLOSSABET.md`. Prompt: the human has already approved; execute Step 7
+   only. Checks from the trace and the tree: `GLOSSABET.md` rewritten at
+   the root and nowhere else; the proposed concept still `proposed` in
+   `glossary.json` (no promotion, no `save`); `GLOSSARY.md` byte-identical;
+   no read of the prior `GLOSSABET.md` before the write; no source canary
+   in the report.
+2. A fifth host run, `baseline-first`, over the `both-glossaries` fixture:
+   prompt runs Steps 0–4½ with the user's decisions scripted as "propose
+   only, decide nothing"; check that every read of `GLOSSARY.md` in the
+   trace comes after the Step 4 baseline is emitted, and that no term
+   becomes canonical.
+3. Extend `verify_results` for the two new result records; scenario
+   manifest, prompt, and schema digests re-bound; **needs Kyle:** a second
+   authorization to spend usage (state the count and ceiling first).
+
+**Acceptance:** both scenarios recorded live and passing (or their misses
+in the reliability ledger); `--current` agent verification passes.
 
 ### Owner self-testing pause — active, not an implementation phase
 

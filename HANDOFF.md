@@ -1,4 +1,4 @@
-# Session handoff — 2026-08-17
+# Session handoff — 2026-08-18
 
 Refreshed at the end of the 2026-08-17 session (Phases 34 and 35). It
 becomes stale when the next phase begins. `PLAN.md` remains the
@@ -10,8 +10,8 @@ the owner self-testing pause before doing anything.
 vocabulary explicit, canonical, inspectable, and maintainable. Deterministic
 machinery gathers evidence, the LLM reasons, the human decides.
 
-**State on disk:** `dev` is six commits (Phases 36.1–36.6) ahead of
-`main`; the working tree is clean; the full suite (527 tests) is green; wheel and plugin were rebuilt
+**State on disk:** `dev` is eight commits (Phases 36.1–36.7) ahead of
+`main`; the working tree is clean; the full suite (529 tests) is green; wheel and plugin were rebuilt
 through `uv build --no-sources` + `scripts/build_plugin.py dist` and
 `scripts/check_distribution.py dist --tag v0.1.0` passes; the CLI at
 `~/.local/bin/glossabet` is the current build. The installed agent skills
@@ -54,18 +54,22 @@ re-run `glossabet install --agent claude` / `glossabet install` if unsure.
   **36.5 done:** `tests/test_finding_producers.py` (15 producer-level
   tests over hand-built evidence, one per finding kind). **36.6 done:**
   `coverage.capped_collection(total_items=…)` + `coverage.capped_section`,
-  `findings.empty_section`; ledger construction sites 22 → 13. Remaining:
-  36.7 verification weight onto the skill (needs Kyle's authorization to
-  spend usage). Each sub-phase is one pass under Phase 35
+  `findings.empty_section`; ledger construction sites 22 → 13. **36.7
+  done (2026-08-18):** wheel/plugin rebuilt, authorized Codex batch 14/14
+  on the first attempt (790 k input / 11 k output tokens), agent evidence
+  passes `--current`; `test_skill.py` structure tests. Step 4½ / Step 7
+  live scenarios split into **Phase 36.8** (needs a new host run and a
+  second usage authorization). Each sub-phase is one pass under Phase 35
   rules.
 
 **How to resume**
 
 - `$next` / `/next` → the first incomplete phase whose dependencies are
-  complete is Phase 33.2 or Phase 36.7 — both need Kyle's authorization
-  to spend Codex/Claude usage on a bounded scenario batch, and both honour
-  the owner self-testing pause. Phase 36.7 step 3 (structure tests in
-  `test_skill.py`) needs no authorization and can go first.
+  complete is Phase 33.2 or Phase 36.8 — both need Kyle's authorization
+  to spend usage on a bounded batch (state count and ceiling first), and
+  both honour the owner self-testing pause. Phase 36.8 steps 1–2
+  (evaluator code) can be written before the authorization; only the run
+  needs it.
 - Before any Phase 36 sub-phase, rebuild the byte-identical oracle: copy the
   four local fixtures from `evaluation/corpus.json` (`path` sources) to a
   scratch dir, `glossabet save` each source's `glossary`, run every command
@@ -75,9 +79,10 @@ re-run `glossabet install --agent claude` / `glossabet install` if unsure.
   stdout/stderr and every `glossabet-out/*.json`, and diff after each step.
   Do not include a scan of this repository itself in the oracle — the
   refactor changes the source it reads.
-- The evaluation `--current` verifiers for agent/reviewer results are
-  expected to be stale (skill hash moved in Phases 31–34); Phase 33.2 /
-  36.7 own re-running them.
+- `agent_eval.py --verify-results --current` passes as of 2026-08-18. The
+  engine-evaluation (`evaluation/run.py`) and reviewer verifiers are still
+  stale under `--current` (self-scan of this repository moved during
+  Phase 35–36; reviewer results need a live session) — release-gate work.
 
 **Open items that need Kyle**
 

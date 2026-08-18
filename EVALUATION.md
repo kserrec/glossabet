@@ -348,7 +348,15 @@ skill through Codex CLI 0.147.0 on Linux. All 11 scenarios passed: current,
 stale, and absent Graphify state; malformed, oversized, and symlinked
 glossaries; partial agent projection; monorepo scope choice; resumed glossary
 state; excluded sensitive files; and a standalone installed skill with no
-`glossabet` command on `PATH`.
+`glossabet` command on `PATH`. The batch recorded on 2026-08-18 (Phase 36.7,
+same Codex CLI 0.147.0 on Linux, current plugin bytes and current skill)
+passed all 14 scenarios: those eleven plus the fresh-session hook and the two
+Phase 31–32 glossary-state scenarios — a hand-maintained root `GLOSSARY.md`
+with no structured glossary (adoption, reported as metadata only) and a
+structured glossary beside a hand-maintained `GLOSSARY.md` (resume, with the
+repository glossary surfaced separately). Step 4½ ordering and the Step 7
+`GLOSSABET.md` write are post-approval behaviours a Step-0-only batch cannot
+observe; they remain unverified live (PLAN Phase 36.8).
 
 The bounded traces prove that Codex read the skill from the temporary plugin,
 version-checked that plugin's exact engine, and used one attributable `inspect`
