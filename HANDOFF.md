@@ -11,8 +11,11 @@ the owner self-testing pause before doing anything.
 vocabulary explicit, canonical, inspectable, and maintainable. Deterministic
 machinery gathers evidence, the LLM reasons, the human decides.
 
-**State on disk:** `dev` and `main` carry the same commits (pushed
-2026-08-18); the working tree is clean; the full suite (529 tests) is green; wheel and plugin were rebuilt
+**State on disk:** work happens directly on `main` (Kyle retired the
+`dev` branch on 2026-08-17 — "we're not publicly inviting anyone to this
+yet"; local and remote `dev` were deleted after fast-forwarding `main`;
+recreate a branch only if outside collaboration begins); the working tree is
+clean; the full suite (529 tests) is green; wheel and plugin were rebuilt
 through `uv build --no-sources` + `scripts/build_plugin.py dist` and
 `scripts/check_distribution.py dist --tag v0.1.0` passes; the CLI at
 `~/.local/bin/glossabet` is the current build. The installed agent skills
