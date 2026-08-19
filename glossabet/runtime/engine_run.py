@@ -48,7 +48,9 @@ def open_run(
     root = Path(path_arg)
     try:
         root_mode = root.stat().st_mode
-    except (FileNotFoundError, NotADirectoryError):
+    except PermissionError:
+        raise
+    except OSError:
         raise RunError("not a directory: " + path_arg) from None
     if not stat.S_ISDIR(root_mode):
         raise RunError("not a directory: " + path_arg)
