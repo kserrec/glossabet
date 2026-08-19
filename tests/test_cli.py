@@ -105,7 +105,8 @@ def test_unexpected_exception_text_is_terminal_safe(capsys, monkeypatch):
 def test_permission_errors_are_user_errors_not_internal_defects(tmp_path, capsys):
     """An unreadable repository or destination is the environment's fault:
     exit 1 with the OS reason, never a traceback and exit 2 blaming glossabet
-    (pathlib's exists()/is_dir()/is_symlink() raise on EACCES)."""
+    (pathlib predicate behavior differs by Python version, so path checks must
+    not erase EACCES)."""
     locked = tmp_path / "locked"
     (locked / "repo").mkdir(parents=True)
     locked.chmod(0)

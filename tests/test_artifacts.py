@@ -33,7 +33,9 @@ def test_failed_atomic_commit_preserves_existing_document(
 # --- the one bounded read discipline (Phase 35.2) ---------------------------
 
 
-def test_read_bounded_json_outcomes_are_named_and_bound_is_judged_from_bytes(tmp_path):
+def test_read_bounded_json_outcomes_are_named_and_bound_is_judged_from_bytes(
+    tmp_path, monkeypatch
+):
     from glossabet.runtime.artifacts import (
         READ_ABSENT, READ_MALFORMED, READ_OK, READ_OVERSIZED, READ_UNREADABLE,
         read_bounded_bytes, read_bounded_json,
@@ -48,10 +50,20 @@ def test_read_bounded_json_outcomes_are_named_and_bound_is_judged_from_bytes(tmp
     assert read_bounded_json(tmp_path / "missing.json", 10).status == READ_ABSENT
     assert read_bounded_json(tmp_path, 10).status == READ_ABSENT  # a directory
 
-    deep = tmp_path / "deep.json"
-    depth = 60_000
-    deep.write_bytes(b"[" * depth + b"]" * depth)
-    assert read_bounded_json(deep, 10 ** 9).status == READ_MALFORMED  # RecursionError caught
+    recursive = tmp_path / "recursive.json"
+    recursive.write_bytes(b"[]")
+
+    def fail_recursive_parse(_document):
+        raise RecursionError("simulated parser recursion limit")
+
+    with monkeypatch.context() as recursion_patch:
+        recursion_patch.setattr(
+            "glossabet.runtime.artifacts.json.loads", fail_recursive_parse
+        )
+        malformed = read_bounded_json(recursive, 10 ** 9)
+    assert malformed.status == READ_MALFORMED
+    assert malformed.payload == b"[]"
+    assert malformed.error == "simulated parser recursion limit"
 
     bad = tmp_path / "bad.json"
     bad.write_bytes(b"\xff\xfe{}")

@@ -10,6 +10,7 @@ is one ``RunError``, an ``ArtifactError`` that `cli` reports through
 
 from __future__ import annotations
 
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -45,7 +46,11 @@ def open_run(
     how to create one.
     """
     root = Path(path_arg)
-    if not root.is_dir():
+    try:
+        root_mode = root.stat().st_mode
+    except (FileNotFoundError, NotADirectoryError):
+        raise RunError("not a directory: " + path_arg) from None
+    if not stat.S_ISDIR(root_mode):
         raise RunError("not a directory: " + path_arg)
     root = root.resolve()
     if OUT_DIR in root.parts:
