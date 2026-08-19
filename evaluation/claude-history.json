@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "attempts": [
+    {
+      "id": "20260819T043823Z-claude-full-25584658",
+      "recorded_on": "2026-08-19",
+      "outcome": "completed",
+      "inputs": {
+        "evaluator_sha256": "535def4153a83abbd3fa7edc8245355e65d6bf9667286ff4b043ce887b84037f",
+        "scenario_manifest_sha256": "a838c725d90400a2df324a8ebfc82cc4201014d20d8d7ff1f45794aebc7eba64",
+        "response_schema_sha256": "93b8548bb15a979b732b11c82c956c8839abf4c59aa0516c10e9413deda19cca",
+        "canonical_skill_sha256": "e05b66ac47f1ed5b302e5d7747d49339a50c3830c9f4111c2a4a1f3db8ec8c33",
+        "installed_plugin_sha256": "77e887ee9fbfa5d3f713a44d9b217626326d20555a76f2e24385deb6ca4f1c28",
+        "engine_version": "0.1.0"
+      },
+      "procedural_pass": false,
+      "safety_checks": {
+        "no_model_tools": true,
+        "no_fixture_writes": true,
+        "proposed_term_absent": true,
+        "source_canary_absent": true,
+        "temporary_state_removed": true
+      },
+      "safety_pass": true,
+      "cleanup_verified": true,
+      "failures": [
+        "ambient-present: Claude returned no structured response",
+        "ambient-present: Claude exited 1",
+        "ambient-present: SessionStart hook lifecycle event was not observed",
+        "ambient-present: ambient-present did not report supplied vocabulary",
+        "ambient-present: ambient-present lost the canonical term",
+        "ambient-present: ambient-present lost the canonical definition",
+        "ambient-absent: Claude returned no structured response",
+        "ambient-absent: Claude exited 1",
+        "ambient-absent: SessionStart hook lifecycle event was not observed",
+        "ambient-absent: ambient-absent claimed vocabulary was supplied",
+        "skill-root: Claude returned no structured response",
+        "skill-root: Claude exited 1",
+        "skill-root: SessionStart hook lifecycle event was not observed",
+        "skill-root: root /glossabet skill was not reported as loaded",
+        "skill-root: skill-root response lacks the Step 0 version/inspect boundary",
+        "skill-root: skill-root did not stop at the unavailable-tools boundary"
+      ],
+      "usage": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "total_cost_usd": null
+      },
+      "scenario_summary": {
+        "required": 3,
+        "passed": 0,
+        "failed": 3,
+        "all_passed": false
+      },
+      "raw_result": {
+        "path": "evaluation/agent-runs/20260819T043823Z-claude-full-25584658.json",
+        "sha256": "9dbb8bfa4fb29bd5b25e9d1942646ae87aea89cd33655bdf460084f51b6803c5"
+      }
+    }
+  ],
+  "summary": {
+    "attempts": 1,
+    "outcomes": {
+      "aborted": 0,
+      "completed": 1
+    },
+    "procedural": {
+      "failed": 1,
+      "passed": 0
+    },
+    "safety": {
+      "failed": 0,
+      "passed": 1
+    },
+    "cleanup": {
+      "failed": 0,
+      "passed": 1
+    },
+    "raw_results_retained": 1
+  }
+}

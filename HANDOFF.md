@@ -1,16 +1,88 @@
 # Session handoff — 2026-08-18 (late)
 
-Refreshed at the end of the 2026-08-18 evening session (Phases 38–44 done:
+Refreshed after the 2026-08-18 Phase 33.2 first automated attempt and its
+offline correction
+(Phases 38–44 also done:
 config discoverability + skill shortening, layer subpackages, refactor pass,
 bughunt rounds 4–6, audit round 5, **test audit round 1**; all rulings that
 were open are settled — see PLAN Phase 42/44 and "Rulings"). It becomes stale
-when the next phase begins. State on disk: `main` = `origin/main`, tree
-clean, 623 tests green (~40–60 s), wheel and plugin rebuilt after Phase 44,
+when the next phase begins. The session began with `main` = `origin/main` at
+`7b636659f39e277fefe2ff1a33333496f95b9b7f`; this wrapup covers the Phase 33.2
+evaluator, tests, static evaluation records, PLAN/HANDOFF updates, one retained
+failed raw run, and its current-result mirror. The full suite is 644/644 green
+(79.43 s final wrapup run); wheel and plugin
+remain the builds made after Phase 44,
 `glossabet check_distribution dist --tag v0.1.0` passes, the CLI at
-`~/.local/bin/glossabet` is the current build. Nothing is pending from Kyle;
-the owner self-testing pause is still active (never prompt him to test).
+`~/.local/bin/glossabet` is the current build. The next Phase 33.2 action needs
+fresh authorization for a corrected bounded three-call live batch; no further
+Claude call is authorized now. The owner self-testing pause is still active
+(never prompt him to test).
 Kyle's standing rule from today: no "future bughunts" — a known-needed
 bughunt runs now, or as soon as its open questions are settled.
+
+**Addendum — normal Claude Code smoke test, 2026-08-18:** the current
+Glossabet 0.1.0 Claude Code skill/plugin is installed at
+`~/.claude/skills/glossabet/`. Kyle launched his ordinary `claude` command
+from `examples/payment-service` on Claude Code 2.1.235/Linux. An ambient
+orientation response used the canonical Payment Attempt, Gateway Client, and
+Authorization vocabulary and explicitly identified the SessionStart-injected
+brief; `/glossabet` was also invocable and correctly resumed the managed
+glossary without re-proposing its three settled concepts or writing files.
+The repository remained clean at `7b636659f39e277fefe2ff1a33333496f95b9b7f`
+with `main` equal to `origin/main`. This is partial manual smoke evidence, not
+Phase 33.2 acceptance: the ambient response used project-reading commands, no
+no-glossary scenario ran, the profile was not isolated, and no digest-bound
+raw transcript was captured. The earlier isolated evaluator stopped at auth
+preflight before a model call; its temporary state was believed removed, but
+the later live-evidence checks found one older residue described below. The
+subsequent temporary isolated login did not complete because its passkey flow
+was unlike Kyle's normal login. The cause is unverified. Do not repeat that
+isolated-login route. PLAN Phase 33.2 now carries the replacement design: use
+normal signed-in authentication without reading or changing auth state;
+isolate the three fixture repositories under `/tmp`; disable model tools,
+MCP, and session persistence; capture hook events and digest-bound raw
+evidence; abort instead of opening any login flow.
+
+**Addendum — Phase 33.2 offline evaluator, 2026-08-18:**
+`scripts/claude_eval.py`, `tests/test_claude_evaluation.py`,
+`evaluation/claude-scenarios.json`,
+`evaluation/claude-response-schema.json`, and the initially empty
+`evaluation/claude-history.json` now implement the replacement design. The
+focused fake-host suite was 20/20 green and the full repository suite was
+643/643 green. Before the live attempt, `--verify-history` reported an empty
+genuine ledger, so the implementation pass itself made no Claude model call.
+The fake host proves exact call count and command
+confinement, normal-profile environment sanitization, auth/plugin preflight,
+failure retention, trace-derived semantic verification, SHA-256 tamper
+detection, and owned `/tmp` cleanup.
+
+**Addendum — Phase 33.2 first automated attempt, 2026-08-18 local:** Kyle
+authorized one exact three-call normal-profile batch with no retry. Attempt
+`20260819T043823Z-claude-full-25584658` passed Claude Code 2.1.235/Linux auth
+and plugin preflight, then all three local processes exited before hooks or
+model use because `evaluation/claude-response-schema.json` declared Draft
+2020-12 while Claude Code's structured-output validator uses Draft 7. The
+retained result is 0/3 with exactly zero input/output tokens and no reported
+cost. Safety passed: no tools, writes, retry, or canary leaks; current scratch
+cleanup passed. The immutable raw run's SHA-256 is
+`9dbb8bfa4fb29bd5b25e9d1942646ae87aea89cd33655bdf460084f51b6803c5`;
+history retains one attempt and the current-result mirror matches it. The
+newer-draft declaration and the verifier's false `empty` message were then
+corrected offline; focused tests are 21/21 and the full suite is 644/644. No
+second live batch ran, so Phase 33.2 and the documentation flip remain open.
+The mirror is intentionally non-current after those corrections: current-input
+verification rejects both its prior input identity and its 0/3 result, while
+history integrity passes.
+
+Independent cleanup verification also found
+`/tmp/glossabet-claude-eval-6dup075u`, born at 20:31 local and shaped as the
+old isolated `home` design. It predates the 21:38 normal-profile batch and is
+not that batch's removed scratch tree. Its authentication-file contents were
+not read. Kyle separately authorized deletion of that exact path; it was
+removed and verified absent. The final wrapup then removed the names-only
+backlog of 45 other top-level `/tmp/glossabet-*` directories and 31 files from
+earlier project sessions after confirming no process used them. No contents
+were read, and no top-level `/tmp/glossabet-*` entry remains.
 
 Earlier text below (Phase 36/37 era) is kept for orientation; where it
 disagrees with the paragraph above, the paragraph above wins. `PLAN.md` remains the
@@ -29,9 +101,11 @@ recreate a branch only if outside collaboration begins); the working tree is
 clean; the full suite (529 tests) is green; wheel and plugin were rebuilt
 through `uv build --no-sources` + `scripts/build_plugin.py dist` and
 `scripts/check_distribution.py dist --tag v0.1.0` passes; the CLI at
-`~/.local/bin/glossabet` is the current build. The installed agent skills
-(`~/.claude/skills`, `~/.agents/skills`) are whatever Kyle last installed —
-re-run `glossabet install --agent claude` / `glossabet install` if unsure.
+`~/.local/bin/glossabet` is the current build. The Claude Code skill/plugin at
+`~/.claude/skills/glossabet/` is installed from that build and has the live
+smoke evidence summarized above. The Codex personal skill at
+`~/.agents/skills` is whatever Kyle last installed; re-run `glossabet install`
+if its currency matters.
 
 **Addendum 2026-08-17 (pre-testing trust/legal review — Phase 37, done):**
 before starting owner testing Kyle asked for overlooked legal/ethical/trust
@@ -121,11 +195,16 @@ before testing:** `uv tool install . --reinstall`, then
 **How to resume**
 
 - `$next` / `/next` → the first incomplete phase whose dependencies are
-  complete is Phase 33.2 or Phase 36.8 — both need Kyle's authorization
-  to spend usage on a bounded batch (state count and ceiling first), and
-  both honour the owner self-testing pause. Phase 36.8 steps 1–2
-  (evaluator code) can be written before the authorization; only the run
-  needs it.
+  complete is Phase 33.2 or Phase 36.8. Phase 33.2 now has partial
+  normal-profile smoke evidence and a binding authentication-safe replacement
+  design. Its first automated batch is a retained pre-model schema miss, its
+  Draft 7 correction is offline-tested, and all known Glossabet `/tmp` residue
+  is gone. Request fresh authorization for exactly three normal-profile Claude
+  Code calls, no retry,
+  at the count and limits written in PLAN; without that exact authorization,
+  run only the offline verifiers. Both phases honour the owner
+  self-testing pause. Phase 36.8 steps 1–2 (evaluator code) can likewise be
+  written before authorization; only its run needs it.
 - Before any Phase 36 sub-phase, rebuild the byte-identical oracle: copy the
   four local fixtures from `evaluation/corpus.json` (`path` sources) to a
   scratch dir, `glossabet save` each source's `glossary`, run every command
@@ -142,8 +221,13 @@ before testing:** `uv tool install . --reinstall`, then
 
 **Open items that need Kyle**
 
-- Phase 33.2: explicit go to spend usage on one bounded Claude Code / Codex
-  batch (scenario count and token ceiling stated before the run).
+- Phase 33.2: fresh authorization for exactly three Claude Code calls on
+  Kyle's existing Max
+  subscription, no retry, at no more than 200,000 input / 6,000 output tokens
+  estimated total and a $0.25 CLI cap per call, plus one evaluator-owned `/tmp`
+  directory that is deleted and verified absent. Normal authentication is
+  reused; no login/logout/setup-token action is allowed. The 2026-08-18 manual
+  smoke test is partial evidence and must not be promoted to acceptance.
 - Ending the owner self-testing pause (only Kyle's explicit instruction).
 - Test-audit rulings recorded in `PLAN.md` (Phase 30–32 test-audit
   proposals; test-audit round 1 deferred items).

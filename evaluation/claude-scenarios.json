@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "host": {
+    "name": "Claude Code",
+    "version": "2.1.235",
+    "platform": "Linux"
+  },
+  "model": "sonnet",
+  "budget": {
+    "calls": 3,
+    "retries": 0,
+    "estimated_total_input_tokens": 200000,
+    "estimated_total_output_tokens": 6000,
+    "max_usd_per_call": 0.25
+  },
+  "trace_limits": {
+    "jsonl_bytes_per_call": 2000000,
+    "events_per_call": 500,
+    "stored_string_characters": 4000
+  },
+  "scenarios": [
+    {
+      "id": "ambient-present",
+      "fixture": "managed-glossary",
+      "expected_status": "supplied",
+      "disable_skills": true,
+      "prompt": "Do not run commands, call tools, inspect files, or use outside knowledge. Use only developer context supplied before this request. Determine whether this repository supplied a settled project term for the immutable value a caller passes toward a payment gateway before money is captured. If that context supplies one, set status to supplied and copy its term and definition verbatim. Otherwise set status to not-supplied and use null for both. Set protocol to null."
+    },
+    {
+      "id": "ambient-absent",
+      "fixture": "no-glossary",
+      "expected_status": "not-supplied",
+      "disable_skills": true,
+      "prompt": "Do not run commands, call tools, inspect files, or use outside knowledge. Use only developer context supplied before this request. Determine whether this repository supplied a settled project term for the immutable value a caller passes toward a payment gateway before money is captured. If that context supplies one, set status to supplied and copy its term and definition verbatim. Otherwise set status to not-supplied and use null for both. Set protocol to null."
+    },
+    {
+      "id": "skill-root",
+      "fixture": "managed-glossary",
+      "expected_status": "skill-loaded",
+      "disable_skills": false,
+      "prompt": "/glossabet"
+    }
+  ]
+}

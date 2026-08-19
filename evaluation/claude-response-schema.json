@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "term", "definition", "protocol"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "supplied",
+        "not-supplied",
+        "skill-loaded",
+        "skill-unavailable"
+      ]
+    },
+    "term": {
+      "type": ["string", "null"],
+      "maxLength": 200
+    },
+    "definition": {
+      "type": ["string", "null"],
+      "maxLength": 500
+    },
+    "protocol": {
+      "type": ["string", "null"],
+      "maxLength": 1000
+    }
+  }
+}

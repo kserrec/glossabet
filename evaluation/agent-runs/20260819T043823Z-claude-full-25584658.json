@@ -1,0 +1,185 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-19T04:38:32.242615+00:00",
+  "inputs": {
+    "evaluator_sha256": "535def4153a83abbd3fa7edc8245355e65d6bf9667286ff4b043ce887b84037f",
+    "scenario_manifest_sha256": "a838c725d90400a2df324a8ebfc82cc4201014d20d8d7ff1f45794aebc7eba64",
+    "response_schema_sha256": "93b8548bb15a979b732b11c82c956c8839abf4c59aa0516c10e9413deda19cca",
+    "canonical_skill_sha256": "e05b66ac47f1ed5b302e5d7747d49339a50c3830c9f4111c2a4a1f3db8ec8c33",
+    "installed_plugin_sha256": "77e887ee9fbfa5d3f713a44d9b217626326d20555a76f2e24385deb6ca4f1c28",
+    "engine_version": "0.1.0"
+  },
+  "environment": {
+    "claude_version": "2.1.235",
+    "platform": "Linux-6.17.0-35-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "auth": {
+    "logged_in": true,
+    "auth_method": "claude.ai",
+    "api_provider": "firstParty",
+    "subscription_type": "max"
+  },
+  "plugin": {
+    "path": "<HOME>/.claude/skills/glossabet",
+    "tree_sha256": "77e887ee9fbfa5d3f713a44d9b217626326d20555a76f2e24385deb6ca4f1c28",
+    "skill_sha256": "e05b66ac47f1ed5b302e5d7747d49339a50c3830c9f4111c2a4a1f3db8ec8c33",
+    "manifest_sha256": "0cf79db95983648956e955ac04fe1bc6958a24c3c26441df87a16c0dedf5f5d0",
+    "hook_sha256": "2661027b9332350ae5d17bab7279ee5b31e7145590f7e2ee8c6ecb0ecf809bd4",
+    "hook_executable": "<HOME>/.local/bin/glossabet",
+    "enabled_plugins": [
+      {
+        "id": "frontend-design@claude-plugins-official",
+        "version": "unknown",
+        "scope": "user",
+        "hooks": 0
+      },
+      {
+        "id": "rust-analyzer-lsp@claude-plugins-official",
+        "version": "1.0.0",
+        "scope": "user",
+        "hooks": 0
+      },
+      {
+        "id": "glossabet@skills-dir",
+        "version": "0.1.0",
+        "scope": "user",
+        "hooks": 1
+      }
+    ]
+  },
+  "method": {
+    "host_calls": 3,
+    "retries": 0,
+    "normal_profile_authentication": true,
+    "authentication_commands_allowed": false,
+    "setting_sources": [
+      "user"
+    ],
+    "tools": [],
+    "strict_empty_mcp": true,
+    "session_persistence": false,
+    "chrome": false,
+    "max_turns_per_call": 1,
+    "model": "sonnet",
+    "max_usd_per_call": 0.25,
+    "trace_limits": {
+      "jsonl_bytes_per_call": 2000000,
+      "events_per_call": 500,
+      "stored_string_characters": 4000
+    }
+  },
+  "scenarios": [
+    {
+      "id": "ambient-present",
+      "passed": false,
+      "failures": [
+        "Claude returned no structured response",
+        "Claude exited 1",
+        "SessionStart hook lifecycle event was not observed",
+        "ambient-present did not report supplied vocabulary",
+        "ambient-present lost the canonical term",
+        "ambient-present lost the canonical definition"
+      ],
+      "prompt": "Do not run commands, call tools, inspect files, or use outside knowledge. Use only developer context supplied before this request. Determine whether this repository supplied a settled project term for the immutable value a caller passes toward a payment gateway before money is captured. If that context supplies one, set status to supplied and copy its term and definition verbatim. Otherwise set status to not-supplied and use null for both. Set protocol to null.",
+      "prompt_sha256": "af143f39807e9c8328e27506d5a15f316983d631767d127d27a29371533d75f3",
+      "response": null,
+      "observed": {
+        "hook_event_seen": false,
+        "tool_calls": [],
+        "api_retries": 0,
+        "unexpected_writes": [],
+        "direct_brief_sha256": "f5b60d74cd97e3b7a3b65cccfb8e00cbbf098cdea6c35160a1b48ecb73b904d0",
+        "canonical_term_seen": false,
+        "canonical_definition_seen": false,
+        "proposed_term_absent": true,
+        "source_canary_absent": true
+      },
+      "returncode": 1,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr": "Error: --json-schema is not a valid JSON Schema: no schema with key or ref \"https://json-schema.org/draft/2020-12/schema\"\n",
+      "stderr_sha256": "d8a1e758a0885d376f7a2457d829c53f27040ef929246fb4e28105670fb743de",
+      "stderr_sanitized_sha256": "d8a1e758a0885d376f7a2457d829c53f27040ef929246fb4e28105670fb743de",
+      "events": [],
+      "usage": {}
+    },
+    {
+      "id": "ambient-absent",
+      "passed": false,
+      "failures": [
+        "Claude returned no structured response",
+        "Claude exited 1",
+        "SessionStart hook lifecycle event was not observed",
+        "ambient-absent claimed vocabulary was supplied"
+      ],
+      "prompt": "Do not run commands, call tools, inspect files, or use outside knowledge. Use only developer context supplied before this request. Determine whether this repository supplied a settled project term for the immutable value a caller passes toward a payment gateway before money is captured. If that context supplies one, set status to supplied and copy its term and definition verbatim. Otherwise set status to not-supplied and use null for both. Set protocol to null.",
+      "prompt_sha256": "af143f39807e9c8328e27506d5a15f316983d631767d127d27a29371533d75f3",
+      "response": null,
+      "observed": {
+        "hook_event_seen": false,
+        "tool_calls": [],
+        "api_retries": 0,
+        "unexpected_writes": [],
+        "direct_brief_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "canonical_term_seen": false,
+        "canonical_definition_seen": false,
+        "proposed_term_absent": true,
+        "source_canary_absent": true
+      },
+      "returncode": 1,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr": "Error: --json-schema is not a valid JSON Schema: no schema with key or ref \"https://json-schema.org/draft/2020-12/schema\"\n",
+      "stderr_sha256": "d8a1e758a0885d376f7a2457d829c53f27040ef929246fb4e28105670fb743de",
+      "stderr_sanitized_sha256": "d8a1e758a0885d376f7a2457d829c53f27040ef929246fb4e28105670fb743de",
+      "events": [],
+      "usage": {}
+    },
+    {
+      "id": "skill-root",
+      "passed": false,
+      "failures": [
+        "Claude returned no structured response",
+        "Claude exited 1",
+        "SessionStart hook lifecycle event was not observed",
+        "root /glossabet skill was not reported as loaded",
+        "skill-root response lacks the Step 0 version/inspect boundary",
+        "skill-root did not stop at the unavailable-tools boundary"
+      ],
+      "prompt": "/glossabet",
+      "prompt_sha256": "5c331f1eefb43b41f56a3cbe4d381c8269d09c007f6d28c024eecf4bafe5a65b",
+      "response": null,
+      "observed": {
+        "hook_event_seen": false,
+        "tool_calls": [],
+        "api_retries": 0,
+        "unexpected_writes": [],
+        "direct_brief_sha256": "ea5affae026b440d16244c258e20ddf8d7dd1023bfc2d4516a74d14c010e15f1",
+        "canonical_term_seen": false,
+        "canonical_definition_seen": false,
+        "proposed_term_absent": true,
+        "source_canary_absent": true
+      },
+      "returncode": 1,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr": "Error: --json-schema is not a valid JSON Schema: no schema with key or ref \"https://json-schema.org/draft/2020-12/schema\"\n",
+      "stderr_sha256": "d8a1e758a0885d376f7a2457d829c53f27040ef929246fb4e28105670fb743de",
+      "stderr_sanitized_sha256": "d8a1e758a0885d376f7a2457d829c53f27040ef929246fb4e28105670fb743de",
+      "events": [],
+      "usage": {}
+    }
+  ],
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "total_cost_usd": null
+  },
+  "cleanup_verified": true,
+  "summary": {
+    "required": 3,
+    "passed": 0,
+    "failed": 3,
+    "all_passed": false
+  }
+}

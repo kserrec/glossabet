@@ -463,28 +463,174 @@ after 33.2 has evidence.
 
 #### Phase 33.2 — Live Claude Code session-start evidence
 
+**Revised design (binding after the 2026-08-18 isolated-login attempt):**
+retire the temporary `HOME` / `CLAUDE_CONFIG_DIR` authentication approach.
+It did not authenticate, and the attempted isolated interactive login did not
+present Kyle's normal passkey flow; the cause remains unverified. The
+controlled run will use the already signed-in normal Claude Code profile while
+isolating repositories, tools, settings sources, session persistence, and
+captured evidence. It will never invoke `auth login`, `auth logout`,
+`setup-token`, or copy/read authentication files.
+
 **Steps:**
 
-1. Add a Claude Code evaluator alongside `scripts/agent_eval.py`'s Codex
-   batches: an isolated `CLAUDE_CONFIG_DIR`/`HOME` holding only the 33.1
-   install, a fixture repository with a finalized glossary, headless
-   `claude -p` sessions whose prompts omit Glossabet and every expected term,
-   and the same checks as Phase 28.2 — exact canonical term and definition
-   returned from hook context, zero commands run, no proposed-term or source
-   canary, no repository write, no glossary → no vocabulary in context;
-   plus one scenario proving the folder's root `SKILL.md` is still invocable
-   as the `glossabet` skill once the manifest makes the folder a plugin.
-   Record the Claude Code version, OS, raw transcripts, and SHA-256s under
-   `evaluation/agent-runs/` per the Phase 29 currency rules.
-2. **Needs from Kyle before running:** explicit authorization to spend usage
-   on his Claude account for one bounded batch (state the scenario count and
-   an upper estimate of tokens before the run), and confirmation that the
-   probe may create and then delete a temporary config directory under the
-   scratchpad. Nothing in his real `~/.claude` is touched.
+1. **Offline implementation complete 2026-08-18.** Add a separate stdlib-only
+   evaluator and focused tests:
+   `scripts/claude_eval.py`, `tests/test_claude_evaluation.py`,
+   `evaluation/claude-scenarios.json`, and
+   `evaluation/claude-response-schema.json`. Its append-only attempt ledger is
+   `evaluation/claude-history.json`; the latest completed raw result may be
+   mirrored at `evaluation/claude-results.json`, but only when its SHA-256 is
+   retained by the ledger. Immutable raw runs are single JSON files named
+   `evaluation/agent-runs/<UTC>-claude-<id>.json`. Keep this evidence separate
+   from the Codex evaluator and its history.
+2. **Live preflight passed 2026-08-18.** Fail closed before a model call.
+   `claude --setting-sources user auth status
+   --json` must already report a signed-in first-party `claude.ai` subscription;
+   retain only the non-identifying status fields. Hash the installed
+   `~/.claude/skills/glossabet/` skill, manifest, and hook; require Claude Code
+   2.1.235's plugin inventory to show that exact folder as
+   `glossabet@skills-dir`; inventory every other enabled plugin and abort if
+   another SessionStart hook could contribute context. Never modify plugin,
+   settings, or authentication state.
+3. **First live batch retained as a pre-model startup miss; corrected batch
+   pending fresh authorization.** One batch is exactly three fresh `claude -p`
+   calls in uniquely named
+   temporary Git repositories under `/tmp`:
+   - `ambient-present`: a finalized glossary contains one distinctive
+     canonical term and definition, one proposed term, and an unrelated source
+     canary. The prompt names none of them and does not name Glossabet. Run with
+     `--setting-sources user`, `--disable-slash-commands`, `--tools ""`, an
+     empty strict MCP configuration, `--no-chrome`, `--no-session-persistence`,
+     structured output, and streamed hook events. Passing requires exactly the
+     canonical term and definition from the SessionStart brief, no proposed
+     term or source canary, zero model tool calls, and an unchanged repository.
+   - `ambient-absent`: the same tool-disabled boundary in a repository with no
+     glossary. Passing requires the Glossabet hook to run with no vocabulary
+     payload, the model to report that no settled term was supplied, none of
+     the fixture terms/canaries, zero model tool calls, and no repository write.
+   - `skill-root`: submit the literal `/glossabet` command with skills enabled
+     but model tools still disabled. Passing requires the response to reflect
+     the installed skill's Step 0 version-check/inspect boundary and to stop
+     because tools are unavailable; this records root-skill invocation without
+     granting shell or file access. The 2026-08-18 manual smoke test separately
+     corroborates a full managed-glossary invocation with tools.
+4. **First miss retained and digest-verified; passing lifecycle evidence
+   pending.** Capture the Claude Code version, OS, sanitized auth mode,
+   installed-plugin
+   hashes and inventory, exact prompts, bounded raw event streams, model
+   responses, usage reported by the CLI, fixture snapshots, cleanup result,
+   and every input SHA-256. Append completed, failed, and preflight-aborted
+   attempts; never overwrite or hide a miss. Remove and verify absence of only
+   the evaluator-owned `/tmp` tree. `--no-session-persistence` prevents saved
+   conversations; ordinary Claude runtime metadata remains outside the
+   evaluator's zero-write guarantee and is neither inspected nor deleted.
+5. **Offline correction and tests complete 2026-08-18:** 21 evaluator tests and
+   all 644 repository tests pass; `--verify-history` reports one genuine
+   retained attempt. **Needs from Kyle before another live run:** a fresh
+   explicit authorization for three Claude
+   Code calls on his existing Max subscription, no retry, estimated at no more
+   than 200,000 input and 6,000 output tokens total, with the CLI capped at
+   $0.25 per call, plus permission to create and delete the one named `/tmp`
+   run directory. The request must say plainly that normal authentication is
+   reused and no login flow will occur.
 
-**Acceptance:** one authorized batch on a named Claude Code version passes
-every scenario, or its misses are recorded in the reliability ledger without
-retouching artifacts; all temporary host state is verified removed.
+**Acceptance:** the offline evaluator tests pass; one newly authorized,
+no-retry three-call batch on Claude Code 2.1.235/Linux records all three
+scenarios as passes or visible misses; every fixture-write, canary, tool-call,
+hook-inventory, artifact-integrity, and cleanup check is recorded; the raw run
+and ledger verify by SHA-256. Only a passing batch permits Phase 33.3 to change
+Claude Code's documentation status, and that claim remains limited to the
+normal-profile configuration, version, and operating system actually probed.
+A batch that stops at local CLI/schema validation before hooks or model use is
+retained as a real miss but does not supply the host-lifecycle evidence, so it
+does not close Phase 33.2.
+
+**Offline implementation record — 2026-08-18:** the five planned artifacts
+now exist. The runner admits live execution only behind its explicit
+three-call confirmation phrase; strips API/provider and alternate-profile
+environment overrides; refuses login, unsafe auth, unexpected SessionStart
+hooks, a stale installed plugin, and weakened host settings before model use;
+confines fixtures and cleanup to one evaluator-owned `/tmp` directory; and
+writes immutable raw evidence plus a digest-bound append-only history. Its
+offline fake host proves the exact three-call command boundary and every
+recorded failure class without contacting Claude. The verifier recomputes
+scenario meaning and hook/tool/retry observations from the retained event
+trace, rejects claimed success that contradicts that trace, checks current
+input identity, and detects raw-result tampering. At the end of the offline
+implementation pass there was no current result or raw run; the first live
+attempt below now supplies both.
+
+**Automated live attempt — 2026-08-18 local / 2026-08-19 UTC (retained
+pre-model miss):** Kyle authorized exactly one three-call normal-profile
+batch, no retry, at the planned limits. Attempt
+`20260819T043823Z-claude-full-25584658` passed Claude Code 2.1.235/Linux auth
+and installed-plugin preflight, including the first-party Max status and the
+three enabled-plugin hook inventory. All three `claude -p` processes then
+exited 1 before SessionStart or model use with the same local validation
+error: the response schema declared JSON Schema Draft 2020-12, while Claude
+Code's structured-output validator uses Draft 7 and rejects newer declared
+versions. The raw result is
+`evaluation/agent-runs/20260819T043823Z-claude-full-25584658.json`, SHA-256
+`9dbb8bfa4fb29bd5b25e9d1942646ae87aea89cd33655bdf460084f51b6803c5`;
+the history retains that digest and the current-result mirror is identical.
+Recorded usage is 0 input / 0 output tokens and no reported dollar cost; no
+API retry, model tool call, fixture write, proposed-term leak, or source-canary
+leak occurred, and the batch-owned temporary directory was removed. The 0/3
+result remains visible and Phase 33.3 remains blocked.
+
+The directly supported offline correction removes the newer-draft declaration
+and relies on Claude Code's documented Draft 7 default; a regression forbids
+reintroducing `$schema`. The history verifier's separate false success message
+(`empty` despite one attempt) was also corrected and tested. The focused suite
+is now 21/21 and the full suite 644/644. No second live batch was run. A fresh
+authorization is required to exercise the corrected schema. Because the
+evaluator and schema changed after the retained miss,
+`--verify-results evaluation/claude-results.json --current` now correctly
+rejects that mirror as both 0/3 and based on prior inputs; history integrity
+still verifies.
+
+**Temporary cleanup completed 2026-08-18:** independent verification found
+`/tmp/glossabet-claude-eval-6dup075u` was born at 20:31 local, over an hour
+before this batch, and contains the superseded isolated design's `home`
+layout. The current evaluator cannot create that layout, so it is not the
+current batch directory. Kyle separately authorized deletion of that exact
+path; it was permanently removed without reading its contents and verified
+absent. At wrapup, a names-only sweep found 45 other top-level
+`/tmp/glossabet-*` directories and 31 files from earlier project sessions,
+with no running process using them. Kyle authorized finishing the temporary
+files; all 76 were removed without reading their contents, and a final
+names-only check found no top-level `/tmp/glossabet-*` entry.
+
+**Manual owner smoke test — 2026-08-18 (partial evidence; not acceptance):**
+Kyle launched the ordinary `claude` command from
+`examples/payment-service` using his normal signed-in profile on Claude Code
+2.1.235/Linux. An ordinary orientation prompt named neither Glossabet nor the
+expected canonical terms. Claude used **Payment Attempt**, **Gateway Client**,
+and **Authorization**, and its response explicitly identified the vocabulary
+brief as SessionStart-injected context. The same session recognized
+`/glossabet`; the skill ran Glossabet 0.1.0, detected the existing managed
+glossary, retained all three canonical concepts without re-proposing them,
+reported no divergence, and made no file changes. A post-session check found
+`main` equal to `origin/main` at
+`7b636659f39e277fefe2ff1a33333496f95b9b7f` with a clean tree.
+
+This is useful live-host smoke evidence, but it does **not** satisfy the
+acceptance above. The orientation response searched/read project material and
+ran a shell command, so it does not isolate the terms to hook context under
+the zero-command rule; no no-glossary negative scenario ran; the normal user
+profile was not controlled as specified above; and no evaluator-owned raw
+transcript, token record, or digest-bound artifact was captured. Two ordinary
+interactive Claude responses used Kyle's existing subscription; no token count
+or dollar price was captured. An earlier isolated-profile evaluator stopped at
+authentication preflight before any model call. Its temporary state was
+believed removed at Kyle's direction, but the older residue identified above
+proves that claim was too broad. A later temporary isolated login
+also did not complete because the passkey flow offered cancellation rather
+than Kyle's normal sign-in experience; the cause is unverified. Do not repeat
+that login route; the revised design above supersedes it. Phase 33.2
+remains open, and the unverified wording required before Phase 33.3 remains
+correct.
 
 #### Phase 33.3 — Documentation and status flip
 
