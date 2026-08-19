@@ -188,7 +188,7 @@ def test_claude_install_writes_manifest_and_hook_and_nothing_else(tmp_path, caps
     assert "Installed Glossabet skill for claude:" in out
     assert "Installed Claude Code plugin manifest:" in out
     assert "Installed session-start hook:" in out
-    assert '"/opt/tools/bin/glossabet" brief .' in out
+    assert f'"{FAKE_EXECUTABLE}" brief .' in out
     assert "glossabet@skills-dir" in out
 
 
