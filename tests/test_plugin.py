@@ -343,7 +343,10 @@ def test_hook_interpreter_is_isolated_from_a_hostile_working_directory(tmp_path)
     (tmp_path / "a.py").write_text("x = 1\n")
     proc = subprocess.run(
         argv, cwd=tmp_path, capture_output=True, text=True,
-        env={**os.environ, "PYTHONPATH": ":/opt/nothing"},
+        env={
+            **os.environ,
+            "PYTHONPATH": os.pathsep + str(tmp_path / "nothing"),
+        },
     )
     assert "PWNED" not in proc.stdout + proc.stderr
     assert proc.returncode == 0, proc.stderr
@@ -352,7 +355,10 @@ def test_hook_interpreter_is_isolated_from_a_hostile_working_directory(tmp_path)
     naive = [arg for arg in argv if arg != "-I"]
     proc = subprocess.run(
         naive, cwd=tmp_path, capture_output=True, text=True,
-        env={**os.environ, "PYTHONPATH": ":/opt/nothing"},
+        env={
+            **os.environ,
+            "PYTHONPATH": os.pathsep + str(tmp_path / "nothing"),
+        },
     )
     # The hostile module runs before stdout exists, so its traceback (not
     # its print) is the evidence; the exit is a Python startup failure.

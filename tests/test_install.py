@@ -178,7 +178,7 @@ def test_claude_install_writes_manifest_and_hook_and_nothing_else(tmp_path, caps
     (handler,) = entry["hooks"]
     assert handler == {
         "type": "command",
-        "command": '"/opt/tools/bin/glossabet" brief .',
+        "command": f'"{FAKE_EXECUTABLE}" brief .',
         "timeout": 30,
         "statusMessage": "Loading settled repository vocabulary",
     }
@@ -306,9 +306,8 @@ def test_hook_command_refuses_shell_significant_paths():
                 "/tmp/a\nb/glossabet"):
         with pytest.raises(ClaudePluginError):
             hook_command(Path(bad))
-    assert hook_command(Path("/tmp/with space/glossabet")) == (
-        '"/tmp/with space/glossabet" brief .'
-    )
+    safe = Path("/tmp/with space/glossabet")
+    assert hook_command(safe) == f'"{safe}" brief .'
 
 
 def test_manifest_and_hook_metadata_match_the_codex_plugin():
@@ -423,6 +422,10 @@ def test_claude_install_outside_a_skills_directory_does_not_promise_plugin_loadi
     ``--destination`` gets the files but must not be told a hook will run."""
     monkeypatch.setattr(
         "glossabet.install.installer.hook_command", lambda _exe: '"x" brief .'
+    )
+    monkeypatch.setattr(
+        "glossabet.install.installer.resolve_cli_executable",
+        lambda: FAKE_EXECUTABLE,
     )
     other = tmp_path / "elsewhere" / "glossabet"
     assert main(["install", "--agent", "claude", "--destination", str(other)]) == 0

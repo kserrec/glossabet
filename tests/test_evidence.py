@@ -556,8 +556,10 @@ def test_unreadable_and_binary_sources_are_confessed_not_silent(tmp_path):
 
 
 def test_oserror_during_read_is_confessed_as_unreadable(tmp_path, monkeypatch):
-    (tmp_path / "core.py").write_text("core_service = 1\n")
-    (tmp_path / "gone.py").write_text("vanished_service = 1\n")
+    core_source = b"core_service = 1\n"
+    vanished_source = b"vanished_service = 1\n"
+    (tmp_path / "core.py").write_bytes(core_source)
+    (tmp_path / "gone.py").write_bytes(vanished_source)
 
     import glossabet.corpus.extraction as extraction_module
 
@@ -583,8 +585,8 @@ def test_oserror_during_read_is_confessed_as_unreadable(tmp_path, monkeypatch):
     )
     # The bytes moved to the skipped side are the ones the walk charged
     # (a fresh stat of the vanished file would have subtracted nothing).
-    assert budget["skipped"]["source_bytes"] == len("vanished_service = 1\n")
-    assert budget["used"]["source_bytes"] == len("core_service = 1\n")
+    assert budget["skipped"]["source_bytes"] == len(vanished_source)
+    assert budget["used"]["source_bytes"] == len(core_source)
 
 
 def test_pathological_single_identifier_is_bounded_not_a_dos(tmp_path):
@@ -721,7 +723,7 @@ def test_innocently_named_symlinks_cannot_launder_excluded_content(tmp_path):
 
 
 def test_walk_reports_directory_symlinks_dangling_links_and_unlistable_dirs(
-    tmp_path, tmp_path_factory
+    tmp_path, tmp_path_factory, monkeypatch
 ):
     """Nothing the walk meets and does not read is silent: an escaping
     directory link, a confined directory link (real path is walked), a
@@ -738,12 +740,15 @@ def test_walk_reports_directory_symlinks_dangling_links_and_unlistable_dirs(
     locked = tmp_path / "locked"
     locked.mkdir()
     (locked / "z.py").write_text("locked_value = 1\n")
-    locked.chmod(0)
-    try:
-        listable = os.access(locked, os.R_OK)  # true only when running as root
-        evidence = build_evidence(tmp_path)
-    finally:
-        locked.chmod(0o755)
+    real_scandir = os.scandir
+
+    def unreadable_locked_directory(path):
+        if os.path.abspath(path) == os.path.abspath(locked):
+            raise PermissionError("synthetic unreadable directory")
+        return real_scandir(path)
+
+    monkeypatch.setattr(os, "scandir", unreadable_locked_directory)
+    evidence = build_evidence(tmp_path)
 
     assert "outsideleak" not in json.dumps(evidence)
     skipped = evidence["skipped"]
@@ -754,8 +759,6 @@ def test_walk_reports_directory_symlinks_dangling_links_and_unlistable_dirs(
         "main.py", "real/a.py"
     ]
     budget = evidence["skipped"]["corpus_budget"]
-    if listable:
-        pytest.skip("running as root: the locked directory is listable")
     assert budget["complete"] is False
     assert budget["walk_remainder"]["exact"] is False
     assert {"path": "locked", "reason": "unreadable-directory"} in (

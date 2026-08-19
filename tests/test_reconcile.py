@@ -849,7 +849,11 @@ def test_bindings_into_paths_the_scan_excluded_are_uncertain_not_unresolved(tmp_
     (tmp_path / "scratch").mkdir()
     (tmp_path / "scratch" / "notes.py").write_text("notes_value = 1\n")
     (tmp_path / ".env").write_text("SECRET=1\n")
-    os.symlink("/", tmp_path / "rootlink")  # escaping link: in the scan's ledger
+    os.symlink(
+        tmp_path.anchor,
+        tmp_path / "rootlink",
+        target_is_directory=True,
+    )  # escaping link: in the scan's ledger
     (tmp_path / "glossabet.json").write_text(json.dumps(
         {"schema_version": 1, "ignore_paths": ["scratch"]}
     ))

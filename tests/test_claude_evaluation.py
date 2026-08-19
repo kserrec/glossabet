@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from copy import deepcopy
 from pathlib import Path
 
@@ -46,6 +47,10 @@ def _make_executable(path: Path, source: str) -> Path:
 
 
 def _fake_host(tmp_path: Path) -> tuple[Path, Path, Path, dict[str, str]]:
+    if os.name == "nt":
+        pytest.skip(
+            "the Linux-only evaluator subprocess fake uses POSIX shebang executables"
+        )
     real_glossabet = _make_executable(
         tmp_path / "fake-glossabet-real",
         f"""#!/usr/bin/env python3
@@ -373,6 +378,15 @@ def test_tree_identity_never_reads_dotenv_contents(monkeypatch, tmp_path):
     second = _tree_sha256(tmp_path)
 
     assert first != second
+
+
+def test_preflight_refuses_non_linux_before_inspecting_host_paths(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(claude_eval.platform, "system", lambda: "Windows")
+
+    with pytest.raises(ClaudeEvaluationError, match="scoped to Linux"):
+        preflight(tmp_path / "missing-claude", tmp_path / "missing-plugin")
 
 
 def test_preflight_uses_normal_max_auth_and_sanitizes_identity(monkeypatch, tmp_path):
