@@ -37,7 +37,8 @@ Kyle's ruling is precise:
   condition, or result.
 
 The repository started this work clean on `main`, equal to `origin/main`.
-Only `README.md` has been edited so far. Its opening, source-installation
+Within the language rewrite, only `README.md` has been edited so far;
+`HANDOFF.md` records this pause. The README's opening, source-installation
 instructions, first-use walkthrough, generated-file explanation, core term
 definitions, Graphify introduction, evaluation summary, command list, and
 most of the `inspect` explanation have been rewritten for a new reader. The
