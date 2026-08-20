@@ -1,4 +1,86 @@
-# Session handoff — 2026-08-18 (late)
+# Session handoff — 2026-08-20
+
+This section records the current stopping point. It becomes stale when the
+plain-language documentation review or the newcomer-style product test resumes.
+
+## Current stopping point
+
+Kyle began testing Glossabet as a person encountering it for the first time.
+The intended test is the complete Glossabet workflow on one or two of his
+repositories. Mirafold had previously been tried with the original skill, but
+not with the complete current project. This test did not reach the complete
+repository workflow: the introductory documentation and guidance repeatedly
+used unexplained Glossabet-specific shorthand, so the session changed to a
+documentation-language review before testing continued.
+
+At the first orientation prompt, Kyle summarized Glossabet this way:
+Glossabet first follows a deterministic path through the repository's words,
+then an agent analyzes the results and proposes names, and humans decide which
+names to adopt. He reported nothing unclear at that exact point. The later
+problem was the writing itself. In particular, phrases such as
+“missing-command failure” compressed an ordinary condition into a label whose
+meaning existed only inside this project.
+
+Kyle's ruling is precise:
+
+- Established terms from programming, testing, Git, packaging, and similar
+  fields are allowed when they suit the intended reader.
+- Glossabet-specific shorthand is allowed only for a recurring concept that
+  the project deliberately establishes as a canonical term.
+- A project-specific term must be clearly defined before the reader is
+  expected to understand it, or the document must explicitly direct the
+  reader through an earlier definition.
+- The README assumes no previous knowledge of Glossabet. It must define a
+  Glossabet-specific term before its first use.
+- One-off compressed labels and metaphors are not canonical terminology. They
+  must be replaced with a direct description of the actual command,
+  condition, or result.
+
+The repository started this work clean on `main`, equal to `origin/main`.
+Only `README.md` has been edited so far. Its opening, source-installation
+instructions, first-use walkthrough, generated-file explanation, core term
+definitions, Graphify introduction, evaluation summary, command list, and
+most of the `inspect` explanation have been rewritten for a new reader. The
+rewrite is deliberately unfinished. Starting at the `glossabet brief <repo>`
+paragraph, the rest of the README still contains dense project-specific
+phrasing. The proposed table of core terms also needs to be reviewed as part
+of the complete pass; its presence does not mean Kyle approved every term in
+the table.
+
+No other documentation has been rewritten yet. The requested scope is every
+documentation and human-facing prose surface in the project, including the
+canonical skill and its plugin copy, command help and error text, comments,
+docstrings, examples, evaluation instructions, release instructions,
+architecture and security documents, planning history, and fixture READMEs.
+The durable language rule still needs to be added to the contributor and
+maintainer instructions. Do not turn every repeated phrase into a glossary
+term merely to preserve it; first ask whether the project actually needs that
+named concept.
+
+## Resume here
+
+1. Read this section and inspect the existing `README.md` diff. Preserve the
+   completed plain-language opening unless the review finds a concrete problem.
+2. Finish the README from `glossabet brief <repo>` onward. Keep the README
+   self-contained and define every Glossabet-specific term before using it.
+3. Add the durable language rule to `CONTRIBUTING.md` and `CLAUDE.md`, then
+   audit every other human-facing prose surface under the scope above.
+4. Keep the canonical `skill/SKILL.md` and
+   `plugins/glossabet/skills/glossabet/SKILL.md` identical. If the skill
+   changes, rebuild and verify the checked-in plugin package through the
+   project's existing release scripts.
+5. Run the relevant documentation checks, distribution check when applicable,
+   and complete test suite. Report documentation, executable code, tests, and
+   comments separately.
+6. After the documentation is understandable to a first-time reader, restart
+   the complete newcomer-style test on Mirafold or another repository. Walk
+   Kyle through exactly one action at a time and do not assume knowledge of
+   Glossabet's terminology.
+
+No additional live model run, paid evaluation, publication, or release was
+authorized in this session.
+
+## Previous handoff — 2026-08-18 (late)
 
 Refreshed after the 2026-08-18 Phase 33.2 first automated attempt and its
 offline correction

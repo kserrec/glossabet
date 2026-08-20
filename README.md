@@ -1,59 +1,163 @@
 # Glossabet
 
-Make a codebase's vocabulary explicit, canonical, inspectable, and
-maintainable.
+Glossabet helps a team choose shared names for the important parts of a
+codebase and keep those names consistent as the code changes.
 
-Glossabet helps a team establish shared names for the parts of a repository —
-subsystems, entities, boundaries, protocols, surfaces — and keep that
-vocabulary healthy as the code evolves. Deterministic machinery gathers
-lexical and structural evidence; an agent skill (`/glossabet`) brainstorms
-names grounded in that evidence; **the human decides what becomes canonical**.
-Stated honestly, that last rule is an instruction to the agent, not a
-mechanical guarantee: the `/glossabet` skill is written to persist only terms
-the human has confirmed, and to write a project's `AGENTS.md`/`CLAUDE.md`
-block (`sync-context`) only on explicit request, but the `glossabet save`
-command validates structure and trusts its caller — it cannot tell whether
-the agent piping to it really obtained your approval. Review what lands in
-`glossabet-out/glossary.json` the way you would review any agent-written
-change.
+It has two parts:
 
-**Glossabet is the project and product name.** It keeps three different
-things separate:
+- The `glossabet` command scans a repository and records facts about the words
+  and structure already present in the code.
+- The Glossabet agent skill reads those facts and relevant source files, then
+  proposes names for the human to discuss and decide.
 
-- `GLOSSARY.md` — the vocabulary humans have agreed to use.
-- `GLOSSABET.md` — Glossabet's human-readable analysis of the health and
-  alignment of that vocabulary: gaps, overloads, suspected synonyms, drift,
-  glossary/code disagreement, proposals, open questions, coverage limits.
-- `glossabet-out/glossary.json` — structured vocabulary state used for
-  resumption, drift detection, validation, scopes, aliases, and bindings.
+The program does not decide the vocabulary. **The human decides which names
+become canonical**, meaning officially accepted for that project. The skill is
+instructed to save only names the human has approved, but the
+`glossabet save` command cannot verify that approval itself. Review saved
+vocabulary exactly as you would review any other agent-written change.
 
-The glossary tells the team what the words mean; the Glossabet report tells
-the team whether those words still match the codebase. `GLOSSABET.md` is not
-a better glossary and never replaces `GLOSSARY.md` — its value is precisely
-that it lets `GLOSSARY.md` remain a glossary. The `/glossabet` skill writes
-the report at the scan root when it finalizes, or on request when a session
-ends with open findings; it clearly marks proposed and unresolved items as
-non-canonical, is refreshed as one report rather than appended to, and is
-derived output — safe to regenerate, excluded from lexical evidence so it can
-never become evidence for its own next run, and excluded from the freshness
-stamp so regenerating it never makes evidence look stale.
+## Current status
 
-Optionally, Glossabet consumes [Graphify](https://github.com/Graphify-Labs/graphify)
-output as richer structural evidence and can reconcile the settled glossary
-against the structural graph — surfacing unnamed architecture, orphaned
-concepts, vocabulary drift, and boundary mismatches. Graphify is never
-required.
+Glossabet 0.1.0 is an unreleased source alpha under owner testing. It is not on
+PyPI or in a public plugin marketplace, outside maintainers are not being
+invited yet, and it should not be described as release-ready. You can inspect
+and run the source, but there is no supported public installation yet.
 
-The adapter supports Graphify 0.9.42's exported `links`, `source_file`,
-`file_type`, `community_name`, and `built_at_commit` fields as well as the
-older accepted `edges`/`source` shapes. Evidence distinguishes a graph file
-being present from usable community structure being loaded. When Graphify's
-commit stamp is available, Glossabet reports the structure as current, stale,
-or unverified against the repository's HEAD and worktree; structural
-validation is explicitly skipped when no usable groups were loaded. “Current”
-means the graph's recorded commit matches a clean checkout; because the graph
-file is repository-controlled input, this is a staleness signal rather than
-content authentication.
+[`PLAN.md`](PLAN.md) records the exact remaining work.
+[`EVALUATION.md`](EVALUATION.md) explains what has and has not been tested, and
+[`DISTRIBUTION.md`](DISTRIBUTION.md) describes the planned package and plugin
+delivery methods.
+
+## Install from source
+
+You need Git, Python 3.10 or newer, and
+[`uv`](https://docs.astral.sh/uv/getting-started/installation/). From a fresh
+clone of this repository, run:
+
+```bash
+uv tool install . --reinstall
+glossabet install
+```
+
+The first command installs the `glossabet` command in an isolated Python
+environment. The second copies the matching agent skill to
+`~/.agents/skills/glossabet/`, where Codex looks for personal skills. Neither
+command changes a repository you want Glossabet to analyze. The installer
+refuses to replace a different existing skill unless you explicitly add
+`--force`.
+
+Confirm that the command and skill use the same release:
+
+```bash
+glossabet --version
+```
+
+For this source alpha, the expected output is `glossabet 0.1.0`. Codex normally
+detects an installed skill automatically; if it does not appear, restart
+Codex. These Codex loading and invocation instructions follow the
+[official OpenAI skill documentation](https://learn.chatgpt.com/docs/build-skills#how-chatgpt-and-codex-use-skills).
+
+### Claude Code installation
+
+Claude Code users install the skill with:
+
+```bash
+glossabet install --agent claude
+```
+
+That command writes only `~/.claude/skills/glossabet/`. It also installs a
+session-start hook—an automatic command that loads an existing glossary when
+a Claude Code session starts, resumes, clears, or compacts. Use `--skill-only`
+to install the skill without that automatic command. The folder has passed
+offline validation, and Kyle used it successfully in one ordinary Claude Code
+session. The repeatable three-scenario Claude Code test is incomplete, so that
+single session is not release evidence.
+
+## Use Glossabet on a repository
+
+Start a new Codex session from the root directory of the repository whose
+vocabulary you want to work on. In your Codex prompt, mention the installed
+skill with `$glossabet` and describe what you want named. For example:
+
+> `$glossabet` Help me establish shared names for the important parts of this
+> repository.
+
+Codex can also select the skill automatically when your request clearly asks
+for repository naming or vocabulary work.
+
+On its first pass, the skill:
+
+1. checks that the installed command is the matching version;
+2. scans the repository without reading known secret files, generated output,
+   or vendored dependencies;
+3. tells you if any scan limits prevented complete coverage;
+4. reads the important production files selected by the scan;
+5. proposes three ranked names for each part worth discussing; and
+6. waits for you to accept, reject, or reshape those proposals.
+
+Nothing becomes canonical merely because the skill proposed it. The skill does
+not write a settled glossary until you explicitly approve the vocabulary and
+ask it to finalize.
+
+To try the complete workflow on the included sample instead of one of your own
+repositories, run:
+
+```bash
+uv run python scripts/run_walkthrough.py
+```
+
+[`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md) explains the sample output and then
+shows the same process on a real repository.
+
+## Files Glossabet creates
+
+Glossabet keeps three files with different jobs:
+
+- `GLOSSARY.md` is the human-readable vocabulary the team has agreed to use.
+- `glossabet-out/glossary.json` is the same workflow's structured state for
+  software: accepted and proposed terms, aliases, code locations, and path
+  limits.
+- `GLOSSABET.md` is a report about the vocabulary's current health. It records
+  possible gaps, conflicting uses, changes in the code, open proposals, and
+  incomplete analysis. It is not the glossary and never replaces it.
+
+The skill writes `GLOSSARY.md` and the structured state only after the human
+settles the vocabulary. It can regenerate `GLOSSABET.md`; that report is kept
+out of future scans so it cannot become evidence for itself.
+
+## Core Glossabet terms
+
+The following project-specific terms are canonical within Glossabet's own
+documentation. Other project-specific shorthand must be defined before use or
+replaced with ordinary language.
+
+| Term | Meaning |
+| --- | --- |
+| **canonical term** | A project name that a human has explicitly approved as the name the team should use. |
+| **engine** | The deterministic Python command-line program. The same repository state produces the same analysis. |
+| **agent skill** | The installed instructions that tell Codex or Claude Code how to use the engine and conduct the naming discussion. |
+| **evidence** | Facts the engine records from the repository, such as identifiers, documentation words, modules, imports, and excluded files. Evidence informs a proposal; it is not a naming decision. |
+| **house register** | The naming style already established by a project's good existing names: word length, casing, tone, and source of metaphors or domain language. |
+| **drift** | A difference between the accepted vocabulary and the words or code locations now present in the repository. |
+| **scope** | The part of a repository in which a term has a particular meaning. A term without an explicit scope applies to the whole repository. |
+| **binding** | A saved connection between a glossary concept and a stable file, module, or code symbol. |
+| **coverage record** | The counts and reasons that state how much work was included or omitted. It prevents a partial scan or shortened report from looking complete. |
+
+## Optional Graphify input
+
+Glossabet can also read structural groups exported by
+[Graphify](https://github.com/Graphify-Labs/graphify). Graphify is optional.
+Without it, Glossabet still analyzes identifiers, documentation, modules, and
+simple import relationships.
+
+The adapter accepts Graphify 0.9.42's `links`, `source_file`, `file_type`,
+`community_name`, and `built_at_commit` fields, plus the older
+`edges`/`source` shapes. Glossabet reports separately whether a graph file
+exists and whether it contains usable groups. When Graphify records a commit,
+Glossabet compares it with the repository's current commit and uncommitted
+changes. A match with no uncommitted changes means the graph is current; a
+difference means it is stale; missing proof means its age is unverified. This
+detects old graph data but does not prove that the graph's content is genuine.
 
 ## Why repository vocabulary matters
 
@@ -105,186 +209,108 @@ better naming decisions. Glossabet's own small controlled evaluation is
 reported separately below and does not turn those studies into a
 product-efficacy claim.
 
-## Evaluation status
+## What evaluation has shown
 
-Phase 15 pins three permissively licensed public repositories—
+Glossabet's repeatable evaluation uses three fixed versions of permissively
+licensed public repositories—
 [Requests](https://github.com/psf/requests/tree/8068356288978c4f54661ae6f95afe0e0831885e),
 [hey](https://github.com/rakyll/hey/tree/5626f79b8698df6daf9b25799c9805c6acc96740),
 and [p-limit](https://github.com/sindresorhus/p-limit/tree/df476048d023ff868cd45b35ee47f5fb0ca2b25a)—plus
-four original fixtures for terminology, multilingual scoped vocabulary, and
-Graphify structure/truncation. The five-run corpus now contains 99 included
-source files and 52 production code files. It emitted 20 labelled terminology,
-drift, and structural findings with 100% precision, 100% recall where the
-expected set was complete, and zero false alarms. All 15 lexical contracts and
-all 26 structural contracts passed. Phase 25 also adds 16/16 passing register
-labels across the seven cases and this repository, covering dominant style and
-whether structurally styled names are predominantly multi-word. Phase 26 adds
-an 11/11 passing self-nomination gate: four repository concepts must surface
-with their expected nomination kinds, six recorded generic tokens must not,
-and every retained term must be typed. The primary
-reviewer marked 20/20 findings
-useful; a separate Codex session, blinded to those labels and isolated from the
-repository, marked 17/20 useful and recorded three disagreements.
+four purpose-built test repositories. Together they contain 99 included source
+files and 52 production code files.
 
-Those percentages are a regression-gate result, **not evidence of broad
-efficacy**: the corpus and positive-finding count are small, the evaluation
-glossaries are curator-authored rather than endorsed by upstream maintainers,
-real-repository heuristic recall is not exhaustive, and the second reviewer is
-a Codex session rather than an outside maintainer study. Structural recall is
-labelled only in controlled Graphify fixtures. The pre-calibration engine
-produced 53 false alarms among 64 findings on the earlier labels; the corpus
-drove narrower file-separation, identifier-pattern, and similarity gates for
-synonym nominations.
+On the labelled cases, Glossabet reported all 20 findings that the expected
+results listed and reported no extras. All 15 word-analysis checks and all 26
+code-structure checks passed. The naming-style evaluation passed all 16 cases.
+A separate check required four real repository concepts to be suggested,
+required six generic words not to be suggested, and required every suggestion
+to identify why it was selected; all 11 expectations passed. The primary
+reviewer marked all 20 findings useful. A separate Codex session that could not
+see those labels marked 17 useful and disagreed on three.
+
+These are regression-test results, **not evidence that Glossabet works broadly
+for real teams**. The dataset and number of findings are small. The evaluation
+glossaries were written for this project rather than approved by the public
+repositories' maintainers. The expected results are not exhaustive for the
+real repositories, and the second reviewer was another Codex session rather
+than an outside maintainer. Code-structure completeness is measured only in
+the controlled Graphify test repositories. Before calibration, the engine
+reported 53 false positives among 64 findings; those results were used to make
+the rules for separating files, recognizing identifier patterns, and proposing
+possible synonyms more conservative.
 
 The complete methodology, licenses, baseline, thresholds, limitations, and
 reproduction command are in [`EVALUATION.md`](EVALUATION.md); raw results are
 in [`evaluation/results.json`](evaluation/results.json).
 
-**Status: 0.1.0 source alpha under an owner self-testing pause; not yet
-published to PyPI or a plugin directory and not yet a trusted-alpha release.**
-Phases 0–22, 24–32, and 34–36 are implemented (36.8 and the Claude Code
-live-hook evidence of 33.2 remain); `PLAN.md` records their exact
-acceptance and commit state. The installed-agent harness
-separately probes fresh-session hook delivery, the installed skill, and the
-non-login, profile-disabled missing-CLI boundary. Its offline gate checks the
-current plugin artifact and all recorded safety outcomes deterministically,
-while its append-only attempt history reports procedural agent misses instead of
-selecting a green retry. See [`EVALUATION.md`](EVALUATION.md) for every observed
-attempt and its provenance limits. Owner-run testing and the trusted-alpha
-evidence gate stay before any outside maintainer invitation.
-Package metadata and the embedded plugin wheel are bound to the renamed GitHub
-repository; the checked-in wheel and plugin were rebuilt from the current
-source and canonical skill on 2026-08-18, and the installed-agent evidence
-recorded that day (Codex CLI 0.147.0 on Linux, 14/14 scenarios) passes the
-currency check against them.
-The trusted-alpha evidence gate and Phase 23 remain later work; do not describe
-the current stopping point as release-ready. See
-[`NAME-CLEARANCE.md`](NAME-CLEARANCE.md) for the
-point-in-time name checks, [`DISTRIBUTION.md`](DISTRIBUTION.md) for exact
-installation ownership, [`PLAN.md`](PLAN.md) for the closure sequence, and
-[`RELEASING.md`](RELEASING.md) for external actions.
+## Command reference
 
-The preferred future Codex artifact is the version-coupled plugin prototype at
-`plugins/glossabet/`. It carries the canonical skill and a matching wheel that
-runs from the plugin cache without adding a command to `PATH`. Its declared
-Codex `SessionStart` hook runs the bundled `brief .` boundary at startup,
-resume, clear, and compaction. The hook's launcher is `python3` (POSIX) or
-the `py` launcher (`commandWindows`), Python 3.10+; a host without either on
-`PATH` — a macOS machine whose `python3` is Apple's install-tools stub, or a
-Windows Python installed without the launcher — gets a visible per-session
-hook failure rather than a glossary, and the standalone install route
-(`glossabet install`) does not depend on either. Once the user trusts that installed hook, its
-bounded stdout becomes developer context for the session; an absent glossary
-contributes nothing. No public marketplace entry exists yet. For local use
-from a source checkout, the standalone fallback installs the CLI and then
-makes a separate skill copy:
-
-```bash
-uv tool install . --reinstall
-glossabet install
-```
-
-Codex currently loads personal skills from `~/.agents/skills`; Claude Code
-users run `glossabet install --agent claude` instead, which targets
-`~/.claude/skills/glossabet/`. For Claude Code that one command also makes the
-skill folder a
-[skills-directory plugin](https://code.claude.com/docs/en/plugins-reference#skills-directory-plugins):
-beside `SKILL.md` it writes `.claude-plugin/plugin.json` and a
-`hooks/hooks.json` whose `SessionStart` hook runs `glossabet brief .` at
-startup, resume, clear, and compaction — the same ambient vocabulary
-delivery the Codex plugin provides. Claude Code loads the folder as
-`glossabet@skills-dir` from the next session; with no glossary the hook adds
-nothing. Nothing outside that folder is written (`~/.claude/settings.json` is
-never touched); `--skill-only` installs the skill without the hook, and
-deleting the folder (or `claude plugin disable glossabet@skills-dir`) removes
-it. The hook names the exact `glossabet` executable that ran `install`, so a
-moved or removed CLI produces a visible per-session notice rather than
-silence — after reinstalling or moving the CLI, rerun
-`glossabet install --agent claude --force` (without `--force` the installer
-refuses to replace the now-different hook, by design). The
-folder is validated offline against `claude plugin validate`; a live
-installed Claude Code session has not yet been probed the way the Codex
-plugin has (PLAN Phase 33.2), so that route is still labelled unverified.
-The wheel carries the exact canonical [`skill/SKILL.md`](skill/SKILL.md), and
-installation refuses to overwrite a different skill, manifest, or hook unless
-`--force` is explicit. The locations follow the
-[official OpenAI Codex documentation](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills)
-and [official Claude Code documentation](https://code.claude.com/docs/en/skills#where-skills-live).
-
-Run the isolated end-to-end sample:
-
-```bash
-uv run python scripts/run_walkthrough.py
-```
-
-The full explanation and expected result are in
-[`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md). The CLI surface is:
+The command-line interface provides:
 
 ```
-glossabet install           install the canonical agent skill (Codex default)
-glossabet install --agent claude  skill + session-start hook as a Claude Code plugin
-glossabet scan <repo>       deterministic, git-stamped evidence (cached, incremental)
-glossabet analyze <repo>    scan + terminology report (register, overlaps, overloads)
-glossabet inspect <repo>    fresh, lean JSON context for the agent skill
-glossabet inspect <repo> --full  detailed diagnostic projection
-glossabet brief <repo>      bounded read-only canonical vocabulary digest
-glossabet sync-context <repo>  explicitly sync a managed block into AGENTS.md
-glossabet sync-context <repo> --agent claude  target CLAUDE.md instead
-glossabet save <repo>       validate/save glossary JSON from standard input
-glossabet show <repo>       display the current glossary
-glossabet drift <repo>      live vocabulary vs the canonical glossary
-glossabet validate <repo>   reconcile glossary vs evidence and the Graphify graph
-glossabet cache-clear       remove Glossabet's user cache directory (never the repo)
+glossabet install                 install the matching agent skill for Codex
+glossabet install --agent claude  install the skill and optional startup command for Claude Code
+glossabet scan <repo>             scan a repository and save the evidence
+glossabet analyze <repo>          scan and report possible vocabulary problems
+glossabet inspect <repo>          create current, size-limited JSON for the agent skill
+glossabet inspect <repo> --full   include additional diagnostic details
+glossabet brief <repo>            print accepted vocabulary without scanning or writing
+glossabet sync-context <repo>     copy accepted vocabulary into a marked AGENTS.md section
+glossabet sync-context <repo> --agent claude  write the marked section to CLAUDE.md instead
+glossabet save <repo>             validate and save glossary JSON received on standard input
+glossabet show <repo>             display the current structured glossary
+glossabet drift <repo>            compare current repository words with accepted vocabulary
+glossabet validate <repo>         compare the glossary with repository and Graphify evidence
+glossabet cache-clear             remove Glossabet's user cache, never repository files
 ```
 
-The installed skill requires `glossabet inspect .` from the exact repository
-or subproject root. That command safely validates repository-controlled JSON,
-builds current evidence, refreshes `evidence.json`, and emits a separate
-versioned, compact context. The routine schema-v3 projection uses per-module
-vocabulary rollups and retains file locations only for naming candidates and
-register exemplars; on Glossabet itself its checked soft target is 100 KB
-(raised from 80 KB in Phase 39 when the package gained layer subpackages,
-whose longer module paths cost ~9 KB of rollup keys). The
-1 MB ceiling remains a hard failure backstop for unusual repositories, not a
-routine budget. `inspect --full` emits the former detailed collection shape
-for diagnostics. Both modes report scanner omissions under `coverage.corpus`
-and every agent-projection omission under `coverage.context`. The context
-carries two distinct glossary channels that are never merged: `glossary` is
-Glossabet's own structured state (`glossabet-out/glossary.json`), and
-`repository_glossary` describes the repository's hand-maintained root
-`GLOSSARY.md` — presence, safe-read status (`readable` with a named
-`reason` when a symlink escapes the root, points at an in-repo sensitive
-file, or points at content the scanner itself excludes (Glossabet's own
-files, hidden, ignored, generated, or vendored paths), the entry is not a
-regular file, the file exceeds the 2 MB bound, or
-something is there but its exact name could not be confirmed),
-whether the entry is a symlink (readable through, never written through), size, and the SHA-256 of the exact
-bytes, plus any nested `GLOSSARY.md` files the walk excluded
-(`nested_ignored`). Metadata only, never content: `GLOSSARY.md` stays out of
-lexical evidence at every depth so it can never become evidence for itself,
-and the skill forms its own naming model before it reads the maintainers'
-document. An unreadable glossary is reported as present-but-unreadable,
-never as absent. From those two channels the skill is in exactly one of four
-states — no glossary, adoption (Markdown only), resume (structured only), or
-managed (both) — and in the adoption and managed states it forms its own
-naming model from the glossary-blind context first, only then reads the
-maintainers' document, reconciles the two (supported, weakly represented,
-drifted, overloaded, missing, alias mismatch, blurred distinction,
-unresolved), offers settled-and-supported terms as "documented already —
-keep?", promotes nothing to `canonical` without the human, and edits a
-pre-existing `GLOSSARY.md` surgically rather than regenerating it. When both
-files exist and the Markdown was read completely, the context and
-`glossabet validate` also carry one deterministic signal,
-`repository_glossary.divergence`: canonical terms whose folded spelling occurs
-nowhere in the document, and superseded alias terms that still appear while
-their canonical term does not — lexical presence only, capped at 500 terms
-and at 4 M normalized characters with the cap reported, absent (never
-empty) when the check could not run. The skill never
-opens Glossabet JSON artifacts itself and does not fall back to unrestricted
-recursive reading when the CLI boundary fails. When the human settles terms,
-the skill sends the complete JSON document to `glossabet save .` on standard
-input; that command bounds, strictly validates, confines, and atomically
-persists `glossary.json` instead of letting the agent write it.
+### What `inspect` gives the agent skill
+
+The installed skill must run `glossabet inspect .` from the exact repository
+or subproject root. The command validates project-controlled JSON, scans the
+current files, refreshes `glossabet-out/evidence.json`, and prints a versioned,
+size-limited JSON document for the skill. Its normal output is checked against
+a 100 KB target on this repository and may never exceed 1 MB. The optional
+`--full` form includes additional diagnostic detail. Both forms report omitted
+repository input under `coverage.corpus` and details removed from the JSON
+output under `coverage.context`.
+
+The JSON keeps two sources of glossary information separate:
+
+- `glossary` contains the validated structured state from
+  `glossabet-out/glossary.json`.
+- `repository_glossary` describes a hand-written root `GLOSSARY.md` without
+  copying its contents. It reports whether the file exists, whether it could
+  be read safely, whether it is a symbolic link, its size and SHA-256 digest,
+  and any nested `GLOSSARY.md` files that the scan ignored. If the file cannot
+  be read safely, it is reported as present but unreadable rather than absent.
+
+The skill uses four canonical names for the possible starting states:
+
+- **no glossary** — neither file exists;
+- **adoption** — only the hand-written `GLOSSARY.md` exists;
+- **resume** — only Glossabet's structured state exists; and
+- **managed** — both files exist.
+
+In adoption and managed sessions, the skill analyzes the code before reading
+the hand-written glossary. It then compares that independent analysis with the
+team's document and reports where a term is supported, weakly represented,
+changed, overloaded, missing, mismatched with an alias, or still unresolved.
+It asks before treating an already documented term as canonical and edits an
+existing `GLOSSARY.md` instead of replacing the whole file.
+
+When both glossary files exist and the Markdown file was read completely,
+`repository_glossary.divergence` reports accepted terms missing from the
+Markdown and old aliases that remain while their replacement does not appear.
+This check examines at most 500 terms and 4 million normalized characters and
+reports when either limit applies. It is absent, not empty, when the check
+could not run.
+
+The skill never opens Glossabet's JSON files directly and never responds to an
+`inspect` failure by reading the repository without limits. Once the human
+settles the vocabulary, the skill sends the complete structured glossary to
+`glossabet save .`. That command validates the data and writes
+`glossary.json` atomically, so a failed write cannot leave a partial file.
 
 `glossabet brief <repo>` is the read-only ambient vocabulary boundary. It
 loads only the confined, strictly validated glossary and the hardened live Git
