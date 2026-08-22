@@ -1192,6 +1192,52 @@ additional checks. While this pause is active, do not invite maintainers,
 collect outside alpha evidence, begin Phase 23, or perform publication setup.
 Only Kyle's explicit instruction to resume outside testing ends the pause.
 
+#### Complete owner walkthrough — next
+
+Kyle will test the complete public workflow as a first-time user before any
+outside testing. This is a guided product walkthrough, not another automated
+correctness or security audit. The agent keeps the complete sequence here but
+shows Kyle exactly one action at a time; a question about the current action
+does not advance the walkthrough.
+
+Run the following lanes in order:
+
+1. Read the shortened `README.md` from the top. Treat every unexplained term,
+   unsupported claim, ambiguous instruction, or unexpected prerequisite as a
+   product finding. Do not run installation commands until Kyle has finished
+   and accepted the surrounding explanation.
+2. Run the reproducible payment-service walkthrough and compare the observed
+   commands, files, output, and cleanup with the README and
+   `docs/WALKTHROUGH.md`.
+3. In a fresh Codex session at the root of one real repository Kyle selects,
+   invoke `$glossabet` and complete the no-glossary naming flow: repository
+   inspection, coverage/configuration disclosures, grounded proposals,
+   rejection and revision of at least one proposal, explicit human approval,
+   and finalization.
+4. Review the exact repository diff and all three product artifacts. Confirm
+   that `GLOSSARY.md` is the accepted human vocabulary,
+   `glossabet-out/glossary.json` is preserved machine state, `GLOSSABET.md` is
+   a derived health report, and no code or unrelated project file changed.
+5. Exercise the maintained-glossary flow with `show`, `brief`, `drift`, and
+   `validate`, including one deliberate vocabulary/code change in a disposable
+   branch or copy so the reported drift can be judged against a known cause.
+6. Start a new agent session in the same repository and verify that settled
+   terms are reused, existing decisions are not proposed again, and changing
+   vocabulary still requires an explicit naming session and human decision.
+7. Test the remaining public state boundaries in a disposable repository or
+   destination: Claude Code installation and invocation, explicit
+   `sync-context`, cache cleanup, and uninstall/cleanup instructions. Never
+   write a managed block into a real repository merely to complete this lane.
+
+Acceptance is the complete observed workflow, not merely green commands:
+instructions are understandable before action; output says when coverage is
+partial; proposals are grounded and useful enough to discuss; rejection and
+revision work; only approved vocabulary is persisted; artifact ownership and
+cleanup are clear; drift and resumption are truthful; and no unexpected file,
+network, account, or publication action occurs. Record exact output and name
+the cause before changing code if anything fails. Automated paid evaluator
+runs, publication, and outside testing remain separately authorized work.
+
 ### Trusted-alpha gate — external evidence, not an implementation phase
 
 Before Phase 23, and only after Phases 24–28 are complete — outside testers

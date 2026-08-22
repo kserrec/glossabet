@@ -1,85 +1,79 @@
 # Session handoff — 2026-08-20
 
-This section records the current stopping point. It becomes stale when the
-plain-language documentation review or the newcomer-style product test resumes.
+This section records the setup for Kyle's complete owner walkthrough tomorrow.
+It becomes stale as soon as that walkthrough resumes.
 
 ## Current stopping point
 
-Kyle began testing Glossabet as a person encountering it for the first time.
-The intended test is the complete Glossabet workflow on one or two of his
-repositories. Mirafold had previously been tried with the original skill, but
-not with the complete current project. This test did not reach the complete
-repository workflow: the introductory documentation and guidance repeatedly
-used unexplained Glossabet-specific shorthand, so the session changed to a
-documentation-language review before testing continued.
+Kyle decided to stop expanding the README and replace it with the essentials a
+good project README needs. `README.md` is now 176 lines and 1,039 words,
+down from 646 lines and 4,852 words. It keeps the product explanation, status,
+source installation, complete public workflow, artifact ownership, command
+list, narrow research rationale, development entry point, documentation map,
+and provenance. All ten retained local links were checked against their target
+documents. All five external links were opened live and checked against the
+nearby claim: uv installation, Codex's user skill location, Claude Code's
+personal skill location, and the two primary research results.
 
-At the first orientation prompt, Kyle summarized Glossabet this way:
-Glossabet first follows a deterministic path through the repository's words,
-then an agent analyzes the results and proposes names, and humans decide which
-names to adopt. He reported nothing unclear at that exact point. The later
-problem was the writing itself. In particular, phrases such as
-“missing-command failure” compressed an ordinary condition into a label whose
-meaning existed only inside this project.
+The full suite passed 645/645 in 76.23 seconds after the README rewrite.
+Every documented command accepted its `--help` route, the command reported
+`glossabet 0.1.0`, and the Markdown diff passed `git diff --check`.
+Executable code, tests, and comments did not change.
 
-Kyle's ruling is precise:
+The repository is on `main` at
+`0ff856593bc7e44b8cf57040306cfd17cded8682`, equal to `origin/main`.
+The uncommitted repository changes are documentation only:
+`README.md`, this handoff, and the complete owner-walkthrough checklist added
+under PLAN's active owner self-testing pause.
 
-- Established terms from programming, testing, Git, packaging, and similar
-  fields are allowed when they suit the intended reader.
-- Glossabet-specific shorthand is allowed only for a recurring concept that
-  the project deliberately establishes as a canonical term.
-- A project-specific term must be clearly defined before the reader is
-  expected to understand it, or the document must explicitly direct the
-  reader through an earlier definition.
-- The README assumes no previous knowledge of Glossabet. It must define a
-  Glossabet-specific term before its first use.
-- One-off compressed labels and metaphors are not canonical terminology. They
-  must be replaced with a direct description of the actual command,
-  condition, or result.
+Tomorrow's installed components are already current:
 
-The repository started this work clean on `main`, equal to `origin/main`.
-Within the language rewrite, only `README.md` has been edited so far;
-`HANDOFF.md` records this pause. The README's opening, source-installation
-instructions, first-use walkthrough, generated-file explanation, core term
-definitions, Graphify introduction, evaluation summary, command list, and
-most of the `inspect` explanation have been rewritten for a new reader. The
-rewrite is deliberately unfinished. Starting at the `glossabet brief <repo>`
-paragraph, the rest of the README still contains dense project-specific
-phrasing. The proposed table of core terms also needs to be reviewed as part
-of the complete pass; its presence does not mean Kyle approved every term in
-the table.
+- `~/.local/bin/glossabet` was reinstalled from this checkout. Its package
+  source is byte-identical to `glossabet/` apart from generated/package-data
+  directories, and it reports 0.1.0.
+- The wheel-bundled canonical skill, the installed Codex skill at
+  `~/.agents/skills/glossabet/SKILL.md`, and the installed Claude Code skill
+  at `~/.claude/skills/glossabet/SKILL.md` all match `skill/SKILL.md`
+  exactly (SHA-256
+  `e05b66ac47f1ed5b302e5d7747d49339a50c3830c9f4111c2a4a1f3db8ec8c33`).
+- Before reinstalling, the CLI differed in
+  `glossabet/runtime/engine_run.py` and the Codex skill was outdated. Those
+  exact setup gaps are closed; do not reinstall again tomorrow unless a new
+  source change makes one of these checks fail.
 
-No other documentation has been rewritten yet. The requested scope is every
-documentation and human-facing prose surface in the project, including the
-canonical skill and its plugin copy, command help and error text, comments,
-docstrings, examples, evaluation instructions, release instructions,
-architecture and security documents, planning history, and fixture READMEs.
-The durable language rule still needs to be added to the contributor and
-maintainer instructions. Do not turn every repeated phrase into a glossary
-term merely to preserve it; first ask whether the project actually needs that
-named concept.
+The checked-in plugin wheel's embedded README metadata was already stale
+relative to committed `HEAD` before this README rewrite and remains stale.
+That generated binary was not rebuilt because this pass was documentation and
+setup only. PLAN principle 13 permits development artifacts to lag; the release
+gate still requires a current rebuild.
 
-## Resume here
+## Resume here tomorrow
 
-1. Read this section and inspect the existing `README.md` diff. Preserve the
-   completed plain-language opening unless the review finds a concrete problem.
-2. Finish the README from `glossabet brief <repo>` onward. Keep the README
-   self-contained and define every Glossabet-specific term before using it.
-3. Add the durable language rule to `CONTRIBUTING.md` and `CLAUDE.md`, then
-   audit every other human-facing prose surface under the scope above.
-4. Keep the canonical `skill/SKILL.md` and
-   `plugins/glossabet/skills/glossabet/SKILL.md` identical. If the skill
-   changes, rebuild and verify the checked-in plugin package through the
-   project's existing release scripts.
-5. Run the relevant documentation checks, distribution check when applicable,
-   and complete test suite. Report documentation, executable code, tests, and
-   comments separately.
-6. After the documentation is understandable to a first-time reader, restart
-   the complete newcomer-style test on Mirafold or another repository. Walk
-   Kyle through exactly one action at a time and do not assume knowledge of
-   Glossabet's terminology.
+Use PLAN's “Complete owner walkthrough — next” checklist as the complete route,
+but show Kyle exactly one action at a time. Do not paste the whole checklist
+into chat.
 
-No additional live model run, paid evaluation, publication, or release was
-authorized in this session.
+The first action is only this: have Kyle read `README.md` from the title
+through the end of **Status** (lines 1–24), then ask what he believes Glossabet
+does, what its two parts are, who decides the vocabulary, and whether any word
+or claim is unclear. Answer questions without advancing. Do not give him an
+installation command until he explicitly finishes that reading step.
+
+After the README is accepted, continue through the reproducible sample, a
+fresh real-repository naming and finalization flow, artifact review, maintenance
+commands, a deliberate drift scenario, session resumption, and the remaining
+state/cleanup boundaries exactly as PLAN records. Mirafold is a candidate for
+the real-repository lane, but let Kyle choose when that lane is reached.
+
+If anything behaves unexpectedly, capture the exact output and name the cause
+before changing code. Do not edit code merely to test a hypothesis. The broader
+human-facing prose audit from the earlier handoff is not complete, but Kyle has
+prioritized the complete product walkthrough; record unclear prose encountered
+during that walkthrough and do not silently switch back to a repository-wide
+documentation rewrite.
+
+No automated paid evaluator run, outside tester invitation, publication,
+release, account change, or managed block in a real repository was authorized.
 
 ## Previous handoff — 2026-08-18 (late)
 
