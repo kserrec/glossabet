@@ -74,21 +74,21 @@ module = [
   "glossabet.glossary.model",
   "glossabet.glossary.store",
   "glossabet.glossary.glossary_commands",
+  "glossabet.glossary.findings",
+  "glossabet.glossary.matching",
+  "glossabet.glossary.drift",
+  "glossabet.glossary.reconcile",
+  "glossabet.glossary.repository_glossary",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 disallow_any_generics = true
 
 [[tool.mypy.overrides]]
-# These modules return values read out of untyped documents. Each relaxation
-# is removed by the pass that types its documents: findings/drift/reconcile
-# (Pass 5), agent_context (Pass 6). Do not add modules here.
-module = [
-  "glossabet.glossary.findings",
-  "glossabet.glossary.drift",
-  "glossabet.glossary.reconcile",
-  "glossabet.agent.agent_context",
-]
+# This module returns values read out of untyped documents. The relaxation
+# is removed by the pass that types its documents: agent_context (Pass 6).
+# Do not add modules here.
+module = ["glossabet.agent.agent_context"]
 warn_return_any = false
 
 [tool.hatch.version]

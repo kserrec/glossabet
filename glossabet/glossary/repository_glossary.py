@@ -17,6 +17,7 @@ import hashlib
 import os
 import unicodedata
 from pathlib import Path
+from typing import TypedDict
 
 from glossabet.analysis.evidence_types import EvidenceDocument
 from glossabet.analysis.evidence_view import EvidenceView
@@ -56,8 +57,51 @@ REASON_UNREADABLE = "unreadable"
 REASON_LISTING_UNCONFIRMED = "root-listing-unconfirmed"
 
 
-def _unreadable(reason: str, size: int | None) -> dict:
-    section: dict = {
+class SupersededTerm(TypedDict):
+    concept: str
+    term: str
+    status: str
+    canonical_term: str
+
+
+class _DivergenceRequired(TypedDict):
+    canonical_missing_from_markdown: list[str]
+    superseded_terms_still_present: list[SupersededTerm]
+    checked_terms: int
+    skipped_terms: int
+    complete: bool
+    term_cap: int
+    text_cap: int
+
+
+class DivergenceRecord(_DivergenceRequired, total=False):
+    """The lexical term-presence check; ``reason`` only when the check was
+    not run at all."""
+
+    reason: str
+
+
+class RepositoryGlossarySection(TypedDict, total=False):
+    """Tri-state discovery of the root ``GLOSSARY.md`` (see
+    ``discover_repository_glossary``) plus, from ``repository_glossary_section``,
+    the nested exclusions and the optional divergence check. ``present`` is
+    always written by discovery; ``checked: False`` alone is validation's
+    placeholder when no discovery ran."""
+
+    present: bool
+    checked: bool
+    path: str
+    readable: bool
+    reason: str
+    bytes: int
+    sha256: str
+    symlink: bool
+    divergence: DivergenceRecord
+    nested_ignored: list[str]
+
+
+def _unreadable(reason: str, size: int | None) -> RepositoryGlossarySection:
+    section: RepositoryGlossarySection = {
         "present": True,
         "path": REPOSITORY_GLOSSARY_FILE,
         "readable": False,
@@ -68,7 +112,9 @@ def _unreadable(reason: str, size: int | None) -> dict:
     return section
 
 
-def _read_repository_glossary(root: Path) -> tuple[dict, bytes | None]:
+def _read_repository_glossary(
+    root: Path,
+) -> tuple[RepositoryGlossarySection, bytes | None]:
     """Discovery record plus the complete bytes when — and only when — the
     file was read safely and completely."""
     root = root.resolve()
@@ -110,7 +156,7 @@ def _read_repository_glossary(root: Path) -> tuple[dict, bytes | None]:
     }, payload
 
 
-def discover_repository_glossary(root: Path) -> dict:
+def discover_repository_glossary(root: Path) -> RepositoryGlossarySection:
     """Tri-state description of ``<root>/GLOSSARY.md``.
 
     - absent → ``{"present": False}``
@@ -155,26 +201,28 @@ def _superseded_aliases(concept: ConceptRecord) -> list[tuple[str, str]]:
 
 def _divergence_result(
     missing: list[str],
-    superseded: list[dict],
+    superseded: list[SupersededTerm],
     checked: int,
     skipped: int,
     reason: str | None = None,
-) -> dict:
-    result: dict = {
+) -> DivergenceRecord:
+    result: DivergenceRecord = {
         "canonical_missing_from_markdown": sorted(missing),
         "superseded_terms_still_present": superseded,
         "checked_terms": checked,
         "skipped_terms": skipped,
         "complete": skipped == 0,
+        "term_cap": MAX_DIVERGENCE_TERMS,
+        "text_cap": MAX_DIVERGENCE_TEXT_CHARS,
     }
     if reason is not None:
         result["reason"] = reason
-    result["term_cap"] = MAX_DIVERGENCE_TERMS
-    result["text_cap"] = MAX_DIVERGENCE_TEXT_CHARS
     return result
 
 
-def repository_glossary_divergence(glossary: GlossaryDocument, payload: bytes) -> dict:
+def repository_glossary_divergence(
+    glossary: GlossaryDocument, payload: bytes
+) -> DivergenceRecord:
     """The one reconciliation signal the engine can give without parsing
     Markdown: is each settled term lexically present in the document?
 
@@ -212,7 +260,7 @@ def repository_glossary_divergence(glossary: GlossaryDocument, payload: bytes) -
         )
     text = _collapse_whitespace(normalized)
     missing: list[str] = []
-    superseded: list[dict] = []
+    superseded: list[SupersededTerm] = []
     checked = 0
     skipped = 0
 
@@ -251,7 +299,7 @@ def repository_glossary_divergence(glossary: GlossaryDocument, payload: bytes) -
 
 def repository_glossary_section(
     root: Path, evidence: EvidenceDocument, glossary: GlossaryDocument | None = None
-) -> dict:
+) -> RepositoryGlossarySection:
     """The agent-context section: discovery plus nested exclusions.
 
     ``nested_ignored`` lists every non-root ``GLOSSARY.md`` the walk saw and

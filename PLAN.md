@@ -3,7 +3,7 @@
 Status: **Phases 0–22, 24–32, 34–44 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
 in progress at 33.2; Phase 45 (maintainability refactor, 15 spec passes) in
-progress at 45.5; owner self-testing pause active before the trusted-alpha
+progress at 45.6; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-22.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1217,7 +1217,7 @@ Steps (each is the same-numbered spec pass):
 - **45.3** Pass 3 — `RepositoryEvidence` contract and a fully typed
   `EvidenceView` ✅ 2026-08-22
 - **45.4** Pass 4 — structured glossary and store boundary types ✅ 2026-08-22
-- **45.5** Pass 5 — observed vs heuristic findings as distinct types
+- **45.5** Pass 5 — observed vs heuristic findings as distinct types ✅ 2026-08-22
 - **45.6** Pass 6 — AgentContext and remaining production boundaries
 - **45.7** Pass 7 — close the strict static-type gate
 - **45.8** Pass 8 — isolate heuristic policy without changing it
@@ -1312,6 +1312,31 @@ the normalized document as a typed literal instead of mutating a copy.
 literal/set agreement. A/B vs HEAD identical for scan (cold+warm), analyze,
 drift, validate, show, brief, inspect, inspect --full, `save` (valid and
 invalid stdin) stdout and every artifact; suite 653 green.
+
+**45.5 outcome (2026-08-22):** `findings.py` now owns the persisted
+finding record as two types — `ObservedFinding` (requires `certainty`) and
+`HeuristicFinding` (requires `signal_strength`), sharing the enumerated
+producer fields (`term`, `status`, `new_term`, `canonical_term`,
+`concept_id`, `ref`, `binding_status`, `group`, `concepts`, `scope`,
+`evidence`) — the `FindingRecord` union, `FindingSection` (with validation's
+optional `skipped`/`partial` flags), and the `DriftDocument` /
+`ValidationDocument` TypedDicts (`GraphState`, coverage/work/scope-summary
+records). The XOR `finding(...)` constructor is deleted; `observed_finding` /
+`heuristic_finding` are keyword-required factories, every producer in drift
+and reconcile migrated; rankings that keyed on evidence values now sort typed
+`(key…, finding)` rows with the same keys. `matching.py` exposes
+`TermOccurrence` / `IdentifierOccurrence` / `DocOccurrence` and a typed
+compound trie (`_TrieNode`); `repository_glossary.py` exposes
+`RepositoryGlossarySection` / `DivergenceRecord` / `SupersededTerm`.
+`FindingsDocumentView` takes the document union and narrows sections by
+name through a `TypeGuard`; `DriftView` / `ValidationView` return named
+types. Strict mypy now covers findings, matching, drift, reconcile, and
+repository_glossary; the `warn_return_any` relaxation lists only
+`agent_context`. Tests: constructor API pinned (neither accepts the other's
+field, both keyword-required, `finding` gone). A/B on payment-service and the
+four path-sourced corpus fixtures: save/scan/analyze/drift/validate/show/
+brief/inspect/inspect --full stdout, rc, and every artifact byte-identical.
+Suite 654; Gates A, B, C green; plugin rebuilt.
 
 ### Owner self-testing pause — active, not an implementation phase
 

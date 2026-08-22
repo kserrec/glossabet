@@ -10,8 +10,9 @@ signal strength, not as unmeasured confidence.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from itertools import combinations
+from typing import TypedDict
 
 from glossabet.agent.managed_context import (
     inspect_managed_context,
@@ -24,18 +25,24 @@ from glossabet.analysis.evidence_view import EvidenceView
 from glossabet.analysis.terminology import OVERLOAD_MIN_DISPERSION, OVERLOAD_MIN_MODULES
 from glossabet.corpus.tokenize import tokenize_term
 from glossabet.glossary.findings import (
+    DriftDocument,
+    FindingRecord,
     FindingsDocumentView,
+    FindingSection,
+    HeuristicFinding,
+    ObservedFinding,
     capped_section,
     collection_limitations,
-    finding,
     glossary_terms,
+    heuristic_finding,
     matching_reasons,
+    observed_finding,
     print_sections,
     production_corpus_reasons,
     suppressed_reason,
     vocabulary_omission_reasons,
 )
-from glossabet.glossary.matching import EvidenceIndex
+from glossabet.glossary.matching import EvidenceIndex, IdentifierOccurrence
 from glossabet.glossary.model import ConceptRecord, ConceptScope, GlossaryDocument
 from glossabet.glossary.store import (
     concept_scope,
@@ -58,13 +65,23 @@ PARALLEL_SCOPE_COMPARISON_BUDGET = 500_000
 _WATCHED_STATUSES = {"discouraged", "deprecated"}
 
 
+class _WatchedEntry(TypedDict):
+    """A discouraged or deprecated term (concept or alias) to look for."""
+
+    term: str
+    status: str
+    concept_id: str
+    tokens: list[str]
+    scope: ConceptScope
+
+
 def _index_glossary(glossary: GlossaryDocument) -> tuple[
-    dict[str, list[ConceptRecord]], list[dict], dict[str, list[ConceptScope]]
+    dict[str, list[ConceptRecord]], list[_WatchedEntry], dict[str, list[ConceptScope]]
 ]:
     """canonical token map, watched (discouraged/deprecated) entries, and the
     scopes in which every glossary token is already owned (any status)."""
     canonical: dict[str, list[ConceptRecord]] = {}
-    watched: list[dict] = []
+    watched: list[_WatchedEntry] = []
     known_scopes: dict[str, list[ConceptScope]] = {}
     for concept in glossary["concepts"]:
         scope = concept_scope(concept)
@@ -128,7 +145,7 @@ def _overlap_cost(
     )
 
 
-def _sampled_to_zero(occurrence: dict) -> bool:
+def _sampled_to_zero(occurrence: IdentifierOccurrence) -> bool:
     """Whether a zero count reflects a clipped location sample, not absence.
 
     Scoped counts are summed over an entry's retained location sample; when
@@ -144,9 +161,11 @@ def _sampled_to_zero(occurrence: dict) -> bool:
 def _parallel_terms(
     view: EvidenceView, canonical: dict[str, list[ConceptRecord]],
     known_scopes: dict[str, list[ConceptScope]], matcher: EvidenceIndex
-) -> tuple[list[dict], list[str]]:
+) -> tuple[list[HeuristicFinding], list[str]]:
     """New prominent terms that behave like an existing canonical term."""
-    findings: list[dict] = []
+    # (similarity, new term, concept id, finding): the ranking key beside
+    # the record it orders.
+    ranked: list[tuple[float, str, str, HeuristicFinding]] = []
     suppressed = 0
     # Owner-scope overlap is O(concepts x owner-scopes); a hostile glossary
     # can push that product into the hundreds of millions within the accepted
@@ -187,7 +206,7 @@ def _parallel_terms(
                 else "moderate" if similarity >= 0.55
                 else "weak"
             )
-            findings.append(finding(
+            ranked.append((similarity, new_term, concept["id"], heuristic_finding(
                 "parallel-term",
                 f"new term '{new_term}' parallels canonical "
                 f"'{concept['term']}' (similarity {similarity})",
@@ -202,12 +221,11 @@ def _parallel_terms(
                 new_term=new_term,
                 canonical_term=concept["term"],
                 concept_id=concept["id"],
-            ))
+            )))
         if budget_exhausted:
             break
-    findings.sort(key=lambda f: (
-        -f["evidence"]["similarity"], f["new_term"], f["concept_id"]
-    ))
+    ranked.sort(key=lambda row: (-row[0], row[1], row[2]))
+    findings = [row[3] for row in ranked]
     reasons = suppressed_reason(suppressed, "parallel-term")
     if budget_exhausted:
         reasons.append(
@@ -218,10 +236,10 @@ def _parallel_terms(
 
 
 def _watched_in_use(
-    watched: list[dict], matcher: EvidenceIndex
-) -> tuple[list[dict], list[str]]:
+    watched: list[_WatchedEntry], matcher: EvidenceIndex
+) -> tuple[list[ObservedFinding], list[str]]:
     """Discouraged or deprecated terms still present in the code."""
-    findings: list[dict] = []
+    ranked: list[tuple[int, str, ObservedFinding]] = []  # (count, term, finding)
     suppressed = 0
     for entry in watched:
         occurrence = matcher.code_term_occurrence(entry["term"], entry["scope"])
@@ -231,7 +249,7 @@ def _watched_in_use(
             continue
         count = occurrence["count"]
         quantity = f"at least {count}" if not occurrence["count_complete"] else str(count)
-        findings.append(finding(
+        ranked.append((count, entry["term"], observed_finding(
             "watched-term-in-use",
             f"{entry['status']} term '{entry['term']}' still in use: "
             f"{quantity} lexical occurrence(s)",
@@ -241,16 +259,17 @@ def _watched_in_use(
             term=entry["term"],
             status=entry["status"],
             concept_id=entry["concept_id"],
-        ))
-    findings.sort(key=lambda f: (-f["evidence"]["count"], f["term"]))
+        )))
+    ranked.sort(key=lambda row: (-row[0], row[1]))
+    findings = [row[2] for row in ranked]
     return findings, suppressed_reason(suppressed, "watched-term")
 
 
 def _canonical_fading(
     glossary: GlossaryDocument, matcher: EvidenceIndex
-) -> list[dict]:
+) -> list[HeuristicFinding]:
     """Canonical terms absent from code or barely hanging on."""
-    findings: list[dict] = []
+    findings: list[HeuristicFinding] = []
     for concept in glossary["concepts"]:
         if concept["status"] != "canonical":
             continue
@@ -276,14 +295,14 @@ def _canonical_fading(
             signal_strength, state = "moderate", "fading"
         else:
             continue
-        finding_evidence = {
+        finding_evidence: dict[str, object] = {
             **occurrence,
             "lexical_occurrences": count,
             "doc_mentions": doc_mentions,
         }
         if len(tokens) == 1:
             finding_evidence["token_counts"] = {tokens[0]: count}
-        findings.append(finding(
+        findings.append(heuristic_finding(
             "canonical-fading",
             f"canonical '{concept['term']}' is {state}",
             finding_evidence,
@@ -326,9 +345,10 @@ def _overload_details_complete(item: Mapping[str, object]) -> bool:
 
 def _canonical_overloaded(
     view: EvidenceView, canonical: dict[str, list[ConceptRecord]]
-) -> list[dict]:
+) -> list[HeuristicFinding]:
     """Canonical terms used across contexts disjoint enough to collide."""
-    findings: list[dict] = []
+    # (dispersion, term, concept id, finding)
+    ranked: list[tuple[float, str, str, HeuristicFinding]] = []
     for item in view.terminology_section("overload_candidates")["items"]:
         if item["term"] not in canonical:
             continue
@@ -365,7 +385,7 @@ def _canonical_overloaded(
                 if dispersion < OVERLOAD_MIN_DISPERSION:
                     continue
                 module_count = len(modules)
-            findings.append(finding(
+            ranked.append((dispersion, concept["term"], concept["id"], heuristic_finding(
                 "canonical-overloaded",
                 f"canonical '{concept['term']}' used in disjoint contexts "
                 f"across {module_count} module(s)",
@@ -378,11 +398,9 @@ def _canonical_overloaded(
                 scope=scope_evidence(scope),
                 term=concept["term"],
                 concept_id=concept["id"],
-            ))
-    findings.sort(key=lambda f: (
-        -f["evidence"]["dispersion"], f["term"], f["concept_id"]
-    ))
-    return findings
+            )))
+    ranked.sort(key=lambda row: (-row[0], row[1], row[2]))
+    return [row[3] for row in ranked]
 
 
 def _terminology_reasons(view: EvidenceView, section: str) -> list[str]:
@@ -419,8 +437,8 @@ def build_drift(
     glossary: GlossaryDocument,
     *,
     matcher: EvidenceIndex | None = None,
-    managed_context: dict | None = None,
-) -> dict:
+    managed_context: dict[str, object] | None = None,
+) -> DriftDocument:
     canonical, watched, known_scopes = _index_glossary(glossary)
     matcher = matcher or EvidenceIndex(evidence, glossary_terms(glossary))
     view = matcher.view
@@ -436,8 +454,8 @@ def build_drift(
         view, canonical, known_scopes, matcher
     )
     watched_findings, watched_suppressed = _watched_in_use(watched, matcher)
-    sections = {}
-    for name, findings, reasons in (
+    sections: dict[str, FindingSection] = {}
+    producers: list[tuple[str, Sequence[FindingRecord], list[str]]] = [
         (
             "parallel_terms",
             parallel_findings,
@@ -463,7 +481,8 @@ def build_drift(
             + _terminology_reasons(view, "overload_candidates")
             + _scoped_overload_reasons(view, canonical),
         ),
-    ):
+    ]
+    for name, findings, reasons in producers:
         sections[name] = capped_section(
             findings, name, incomplete_reasons=reasons,
         )
@@ -496,7 +515,10 @@ def build_drift(
         },
         "total_findings": total,
         "managed_context": managed_context or unchecked_managed_context(),
-        **sections,
+        "parallel_terms": sections["parallel_terms"],
+        "watched_terms_in_use": sections["watched_terms_in_use"],
+        "canonical_fading": sections["canonical_fading"],
+        "canonical_overloaded": sections["canonical_overloaded"],
     }
 
 
@@ -511,11 +533,15 @@ _TITLES = {
 class DriftView(FindingsDocumentView):
     """The read side of a drift document (`build_drift` writes it)."""
 
+    def __init__(self, document: DriftDocument) -> None:
+        super().__init__(document)
+        self._drift = document
+
     def checked_concepts(self) -> int:
-        return self._d["checked_concepts"]
+        return self._drift["checked_concepts"]
 
 
-def _print_report(document: dict) -> None:
+def _print_report(document: DriftDocument) -> None:
     drift = DriftView(document)
     complete = drift.total_findings_complete()
     count_label = "finding(s)" if complete else "evaluated finding(s)"

@@ -14,9 +14,11 @@ from __future__ import annotations
 import sys
 import unicodedata
 from collections import defaultdict
+from collections.abc import Collection
 from dataclasses import dataclass
 from itertools import combinations, islice
 from pathlib import Path
+from typing import TypedDict
 
 from glossabet.agent.managed_context import (
     inspect_managed_context,
@@ -35,28 +37,43 @@ from glossabet.glossary import findings
 from glossabet.glossary.drift import DriftView, build_drift
 from glossabet.glossary.findings import (
     FindingsDocumentView,
+    FindingSection,
+    GraphState,
+    HeuristicFinding,
+    ObservedFinding,
+    ValidationDocument,
+    ValidationScopeSummary,
     capped_section,
     collection_limitations,
     empty_section,
-    finding,
     glossary_terms,
+    heuristic_finding,
     mark_incomplete,
     matching_reasons,
+    observed_finding,
     print_sections,
     production_corpus_reasons,
     suppressed_reason,
     vocabulary_omission_reasons,
 )
-from glossabet.glossary.matching import EvidenceIndex
-from glossabet.glossary.model import ConceptRecord, ConceptScope, GlossaryDocument
-from glossabet.glossary.repository_glossary import repository_glossary_section
+from glossabet.glossary.matching import EvidenceIndex, TermOccurrence
+from glossabet.glossary.model import (
+    ConceptRecord,
+    ConceptScope,
+    GlossaryDocument,
+    ScopeEvidence,
+)
+from glossabet.glossary.repository_glossary import (
+    RepositoryGlossarySection,
+    repository_glossary_section,
+)
 from glossabet.glossary.store import (
     concept_scope,
     path_in_scope,
     scope_evidence,
 )
 from glossabet.runtime.artifacts import write_artifact
-from glossabet.runtime.coverage import CappedSection, CoverageLedger, coverage_ledger
+from glossabet.runtime.coverage import CoverageLedger, coverage_ledger
 from glossabet.runtime.display import escape_terminal_text
 from glossabet.runtime.engine_run import GLOSSARY_REQUIRED, open_run
 
@@ -70,6 +87,19 @@ STRUCTURAL_MATCH_BUDGET = 50_000
 
 def _tokens(text: str) -> set[str]:
     return set(tokenize_term(text))
+
+
+# Per canonical concept id: (term tokens, symbol-binding tokens).
+_ConceptVocab = dict[str, tuple[set[str], set[str]]]
+
+
+class BindingResolution(TypedDict):
+    """One binding judged against the evidence: ``resolved``,
+    ``out-of-scope``, ``uncertain``, or ``unresolved``."""
+
+    ref: str
+    status: str
+    scope: ScopeEvidence
 
 
 def _concept_vocab(concept: ConceptRecord) -> tuple[set[str], set[str]]:
@@ -110,7 +140,7 @@ _EXCLUDED_PATH_LEDGERS = (
 )
 
 
-def _excluded_prefixes(view) -> tuple[str, ...]:
+def _excluded_prefixes(view: EvidenceView) -> tuple[str, ...]:
     prefixes = []
     for ledger in _EXCLUDED_PATH_LEDGERS:
         for entry in view.skipped_paths(ledger):
@@ -145,8 +175,9 @@ def _exists_confined(root: Path | None, relative: str) -> bool:
 
 
 def _path_binding_status(
-    value: str, known_paths, scope, inventory_complete: bool,
-    excluded: tuple[str, ...] = (), root: Path | None = None,
+    value: str, known_paths: Collection[str], scope: ConceptScope,
+    inventory_complete: bool, excluded: tuple[str, ...] = (),
+    root: Path | None = None,
 ) -> str:
     value = unicodedata.normalize("NFC", value)  # known_paths are NFC-keyed
     if value in known_paths and path_in_scope(value, scope):
@@ -169,12 +200,12 @@ def _path_binding_status(
 
 def _resolve_bindings(
     concept: ConceptRecord, matcher: EvidenceIndex, root: Path | None = None
-) -> list[dict]:
+) -> list[BindingResolution]:
     inventory_complete = matcher.view.repository_corpus_complete()
     excluded = _excluded_prefixes(matcher.view)
     scope = concept_scope(concept)
 
-    results = []
+    results: list[BindingResolution] = []
     for binding in concept.get("bindings", []):
         kind, _, value = binding["ref"].partition(":")
         if kind == "symbol":
@@ -205,7 +236,7 @@ def _resolve_bindings(
 
 
 def _group_match_contexts(
-    structural: StructuralGroups, canonical: list[ConceptRecord], vocab: dict
+    structural: StructuralGroups, canonical: list[ConceptRecord], vocab: _ConceptVocab
 ) -> tuple[list[tuple[StructuralGroup, set[str], set[str], list[str]]], int]:
     """Per structural group: (group, label tokens, label+member tokens,
     candidate concept ids reached through an inverted token index), sorted
@@ -216,7 +247,7 @@ def _group_match_contexts(
         for token in term_tokens | binding_tokens:
             token_index[token].add(concept["id"])
 
-    contexts = []
+    contexts: list[tuple[StructuralGroup, set[str], set[str], list[str]]] = []
     missing_member_tokens = 0
     for group in structural["groups"]:
         label_tokens = _tokens(group["label"])
@@ -262,7 +293,7 @@ def _structural_incompleteness(
             f"{STRUCTURAL_MATCH_BUDGET}-candidate evaluation budget"
         )
     exact = not reasons
-    work_reasons = []
+    work_reasons: list[str] = []
     if processed_match_work < total_match_work:
         work_reasons.append(
             "structural concept matching reached its "
@@ -279,9 +310,9 @@ def _structural_incompleteness(
 def _structure_findings(
     structural: StructuralGroups,
     canonical: list[ConceptRecord],
-    vocab: dict,
+    vocab: _ConceptVocab,
     upstream_reasons: list[str],
-) -> tuple[CappedSection, CappedSection, CappedSection, CoverageLedger]:
+) -> tuple[FindingSection, FindingSection, FindingSection, CoverageLedger]:
     """Direction A: structure -> glossary.
 
     Canonical concepts are reached through an inverted token index. Boundary
@@ -294,9 +325,9 @@ def _structure_findings(
 
     total_match_work = sum(len(item[3]) for item in contexts)
     processed_match_work = 0
-    unnamed: list[dict] = []
-    boundary: list[dict] = []
-    overloaded: list[dict] = []
+    unnamed: list[tuple[int, str, HeuristicFinding]] = []  # (size, group, finding)
+    boundary: list[HeuristicFinding] = []
+    overloaded: list[HeuristicFinding] = []
     boundary_total = 0
     partial_group_matches = False
 
@@ -318,19 +349,19 @@ def _structure_findings(
             if strength >= 2
         )
         if group_complete and max(strengths.values(), default=0) == 0:
-            unnamed.append(finding(
+            unnamed.append((group["size"], group["label"], heuristic_finding(
                 "unnamed-structure",
                 f"structural group '{group['label']}' "
                 f"({group['size']} nodes) matches no canonical concept",
                 {"size": group["size"], "members_sample": group["members_sample"]},
                 signal_strength="strong" if group["size"] >= 5 else "moderate",
                 group=group["label"],
-            ))
+            )))
         group_pair_total = len(strong) * (len(strong) - 1) // 2
         boundary_total += group_pair_total
         detail_slots = max(0, findings.FINDINGS_CAP - len(boundary))
         for a, b in islice(combinations(strong, 2), detail_slots):
-            boundary.append(finding(
+            boundary.append(heuristic_finding(
                 "boundary-mismatch",
                 f"'{a}' and '{b}' are distinct in the glossary but "
                 f"both strongly match group '{group['label']}'",
@@ -340,7 +371,7 @@ def _structure_findings(
                 group=group["label"],
             ))
         if len(strong) >= OVERLOADED_MIN_CONCEPTS:
-            overloaded.append(finding(
+            overloaded.append(heuristic_finding(
                 "overloaded-structural-region",
                 f"group '{group['label']}' matches "
                 f"{len(strong)} distinct canonical concepts",
@@ -349,7 +380,7 @@ def _structure_findings(
                 group=group["label"],
                 concepts=strong,
             ))
-    unnamed.sort(key=lambda f: (-f["evidence"]["size"], f["group"]))
+    unnamed.sort(key=lambda row: (-row[0], row[1]))
     overloaded.sort(key=lambda f: f["group"])
 
     reasons, exact, work_coverage = _structural_incompleteness(
@@ -358,7 +389,7 @@ def _structure_findings(
     )
     return (
         capped_section(
-            unnamed, "unnamed structure",
+            [row[2] for row in unnamed], "unnamed structure",
             total_items_exact=exact, incomplete_reasons=reasons,
         ),
         capped_section(
@@ -374,15 +405,15 @@ def _structure_findings(
 
 
 def _binding_findings(
-    concept: ConceptRecord, scope: ConceptScope, bindings: list[dict]
-) -> list[dict]:
+    concept: ConceptRecord, scope: ConceptScope, bindings: list[BindingResolution]
+) -> list[ObservedFinding]:
     """One finding per binding that no longer resolves inside the scope."""
-    found = []
+    found: list[ObservedFinding] = []
     for binding in bindings:
         if binding["status"] not in {"unresolved", "out-of-scope"}:
             continue
         out_of_scope = binding["status"] == "out-of-scope"
-        found.append(finding(
+        found.append(observed_finding(
             "binding-out-of-scope" if out_of_scope
             else "binding-unresolved",
             f"'{concept['term']}' binding {binding['ref']} "
@@ -402,9 +433,11 @@ def _binding_findings(
 
 def _orphan_finding(
     concept: ConceptRecord, scope: ConceptScope, term_tokens: set[str],
-    occurrence: dict,
-    bindings: list[dict], resolved: list[dict], uncertain: list[dict],
-) -> dict | None:
+    occurrence: TermOccurrence,
+    bindings: list[BindingResolution],
+    resolved: list[BindingResolution],
+    uncertain: list[BindingResolution],
+) -> HeuristicFinding | None:
     """The orphaned-concept finding for a canonical term with weak, complete
     lexical evidence and no resolved or uncertain binding — or None."""
     if not (
@@ -421,7 +454,7 @@ def _orphan_finding(
         signal_strength = "moderate"
     else:
         return None
-    finding_evidence = {
+    finding_evidence: dict[str, object] = {
         **occurrence,
         "lexical_occurrences": count,
         "bindings_resolved": len(resolved),
@@ -430,7 +463,7 @@ def _orphan_finding(
     if len(term_tokens) == 1:
         token = next(iter(term_tokens))
         finding_evidence["token_counts"] = {token: count}
-    return finding(
+    return heuristic_finding(
         "orphaned-concept",
         f"canonical '{concept['term']}' has weak "
         "implementation evidence (stale term, aspiration, "
@@ -444,16 +477,22 @@ def _orphan_finding(
 
 def _concept_findings(
     canonical: list[ConceptRecord],
-    vocab: dict,
+    vocab: _ConceptVocab,
     matcher: EvidenceIndex,
     root: Path | None = None,
-) -> tuple[list, list, list, list[str], list[str]]:
+) -> tuple[
+    list[HeuristicFinding], list[ObservedFinding], list[HeuristicFinding],
+    list[str], list[str],
+]:
     """Direction B: glossary -> evidence.
 
     Returns (orphaned concepts, unresolved bindings, fragmentation,
     fragmentation incompleteness reasons, binding-ledger reasons).
     """
-    orphaned, unresolved, fragmented = [], [], []
+    orphaned: list[HeuristicFinding] = []
+    unresolved: list[ObservedFinding] = []
+    # (module spread, concept id, finding)
+    fragmented: list[tuple[int, str, HeuristicFinding]] = []
     fragmentation_suppressed = 0
     excluded_bindings = 0
     for concept in canonical:
@@ -490,7 +529,7 @@ def _concept_findings(
             and occurrence["locations_truncated"]
         )
         if spread >= FRAGMENTATION_MIN_MODULES:
-            fragmented.append(finding(
+            fragmented.append((spread, concept["id"], heuristic_finding(
                 "fragmentation",
                 f"'{concept['term']}' spans {spread} modules — may be "
                 "legitimately cross-cutting or problematically scattered",
@@ -498,14 +537,12 @@ def _concept_findings(
                 signal_strength="weak",
                 scope=scope_evidence(scope),
                 concept_id=concept["id"],
-            ))
+            )))
         elif modules_sampled:
             fragmentation_suppressed += 1
     orphaned.sort(key=lambda f: f["concept_id"])
     unresolved.sort(key=lambda f: (f["concept_id"], f["ref"]))
-    fragmented.sort(
-        key=lambda f: (-f["evidence"]["module_spread"], f["concept_id"])
-    )
+    fragmented.sort(key=lambda row: (-row[0], row[1]))
     fragmentation_reasons = suppressed_reason(
         fragmentation_suppressed, "fragmentation"
     )
@@ -514,7 +551,22 @@ def _concept_findings(
         "(vendored, generated, ignored, sensitive, oversized, linked, or not "
         "a code/doc file) and were not judged"
     ]
-    return orphaned, unresolved, fragmented, fragmentation_reasons, binding_reasons
+    return (
+        orphaned, unresolved, [row[2] for row in fragmented],
+        fragmentation_reasons, binding_reasons,
+    )
+
+
+def _unchecked_repository_glossary() -> RepositoryGlossarySection:
+    """Validation's placeholder when the caller supplied no discovery
+    record (pure builders without a repository)."""
+    return {"checked": False}
+
+
+class _StructuralSections(TypedDict):
+    unnamed_structure: FindingSection
+    boundary_mismatch: FindingSection
+    overloaded_structural_region: FindingSection
 
 
 @dataclass(frozen=True)
@@ -558,8 +610,8 @@ def _structural_sections(
     graph: _GraphStatus,
     global_canonical: list[ConceptRecord],
     scoped_canonical: list[ConceptRecord],
-    vocab: dict,
-) -> tuple[dict, CoverageLedger]:
+    vocab: _ConceptVocab,
+) -> tuple[_StructuralSections, CoverageLedger]:
     """The three structure -> glossary sections with their skipped/partial
     flags, plus the match-work ledger. Path-scoped concepts cannot be
     matched against normalized Graphify groups, which carry no paths."""
@@ -591,8 +643,8 @@ def _structural_sections(
         overloaded = mark_incomplete(overloaded, scoped_structure_reason)
 
     def with_flags(
-        section: CappedSection, *, skipped: bool, skip_reason: str | None
-    ) -> dict:
+        section: FindingSection, *, skipped: bool, skip_reason: str | None
+    ) -> FindingSection:
         ledger = section["coverage"]
         partial = graph.usable and not ledger["total_items_exact"]
         return {
@@ -603,7 +655,7 @@ def _structural_sections(
             "partial_reason": "; ".join(ledger["reasons"]) if partial else None,
         }
 
-    sections = {
+    sections: _StructuralSections = {
         "unnamed_structure": with_flags(
             unnamed,
             skipped=not graph.usable or unnamed_scope_limited,
@@ -626,10 +678,10 @@ def build_validation(
     evidence: EvidenceDocument,
     glossary: GlossaryDocument,
     *,
-    managed_context: dict | None = None,
-    repository_glossary: dict | None = None,
+    managed_context: dict[str, object] | None = None,
+    repository_glossary: RepositoryGlossarySection | None = None,
     root: Path | None = None,
-) -> dict:
+) -> ValidationDocument:
     """``root`` (the scanned repository, when the caller has it) lets a
     binding to a real file the inventory never lists (``Makefile``,
     ``config/settings.toml``) be judged ``uncertain`` rather than
@@ -673,8 +725,12 @@ def build_validation(
     )
     matching_limits = matching_reasons(matcher)
 
-    sections = {
-        **structural_sections,
+    sections: dict[str, FindingSection] = {
+        "unnamed_structure": structural_sections["unnamed_structure"],
+        "boundary_mismatch": structural_sections["boundary_mismatch"],
+        "overloaded_structural_region": (
+            structural_sections["overloaded_structural_region"]
+        ),
         "orphaned_concepts": capped_section(
             orphaned, "orphaned concept", incomplete_reasons=(
                 production_reasons + code_vocabulary_reasons + matching_limits
@@ -736,16 +792,23 @@ def build_validation(
         "total_findings": total,
         "total_findings_complete": total_complete,
         "managed_context": managed_context or unchecked_managed_context(),
-        # The repository's own root GLOSSARY.md (Phase 30–32): discovery
-        # record plus, when structured state exists and the file was read
-        # completely, the lexical term-presence divergence. Not a findings
-        # section: it is one deterministic signal, never a diagnosis.
+        # The repository's own root GLOSSARY.md: discovery record plus, when
+        # structured state exists and the file was read completely, the
+        # lexical term-presence divergence. Not a findings section: it is
+        # one deterministic signal, never a diagnosis.
         "repository_glossary": (
             repository_glossary
             if repository_glossary is not None
-            else {"checked": False}
+            else _unchecked_repository_glossary()
         ),
-        **sections,
+        "unnamed_structure": sections["unnamed_structure"],
+        "boundary_mismatch": sections["boundary_mismatch"],
+        "overloaded_structural_region": sections["overloaded_structural_region"],
+        "orphaned_concepts": sections["orphaned_concepts"],
+        "unresolved_bindings": sections["unresolved_bindings"],
+        "fragmentation": sections["fragmentation"],
+        "vocabulary_drift": sections["vocabulary_drift"],
+        "concept_collision": sections["concept_collision"],
     }
 
 
@@ -764,22 +827,28 @@ _TITLES = {
 class ValidationView(FindingsDocumentView):
     """The read side of a validation document (`build_validation` writes it)."""
 
-    def canonical_concepts(self) -> int:
-        return self._d["canonical_concepts"]
+    def __init__(self, document: ValidationDocument) -> None:
+        super().__init__(document)
+        self._validation = document
 
-    def graph(self) -> dict:
+    def canonical_concepts(self) -> int:
+        return self._validation["canonical_concepts"]
+
+    def graph(self) -> GraphState:
         """The Graphify adapter state the validation embedded: presence,
         usability, freshness, warnings, group cap."""
-        return self._d["graph"]
+        return self._validation["graph"]
 
-    def scope_summary(self) -> dict:
-        return self._d["scope_summary"]
+    def scope_summary(self) -> ValidationScopeSummary:
+        return self._validation["scope_summary"]
 
-    def repository_glossary(self) -> dict:
-        return self._d.get("repository_glossary", {})
+    def repository_glossary(self) -> RepositoryGlossarySection:
+        return self._validation.get(
+            "repository_glossary", _unchecked_repository_glossary()
+        )
 
 
-def _print_report(document: dict) -> None:
+def _print_report(document: ValidationDocument) -> None:
     validation = ValidationView(document)
     complete = validation.total_findings_complete()
     count_label = "finding(s)" if complete else "evaluated finding(s)"
@@ -835,7 +904,7 @@ def _print_report(document: dict) -> None:
     )
 
 
-def _print_repository_glossary(section: dict) -> None:
+def _print_repository_glossary(section: RepositoryGlossarySection) -> None:
     if not section.get("present"):
         return
     if not section.get("readable"):

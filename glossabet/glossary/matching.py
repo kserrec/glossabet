@@ -11,6 +11,7 @@ from __future__ import annotations
 import unicodedata
 from collections import Counter
 from collections.abc import Iterable
+from typing import TypedDict
 
 from glossabet.analysis.evidence_types import (
     EvidenceDocument,
@@ -20,8 +21,10 @@ from glossabet.analysis.evidence_types import (
 from glossabet.analysis.evidence_view import EvidenceView
 from glossabet.corpus.imports import module_of
 from glossabet.corpus.tokenize import doc_words, tokenize_identifier, tokenize_term
+from glossabet.glossary.model import ScopeEvidence
 from glossabet.glossary.store import path_in_scope, scope_evidence
 from glossabet.runtime.coverage import (
+    CoverageLedger,
     LocationSample,
     coverage_ledger,
     location_sample,
@@ -30,6 +33,17 @@ from glossabet.runtime.coverage import (
 LOCATION_SAMPLE = 5
 COMPOUND_MATCH_START_BUDGET = 250_000
 MAX_COMPOUND_TERM_TOKENS = 32
+
+
+class _TrieNode:
+    """One node of the compound-term trie: children by token, and the
+    compounds that end exactly here."""
+
+    __slots__ = ("children", "terminals")
+
+    def __init__(self) -> None:
+        self.children: dict[str, _TrieNode] = {}
+        self.terminals: list[tuple[str, ...]] = []
 
 
 def _match_compounds(
@@ -49,13 +63,12 @@ def _match_compounds(
     total_starts = sum(len(unit) for _, unit in units) if supported else 0
     processed_starts = 0
 
-    trie: dict = {}
-    terminal = object()
+    trie = _TrieNode()
     for wanted in supported:
         node = trie
         for token in wanted:
-            node = node.setdefault(token, {})
-        node.setdefault(terminal, []).append(wanted)
+            node = node.children.setdefault(token, _TrieNode())
+        node.terminals.append(wanted)
 
     exhausted = False
     for entry, unit in (units if supported else []):
@@ -67,16 +80,54 @@ def _match_compounds(
             processed_starts += 1
             node = trie
             for token in unit[start:start + MAX_COMPOUND_TERM_TOKENS]:
-                child = node.get(token)
+                child = node.children.get(token)
                 if child is None:
                     break
                 node = child
-                matched.update(node.get(terminal, ()))
+                matched.update(node.terminals)
         for wanted in matched:
             matches[wanted].append(entry)
         if exhausted:
             break
     return matches, processed_starts, total_starts
+
+
+class DocOccurrence(TypedDict):
+    """How often a term occurs in documentation, and whether that count
+    is exact for the corpus the scan read."""
+
+    count: int
+    count_complete: bool
+    scope: ScopeEvidence
+
+
+class _ScopedCounts(TypedDict):
+    count: int
+    count_complete: bool
+    files: int
+    files_complete: bool
+    modules: int
+    locations: list[LocationSample]
+    locations_truncated: bool
+
+
+class IdentifierOccurrence(DocOccurrence):
+    """One identifier's occurrence in code: counts, spread, and a
+    location sample, each with its own completeness."""
+
+    files: int
+    files_complete: bool
+    modules: int
+    locations: list[LocationSample]
+    locations_truncated: bool
+
+
+class TermOccurrence(IdentifierOccurrence):
+    """A glossary term's occurrence in code: a single token is matched
+    against the token table, a compound term as a lexical unit."""
+
+    term_tokens: list[str]
+    match_kind: str
 
 
 def _matching_locations(
@@ -92,7 +143,7 @@ def _scoped_entry_occurrence(
     entry: VocabularyEntry,
     scope: tuple[str, ...],
     corpus_complete: bool,
-) -> dict:
+) -> _ScopedCounts:
     locations = _matching_locations(entry, scope)
     modules = {module_of(location["path"]) for location in locations}
     locations_complete = not entry.get("locations_truncated", False)
@@ -182,7 +233,7 @@ class EvidenceIndex:
                 f"{len(self._unsupported_compounds)} compound term(s) exceed "
                 f"the {MAX_COMPOUND_TERM_TOKENS}-token matching limit"
             )
-        self.coverage = {
+        self.coverage: dict[str, CoverageLedger] = {
             "compound_match_positions": coverage_ledger(
                 total_starts,
                 processed_starts,
@@ -202,10 +253,10 @@ class EvidenceIndex:
 
     def code_term_occurrence(
         self, term: str, scope: tuple[str, ...] | None = None
-    ) -> dict:
+    ) -> TermOccurrence:
         wanted = tokenize_term(term)
         corpus_complete = self.view.production_corpus_complete()
-        empty = {
+        empty: TermOccurrence = {
             "term_tokens": wanted,
             "match_kind": "token" if len(wanted) <= 1 else "lexical-unit",
             "count": 0,
@@ -227,8 +278,8 @@ class EvidenceIndex:
 
     def _single_token_occurrence(
         self, wanted: list[str], scope: tuple[str, ...] | None,
-        corpus_complete: bool, empty: dict,
-    ) -> dict:
+        corpus_complete: bool, empty: TermOccurrence,
+    ) -> TermOccurrence:
         entry = self.token_entries.get(wanted[0])
         if entry is None:
             complete = (
@@ -263,11 +314,11 @@ class EvidenceIndex:
     def _compound_occurrence(
         self, wanted: list[str], scope: tuple[str, ...] | None,
         corpus_complete: bool,
-    ) -> dict:
+    ) -> TermOccurrence:
         wanted_tuple = tuple(wanted)
         entries = self._compound_matches.get(wanted_tuple, [])
         count = 0
-        locations: Counter = Counter()
+        locations: Counter[str] = Counter()
         locations_truncated = False
         scoped_count_complete = True
         index_complete = (
@@ -318,7 +369,7 @@ class EvidenceIndex:
 
     def code_identifier_occurrence(
         self, name: str, scope: tuple[str, ...] | None = None
-    ) -> dict:
+    ) -> IdentifierOccurrence:
         corpus_complete = self.view.production_corpus_complete()
         entry = self.identifier_entries.get(name)
         if entry is None:
@@ -357,7 +408,7 @@ class EvidenceIndex:
 
     def doc_term_occurrence(
         self, term: str, scope: tuple[str, ...] | None = None
-    ) -> dict:
+    ) -> DocOccurrence:
         wanted = tokenize_term(term)
         corpus_complete = self.view.production_corpus_complete()
         # The documentation index is keyed by *doc words* (letters-only,

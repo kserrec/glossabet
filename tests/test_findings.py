@@ -1,6 +1,8 @@
 """glossabet.findings: the finding record, capped section, evidence-omission
 derivation, and section renderer that drift and validation share."""
 
+import inspect
+
 import pytest
 
 from glossabet.glossary.findings import (
@@ -9,25 +11,43 @@ from glossabet.glossary.findings import (
     capped_section,
     collection_limitations,
     empty_section,
-    finding,
+    heuristic_finding,
     mark_incomplete,
+    observed_finding,
     print_sections,
     vocabulary_omission_reasons,
 )
 
 
-def test_finding_requires_exactly_one_epistemic_status():
-    observed = finding("k", "s", {"count": 1}, certainty="observed")
+def test_each_constructor_writes_exactly_one_epistemic_status():
+    observed = observed_finding("k", "s", {"count": 1}, certainty="observed")
     assert observed["certainty"] == "observed" and "signal_strength" not in observed
-    heuristic = finding("k", "s", {"x": 1}, signal_strength="weak", concept_id="c")
+    heuristic = heuristic_finding("k", "s", {"x": 1}, signal_strength="weak", concept_id="c")
     assert heuristic["signal_strength"] == "weak" and heuristic["concept_id"] == "c"
-    with pytest.raises(ValueError):
-        finding("k", "s", {})
-    with pytest.raises(ValueError):
-        finding("k", "s", {}, certainty="observed", signal_strength="weak")
+    assert "certainty" not in heuristic
     # Evidence is optional (binding findings carry none); scope only when given.
-    bare = finding("k", "s", certainty="observed")
+    bare = observed_finding("k", "s", certainty="observed")
     assert "evidence" not in bare and "scope" not in bare
+
+
+def test_producer_api_cannot_express_both_or_neither_status():
+    # The epistemic status is chosen by which constructor is called, never
+    # by an argument: neither accepts the other's field, each requires its
+    # own, and the old either/or constructor is gone.
+    import glossabet.glossary.findings as findings
+
+    observed = inspect.signature(observed_finding).parameters
+    heuristic = inspect.signature(heuristic_finding).parameters
+    assert "signal_strength" not in observed and "certainty" not in heuristic
+    assert observed["certainty"].default is inspect.Parameter.empty
+    assert heuristic["signal_strength"].default is inspect.Parameter.empty
+    assert observed["certainty"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert heuristic["signal_strength"].kind is inspect.Parameter.KEYWORD_ONLY
+    with pytest.raises(TypeError):
+        observed_finding("k", "s")  # no status at all
+    with pytest.raises(TypeError):
+        heuristic_finding("k", "s", signal_strength="weak", certainty="observed")
+    assert not hasattr(findings, "finding")
 
 
 def test_capped_section_reports_the_cap_and_keeps_totals_honest():
@@ -89,7 +109,7 @@ def test_renderer_prints_every_branch_from_a_hand_built_document(capsys):
     document = {
         "one": {
             "items": [
-                finding(
+                heuristic_finding(
                     "k", "line\x1b[31m one", {
                         "shared_contexts": ["ctx"],
                         "locations": [{"path": "a.py"}, {"path": "b.py"}],
@@ -102,7 +122,7 @@ def test_renderer_prints_every_branch_from_a_hand_built_document(capsys):
             "dropped_items": 2,
         },
         "empty": {"items": [], "dropped_items": 0},
-        "skipped": {"items": [finding("k", "x", certainty="observed")], "skipped": True},
+        "skipped": {"items": [observed_finding("k", "x", certainty="observed")], "skipped": True},
     }
     titles = {"one": "first", "empty": "second", "skipped": "third"}
     print_sections(FindingsDocumentView(document), titles, detail=True)

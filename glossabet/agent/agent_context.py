@@ -24,7 +24,10 @@ from glossabet.analysis.evidence_view import EvidenceView
 from glossabet.corpus.imports import module_of
 from glossabet.corpus.tokenize import STRUCTURED_IDENTIFIER_STYLES, identifier_style
 from glossabet.glossary.model import GlossaryDocument
-from glossabet.glossary.repository_glossary import repository_glossary_section
+from glossabet.glossary.repository_glossary import (
+    RepositoryGlossarySection,
+    repository_glossary_section,
+)
 from glossabet.runtime.artifacts import ArtifactError
 from glossabet.runtime.coverage import capped_collection, coverage_reasons
 from glossabet.runtime.engine_run import GLOSSARY_OPTIONAL, open_run
@@ -291,7 +294,7 @@ def build_agent_context(
     evidence: EvidenceDocument,
     glossary: GlossaryDocument | None,
     *,
-    repository_glossary: dict | None = None,
+    repository_glossary: RepositoryGlossarySection | None = None,
     full: bool = False,
 ) -> dict:
     """Project full engine evidence into the versioned agent-facing shape.
