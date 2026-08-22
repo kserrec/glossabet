@@ -16,7 +16,7 @@ from glossabet.corpus.tokenize import (
     TOKEN_ORIGIN_DOMAIN,
     tokenize_identifier,
 )
-from glossabet.runtime.coverage import capped_collection
+from glossabet.runtime.coverage import CoverageLedger, capped_collection
 
 MODULE_CANDIDATE_CAP = 10
 TERM_CANDIDATE_CAP = 15
@@ -134,7 +134,7 @@ def _term_candidates(token_counts: Counter, token_files: dict,
 def _ranked(
     candidates: Iterable[dict], cap: int, key, label: str,
     *, incomplete_reasons: Iterable[str] = (),
-) -> tuple[list[dict], dict]:
+) -> tuple[list[dict], CoverageLedger]:
     return capped_collection(
         sorted(candidates, key=key),
         cap,

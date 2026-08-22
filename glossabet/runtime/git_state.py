@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import os
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
+from typing import TypedDict
 
 from glossabet.runtime.artifacts import OUT_DIR, REPORT_FILE
 from glossabet.runtime.executables import which_on_path
@@ -80,8 +82,8 @@ _REPOSITORY_SELECTION_VARIABLES = frozenset({
 
 
 def _run_git(
-    git_exe: str, root: Path, args, *, overrides=()
-) -> subprocess.CompletedProcess:
+    git_exe: str, root: Path, args: Sequence[str], *, overrides: Sequence[str] = ()
+) -> subprocess.CompletedProcess[str]:
     """The one hardened git invocation: safe config, no prompts, a timeout.
     Callers own their own returncode policy and catch OSError/timeout."""
     # ``-C root`` names the repository being stamped; a caller's exported
@@ -135,7 +137,14 @@ def _filter_driver_overrides(git_exe: str, root: Path) -> tuple[str, ...]:
     return tuple(overrides)
 
 
-def repository_git_stamp(root: Path) -> dict:
+class GitStamp(TypedDict):
+    """The persisted freshness stamp: ``None`` fields mean Git was unavailable."""
+
+    head: str | None
+    dirty: bool | None
+
+
+def repository_git_stamp(root: Path) -> GitStamp:
     git_exe = _resolve_git()
     if git_exe is None:
         return {"head": None, "dirty": None}

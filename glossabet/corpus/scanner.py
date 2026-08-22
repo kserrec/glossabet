@@ -12,8 +12,10 @@ import errno
 import json
 import os
 import re
+from collections.abc import Mapping, Sized
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TypedDict
 
 from glossabet.corpus.config import EXCLUDED_CONTENT_ROLES, RepositoryConfig
 from glossabet.runtime.artifacts import REPORT_FILE
@@ -213,6 +215,21 @@ def symlink_content_refusal(
     return None
 
 
+class PathReasonSample(TypedDict):
+    """One ``{path, reason}`` record of a budget sample."""
+
+    path: str
+    reason: str
+
+
+class MonorepoEvidence(TypedDict):
+    """The persisted ``monorepo`` section."""
+
+    detected: bool
+    reasons: list[str]
+    sub_roots: list[str]
+
+
 @dataclass
 class CorpusBudget:
     walk_entries: int = 0
@@ -221,11 +238,11 @@ class CorpusBudget:
     skipped_source_files: int = 0
     skipped_source_bytes: int = 0
     skipped_production_source_files: int = 0
-    skipped_sample: list[dict] = field(default_factory=list)
+    skipped_sample: list[PathReasonSample] = field(default_factory=list)
     walk_truncated: bool = False
     walk_truncations: int = 0
     minimum_entries_omitted: int = 0
-    walk_sample: list[dict] = field(default_factory=list)
+    walk_sample: list[PathReasonSample] = field(default_factory=list)
     # Walk-time size of every admitted file, so a later read failure
     # reclassifies exactly the bytes that were charged (a fresh stat could
     # differ, or fail, if the file changed or vanished in between).
@@ -279,7 +296,7 @@ class CorpusBudget:
         if len(self.walk_sample) < BUDGET_PATH_SAMPLE:
             self.walk_sample.append({"path": relative, "reason": reason})
 
-    def as_evidence(self) -> dict:
+    def as_evidence(self) -> dict[str, object]:
         complete = not self.walk_truncated and not self.skipped_source_files
         production_complete = (
             not self.walk_truncated
@@ -379,7 +396,7 @@ EXCLUSION_KINDS: tuple[ExclusionKind, ...] = (
 SKIPPED_SELF_GLOSSARIES = "self_glossaries"
 
 
-def exclusion_sentences(skipped: dict) -> list[str]:
+def exclusion_sentences(skipped: Mapping[str, Sized]) -> list[str]:
     """Human sentences for every non-empty exclusion kind in an evidence
     ``skipped`` section, in ledger order."""
     return [
@@ -412,7 +429,7 @@ class WalkResult:
     workspace_manifests: list[str] = field(default_factory=list)
     corpus_budget: CorpusBudget = field(default_factory=CorpusBudget)
 
-    def skipped_as_evidence(self) -> dict:
+    def skipped_as_evidence(self) -> dict[str, list[str]]:
         """The path exclusions of ``evidence["skipped"]``, keyed and sorted
         as the ledger dictates (the caller adds its non-walk entries)."""
         return {
@@ -431,14 +448,14 @@ def _record_role_skip(result: WalkResult, relative: str, role: str) -> None:
 
 def _bounded_directory_entries(
     path: Path, relative: str, budget: CorpusBudget
-) -> list[os.DirEntry] | None:
+) -> list[os.DirEntry[str]] | None:
     """Return a deterministic directory snapshot within the per-dir ceiling.
 
     If a directory crosses the ceiling, skip it as a whole. Selecting the first
     entries returned by the filesystem would be bounded but nondeterministic;
     all-or-nothing preserves the evidence determinism contract.
     """
-    entries: list[os.DirEntry] = []
+    entries: list[os.DirEntry[str]] = []
     try:
         with os.scandir(path) as iterator:
             for entry in iterator:
@@ -459,15 +476,15 @@ def _bounded_directory_entries(
 
 
 def _partition_entries(
-    entries: list[os.DirEntry],
-) -> tuple[list[tuple[os.DirEntry, bool]], list[os.DirEntry]]:
+    entries: list[os.DirEntry[str]],
+) -> tuple[list[tuple[os.DirEntry[str], bool]], list[os.DirEntry[str]]]:
     """Split one directory snapshot into (directories, files).
 
     Directories carry whether they are reached through a symlink; symlinked
     directories are classified but never descended into.
     """
-    directories: list[tuple[os.DirEntry, bool]] = []
-    files: list[os.DirEntry] = []
+    directories: list[tuple[os.DirEntry[str], bool]] = []
+    files: list[os.DirEntry[str]] = []
     for entry in entries:
         try:
             is_directory = entry.is_dir(follow_symlinks=False)
@@ -484,7 +501,7 @@ def _partition_entries(
 
 
 def _classify_directories(
-    directories: list[tuple[os.DirEntry, bool]],
+    directories: list[tuple[os.DirEntry[str], bool]],
     file_count: int,
     rel_dir: str,
     is_root: bool,
@@ -546,7 +563,7 @@ def _classify_directories(
 
 
 def _classify_files(
-    files: list[os.DirEntry],
+    files: list[os.DirEntry[str]],
     rel_dir: str,
     is_root: bool,
     root: Path,
@@ -743,7 +760,9 @@ def _root_workspace_config(
     return reasons
 
 
-def detect_monorepo(root: Path, walk: WalkResult, config: RepositoryConfig) -> dict:
+def detect_monorepo(
+    root: Path, walk: WalkResult, config: RepositoryConfig
+) -> MonorepoEvidence:
     reasons = [f"workspace manifest {m}" for m in sorted(walk.workspace_manifests)]
     reasons += _root_workspace_config(root.resolve(), walk, config)
     sub_roots = sorted(set(walk.sub_roots))

@@ -175,7 +175,7 @@ class RepositoryConfig:
             for path in paths
         )
 
-    def as_evidence(self) -> dict:
+    def as_evidence(self) -> dict[str, object]:
         return {
             "present": self.present,
             "file": CONFIG_FILE if self.present else None,

@@ -33,10 +33,10 @@ class Run:
     exists)."""
 
     root: Path
-    glossary: dict | None
+    glossary: dict[str, object] | None
 
     @property
-    def required_glossary(self) -> dict:
+    def required_glossary(self) -> dict[str, object]:
         """The glossary of a ``GLOSSARY_REQUIRED`` run. ``open_run`` has
         already refused such a run without one, so this never fails for a
         command that asked for a required glossary."""

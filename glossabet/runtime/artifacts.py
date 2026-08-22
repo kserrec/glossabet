@@ -13,8 +13,10 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final, Literal
 
 OUT_DIR = "glossabet-out"
 # The human-readable vocabulary-health report the /glossabet skill writes at
@@ -41,16 +43,17 @@ class ArtifactError(ValueError):
 # could make stale. Callers get a named outcome and decide how to degrade —
 # raise, warn, or treat as a miss — without re-deriving the read, the
 # encoding, the bound, or the exception set.
-READ_ABSENT = "absent"        # no regular file at the path
-READ_OK = "read"              # value/payload is usable
-READ_OVERSIZED = "oversized"  # more than ``cap`` bytes; nothing was decoded
-READ_UNREADABLE = "unreadable"  # the OS refused the read
-READ_MALFORMED = "malformed"  # bytes read, but not valid UTF-8 JSON
+READ_ABSENT: Final = "absent"        # no regular file at the path
+READ_OK: Final = "read"              # value/payload is usable
+READ_OVERSIZED: Final = "oversized"  # more than ``cap`` bytes; nothing was decoded
+READ_UNREADABLE: Final = "unreadable"  # the OS refused the read
+READ_MALFORMED: Final = "malformed"  # bytes read, but not valid UTF-8 JSON
+ReadStatus = Literal["absent", "read", "oversized", "unreadable", "malformed"]
 
 
 @dataclass(frozen=True)
 class BoundedRead:
-    status: str
+    status: ReadStatus
     cap: int
     # ``payload`` is the exact bytes read (READ_OK from read_bounded_bytes,
     # and READ_OK/READ_MALFORMED from the JSON reader); ``value`` is the
@@ -153,7 +156,7 @@ def replace_file_atomic(
     payload: bytes,
     *,
     mode: int | None = None,
-    before_replace=None,
+    before_replace: Callable[[], None] | None = None,
 ) -> None:
     """Write ``payload`` to a same-directory temporary, then replace ``path``.
 
@@ -187,7 +190,9 @@ def replace_file_atomic(
         raise
 
 
-def write_json_atomic(path: Path, payload: dict, *, indent: int = 2) -> None:
+def write_json_atomic(
+    path: Path, payload: Mapping[str, object], *, indent: int = 2
+) -> None:
     """Write deterministic JSON atomically, replacing ``path`` at commit."""
     # allow_nan=False fails closed: a NaN would otherwise serialize as the
     # bare non-JSON token ``NaN`` and every strict consumer would reject
@@ -199,7 +204,7 @@ def write_json_atomic(path: Path, payload: dict, *, indent: int = 2) -> None:
     replace_file_atomic(path, serialized.encode("utf-8"))
 
 
-def write_artifact(root: Path, filename: str, payload: dict) -> Path:
+def write_artifact(root: Path, filename: str, payload: Mapping[str, object]) -> Path:
     root = root.resolve()
     out = confined_artifact_path(root, OUT_DIR)
     if out.exists() and not out.is_dir():

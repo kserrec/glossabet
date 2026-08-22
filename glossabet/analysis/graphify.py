@@ -13,6 +13,7 @@ from __future__ import annotations
 import math
 import unicodedata
 from collections import Counter
+from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
 
 from glossabet.corpus.tokenize import tokenize_term
@@ -24,7 +25,11 @@ from glossabet.runtime.artifacts import (
     confined_artifact_path,
     read_bounded_json,
 )
-from glossabet.runtime.coverage import capped_collection, coverage_ledger
+from glossabet.runtime.coverage import (
+    CoverageLedger,
+    capped_collection,
+    coverage_ledger,
+)
 
 GRAPH_PATH = "graphify-out/graph.json"
 GROUP_CAP = 50
@@ -218,7 +223,7 @@ def _same_commit(built: str, current: str) -> bool:
     )
 
 
-def _freshness(graph: dict, git_stamp: dict | None) -> dict:
+def _freshness(graph: dict, git_stamp: Mapping[str, object] | None) -> dict:
     built_raw = graph.get("built_at_commit")
     built = built_raw.strip() if isinstance(built_raw, str) else None
     current_raw = git_stamp.get("head") if isinstance(git_stamp, dict) else None
@@ -497,7 +502,7 @@ def _group_items(
 
 def _god_nodes(
     nodes: dict[str, dict], degree: Counter, glossary_nodes: set[str]
-) -> tuple[list[dict], dict]:
+) -> tuple[list[dict], CoverageLedger]:
     ranked = [
         {"label": nodes[node_id]["label"], "degree": count}
         for node_id, count in sorted(
@@ -513,7 +518,7 @@ def _god_nodes(
 
 
 def build_structural_groups(
-    root: Path, git_stamp: dict | None = None
+    root: Path, git_stamp: Mapping[str, object] | None = None
 ) -> dict:
     graph, present, warnings = _load_graph(root)
     if graph is None:

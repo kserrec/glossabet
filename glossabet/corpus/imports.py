@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-_PATTERNS: dict[str, list[re.Pattern]] = {
+_PATTERNS: dict[str, list[re.Pattern[str]]] = {
     "python": [
         re.compile(r"^[ \t]*import\s+([\w.]+)", re.M),
         re.compile(r"^[ \t]*from[ \t]+([\w.]+)[ \t]+import", re.M),
@@ -254,11 +254,11 @@ class Resolver:
 
 
 def build_imports_section(file_imports: list[tuple[str, str, list[str]]],
-                          code_files: list[tuple[str, str]]) -> dict:
+                          code_files: list[tuple[str, str]]) -> dict[str, object]:
     """file_imports: (path, language, import specs) per scanned file."""
     resolver = Resolver(code_files)
-    edges: Counter = Counter()
-    external: Counter = Counter()
+    edges: Counter[tuple[str, str]] = Counter()
+    external: Counter[str] = Counter()
     for rel, language, specs in file_imports:
         importer_module = module_of(rel)
         for spec in specs:

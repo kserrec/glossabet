@@ -9,8 +9,9 @@ standard streams so even an unexpected exception is rendered safely.
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
-from typing import Iterator, TextIO
+from typing import TextIO
 
 _BIDI_FORMAT_CHARACTERS = frozenset(
     {
@@ -124,7 +125,7 @@ def escape_terminal_text(text: str, *, preserve_line_feeds: bool = False) -> str
     return "".join(rendered)
 
 
-def join_escaped(values, separator: str = ", ") -> str:
+def join_escaped(values: Iterable[str], separator: str = ", ") -> str:
     """Join repository-controlled strings for one terminal line, escaping each."""
     return separator.join(escape_terminal_text(value) for value in values)
 
@@ -160,7 +161,7 @@ class _SafeTerminalStream:
                 pass  # an unknown codec name: nothing we can pre-check
         return self._stream.write(safe)
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, name: str) -> object:
         return getattr(self._stream, name)
 
 

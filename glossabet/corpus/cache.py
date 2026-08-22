@@ -13,8 +13,9 @@ from __future__ import annotations
 import hashlib
 import os
 import sys
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TypedDict
+from typing import TypedDict, TypeGuard
 
 from glossabet import __version__
 from glossabet.runtime.artifacts import read_bounded_json, write_json_atomic
@@ -87,7 +88,7 @@ def _inside(candidate: Path, root: Path) -> bool:
     return False
 
 
-def load_cache(root: Path) -> dict | None:
+def load_cache(root: Path) -> dict[str, object] | None:
     try:
         path = cache_path(root)
     except CacheLocationError:
@@ -111,44 +112,49 @@ def load_cache(root: Path) -> dict | None:
     return data
 
 
-def _counter_shape(value: object) -> bool:
+class CodeEntry(TypedDict):
+    """One extracted code file as cached and folded into evidence."""
+
+    kind: str
+    language: str
+    identifiers: dict[str, int]
+    imports: list[str]
+    content_sha256: str
+    size: int
+
+
+class DocEntry(TypedDict):
+    """One extracted documentation file as cached and folded into evidence."""
+
+    kind: str
+    words: dict[str, int]
+    word_total: int
+    content_sha256: str
+    size: int
+
+
+def _count(value: object) -> TypeGuard[int]:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _counter_shape(value: object) -> TypeGuard[dict[str, int]]:
     return isinstance(value, dict) and all(
-        isinstance(key, str)
-        and isinstance(count, int)
-        and not isinstance(count, bool)
-        and count >= 0
-        for key, count in value.items()
+        isinstance(key, str) and _count(count) for key, count in value.items()
     )
 
 
-def _entry_shape(entry: dict, kind: str) -> bool:
-    size = entry.get("size")
-    if not isinstance(size, int) or isinstance(size, bool) or size < 0:
-        return False
-    if kind == "code":
-        return (
-            isinstance(entry.get("language"), str)
-            and _counter_shape(entry.get("identifiers"))
-            and isinstance(entry.get("imports"), list)
-            and all(isinstance(item, str) for item in entry["imports"])
-        )
-    if kind == "doc":
-        total = entry.get("word_total")
-        return (
-            _counter_shape(entry.get("words"))
-            and isinstance(total, int)
-            and not isinstance(total, bool)
-            and total >= 0
-        )
-    return False
+def _string_list(value: object) -> TypeGuard[list[str]]:
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
-def entry_if_valid(
-    cached: dict | None,
+def _cached_entry(
+    cached: Mapping[str, object] | None,
     rel: str,
     kind: str,
     content_sha256: str,
-) -> dict | None:
+) -> Mapping[str, object] | None:
+    """The cache's entry for ``rel`` when it is of ``kind`` and describes
+    exactly the content now on disk; its fields are still unvalidated."""
     if not isinstance(cached, dict):
         return None
     files = cached.get("files")
@@ -159,13 +165,63 @@ def entry_if_valid(
         isinstance(entry, dict)
         and entry.get("kind") == kind
         and entry.get("content_sha256") == content_sha256
-        and _entry_shape(entry, kind)
     ):
         return entry
     return None
 
 
-def save_cache(root: Path, files: dict, git_stamp: dict) -> bool:
+def cached_code_entry(
+    cached: Mapping[str, object] | None, rel: str, content_sha256: str
+) -> CodeEntry | None:
+    """A validated cached code entry for ``rel``, or ``None`` to re-extract."""
+    entry = _cached_entry(cached, rel, "code", content_sha256)
+    if entry is None:
+        return None
+    size = entry.get("size")
+    language = entry.get("language")
+    identifiers = entry.get("identifiers")
+    imports = entry.get("imports")
+    if (
+        not _count(size)
+        or not isinstance(language, str)
+        or not _counter_shape(identifiers)
+        or not _string_list(imports)
+    ):
+        return None
+    return {
+        "kind": "code",
+        "language": language,
+        "identifiers": identifiers,
+        "imports": imports,
+        "content_sha256": content_sha256,
+        "size": size,
+    }
+
+
+def cached_doc_entry(
+    cached: Mapping[str, object] | None, rel: str, content_sha256: str
+) -> DocEntry | None:
+    """A validated cached doc entry for ``rel``, or ``None`` to re-extract."""
+    entry = _cached_entry(cached, rel, "doc", content_sha256)
+    if entry is None:
+        return None
+    size = entry.get("size")
+    words = entry.get("words")
+    total = entry.get("word_total")
+    if not _count(size) or not _counter_shape(words) or not _count(total):
+        return None
+    return {
+        "kind": "doc",
+        "words": words,
+        "word_total": total,
+        "content_sha256": content_sha256,
+        "size": size,
+    }
+
+
+def save_cache(
+    root: Path, files: Mapping[str, object], git_stamp: Mapping[str, object]
+) -> bool:
     payload = {
         "cache_version": CACHE_VERSION,
         "generator_version": __version__,

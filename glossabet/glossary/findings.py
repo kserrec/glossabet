@@ -97,7 +97,7 @@ def capped_section(
     total_items: int | None = None,
     total_items_exact: bool | None = None,
     cap: int | None = None,
-) -> dict:
+) -> coverage.CappedSection:
     """``{items, dropped_items, coverage}`` for one findings section: the
     first ``cap`` findings in detail, the ledger honest about the rest.
 
@@ -120,7 +120,9 @@ def capped_section(
     )
 
 
-def empty_section(reason: str, *, total_items_exact: bool = True) -> dict:
+def empty_section(
+    reason: str, *, total_items_exact: bool = True
+) -> coverage.CappedSection:
     """A section holding no findings *for a stated reason* — the check was
     skipped (``total_items_exact`` true: nothing was there to count) or
     could not be run over some inputs (false: the zero is a lower bound)."""
@@ -133,7 +135,9 @@ def empty_section(reason: str, *, total_items_exact: bool = True) -> dict:
     }
 
 
-def mark_incomplete(section: dict, reason: str) -> dict:
+def mark_incomplete(
+    section: coverage.CappedSection, reason: str
+) -> coverage.CappedSection:
     """The same section with its total declared inexact for ``reason``."""
     ledger = section["coverage"]
     coverage = coverage_ledger(

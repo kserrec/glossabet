@@ -9,7 +9,36 @@ about upstream evidence that was not evaluated.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
+from typing import TypedDict, TypeVar
+
+T = TypeVar("T")
+
+
+class CoverageLedger(TypedDict):
+    """The persisted completeness ledger every bounded collection carries."""
+
+    total_items: int
+    included_items: int
+    dropped_items: int
+    total_items_exact: bool
+    complete: bool
+    reasons: list[str]
+
+
+class CappedSection(TypedDict):
+    """``{items, dropped_items, coverage}`` — a capped list in an artifact."""
+
+    items: list[object]
+    dropped_items: int
+    coverage: CoverageLedger
+
+
+class LocationSample(TypedDict):
+    """One ``{path, count}`` record of a location sample."""
+
+    path: str
+    count: int
 
 
 def _reasons(values: Iterable[str]) -> list[str]:
@@ -23,7 +52,7 @@ def coverage_ledger(
     *,
     total_items_exact: bool = True,
     reasons: Iterable[str] = (),
-) -> dict:
+) -> CoverageLedger:
     """Describe how much of one collection is present in detail.
 
     ``dropped_items`` counts known items omitted from the detailed list.  When
@@ -50,14 +79,14 @@ def coverage_ledger(
 
 
 def capped_collection(
-    items: Sequence,
+    items: Sequence[T],
     cap: int,
     *,
     cap_reason: str,
     total_items: int | None = None,
     total_items_exact: bool = True,
     incomplete_reasons: Iterable[str] = (),
-) -> tuple[list, dict]:
+) -> tuple[list[T], CoverageLedger]:
     """Keep a deterministic prefix and return its shared coverage ledger.
 
     This is the one way to "cap this list and say so": the ledger's reasons
@@ -82,7 +111,9 @@ def capped_collection(
     )
 
 
-def location_sample(per_file, cap: int) -> tuple[list[dict], bool]:
+def location_sample(
+    per_file: Mapping[str, int], cap: int
+) -> tuple[list[LocationSample], bool]:
     """The top-``cap`` (path, count) locations by (-count, path) as
     ``{"path", "count"}`` records, and whether any were left out."""
     ranked = sorted(per_file.items(), key=lambda item: (-item[1], item[0]))
@@ -94,14 +125,14 @@ def location_sample(per_file, cap: int) -> tuple[list[dict], bool]:
 
 
 def capped_section(
-    items: Sequence,
+    items: Sequence[object],
     cap: int,
     *,
     cap_reason: str,
     total_items: int | None = None,
     total_items_exact: bool = True,
     incomplete_reasons: Iterable[str] = (),
-) -> dict:
+) -> CappedSection:
     """``{items, dropped_items, coverage}`` — the section shape every
     capped list in an artifact takes — from ``capped_collection``."""
     kept, coverage = capped_collection(

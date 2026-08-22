@@ -3,7 +3,7 @@
 Status: **Phases 0–22, 24–32, 34–44 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
 in progress at 33.2; Phase 45 (maintainability refactor, 15 spec passes) in
-progress at 45.2; owner self-testing pause active before the trusted-alpha
+progress at 45.3; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-22.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1213,7 +1213,7 @@ Steps (each is the same-numbered spec pass):
 
 - **45.1** Pass 1 — enforceable static-quality gates (Ruff + mypy, CI
   `static` job, checker hardening) ✅ 2026-08-22
-- **45.2** Pass 2 — JSON and coverage foundation types
+- **45.2** Pass 2 — JSON and coverage foundation types ✅ 2026-08-22
 - **45.3** Pass 3 — `RepositoryEvidence` contract and a fully typed
   `EvidenceView`
 - **45.4** Pass 4 — structured glossary and store boundary types
@@ -1251,6 +1251,23 @@ exact three static lines in order, Linux, 3.10, no job-level `if:`, and the
 two-job `needs` list, with 17 new weakening mutations in
 `tests/test_release.py`. Observation recorded, not changed (spec §3.1): a
 JSON `null` document on `save`'s stdin exits 1 with no message.
+
+**45.2 outcome (2026-08-22):** `runtime/json_types.py` (JSONScalar/
+JSONValue/JSONArray/JSONObject aliases); `CoverageLedger`, `CappedSection`,
+and `LocationSample` `TypedDict`s in `runtime/coverage.py` with
+`capped_collection` generic over its item type; `ReadStatus` literal and
+`Final` status constants for `BoundedRead`; `GitStamp`; `CodeEntry`/`DocEntry`
+in `corpus/cache.py` built by validate-then-construct (`TypeGuard` helpers)
+replacing the boolean-shape check, with `SourceExtractor` typed accordingly
+and an `UnreadReclassifier` protocol instead of a scanner import;
+`PathReasonSample`/`MonorepoEvidence`; `os.DirEntry[str]`, `Counter[...]`,
+`Mapping` inputs across runtime/corpus public signatures. mypy now enforces
+`disallow_untyped_defs`/`incomplete_defs`/`any_generics` for
+`glossabet.runtime.*` and `glossabet.corpus.*`; higher layers only had their
+ledger/section annotations renamed where the TypedDict crosses into them.
+`tests/test_coverage.py` pins the serialized shapes. A/B byte-identical for
+scan (cold and warm), analyze, drift, validate, show, brief, every artifact,
+and the cache file. Suite 648.
 
 ### Owner self-testing pause — active, not an implementation phase
 

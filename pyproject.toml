@@ -63,6 +63,14 @@ disallow_untyped_defs = false
 disallow_incomplete_defs = false
 
 [[tool.mypy.overrides]]
+# Fully typed layers (Pass 2 onward): the foundation is held to the final
+# policy now; Pass 7 extends it to the whole package.
+module = ["glossabet.runtime.*", "glossabet.corpus.*"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_any_generics = true
+
+[[tool.mypy.overrides]]
 # These modules return values read out of untyped documents. Each relaxation
 # is removed by the pass that types its documents: evidence_view and
 # terminology (Pass 3), findings/drift/reconcile (Pass 5), agent_context

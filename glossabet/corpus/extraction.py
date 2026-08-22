@@ -9,10 +9,17 @@ from __future__ import annotations
 
 import hashlib
 from collections import Counter
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Protocol
 
 from glossabet.agent.managed_block import strip_managed_context_for_evidence
-from glossabet.corpus.cache import entry_if_valid
+from glossabet.corpus.cache import (
+    CodeEntry,
+    DocEntry,
+    cached_code_entry,
+    cached_doc_entry,
+)
 from glossabet.corpus.imports import extract_imports
 from glossabet.corpus.tokenize import doc_words, iter_identifiers
 
@@ -38,8 +45,10 @@ def read_source(path: Path) -> tuple[bytes, str, str] | str:
     return content, hashlib.sha256(content).hexdigest(), text
 
 
-def extract_code_entry(text: str, language: str) -> dict:
-    identifiers: Counter = Counter()
+def extract_code_entry(
+    text: str, language: str, *, content_sha256: str, size: int
+) -> CodeEntry:
+    identifiers: Counter[str] = Counter()
     for name in iter_identifiers(text, language):
         identifiers[name] += 1
     return {
@@ -47,17 +56,30 @@ def extract_code_entry(text: str, language: str) -> dict:
         "language": language,
         "identifiers": dict(sorted(identifiers.items())),
         "imports": extract_imports(text, language),
+        "content_sha256": content_sha256,
+        "size": size,
     }
 
 
-def extract_doc_entry(text: str) -> dict:
+def extract_doc_entry(text: str, *, content_sha256: str, size: int) -> DocEntry:
     words = doc_words(text)
     counts = Counter(words)
     return {
         "kind": "doc",
         "words": dict(sorted(counts.items())),
         "word_total": len(words),
+        "content_sha256": content_sha256,
+        "size": size,
     }
+
+
+class UnreadReclassifier(Protocol):
+    """The one corpus-budget operation extraction needs: move a file the
+    walk admitted but the build could not read from used to skipped."""
+
+    def reclassify_unread(
+        self, relative: str, reason: str, *, production: bool
+    ) -> None: ...
 
 
 class SourceExtractor:
@@ -71,23 +93,55 @@ class SourceExtractor:
     count how each entry was obtained.
     """
 
-    def __init__(self, root: Path, cached: dict | None, corpus_budget) -> None:
+    def __init__(
+        self,
+        root: Path,
+        cached: Mapping[str, object] | None,
+        corpus_budget: UnreadReclassifier,
+    ) -> None:
         self._root = root
         self._cached = cached
         self._budget = corpus_budget
-        self.cache_files: dict[str, dict] = {}
+        self.cache_files: dict[str, CodeEntry | DocEntry] = {}
         self.reused = 0
         self.extracted = 0
 
-    def code_entry(self, rel: str, language: str, role: str) -> dict | None:
-        return self._entry(
-            rel, "code", role, lambda text: extract_code_entry(text, language)
-        )
+    def code_entry(self, rel: str, language: str, role: str) -> CodeEntry | None:
+        source = self._read(rel, role)
+        if source is None:
+            return None
+        content, content_sha256, text = source
+        entry = cached_code_entry(self._cached, rel, content_sha256)
+        if entry is None:
+            entry = extract_code_entry(
+                text, language, content_sha256=content_sha256, size=len(content)
+            )
+            self.extracted += 1
+        else:
+            entry["size"] = len(content)
+            self.reused += 1
+        self.cache_files[rel] = entry
+        return entry
 
-    def doc_entry(self, rel: str, role: str) -> dict | None:
-        return self._entry(rel, "doc", role, extract_doc_entry)
+    def doc_entry(self, rel: str, role: str) -> DocEntry | None:
+        source = self._read(rel, role)
+        if source is None:
+            return None
+        content, content_sha256, text = source
+        entry = cached_doc_entry(self._cached, rel, content_sha256)
+        if entry is None:
+            text = strip_managed_context_for_evidence(rel, text)
+            entry = extract_doc_entry(
+                text, content_sha256=content_sha256, size=len(content)
+            )
+            self.extracted += 1
+        else:
+            entry["size"] = len(content)
+            self.reused += 1
+        self.cache_files[rel] = entry
+        return entry
 
-    def _entry(self, rel: str, kind: str, role: str, extractor) -> dict | None:
+    def _read(self, rel: str, role: str) -> tuple[bytes, str, str] | None:
         source = read_source(self._root / rel)
         if isinstance(source, str):
             # An inventoried file the build could not read is an omission
@@ -99,17 +153,4 @@ class SourceExtractor:
                 rel, source, production=role == "production"
             )
             return None
-        content, content_sha256, text = source
-        entry = entry_if_valid(self._cached, rel, kind, content_sha256)
-        if entry is None:
-            if kind == "doc":
-                text = strip_managed_context_for_evidence(rel, text)
-            entry = extractor(text)
-            self.extracted += 1
-        else:
-            entry = dict(entry)
-            self.reused += 1
-        entry["content_sha256"] = content_sha256
-        entry["size"] = len(content)
-        self.cache_files[rel] = entry
-        return entry
+        return source

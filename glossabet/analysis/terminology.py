@@ -25,6 +25,8 @@ from glossabet.corpus.tokenize import (
     tokenize_identifier,
 )
 from glossabet.runtime.coverage import (
+    CappedSection,
+    CoverageLedger,
     capped_collection,
     capped_section,
     coverage_ledger,
@@ -133,7 +135,7 @@ def _pct(counter: Counter, total: int) -> dict:
     } if total else {}
 
 
-def _top_affixes(counter: Counter) -> tuple[list[dict], dict]:
+def _top_affixes(counter: Counter) -> tuple[list[dict], CoverageLedger]:
     ranked = [
         {"token": token, "identifiers": count}
         for token, count in sorted(
@@ -189,7 +191,7 @@ def _register(
 
 
 def _layers(token_counts: Counter, doc_term_counts: Counter) -> dict:
-    def top(counter: Counter, keep, label: str) -> tuple[list[str], dict]:
+    def top(counter: Counter, keep, label: str) -> tuple[list[str], CoverageLedger]:
         ranked = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
         items = [term for term, _ in ranked if keep(term)]
         return capped_collection(
@@ -236,7 +238,7 @@ def _pattern_label(pattern: tuple[str, ...]) -> str:
 
 def _synonym_candidates(top_tokens: list[str], token_counts: Counter,
                         token_files: dict, token_patterns: dict,
-                        neighbors: dict, token_coverage: dict) -> dict:
+                        neighbors: dict, token_coverage: CoverageLedger) -> dict:
     # Inverse-frequency weighting: a ubiquitous context token (a repo's
     # "term"/"prop") says little about which two terms are parallel, so it
     # must not dominate the similarity.
@@ -338,8 +340,8 @@ def _context_dispersion(
     top_tokens: list[str],
     module_neighbor_sets: dict,
     module_neighbor_truncated: set[tuple[str, str]],
-    token_coverage: dict,
-) -> tuple[list[dict], dict]:
+    token_coverage: CoverageLedger,
+) -> tuple[list[dict], CappedSection]:
     """Measure bounded cross-module context dispersion once.
 
     Internal profiles retain complete context sets for overload detail. The
@@ -407,7 +409,7 @@ def _context_dispersion(
         total_items_exact=token_coverage["complete"],
         reasons=incomplete_reasons,
     )
-    public_items = [
+    public_items: list[object] = [
         {
             "term": item["term"],
             "dispersion": item["dispersion"],
@@ -426,8 +428,8 @@ def _context_dispersion(
 def _overload_candidates(
     dispersion_profiles: list[dict],
     token_modules: dict,
-    dispersion_coverage: dict,
-) -> dict:
+    dispersion_coverage: CoverageLedger,
+) -> CappedSection:
     items = []
     for profile in dispersion_profiles:
         if not profile["divergent"]:

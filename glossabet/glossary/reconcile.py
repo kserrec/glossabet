@@ -50,7 +50,7 @@ from glossabet.glossary.store import (
     scope_evidence,
 )
 from glossabet.runtime.artifacts import write_artifact
-from glossabet.runtime.coverage import coverage_ledger
+from glossabet.runtime.coverage import CappedSection, CoverageLedger, coverage_ledger
 from glossabet.runtime.display import escape_terminal_text
 from glossabet.runtime.engine_run import GLOSSARY_REQUIRED, open_run
 
@@ -241,7 +241,7 @@ def _structural_incompleteness(
     partial_group_matches: bool,
     total_match_work: int,
     processed_match_work: int,
-) -> tuple[list[str], bool, dict]:
+) -> tuple[list[str], bool, CoverageLedger]:
     """Section incompleteness reasons, whether totals are exact, and the
     match-work ledger."""
     reasons = list(upstream_reasons)
@@ -275,7 +275,7 @@ def _structure_findings(
     canonical: list[dict],
     vocab: dict,
     upstream_reasons: list[str],
-) -> tuple[dict, dict, dict, dict]:
+) -> tuple[CappedSection, CappedSection, CappedSection, CoverageLedger]:
     """Direction A: structure -> glossary.
 
     Canonical concepts are reached through an inverted token index. Boundary
@@ -550,7 +550,7 @@ def _structural_sections(
     global_canonical: list[dict],
     scoped_canonical: list[dict],
     vocab: dict,
-) -> tuple[dict, dict]:
+) -> tuple[dict, CoverageLedger]:
     """The three structure -> glossary sections with their skipped/partial
     flags, plus the match-work ledger. Path-scoped concepts cannot be
     matched against normalized Graphify groups, which carry no paths."""
@@ -581,7 +581,9 @@ def _structural_sections(
         boundary = mark_incomplete(boundary, scoped_structure_reason)
         overloaded = mark_incomplete(overloaded, scoped_structure_reason)
 
-    def with_flags(section: dict, *, skipped: bool, skip_reason) -> dict:
+    def with_flags(
+        section: CappedSection, *, skipped: bool, skip_reason: str | None
+    ) -> dict:
         ledger = section["coverage"]
         partial = graph.usable and not ledger["total_items_exact"]
         return {

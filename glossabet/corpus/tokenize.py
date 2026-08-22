@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Iterator
 
 from glossabet.corpus.unicode_marks import mark_class_body
 
@@ -107,7 +108,7 @@ STRUCTURED_IDENTIFIER_STYLES = frozenset({
 })
 
 
-def tokenization_contract() -> dict:
+def tokenization_contract() -> dict[str, object]:
     """Machine-readable summary of the lexical normalization semantics."""
     return {
         "unicode_normalization": "NFKC+casefold",
@@ -272,7 +273,7 @@ def _split_case_and_digits(hunk: str) -> list[str]:
     return words
 
 
-def iter_identifiers(text: str, language: str | None = None):
+def iter_identifiers(text: str, language: str | None = None) -> Iterator[str]:
     """Yield conservative Unicode identifier spellings from source text.
 
     Unicode word characters with a nonnumeric start supply the lexical rule.
