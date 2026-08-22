@@ -10,7 +10,6 @@ import pytest
 
 from evaluation.run import EVALUATION_SCHEMA_VERSION, verify_results
 
-
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "evaluation" / "corpus.json"
 RESULTS = ROOT / "evaluation" / "results.json"
@@ -291,7 +290,6 @@ def test_genuineness_verifier_catches_internal_tampering_without_currency(
         errors = verify_results(path, MANIFEST)
         assert any(expected in error for error in errors), (expected, errors)
 
-    import evaluation.run as run
 
     with_score(lambda b: b["recall_true_positive"].append("zz:phantom"),
                "recall true positives are not a subset of true positives")
@@ -512,7 +510,7 @@ def test_manifest_rejects_non_https_corpus_url(tmp_path):
 
     try:
         _read_manifest(path)
-        assert False, "an ext:: corpus url was accepted"
+        raise AssertionError("an ext:: corpus url was accepted")
     except EvaluationError as exc:
         assert "url must be an https" in str(exc)
 
@@ -539,7 +537,7 @@ def test_manifest_rejects_escaping_checkout_dir(tmp_path):
         path.write_text(json.dumps(poisoned), encoding="utf-8")
         try:
             _read_manifest(path)
-            assert False, f"escaping checkout_dir accepted: {bad}"
+            raise AssertionError(f"escaping checkout_dir accepted: {bad}")
         except EvaluationError as exc:
             assert "checkout_dir" in str(exc)
 
@@ -557,7 +555,7 @@ def test_manifest_rejects_escaping_local_path(tmp_path):
     path.write_text(json.dumps(manifest), encoding="utf-8")
     try:
         _read_manifest(path)
-        assert False, "escaping local path accepted"
+        raise AssertionError("escaping local path accepted")
     except EvaluationError as exc:
         assert "path must be a safe relative path" in str(exc)
 
@@ -572,7 +570,7 @@ def test_manifest_rejects_non_hex_commit(tmp_path):
     path.write_text(json.dumps(poisoned), encoding="utf-8")
     try:
         _read_manifest(path)
-        assert False, "a non-hex commit was accepted"
+        raise AssertionError("a non-hex commit was accepted")
     except EvaluationError as exc:
         assert "commit must be" in str(exc)
 
@@ -585,7 +583,7 @@ def test_manifest_rejects_oversized_file(tmp_path):
     path.write_bytes(b'{"x":' + b" " * (MAX_JSON_BYTES + 10) + b"1}")
     try:
         _read_manifest(path)
-        assert False, "an oversized manifest was accepted"
+        raise AssertionError("an oversized manifest was accepted")
     except EvaluationError as exc:
         assert "exceeds" in str(exc)
 

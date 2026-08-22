@@ -8,13 +8,13 @@ import json
 import pytest
 
 from glossabet.cli import EXIT_USER_ERROR, main
+from glossabet.glossary.store import save_glossary
 from glossabet.runtime.engine_run import (
     GLOSSARY_OPTIONAL,
     GLOSSARY_REQUIRED,
     RunError,
     open_run,
 )
-from glossabet.glossary.store import save_glossary
 
 GLOSSARY = {
     "schema_version": 1,

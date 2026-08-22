@@ -123,9 +123,9 @@ sys.path.insert(0, str(ROOT))
 
 from glossabet import __version__  # noqa: E402
 from glossabet.agent.agent_context import AGENT_CONTEXT_SCHEMA_VERSION  # noqa: E402
-from glossabet.runtime.artifacts import MAX_JSON_BYTES  # noqa: E402
-from glossabet.install.installer import default_skill_directory  # noqa: E402
 from glossabet.corpus.scanner import is_sensitive  # noqa: E402
+from glossabet.install.installer import default_skill_directory  # noqa: E402
+from glossabet.runtime.artifacts import MAX_JSON_BYTES  # noqa: E402
 
 
 class AgentEvaluationError(RuntimeError):
@@ -2096,9 +2096,9 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
                         flush=True,
                     )
         if primary_error is not None:
-            setattr(primary_error, "cleanup_verified", cleanup_verified)
-            setattr(primary_error, "attempt_usage", usages)
-            setattr(primary_error, "failed_stage", stage)
+            primary_error.cleanup_verified = cleanup_verified
+            primary_error.attempt_usage = usages
+            primary_error.failed_stage = stage
             raise primary_error
 
         stage = "missing-cli"
@@ -2111,9 +2111,9 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
                 disabled_skills=disabled_skills,
             )
         except BaseException as exc:
-            setattr(exc, "cleanup_verified", cleanup_verified)
-            setattr(exc, "attempt_usage", usages)
-            setattr(exc, "failed_stage", stage)
+            exc.cleanup_verified = cleanup_verified
+            exc.attempt_usage = usages
+            exc.failed_stage = stage
             raise
         usages.append(missing_usage)
         results.append(missing_result)

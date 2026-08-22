@@ -8,11 +8,11 @@ import os
 
 import pytest
 
-from glossabet.cli import main
 from glossabet.analysis.evidence import Limits, build_evidence
-from glossabet.glossary.store import save_glossary, validate_glossary
+from glossabet.cli import main
 from glossabet.glossary.matching import EvidenceIndex
 from glossabet.glossary.reconcile import build_validation
+from glossabet.glossary.store import save_glossary, validate_glossary
 
 GLOSSARY = {
     "schema_version": 1,

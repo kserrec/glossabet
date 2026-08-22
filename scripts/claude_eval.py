@@ -1584,7 +1584,6 @@ def verify_results(
         scenarios = []
         errors.append("Claude scenario results are missing")
     for index, scenario in enumerate(manifest["scenarios"]):
-        expected_id = scenario["id"]
         item = scenarios[index] if index < len(scenarios) else None
         errors.extend(
             _result_scenario_errors(item, scenario, manifest["trace_limits"])

@@ -12,11 +12,11 @@ import unicodedata
 from collections import Counter
 from collections.abc import Iterable
 
-from glossabet.runtime.coverage import coverage_ledger, location_sample
 from glossabet.analysis.evidence_view import EvidenceView
-from glossabet.glossary.store import path_in_scope, scope_evidence
 from glossabet.corpus.imports import module_of
 from glossabet.corpus.tokenize import doc_words, tokenize_identifier, tokenize_term
+from glossabet.glossary.store import path_in_scope, scope_evidence
+from glossabet.runtime.coverage import coverage_ledger, location_sample
 
 LOCATION_SAMPLE = 5
 COMPOUND_MATCH_START_BUDGET = 250_000

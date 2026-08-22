@@ -7,12 +7,11 @@ import stat
 import pytest
 
 import glossabet.agent.context_sync as context_sync
-from glossabet.cli import main
 from glossabet.agent.managed_block import END_MARKER, START_MARKER
 from glossabet.agent.managed_context import MAX_HOST_FILE_BYTES, inspect_managed_context
 from glossabet.analysis.evidence import build_evidence
+from glossabet.cli import main
 from glossabet.glossary.store import load_glossary, save_glossary
-
 
 GLOSSARY = {
     "schema_version": 1,

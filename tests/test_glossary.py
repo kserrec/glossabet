@@ -10,8 +10,8 @@ import pytest
 
 from glossabet.cli import main
 from glossabet.glossary.store import (
-    GlossaryError,
     MAX_VALIDATION_ERRORS,
+    GlossaryError,
     load_glossary,
     path_in_scope,
     save_glossary,
@@ -821,9 +821,9 @@ def test_hostile_glossary_family_never_raises_and_accepted_documents_survive_eve
     from glossabet.analysis.evidence import build_evidence
     from glossabet.glossary.drift import build_drift
     from glossabet.glossary.glossary_commands import _print_glossary
-    from glossabet.glossary.store import glossary_sha256
     from glossabet.glossary.reconcile import build_validation
     from glossabet.glossary.repository_glossary import repository_glossary_section
+    from glossabet.glossary.store import glossary_sha256
 
     rng = random.Random(20260818)
     rlo, lone, low_lone, esc, nul, zwsp = (

@@ -20,6 +20,8 @@ from evaluation.run import (  # noqa: E402
     DEFAULT_MANIFEST,
     DEFAULT_RESULTS,
     EvaluationError,
+)
+from evaluation.run import (  # noqa: E402
     verify_results as verify_engine_results,
 )
 from glossabet.runtime.artifacts import MAX_JSON_BYTES  # noqa: E402
@@ -128,7 +130,9 @@ def _parse_reviewer_trace(raw: str, workspace: Path) -> tuple[list[dict], dict]:
         try:
             event = json.loads(line)
         except (ValueError, RecursionError) as exc:
-            raise EvaluationError(f"second reviewer emitted non-JSON stdout: {exc}")
+            raise EvaluationError(
+                f"second reviewer emitted non-JSON stdout: {exc}"
+            ) from exc
         if not isinstance(event, dict):
             raise EvaluationError("second-reviewer JSONL event was not an object")
         events.append(event)

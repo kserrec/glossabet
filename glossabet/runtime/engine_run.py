@@ -14,8 +14,8 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path
 
-from glossabet.runtime.artifacts import OUT_DIR, ArtifactError
 from glossabet.glossary.store import GLOSSARY_FILE, GlossaryError, load_glossary
+from glossabet.runtime.artifacts import OUT_DIR, ArtifactError
 
 GLOSSARY_NONE = "none"          # the command never reads the glossary
 GLOSSARY_OPTIONAL = "optional"  # absent is fine; malformed is a user error
@@ -34,6 +34,15 @@ class Run:
 
     root: Path
     glossary: dict | None
+
+    @property
+    def required_glossary(self) -> dict:
+        """The glossary of a ``GLOSSARY_REQUIRED`` run. ``open_run`` has
+        already refused such a run without one, so this never fails for a
+        command that asked for a required glossary."""
+        if self.glossary is None:
+            raise RunError("this command requires a glossary")
+        return self.glossary
 
 
 def open_run(

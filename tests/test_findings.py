@@ -4,11 +4,11 @@ derivation, and section renderer that drift and validation share."""
 import pytest
 
 from glossabet.glossary.findings import (
-    empty_section,
-    FindingsDocumentView,
     FINDINGS_CAP,
+    FindingsDocumentView,
     capped_section,
     collection_limitations,
+    empty_section,
     finding,
     mark_incomplete,
     print_sections,

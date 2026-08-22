@@ -18,19 +18,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from glossabet.agent.brief import build_managed_brief
-from glossabet.runtime.display import escape_terminal_text
-from glossabet.glossary.store import glossary_sha256
-from glossabet.corpus.scanner import entry_named_exactly
 from glossabet.agent.managed_block import (
     AGENT_TARGETS,
+    BLOCK_RE,
     END_MARKER,
     MANAGED_BLOCK_FORMAT_VERSION,
-    START_MARKER,
-    BLOCK_RE,
     MARKER_PREFIX,
     METADATA_RE,
+    START_MARKER,
 )
-
+from glossabet.corpus.scanner import entry_named_exactly
+from glossabet.glossary.store import glossary_sha256
+from glossabet.runtime.display import escape_terminal_text
 
 MANAGED_CONTEXT_SCHEMA_VERSION = 1
 MAX_HOST_FILE_BYTES = 2_000_000

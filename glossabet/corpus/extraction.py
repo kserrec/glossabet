@@ -11,9 +11,9 @@ import hashlib
 from collections import Counter
 from pathlib import Path
 
+from glossabet.agent.managed_block import strip_managed_context_for_evidence
 from glossabet.corpus.cache import entry_if_valid
 from glossabet.corpus.imports import extract_imports
-from glossabet.agent.managed_block import strip_managed_context_for_evidence
 from glossabet.corpus.tokenize import doc_words, iter_identifiers
 
 

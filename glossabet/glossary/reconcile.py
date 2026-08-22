@@ -18,41 +18,41 @@ from dataclasses import dataclass
 from itertools import combinations, islice
 from pathlib import Path
 
-from glossabet.runtime.artifacts import write_artifact
-from glossabet.runtime.coverage import coverage_ledger
 from glossabet.agent.managed_context import (
     inspect_managed_context,
     print_managed_context_issues,
     unchecked_managed_context,
 )
-from glossabet.runtime.display import escape_terminal_text
-from glossabet.glossary.drift import DriftView, build_drift
-from glossabet.runtime.engine_run import GLOSSARY_REQUIRED, open_run
 from glossabet.analysis.evidence import persist_evidence
 from glossabet.analysis.evidence_view import EvidenceView
+from glossabet.corpus.tokenize import tokenize_term
 from glossabet.glossary import findings
+from glossabet.glossary.drift import DriftView, build_drift
 from glossabet.glossary.findings import (
     FindingsDocumentView,
     capped_section,
+    collection_limitations,
     empty_section,
     finding,
-    collection_limitations,
     glossary_terms,
     mark_incomplete,
-    production_corpus_reasons,
-    suppressed_reason,
     matching_reasons,
     print_sections,
+    production_corpus_reasons,
+    suppressed_reason,
     vocabulary_omission_reasons,
 )
+from glossabet.glossary.matching import EvidenceIndex
+from glossabet.glossary.repository_glossary import repository_glossary_section
 from glossabet.glossary.store import (
     concept_scope,
     path_in_scope,
     scope_evidence,
 )
-from glossabet.glossary.repository_glossary import repository_glossary_section
-from glossabet.glossary.matching import EvidenceIndex
-from glossabet.corpus.tokenize import tokenize_term
+from glossabet.runtime.artifacts import write_artifact
+from glossabet.runtime.coverage import coverage_ledger
+from glossabet.runtime.display import escape_terminal_text
+from glossabet.runtime.engine_run import GLOSSARY_REQUIRED, open_run
 
 VALIDATION_SCHEMA_VERSION = 8
 VALIDATION_FILE = "validation.json"
@@ -516,6 +516,13 @@ class _GraphStatus:
     groups_complete: bool | None
     skip_reason: str | None
 
+    @property
+    def unusable_reason(self) -> str:
+        """Why structural checks are skipped; only an unusable graph has one."""
+        if self.skip_reason is None:
+            raise ValueError("a usable graph has no skip reason")
+        return self.skip_reason
+
 
 def _graph_status(structural: dict) -> _GraphStatus:
     usable = bool(structural.get("available"))
@@ -563,7 +570,7 @@ def _structural_sections(
             structural, global_canonical, vocab, structural_source_reasons
         )
     else:
-        unnamed = boundary = overloaded = empty_section(graph.skip_reason)
+        unnamed = boundary = overloaded = empty_section(graph.unusable_reason)
         structural_work = coverage_ledger(0, 0)  # no work budget was spent
 
     unnamed_scope_limited = bool(scoped_canonical) and graph.usable
@@ -866,10 +873,11 @@ def validate_command(path_arg: str) -> int:
         path_arg, glossary=GLOSSARY_REQUIRED, missing="no glossary to validate"
     )
     evidence = persist_evidence(run.root)
-    managed_context = inspect_managed_context(run.root, run.glossary)
+    glossary = run.required_glossary
+    managed_context = inspect_managed_context(run.root, glossary)
     validation = build_validation(
         evidence,
-        run.glossary,
+        glossary,
         managed_context=managed_context,
         repository_glossary=repository_glossary_section(
             run.root, evidence, run.glossary

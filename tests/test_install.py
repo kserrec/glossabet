@@ -1,14 +1,30 @@
 """Canonical skill installation is packaged, explicit, and overwrite-safe."""
 
+import json
 import os
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
+from glossabet import __version__
 from glossabet.cli import EXIT_OK, EXIT_USER_ERROR, main
+from glossabet.install import claude_plugin
+from glossabet.install.claude_plugin import (
+    CLAUDE_HOOKS_RELATIVE,
+    CLAUDE_MANIFEST_RELATIVE,
+    ClaudePluginError,
+    claude_hooks,
+    claude_plugin_manifest,
+    hook_command,
+    resolve_cli_executable,
+)
 from glossabet.install.installer import (
     canonical_skill_text,
     default_skill_directory,
+    install_command,
 )
 
 CANONICAL_SKILL = Path(__file__).resolve().parents[1] / "skill" / "SKILL.md"
@@ -88,24 +104,6 @@ def test_install_refuses_symlinked_destination_components(tmp_path, capsys):
 
 
 # --- Claude Code: the skill folder becomes a skills-directory plugin -------
-
-import json
-import shutil
-import subprocess
-import sys
-
-from glossabet import __version__
-from glossabet.install import claude_plugin
-from glossabet.install.claude_plugin import (
-    CLAUDE_HOOKS_RELATIVE,
-    CLAUDE_MANIFEST_RELATIVE,
-    ClaudePluginError,
-    claude_hooks,
-    claude_plugin_manifest,
-    hook_command,
-    resolve_cli_executable,
-)
-from glossabet.install.installer import install_command
 
 ROOT = Path(__file__).resolve().parents[1]
 CODEX_PLUGIN = ROOT / "plugins" / "glossabet"

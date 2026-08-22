@@ -17,16 +17,16 @@ import json
 import unicodedata
 from pathlib import Path
 
+from glossabet.corpus.tokenize import term_words
 from glossabet.runtime.artifacts import (
+    OUT_DIR,
     READ_ABSENT,
     READ_OVERSIZED,
     ArtifactError,
-    OUT_DIR,
     confined_artifact_path,
     read_bounded_json,
     write_artifact,
 )
-from glossabet.corpus.tokenize import term_words
 from glossabet.runtime.display import first_terminal_control
 
 GLOSSARY_SCHEMA_VERSION = 1
@@ -593,14 +593,17 @@ def load_glossary(root: Path) -> dict | None:
         raise GlossaryError(f"{path}: unreadable JSON ({read.error})")
     glossary = read.value
     errors = validate_glossary(glossary)
-    if errors:
+    # A non-object document is already an error, so the narrowing never
+    # changes the diagnostic; it only makes the return a validated dict.
+    if errors or not isinstance(glossary, dict):
         raise GlossaryError(f"{path}: " + "; ".join(errors))
     return glossary
 
 
-def save_glossary(root: Path, glossary: dict) -> Path:
+def save_glossary(root: Path, glossary: object) -> Path:
+    """Validate an untrusted JSON document and write it as the glossary."""
     errors = validate_glossary(glossary)
-    if errors:
+    if errors or not isinstance(glossary, dict):
         raise GlossaryError("refusing to save invalid glossary: "
                             + "; ".join(errors))
     glossary = dict(glossary)

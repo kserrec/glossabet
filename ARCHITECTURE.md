@@ -62,8 +62,8 @@ break grounding.
 ## Running it
 
 Prerequisites: Git, Python ≥ 3.10, and [uv](https://docs.astral.sh/uv/). The
-only runtime code is the Python standard library; `pytest` is the sole
-development dependency. Hatchling `>=1.32,<1.33` is used only in an isolated
+only runtime code is the Python standard library; the development
+dependencies are `pytest` plus the pinned `ruff` and `mypy` gates. Hatchling `>=1.32,<1.33` is used only in an isolated
 build environment. Nothing is fetched at application runtime.
 
 From a fresh clone, create the locked development environment and run the test
@@ -74,7 +74,14 @@ git clone https://github.com/kserrec/glossabet.git
 cd glossabet
 uv sync --locked
 uv run pytest -q
+uv run ruff check .
+uv run mypy glossabet
 ```
+
+Ruff (import and objective correctness rules) and mypy run over the package
+as required gates, locally and in CI's `static` job; their configuration is
+in `pyproject.toml`. The migration allowances recorded there are being
+removed pass by pass under `docs/MAINTAINABILITY-REFACTOR.md`.
 
 The preferred Codex distribution is the version-coupled plugin described in
 `DISTRIBUTION.md`; its local source is `plugins/glossabet/` and it is not yet
@@ -827,8 +834,8 @@ These are settled in `PLAN.md`; the load-bearing ones for a new owner:
   static analyzer. Rich structure comes from adapters (Graphify today; LSP or
   others later), never from growing the scanner. This is the single most
   important boundary to respect.
-- **Stdlib-only runtime.** No runtime dependencies; `pytest` is the only
-  dev dependency. A new dependency needs a real use site and a one-line
+- **Stdlib-only runtime.** No runtime dependencies; `pytest`, `ruff`, and
+  `mypy` are the only dev dependencies. A new dependency needs a real use site and a one-line
   cost/reason (`PLAN.md` principle 9). Phase 16 measured the current lexical
   labels at 15/15 and rejected a Tree-sitter adapter because it offered no
   remaining labelled accuracy gain while adding native binaries, runtime

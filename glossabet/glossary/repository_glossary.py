@@ -15,11 +15,9 @@ from __future__ import annotations
 
 import hashlib
 import os
+import unicodedata
 from pathlib import Path
 
-import unicodedata
-
-from glossabet.runtime.artifacts import READ_OVERSIZED, read_bounded_bytes
 from glossabet.analysis.evidence_view import EvidenceView
 from glossabet.corpus.scanner import (
     LINK_ESCAPES_REPOSITORY,
@@ -30,6 +28,7 @@ from glossabet.corpus.scanner import (
     entry_named_exactly,
     glossary_link_refusal,
 )
+from glossabet.runtime.artifacts import READ_OVERSIZED, read_bounded_bytes
 
 REPOSITORY_GLOSSARY_FILE = "GLOSSARY.md"
 MAX_REPOSITORY_GLOSSARY_BYTES = MAX_FILE_BYTES
@@ -93,9 +92,10 @@ def _read_repository_glossary(root: Path) -> tuple[dict, bytes | None]:
     read = read_bounded_bytes(full, MAX_REPOSITORY_GLOSSARY_BYTES)
     if read.status == READ_OVERSIZED:
         return _unreadable(REASON_OVERSIZED, read.size), None
-    if not read.ok:  # unreadable, or the entry vanished between checks
-        return _unreadable(REASON_UNREADABLE, None), None
     payload = read.payload
+    if not read.ok or payload is None:
+        # unreadable, or the entry vanished between checks
+        return _unreadable(REASON_UNREADABLE, None), None
     return {
         "present": True,
         "path": REPOSITORY_GLOSSARY_FILE,

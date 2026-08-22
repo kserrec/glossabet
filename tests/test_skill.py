@@ -10,8 +10,8 @@ from glossabet.agent.agent_context import (
     build_agent_context,
 )
 from glossabet.analysis.evidence import build_evidence
-from glossabet.glossary.store import save_glossary
 from glossabet.glossary.repository_glossary import repository_glossary_section
+from glossabet.glossary.store import save_glossary
 
 SKILL = Path(__file__).resolve().parents[1] / "skill" / "SKILL.md"
 
@@ -234,10 +234,10 @@ def test_skill_repository_glossary_protocol_matches_engine(tmp_path):
     never promotes Markdown terms to canonical, and never clobbers a
     pre-existing GLOSSARY.md."""
     from glossabet.glossary.repository_glossary import (
+        REASON_LISTING_UNCONFIRMED,
         REASON_NOT_REGULAR,
         REASON_OVERSIZED,
         REASON_SYMLINK_ESCAPES,
-        REASON_LISTING_UNCONFIRMED,
         REASON_SYMLINK_SENSITIVE,
         REASON_UNREADABLE,
         discover_repository_glossary,

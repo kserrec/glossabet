@@ -6,7 +6,6 @@ from pathlib import Path
 
 from evaluation.review import verify_results
 
-
 ROOT = Path(__file__).resolve().parents[1]
 PACKET = ROOT / "evaluation" / "reviewer-packet.json"
 RESULTS = ROOT / "evaluation" / "reviewer-results.json"

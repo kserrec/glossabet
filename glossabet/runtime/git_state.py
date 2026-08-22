@@ -20,7 +20,6 @@ from pathlib import Path
 from glossabet.runtime.artifacts import OUT_DIR, REPORT_FILE
 from glossabet.runtime.executables import which_on_path
 
-
 # Config keys that let a repository's own .git/config name a program git will
 # execute (core.fsmonitor runs on `git status`, hooks on many operations). We
 # only read HEAD and dirty state from an untrusted repo, so we override these

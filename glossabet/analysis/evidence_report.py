@@ -7,12 +7,12 @@ from __future__ import annotations
 
 import sys
 
-from glossabet.corpus.config import CONFIG_FILE, PATH_ROLES
-from glossabet.runtime.display import escape_terminal_text, join_escaped
-from glossabet.runtime.engine_run import open_run
 from glossabet.analysis.evidence import build_evidence, write_evidence
 from glossabet.analysis.evidence_view import EvidenceView
+from glossabet.corpus.config import CONFIG_FILE, PATH_ROLES
 from glossabet.corpus.scanner import exclusion_sentences
+from glossabet.runtime.display import escape_terminal_text, join_escaped
+from glossabet.runtime.engine_run import open_run
 
 
 def configuration_hint(configuration: dict) -> str:

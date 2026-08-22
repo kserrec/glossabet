@@ -12,23 +12,23 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from glossabet import __version__
-from glossabet.runtime.artifacts import write_artifact
-from glossabet.corpus.cache import load_cache, save_cache
-from glossabet.corpus.config import load_config
-from glossabet.runtime.coverage import capped_collection, location_sample
-from glossabet.corpus.extraction import SourceExtractor
-from glossabet.runtime import git_state
 from glossabet.analysis.graphify import (
     build_structural_groups,
     disabled_structural_groups,
     structure_candidates,
 )
-from glossabet.corpus.imports import build_imports_section, module_of
 from glossabet.analysis.importance import build_naming_candidates
-from glossabet.corpus.scanner import WalkResult, detect_monorepo, walk_repository
 from glossabet.analysis.terminology import build_terminology
-from glossabet.corpus.tokenize import tokenization_contract, tokenize_identifier
 from glossabet.analysis.vocabulary import DocumentationVocabulary, ProductionVocabulary
+from glossabet.corpus.cache import load_cache, save_cache
+from glossabet.corpus.config import load_config
+from glossabet.corpus.extraction import SourceExtractor
+from glossabet.corpus.imports import build_imports_section, module_of
+from glossabet.corpus.scanner import WalkResult, detect_monorepo, walk_repository
+from glossabet.corpus.tokenize import tokenization_contract, tokenize_identifier
+from glossabet.runtime import git_state
+from glossabet.runtime.artifacts import write_artifact
+from glossabet.runtime.coverage import capped_collection, location_sample
 
 EVIDENCE_SCHEMA_VERSION = 15
 
@@ -212,7 +212,10 @@ def _vocabulary_section(
     }
 
 
-def build_evidence(root: Path, limits: Limits = Limits(),
+DEFAULT_LIMITS = Limits()
+
+
+def build_evidence(root: Path, limits: Limits = DEFAULT_LIMITS,
                    cache: bool = False, stats: dict | None = None,
                    graphify: bool = True) -> dict:
     """Cold and warm scans share this one aggregation path, so a cached run

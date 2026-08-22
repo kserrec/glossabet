@@ -21,7 +21,6 @@ from __future__ import annotations
 from importlib import resources
 from pathlib import Path
 
-from glossabet.runtime.artifacts import replace_file_atomic
 from glossabet.install.claude_plugin import (
     ClaudePluginError,
     claude_plugin_files,
@@ -29,6 +28,7 @@ from glossabet.install.claude_plugin import (
     hook_command,
     resolve_cli_executable,
 )
+from glossabet.runtime.artifacts import replace_file_atomic
 from glossabet.runtime.display import escape_terminal_text, print_error
 
 _DESTINATIONS = {
@@ -50,7 +50,9 @@ def default_skill_directory(agent: str, *, home: Path | None = None) -> Path:
 
 def canonical_skill_text() -> str:
     """Read the canonical skill from package data or a source checkout."""
-    packaged = resources.files("glossabet").joinpath("_skill", "SKILL.md")
+    # One child per joinpath call: the Python 3.10 Traversable contract
+    # accepts a single segment.
+    packaged = resources.files("glossabet").joinpath("_skill").joinpath("SKILL.md")
     try:
         return packaged.read_text(encoding="utf-8")
     except FileNotFoundError:

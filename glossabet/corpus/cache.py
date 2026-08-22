@@ -14,6 +14,7 @@ import hashlib
 import os
 import sys
 from pathlib import Path
+from typing import TypedDict
 
 from glossabet import __version__
 from glossabet.runtime.artifacts import read_bounded_json, write_json_atomic
@@ -179,7 +180,17 @@ def save_cache(root: Path, files: dict, git_stamp: dict) -> bool:
     return True
 
 
-def clear_cache() -> dict:
+class CacheClearReport(TypedDict):
+    """What ``clear_cache`` did, in the order it is reported."""
+
+    cache_root: str
+    existed: bool
+    removed_entries: int
+    unrecognized_left_in_place: list[str]
+    root_removed: bool
+
+
+def clear_cache() -> CacheClearReport:
     """Remove Glossabet's own incremental-extraction cache and report it.
 
     Only the layout Glossabet writes is removed: ``<root>/<64-hex>/cache.json``
@@ -191,7 +202,7 @@ def clear_cache() -> dict:
     directory) can never be wiped by this command.
     """
     root = _platform_cache_root()
-    report = {
+    report: CacheClearReport = {
         "cache_root": str(root),
         "existed": False,
         "removed_entries": 0,

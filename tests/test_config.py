@@ -3,11 +3,11 @@
 import json
 import os
 
-from glossabet.cli import main
 import pytest
 
-from glossabet.corpus.config import CONFIG_SHAPE, ConfigurationError, load_config
 from glossabet.analysis.evidence import build_evidence
+from glossabet.cli import main
+from glossabet.corpus.config import CONFIG_SHAPE, ConfigurationError, load_config
 
 
 def _write(path, content="role_specific_name = 1\n"):

@@ -9,13 +9,13 @@ import os
 import subprocess
 from pathlib import Path
 
-from glossabet.runtime.artifacts import REPORT_FILE
-from glossabet.cli import main
 from glossabet.analysis.evidence import build_evidence
-from glossabet.runtime.git_state import FRESHNESS_STATUS_ARGS, repository_git_stamp
-from glossabet.glossary.store import load_glossary, save_glossary
-from glossabet.glossary.repository_glossary import REPOSITORY_GLOSSARY_FILE
+from glossabet.cli import main
 from glossabet.corpus.scanner import SELF_FILES, SELF_REPORT_FILES
+from glossabet.glossary.repository_glossary import REPOSITORY_GLOSSARY_FILE
+from glossabet.glossary.store import load_glossary, save_glossary
+from glossabet.runtime.artifacts import REPORT_FILE
+from glossabet.runtime.git_state import FRESHNESS_STATUS_ARGS, repository_git_stamp
 
 REPORT = (
     "# Glossabet\n\nThis is a Glossabet vocabulary-health report, not the "

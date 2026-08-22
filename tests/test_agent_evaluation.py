@@ -9,12 +9,12 @@ import pytest
 
 import scripts.agent_eval as agent_eval
 from scripts.agent_eval import (
-    AgentEvaluationError,
     HOOK_DEFINITION,
     HOOK_PROMPT,
     HOOK_PROPOSED_TERM,
     HOOK_SOURCE_CANARY,
     HOOK_TERM,
+    AgentEvaluationError,
     _append_attempt,
     _attempt_from_error,
     _attempt_from_probe_error,
@@ -37,7 +37,6 @@ from scripts.agent_eval import (
     _validated_run_output,
     verify_results,
 )
-
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "evaluation" / "agent-scenarios.json"

@@ -107,6 +107,8 @@ directory rather than trusting stale artifacts in `dist/`:
 release_dir="$(mktemp -d)"
 uv sync --locked
 uv run pytest -q
+uv run ruff check .
+uv run mypy glossabet
 uv run python scripts/check_workflows.py
 uv run python evaluation/run.py --verify-results evaluation/results.json --current
 uv run python scripts/agent_eval.py --verify-results evaluation/agent-results.json --current

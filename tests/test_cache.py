@@ -9,8 +9,8 @@ import os
 import pytest
 
 from glossabet import __version__
-from glossabet.corpus.cache import CACHE_VERSION, cache_path, clear_cache, load_cache
 from glossabet.analysis.evidence import build_evidence
+from glossabet.corpus.cache import CACHE_VERSION, cache_path, clear_cache, load_cache
 
 
 def make_repo(tmp_path):

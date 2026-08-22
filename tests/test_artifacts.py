@@ -1,6 +1,7 @@
 """Artifact writes are confined, atomic, and cleanup-safe."""
 
 import os
+
 import pytest
 
 from glossabet.runtime.artifacts import ArtifactError, write_artifact
@@ -37,8 +38,13 @@ def test_read_bounded_json_outcomes_are_named_and_bound_is_judged_from_bytes(
     tmp_path, monkeypatch
 ):
     from glossabet.runtime.artifacts import (
-        READ_ABSENT, READ_MALFORMED, READ_OK, READ_OVERSIZED, READ_UNREADABLE,
-        read_bounded_bytes, read_bounded_json,
+        READ_ABSENT,
+        READ_MALFORMED,
+        READ_OK,
+        READ_OVERSIZED,
+        READ_UNREADABLE,
+        read_bounded_bytes,
+        read_bounded_json,
     )
     exact = tmp_path / "exact.json"
     exact.write_bytes(b'{"k":1}')  # 7 bytes

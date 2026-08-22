@@ -15,8 +15,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from glossabet.runtime.artifacts import REPORT_FILE
 from glossabet.corpus.config import EXCLUDED_CONTENT_ROLES, RepositoryConfig
+from glossabet.runtime.artifacts import REPORT_FILE
 
 CODE_LANGUAGES = {
     ".py": "python", ".pyi": "python",

@@ -13,12 +13,6 @@ from collections import Counter
 from dataclasses import dataclass, field
 from itertools import combinations
 
-from glossabet.runtime.coverage import (
-    capped_collection,
-    capped_section,
-    coverage_ledger,
-    coverage_reasons,
-)
 from glossabet.analysis.vocabulary import (
     MODULE_CONTEXT_ANALYSIS_CAP,
     ProductionVocabulary,
@@ -29,6 +23,12 @@ from glossabet.corpus.tokenize import (
     TOKEN_ORIGIN_LANGUAGE,
     identifier_style,
     tokenize_identifier,
+)
+from glossabet.runtime.coverage import (
+    capped_collection,
+    capped_section,
+    coverage_ledger,
+    coverage_reasons,
 )
 
 PAIR_TOP_N = 150
@@ -243,7 +243,7 @@ def _synonym_candidates(top_tokens: list[str], token_counts: Counter,
     def weight(k: str) -> float:
         return 1.0 / (1.0 + math.log1p(token_counts.get(k, 1)))
 
-    items = []
+    ranked: list[tuple[float, str, str, dict[str, object]]] = []
     considered = 0
     for a, b in combinations(top_tokens, 2):
         na, nb = neighbors.get(a, Counter()), neighbors.get(b, Counter())
@@ -301,7 +301,7 @@ def _synonym_candidates(top_tokens: list[str], token_counts: Counter,
                 f"shared-pattern display cap is {SHARED_PATTERN_SAMPLE} items"
             ),
         )
-        items.append({
+        ranked.append((round(similarity, 3), a, b, {
             "a": a,
             "b": b,
             "similarity": round(similarity, 3),
@@ -312,8 +312,9 @@ def _synonym_candidates(top_tokens: list[str], token_counts: Counter,
                 "shared_contexts": shared_coverage,
                 "shared_patterns": pattern_coverage,
             },
-        })
-    items.sort(key=lambda i: (-i["similarity"], i["a"], i["b"]))
+        }))
+    ranked.sort(key=lambda row: (-row[0], row[1], row[2]))
+    items = [row[3] for row in ranked]
     section = capped_section(
         items,
         SYNONYM_REPORT_CAP,
@@ -386,7 +387,7 @@ def _context_dispersion(
             "_per_module": per_module,
         })
 
-    profiles.sort(key=lambda item: item["term"])
+    profiles.sort(key=lambda item: str(item["term"]))
     incomplete_reasons = coverage_reasons(
         token_coverage, "eligible token input"
     )

@@ -12,38 +12,38 @@ from __future__ import annotations
 
 from itertools import combinations
 
-from glossabet.runtime.artifacts import write_artifact
-from glossabet.runtime.coverage import coverage_reasons
 from glossabet.agent.managed_context import (
     inspect_managed_context,
     print_managed_context_issues,
     unchecked_managed_context,
 )
-from glossabet.runtime.display import escape_terminal_text
-from glossabet.runtime.engine_run import GLOSSARY_REQUIRED, open_run
 from glossabet.analysis.evidence import persist_evidence
+from glossabet.analysis.evidence_view import EvidenceView
+from glossabet.analysis.terminology import OVERLOAD_MIN_DISPERSION, OVERLOAD_MIN_MODULES
+from glossabet.corpus.tokenize import tokenize_term
 from glossabet.glossary.findings import (
     FindingsDocumentView,
     capped_section,
-    finding,
     collection_limitations,
+    finding,
     glossary_terms,
     matching_reasons,
+    print_sections,
     production_corpus_reasons,
     suppressed_reason,
-    print_sections,
     vocabulary_omission_reasons,
 )
+from glossabet.glossary.matching import EvidenceIndex
 from glossabet.glossary.store import (
     concept_scope,
     path_in_scope,
     scope_evidence,
     scopes_overlap,
 )
-from glossabet.analysis.evidence_view import EvidenceView
-from glossabet.glossary.matching import EvidenceIndex
-from glossabet.analysis.terminology import OVERLOAD_MIN_DISPERSION, OVERLOAD_MIN_MODULES
-from glossabet.corpus.tokenize import tokenize_term
+from glossabet.runtime.artifacts import write_artifact
+from glossabet.runtime.coverage import coverage_reasons
+from glossabet.runtime.display import escape_terminal_text
+from glossabet.runtime.engine_run import GLOSSARY_REQUIRED, open_run
 
 DRIFT_SCHEMA_VERSION = 6
 DRIFT_FILE = "drift.json"
@@ -525,10 +525,9 @@ def drift_command(path_arg: str) -> int:
         missing="no glossary to check against",
     )
     evidence = persist_evidence(run.root)
-    managed_context = inspect_managed_context(run.root, run.glossary)
-    drift = build_drift(
-        evidence, run.glossary, managed_context=managed_context
-    )
+    glossary = run.required_glossary
+    managed_context = inspect_managed_context(run.root, glossary)
+    drift = build_drift(evidence, glossary, managed_context=managed_context)
     write_artifact(run.root, DRIFT_FILE, drift)
     _print_report(drift)
     return 0

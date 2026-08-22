@@ -325,9 +325,8 @@ def test_hook_interpreter_is_isolated_from_a_hostile_working_directory(tmp_path)
     executed before the runner's first line."""
     import json
     import os
-    import subprocess
-
     import shlex
+    import subprocess
 
     hooks = json.loads((PLUGIN / "hooks" / "hooks.json").read_text())
     command = hooks["hooks"]["SessionStart"][0]["hooks"][0]["command"]

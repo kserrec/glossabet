@@ -6,8 +6,8 @@ from pathlib import Path
 
 from glossabet.agent import agent_context
 from glossabet.agent.agent_context import ROUTINE_AGENT_CONTEXT_TARGET_BYTES
-from glossabet.cli import EXIT_USER_ERROR, main
 from glossabet.analysis.evidence import build_evidence
+from glossabet.cli import EXIT_USER_ERROR, main
 from glossabet.glossary.store import save_glossary
 
 

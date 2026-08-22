@@ -282,7 +282,7 @@ def test_edge_and_external_caps_report_exact_truncation_counts():
     # be reported exactly, so a consumer can never read a capped list as the
     # complete dependency graph. Guards against a truncation counter stuck at 0
     # (which `test_bounds_reported` — a shape-only check — does not catch).
-    from glossabet.corpus.imports import build_imports_section, EDGE_CAP, EXTERNAL_CAP
+    from glossabet.corpus.imports import EDGE_CAP, EXTERNAL_CAP, build_imports_section
 
     extra_edges, extra_externals = 51, 10
     code_files = [("hub/f.py", "")] + [

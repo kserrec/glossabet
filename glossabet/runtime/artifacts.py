@@ -16,7 +16,6 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-
 OUT_DIR = "glossabet-out"
 # The human-readable vocabulary-health report the /glossabet skill writes at
 # the scan root (next to GLOSSARY.md, so a repository browser finds it). It is
@@ -107,9 +106,10 @@ def read_bounded_json(path: Path | str, cap: int | None = None) -> BoundedRead:
     the shared repository-JSON bound."""
     cap = MAX_JSON_BYTES if cap is None else cap
     read = read_bounded_bytes(path, cap)
-    if not read.ok:
+    payload = read.payload
+    if not read.ok or payload is None:
         return read
-    return parse_bounded_json(read.payload, cap)
+    return parse_bounded_json(payload, cap)
 
 
 def confined_artifact_path(root: Path, relative: str) -> Path:

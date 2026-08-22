@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enforce the release workflow's full-matrix dependency chain.
+"""Enforce the release workflow's full-matrix and static-gate dependency chain.
 
 The project deliberately avoids adding a YAML parser solely for policy tests.
 These checks parse only the small, pinned subset of workflow syntax that owns
@@ -135,6 +135,19 @@ def _requires_in_order(block: str, fragments: list[str], errors: list[str],
         cursor = position
 
 
+def _requires_exact_lines(block: str, lines: list[str], errors: list[str],
+                          label: str) -> None:
+    """Each required line must appear exactly (whole line, in order), so
+    ``mypy glossabet/cli.py`` cannot stand in for ``mypy glossabet``."""
+    block_lines = block.splitlines()
+    cursor = -1
+    for required in lines:
+        try:
+            cursor = block_lines.index(required, cursor + 1)
+        except ValueError:
+            errors.append(f"{label} is missing required step {required.strip()!r}")
+
+
 def _check_pinned_actions(name: str, workflow: str, errors: list[str]) -> None:
     for key, value, _parent in _logical_values(workflow):
         if key != "uses":
@@ -170,11 +183,15 @@ def validate_workflow_texts(workflows: dict[str, str]) -> list[str]:
         errors.append("quality.yml is not reusable through workflow_call")
     if re.search(r"(?m)^  (push|pull_request|release|workflow_dispatch):", quality):
         errors.append("quality.yml has a direct trigger instead of workflow_call only")
-    if _job_names(quality) != ["test", "package"]:
-        errors.append("quality.yml must contain only test then package jobs")
+    if _job_names(quality) != ["test", "static", "package"]:
+        errors.append("quality.yml must contain only test, static, then package jobs")
 
     test = _job_block(quality, "test") or ""
+    static = _job_block(quality, "static") or ""
     package = _job_block(quality, "package") or ""
+    for label, block in (("test", test), ("static", static), ("package", package)):
+        if re.search(r"(?m)^    if:", block):
+            errors.append(f"quality {label} job must not be conditionally skipped")
     if _inline_list(test, "os") != SUPPORTED_OSES:
         errors.append("quality.yml does not cover the exact supported OS matrix")
     if _inline_list(test, "python-version") != SUPPORTED_PYTHONS:
@@ -190,8 +207,25 @@ def validate_workflow_texts(workflows: dict[str, str]) -> list[str]:
         errors,
         "quality test job",
     )
-    if "needs: test" not in package:
-        errors.append("quality package job does not require the full test matrix")
+    if "    runs-on: ubuntu-latest" not in static:
+        errors.append("quality static job must run on Linux")
+    if 'python-version: "3.10"' not in static:
+        errors.append("quality static job must check under the oldest supported Python")
+    _requires_exact_lines(
+        static,
+        [
+            '      - run: uv sync --locked --python "3.10"',
+            "      - run: uv run --locked ruff check .",
+            "      - run: uv run --locked mypy glossabet",
+        ],
+        errors,
+        "quality static job",
+    )
+    if _inline_list(package, "needs") != ["test", "static"]:
+        errors.append(
+            "quality package job does not require both the full test matrix "
+            "and the static gate"
+        )
     _requires_in_order(
         package,
         [
@@ -273,8 +307,8 @@ def validate_workflow_texts(workflows: dict[str, str]) -> list[str]:
     )
 
     for label, block in (
-        ("quality test job", test), ("quality package job", package),
-        ("release publish job", publish),
+        ("quality test job", test), ("quality static job", static),
+        ("quality package job", package), ("release publish job", publish),
     ):
         _check_steps_cannot_be_softened(label, block, errors)
 

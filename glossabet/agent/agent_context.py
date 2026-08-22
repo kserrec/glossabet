@@ -13,15 +13,14 @@ from collections import Counter
 from copy import deepcopy
 from dataclasses import dataclass, field
 
+from glossabet.analysis.evidence import persist_evidence
+from glossabet.analysis.evidence_view import EvidenceView
+from glossabet.corpus.imports import module_of
+from glossabet.corpus.tokenize import STRUCTURED_IDENTIFIER_STYLES, identifier_style
+from glossabet.glossary.repository_glossary import repository_glossary_section
 from glossabet.runtime.artifacts import ArtifactError
 from glossabet.runtime.coverage import capped_collection, coverage_reasons
 from glossabet.runtime.engine_run import GLOSSARY_OPTIONAL, open_run
-from glossabet.analysis.evidence import persist_evidence
-from glossabet.analysis.evidence_view import EvidenceView
-from glossabet.glossary.repository_glossary import repository_glossary_section
-from glossabet.corpus.imports import module_of
-from glossabet.corpus.tokenize import STRUCTURED_IDENTIFIER_STYLES, identifier_style
-
 
 AGENT_CONTEXT_SCHEMA_VERSION = 3
 MAX_AGENT_CONTEXT_BYTES = 1_000_000

@@ -83,6 +83,8 @@ suite tests. No fix-carrying commit without that review (Kyle, 2026-08-18).
 
 ```bash
 uv run pytest                    # test suite
+uv run ruff check .              # lint gate (also CI's static job)
+uv run mypy glossabet            # type gate (also CI's static job)
 uv tool install . --reinstall    # (re)install the CLI at ~/.local/bin/glossabet
 glossabet --version
 glossabet install               # install canonical skill for Codex (~/.agents/skills)

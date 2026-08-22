@@ -11,13 +11,12 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable
 from pathlib import PurePosixPath
 
-from glossabet.runtime.coverage import capped_collection
 from glossabet.analysis.vocabulary import ProductionVocabulary
 from glossabet.corpus.tokenize import (
     TOKEN_ORIGIN_DOMAIN,
-    TOKEN_ORIGIN_LANGUAGE,
     tokenize_identifier,
 )
+from glossabet.runtime.coverage import capped_collection
 
 MODULE_CANDIDATE_CAP = 10
 TERM_CANDIDATE_CAP = 15

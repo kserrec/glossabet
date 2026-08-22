@@ -15,6 +15,7 @@ import unicodedata
 from collections import Counter
 from pathlib import Path, PurePosixPath
 
+from glossabet.corpus.tokenize import tokenize_term
 from glossabet.runtime.artifacts import (
     READ_ABSENT,
     READ_OVERSIZED,
@@ -24,7 +25,6 @@ from glossabet.runtime.artifacts import (
     read_bounded_json,
 )
 from glossabet.runtime.coverage import capped_collection, coverage_ledger
-from glossabet.corpus.tokenize import tokenize_term
 
 GRAPH_PATH = "graphify-out/graph.json"
 GROUP_CAP = 50

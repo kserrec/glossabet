@@ -10,9 +10,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from glossabet.runtime.artifacts import replace_file_atomic
-from glossabet.runtime.display import escape_terminal_text, print_error
-from glossabet.runtime.engine_run import GLOSSARY_REQUIRED, open_run
 from glossabet.agent.managed_block import AGENT_TARGETS
 from glossabet.agent.managed_context import (
     ContextSyncError,
@@ -20,6 +17,9 @@ from glossabet.agent.managed_context import (
     read_regular_target,
     render_block,
 )
+from glossabet.runtime.artifacts import replace_file_atomic
+from glossabet.runtime.display import escape_terminal_text, print_error
+from glossabet.runtime.engine_run import GLOSSARY_REQUIRED, open_run
 
 
 def _detect_newline(text: str) -> str:
@@ -137,7 +137,7 @@ def sync_context_command(path_arg: str, agent: str, *, force: bool = False) -> i
     )
     try:
         path, outcome = sync_context(
-            run.root, run.glossary, agent, force=force
+            run.root, run.required_glossary, agent, force=force
         )
     except ContextSyncError as exc:
         print_error(exc)

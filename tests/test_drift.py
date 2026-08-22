@@ -4,11 +4,11 @@ bounds, determinism, and the no-glossary path."""
 
 import json
 
+from glossabet.analysis.evidence import Limits, build_evidence
 from glossabet.cli import main
 from glossabet.glossary.drift import build_drift
-from glossabet.analysis.evidence import Limits, build_evidence
-from glossabet.glossary.store import save_glossary
 from glossabet.glossary.matching import EvidenceIndex
+from glossabet.glossary.store import save_glossary
 
 GLOSSARY = {
     "schema_version": 1,
@@ -166,9 +166,11 @@ def test_terms_already_in_glossary_are_not_parallel_findings(tmp_path):
         "charge_record = 1\ncharge_scheduler = 2\nstart_charge = 3\n"
     )
     evidence = build_evidence(tmp_path)
-    parallel_new_terms = lambda glossary: {
-        f["new_term"] for f in build_drift(evidence, glossary)["parallel_terms"]["items"]
-    }
+    def parallel_new_terms(glossary):
+        return {
+            f["new_term"]
+            for f in build_drift(evidence, glossary)["parallel_terms"]["items"]
+        }
 
     unowned = {"schema_version": 1, "concepts": [{
         "id": "payment", "term": "Payment", "definition": "d", "status": "canonical",

@@ -6,9 +6,9 @@ lexical walk."""
 import json
 import os
 
-from glossabet.cli import main
 from glossabet.analysis.evidence import build_evidence, write_evidence
 from glossabet.analysis.graphify import build_structural_groups
+from glossabet.cli import main
 
 GRAPH = {
     "directed": True,

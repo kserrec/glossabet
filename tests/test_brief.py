@@ -1,13 +1,12 @@
 """The ambient glossary digest is read-only, bounded, and state-stamped."""
 
 import json
-import sys
 import os
+import sys
 
 from glossabet.agent.brief import MAX_BRIEF_BYTES, build_brief
 from glossabet.cli import main
 from glossabet.glossary.store import save_glossary
-
 
 GLOSSARY = {
     "schema_version": 1,

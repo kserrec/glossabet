@@ -238,6 +238,7 @@ def test_hostile_git_filter_driver_via_config_include_does_not_execute(tmp_path)
     # resolve includes) still ran it — an RCE bypass. The override enumeration
     # must follow includes exactly as git does.
     import subprocess as sp
+
     from glossabet.runtime.git_state import _filter_driver_overrides, _resolve_git
     repo = tmp_path / "repo"
     repo.mkdir()

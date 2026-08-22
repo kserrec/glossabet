@@ -4,6 +4,12 @@ from __future__ import annotations
 
 import sys
 
+from glossabet.glossary.store import (
+    GLOSSARY_FILE,
+    GlossaryError,
+    concept_scope,
+    save_glossary,
+)
 from glossabet.runtime.artifacts import (
     MAX_JSON_BYTES,
     OUT_DIR,
@@ -13,12 +19,6 @@ from glossabet.runtime.artifacts import (
 )
 from glossabet.runtime.display import escape_terminal_text, join_escaped, print_error
 from glossabet.runtime.engine_run import GLOSSARY_OPTIONAL, open_run
-from glossabet.glossary.store import (
-    GLOSSARY_FILE,
-    GlossaryError,
-    concept_scope,
-    save_glossary,
-)
 
 
 def show_command(path_arg: str) -> int:
@@ -67,9 +67,9 @@ def _print_glossary(glossary: dict) -> None:
                 print(f"    note: {escape_terminal_text(concept['notes'])}")
 
 
-def _read_glossary_from_stdin() -> dict | None:
-    """One bounded glossary JSON document from standard input, or ``None``
-    after reporting why there is none usable."""
+def _read_glossary_from_stdin() -> object:
+    """One bounded, still-unvalidated JSON document from standard input, or
+    ``None`` after reporting why there is none usable."""
     if sys.stdin.isatty():
         print_error("save requires one glossary JSON document on standard input")
         return None

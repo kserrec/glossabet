@@ -19,7 +19,7 @@ def test_release_metadata_matches_package_version_and_supported_pythons():
     assert 'requires-python = ">=3.10"' in pyproject
     assert 'requires = ["hatchling>=1.32,<1.33"]' in pyproject
     assert "dependencies =" not in pyproject
-    assert 'dev = ["pytest"]' in pyproject
+    assert 'dev = ["pytest", "ruff==0.16.4", "mypy==2.3.1"]' in pyproject
 
 
 def _workflow_texts() -> dict[str, str]:
@@ -49,7 +49,32 @@ def test_workflow_policy_rejects_meaningful_gate_weakening():
             'python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]',
             'python-version: ["3.11", "3.12", "3.13", "3.14"]',
         ),
-        ("quality.yml", "needs: test", "needs: []"),
+        ("quality.yml", "needs: [test, static]", "needs: []"),
+        ("quality.yml", "needs: [test, static]", "needs: test"),
+        ("quality.yml", "needs: [test, static]", "needs: [static]"),
+        ("quality.yml", "needs: [test, static]", "needs: [static, test]"),
+        # The static gate: removed, reordered, conditional, softened, moved
+        # off Linux/3.10, or narrowed to a subset of the package.
+        ("quality.yml", "      - run: uv run --locked ruff check .\n", ""),
+        ("quality.yml", "      - run: uv run --locked mypy glossabet\n", ""),
+        ("quality.yml", "      - run: uv run --locked mypy glossabet",
+         "      - run: uv run --locked mypy glossabet/cli.py"),
+        ("quality.yml", "      - run: uv run --locked ruff check .",
+         "      - run: uv run --locked ruff check glossabet"),
+        ("quality.yml", "      - run: uv run --locked ruff check .",
+         "      - run: uv run --locked ruff check . || true"),
+        ("quality.yml", "      - run: uv run --locked mypy glossabet",
+         "      - run: uv run --locked mypy glossabet\n        continue-on-error: true"),
+        ("quality.yml", "      - run: uv run --locked mypy glossabet",
+         "      - run: uv run --locked mypy glossabet\n        if: false"),
+        ("quality.yml", "  static:\n    name: Ruff and mypy on Python 3.10\n",
+         "  static:\n    if: false\n    name: Ruff and mypy on Python 3.10\n"),
+        ("quality.yml", "  static:\n    name: Ruff and mypy on Python 3.10\n    runs-on: ubuntu-latest",
+         "  static:\n    name: Ruff and mypy on Python 3.10\n    runs-on: windows-latest"),
+        ("quality.yml", '          python-version: "3.10"\n      - uses: astral-sh/setup-uv',
+         '          python-version: "3.14"\n      - uses: astral-sh/setup-uv'),
+        ("quality.yml", '      - run: uv sync --locked --python "3.10"\n',
+         '      - run: uv sync --python "3.10"\n'),
         (
             "ci.yml",
             "uses: ./.github/workflows/quality.yml",

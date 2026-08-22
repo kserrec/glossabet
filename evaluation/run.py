@@ -25,33 +25,33 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from glossabet import __version__  # noqa: E402
-from glossabet.runtime.artifacts import MAX_JSON_BYTES  # noqa: E402
-from glossabet.corpus.cache import CACHE_ROOT_ENV  # noqa: E402
-from glossabet.corpus.config import CONFIG_FILE  # noqa: E402
-from glossabet.glossary.drift import (  # noqa: E402
-    DRIFT_SCHEMA_VERSION,
-    DriftView,
-    build_drift,
-)
 from glossabet.analysis.evidence import (  # noqa: E402
     EVIDENCE_SCHEMA_VERSION,
     build_evidence,
 )
 from glossabet.analysis.evidence_view import EvidenceView  # noqa: E402
-from glossabet.glossary.store import validate_glossary  # noqa: E402
 from glossabet.analysis.graphify import GRAPH_PATH  # noqa: E402
 from glossabet.analysis.importance import (  # noqa: E402
     NOMINATION_CANONICAL_NAME,
     NOMINATION_DISAMBIGUATION,
+)
+from glossabet.corpus.cache import CACHE_ROOT_ENV  # noqa: E402
+from glossabet.corpus.config import CONFIG_FILE  # noqa: E402
+from glossabet.corpus.tokenize import (  # noqa: E402
+    STRUCTURED_IDENTIFIER_STYLES,
+)
+from glossabet.glossary.drift import (  # noqa: E402
+    DRIFT_SCHEMA_VERSION,
+    DriftView,
+    build_drift,
 )
 from glossabet.glossary.reconcile import (  # noqa: E402
     VALIDATION_SCHEMA_VERSION,
     ValidationView,
     build_validation,
 )
-from glossabet.corpus.tokenize import (  # noqa: E402
-    STRUCTURED_IDENTIFIER_STYLES,
-)
+from glossabet.glossary.store import validate_glossary  # noqa: E402
+from glossabet.runtime.artifacts import MAX_JSON_BYTES  # noqa: E402
 
 EVALUATION_SCHEMA_VERSION = 7
 DEFAULT_MANIFEST = PROJECT_ROOT / "evaluation" / "corpus.json"
@@ -517,7 +517,7 @@ def _review_items(
         })
 
     if validation is not None:
-        for key, (section, finding) in sorted(
+        for key, (_section, finding) in sorted(
             _structural_keys(validation).items()
         ):
             items.append({

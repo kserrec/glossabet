@@ -4,17 +4,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from glossabet.runtime.artifacts import OUT_DIR, ArtifactError
-from glossabet.runtime import git_state
-from glossabet.runtime.display import escape_terminal_text, join_escaped
-from glossabet.runtime.engine_run import GLOSSARY_OPTIONAL, open_run
 from glossabet.glossary.store import (
     GLOSSARY_FILE,
     GLOSSARY_SCHEMA_VERSION,
     concept_scope,
     glossary_sha256,
 )
-
+from glossabet.runtime import git_state
+from glossabet.runtime.artifacts import OUT_DIR, ArtifactError
+from glossabet.runtime.display import escape_terminal_text, join_escaped
+from glossabet.runtime.engine_run import GLOSSARY_OPTIONAL, open_run
 
 BRIEF_FORMAT_VERSION = 1
 # First-line origin markers. The live marker tells a transcript reader where

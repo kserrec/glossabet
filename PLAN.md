@@ -2,8 +2,9 @@
 
 Status: **Phases 0–22, 24–32, 34–44 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
-in progress at 33.2; owner self-testing pause active before the trusted-alpha
-gate** as of 2026-08-18.
+in progress at 33.2; Phase 45 (maintainability refactor, 15 spec passes) in
+progress at 45.2; owner self-testing pause active before the trusted-alpha
+gate** as of 2026-08-22.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
 Phases 24–28 were added 2026-08-15 from Kyle's self-testing findings and run
@@ -1184,6 +1185,72 @@ tests, plus R1 as ruled:
   `build_validation(root=…)` from the `validate` command; ARCHITECTURE.md).
 
 Suite: 623 tests green.
+
+### Phase 45 — Maintainability refactor, spec-driven (added 2026-08-22, in progress)
+
+**Origin:** Kyle brought in an external "Glossabet Maintainability Refactor
+Specification" on 2026-08-22 and asked for it to be pulled in with fidelity
+and implemented. The spec is checked in **verbatim** as
+`docs/MAINTAINABILITY-REFACTOR.md` and is the authoritative text for this
+phase; this section is only its index and running status. Do not restate or
+paraphrase the spec here. Edit the spec file only to reconcile it with a tree
+that has moved past its anchor commit (its own Status rule), recording what
+was reconciled and why.
+
+**Binding for every step:** spec §3 (public behaviour, artifact bytes, JSON
+schema versions, heuristics, and the skill stay unchanged; no runtime
+dependency; layer direction preserved; persisted JSON stays plain dicts typed
+by `TypedDict`), §4 (per-pass execution contract, including "never bless a
+changed output"), and §5 (Gate A every pass; Gate B when analysis, glossary,
+agent contracts, or heuristics are touched; Gate C when package code,
+packaging, installation, plugins, skills, or workflows are touched). One spec
+pass = one step here = one `/next` pass, reported in the spec's §9 format and
+stopped before the next pass. This phase is compatible with the owner
+self-testing pause: it is internal refactoring with no publication, outside
+tester, or account action.
+
+Steps (each is the same-numbered spec pass):
+
+- **45.1** Pass 1 — enforceable static-quality gates (Ruff + mypy, CI
+  `static` job, checker hardening) ✅ 2026-08-22
+- **45.2** Pass 2 — JSON and coverage foundation types
+- **45.3** Pass 3 — `RepositoryEvidence` contract and a fully typed
+  `EvidenceView`
+- **45.4** Pass 4 — structured glossary and store boundary types
+- **45.5** Pass 5 — observed vs heuristic findings as distinct types
+- **45.6** Pass 6 — AgentContext and remaining production boundaries
+- **45.7** Pass 7 — close the strict static-type gate
+- **45.8** Pass 8 — isolate heuristic policy without changing it
+- **45.9** Pass 9 — decompose the repository scanner
+- **45.10** Pass 10 — decompose glossary storage and validation
+- **45.11** Pass 11 — decompose the Graphify adapter
+- **45.12** Pass 12 — decompose reconciliation
+- **45.13** Pass 13 — clean comments and synchronize `ARCHITECTURE.md`
+- **45.14** Pass 14 — resolve the filesystem race / threat-model question
+- **45.15** Pass 15 — performance baseline; optimize only proven hotspots
+
+**45.1 outcome (2026-08-22):** `ruff==0.16.4` and `mypy==2.3.1` pinned as
+dev-only dependencies and locked; Ruff rules `E4,E7,E9,F,I,B` on py310;
+mypy over `glossabet/` with `check_untyped_defs`, `no_implicit_optional`,
+the four warnings, and `warn_return_any`, with the spec's temporary allowance
+recorded in `pyproject.toml` as explicit `disallow_* = false` lines plus one
+`warn_return_any = false` override listing six modules, each tagged with the
+pass that removes it (3, 5, or 6). 82 Ruff findings fixed (57 import-order
+auto-fixes; the rest mechanical equivalents — `assert False` → `raise
+AssertionError`, `setattr` → attribute assignment, hoisted test imports, a
+module-level `DEFAULT_LIMITS`); 20 mypy errors fixed by real narrowing
+rather than suppression — `Run.required_glossary` for the three
+required-glossary commands, `_GraphStatus.unusable_reason`, a
+`CacheClearReport` `TypedDict`, `save_glossary`/`load_glossary` narrowing
+the validated `object` to `dict` (diagnostics unchanged because a non-object
+is already a validation error), the synonym ranking sorted through a typed
+`(similarity, a, b, item)` row list (same key, same order), and the 3.10
+single-segment `Traversable.joinpath`. CI: one Linux/3.10 `static` job;
+`package` needs `[test, static]`; `scripts/check_workflows.py` requires the
+exact three static lines in order, Linux, 3.10, no job-level `if:`, and the
+two-job `needs` list, with 17 new weakening mutations in
+`tests/test_release.py`. Observation recorded, not changed (spec §3.1): a
+JSON `null` document on `save`'s stdin exits 1 with no message.
 
 ### Owner self-testing pause — active, not an implementation phase
 

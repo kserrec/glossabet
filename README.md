@@ -143,11 +143,14 @@ deliberate naming; they do not prove that Glossabet improves real projects.
 
 ## Development and release verification
 
-Create the locked development environment and run the test suite:
+Create the locked development environment and run the test suite and the
+static gates (Ruff and mypy, both pinned development dependencies):
 
 ```bash
 uv sync --locked
 uv run pytest -q
+uv run ruff check .
+uv run mypy glossabet
 ```
 
 The complete pre-release verification and publication procedure is in

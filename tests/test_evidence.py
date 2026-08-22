@@ -6,8 +6,8 @@ import os
 
 import pytest
 
-from glossabet.cli import main
 from glossabet.analysis.evidence import Limits, build_evidence, write_evidence
+from glossabet.cli import main
 
 
 def make_repo(tmp_path):
@@ -636,7 +636,12 @@ def test_exclusion_ledger_owns_every_skipped_key_and_sentence(tmp_path):
     but not in the ledger, or in the ledger but not collected, is a silent
     exclusion."""
     from dataclasses import fields
-    from glossabet.corpus.scanner import EXCLUSION_KINDS, WalkResult, exclusion_sentences
+
+    from glossabet.corpus.scanner import (
+        EXCLUSION_KINDS,
+        WalkResult,
+        exclusion_sentences,
+    )
 
     collected = {f.name for f in fields(WalkResult) if f.name.startswith("skipped_")}
     assert {kind.attribute for kind in EXCLUSION_KINDS} == collected

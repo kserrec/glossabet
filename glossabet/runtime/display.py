@@ -12,7 +12,6 @@ import sys
 from contextlib import contextmanager
 from typing import Iterator, TextIO
 
-
 _BIDI_FORMAT_CHARACTERS = frozenset(
     {
         "\u061c",  # ARABIC LETTER MARK
