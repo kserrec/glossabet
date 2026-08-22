@@ -235,8 +235,8 @@ glossabet/
              tokenize, imports
   analysis/  evidence, evidence_view, vocabulary, terminology, importance,
              graphify, evidence_report
-  glossary/  store, glossary_commands, repository_glossary, matching,
-             findings, drift, reconcile
+  glossary/  model, scope, schema, store, glossary_commands, policy,
+             repository_glossary, matching, findings, drift, reconcile
   agent/     agent_context, brief, managed_block, managed_context, context_sync
   install/   installer, claude_plugin
 ```
@@ -518,7 +518,12 @@ prefix each with its subpackage (`glossabet.corpus.scanner`, …).
   reads as a miss. An override that resolves inside the target repository
   disables caching.
 - `glossary/store.py` (was `glossary.py`) — the persistent glossary (`glossabet-out/glossary.json`):
-  schema validation (`validate_glossary`) and confined load/save. Bindings may
+  semantic digest and confined load/save, plus the stable facade re-exporting
+  the schema (`glossary/model.py`: record `TypedDict`s and status/binding
+  literals), the bounded validator (`glossary/schema.py`: `validate_glossary`,
+  `checked_glossary`, size and diagnostic ceilings), and concept scope
+  (`glossary/scope.py`: prefix normalization, path membership, overlap, and
+  the ownership index). Bindings may
   only target stable identities (`symbol:` / `file:` / `module:`), never graph
   community or node ids, which are not stable across rebuilds. Optional
   `scope.path_prefixes` are literal repository-relative subsystem boundaries;

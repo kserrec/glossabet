@@ -10,8 +10,8 @@ import pytest
 
 from glossabet.cli import main
 from glossabet.glossary.model import BINDING_KINDS, STATUSES
+from glossabet.glossary.schema import MAX_VALIDATION_ERRORS
 from glossabet.glossary.store import (
-    MAX_VALIDATION_ERRORS,
     GlossaryError,
     checked_glossary,
     load_glossary,
@@ -500,7 +500,7 @@ def test_validation_diagnostics_are_bounded():
 
 
 def test_concept_budget_is_checked_before_per_concept_validation(monkeypatch):
-    monkeypatch.setattr("glossabet.glossary.store.MAX_GLOSSARY_CONCEPTS", 2)
+    monkeypatch.setattr("glossabet.glossary.schema.MAX_GLOSSARY_CONCEPTS", 2)
     glossary = {"schema_version": 1, "concepts": [None, None, None]}
 
     errors = validate_glossary(glossary)
@@ -535,7 +535,7 @@ def test_concept_budget_is_checked_before_per_concept_validation(monkeypatch):
 def test_aggregate_child_budgets_are_checked_before_entry_validation(
     monkeypatch, constant, field, values, fragment
 ):
-    monkeypatch.setattr(f"glossabet.glossary.store.{constant}", 2)
+    monkeypatch.setattr(f"glossabet.glossary.schema.{constant}", 2)
     concept = {
         "id": "x", "term": "X", "definition": "A concept.",
         "status": "canonical", field: values,
@@ -551,8 +551,8 @@ def test_identity_and_prose_string_limits_are_independent(monkeypatch):
         "id": "x", "term": "T" * 21, "definition": "D" * 7,
         "status": "canonical",
     }
-    monkeypatch.setattr("glossabet.glossary.store.MAX_GLOSSARY_IDENTITY_CHARS", 20)
-    monkeypatch.setattr("glossabet.glossary.store.MAX_GLOSSARY_PROSE_CHARS", 6)
+    monkeypatch.setattr("glossabet.glossary.schema.MAX_GLOSSARY_IDENTITY_CHARS", 20)
+    monkeypatch.setattr("glossabet.glossary.schema.MAX_GLOSSARY_PROSE_CHARS", 6)
 
     errors = validate_glossary({"schema_version": 1, "concepts": [concept]})
 
@@ -572,9 +572,9 @@ def test_scope_character_and_inherited_ownership_work_are_bounded(monkeypatch):
             {"term": "Old X", "status": "deprecated"},
         ],
     }
-    monkeypatch.setattr("glossabet.glossary.store.MAX_GLOSSARY_SCOPE_CHARACTERS", 5)
+    monkeypatch.setattr("glossabet.glossary.schema.MAX_GLOSSARY_SCOPE_CHARACTERS", 5)
     monkeypatch.setattr(
-        "glossabet.glossary.store.MAX_GLOSSARY_OWNERSHIP_SCOPE_CHARACTERS", 10
+        "glossabet.glossary.schema.MAX_GLOSSARY_OWNERSHIP_SCOPE_CHARACTERS", 10
     )
 
     errors = validate_glossary({"schema_version": 1, "concepts": [concept]})
@@ -605,7 +605,7 @@ def test_vocabulary_owner_validation_uses_indexed_scope_lookup(monkeypatch):
         raise AssertionError("pairwise scope comparison used")
 
     monkeypatch.setattr(
-        "glossabet.glossary.store.scopes_overlap", pairwise_lookup_is_a_regression
+        "glossabet.glossary.scope.scopes_overlap", pairwise_lookup_is_a_regression
     )
     concepts = [
         {

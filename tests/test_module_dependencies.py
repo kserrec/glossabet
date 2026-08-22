@@ -99,6 +99,16 @@ def test_forbidden_dependency_directions():
         # The glossary schema is a leaf: it owns meaning only and must not
         # reach persistence, validation, or commands.
         "model": {"glossabet.store", "glossabet.glossary_commands", "glossabet.engine_run"},
+        # Concept scope and the bounded validator sit beneath persistence
+        # (Phase 45.10): model < scope < schema < store.
+        "scope": {
+            "glossabet.schema", "glossabet.store", "glossabet.glossary_commands",
+            "glossabet.engine_run", "glossabet.matching", "glossabet.drift",
+        },
+        "schema": {
+            "glossabet.store", "glossabet.glossary_commands",
+            "glossabet.engine_run", "glossabet.matching", "glossabet.drift",
+        },
     }
     for module, banned in forbidden.items():
         banned = {_qualified(name.removeprefix("glossabet.")) for name in banned}

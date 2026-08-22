@@ -3,7 +3,7 @@
 Status: **Phases 0–22, 24–32, 34–44 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
 in progress at 33.2; Phase 45 (maintainability refactor, 15 spec passes) in
-progress at 45.10; owner self-testing pause active before the trusted-alpha
+progress at 45.11; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-22.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1222,7 +1222,7 @@ Steps (each is the same-numbered spec pass):
 - **45.7** Pass 7 — close the strict static-type gate ✅ 2026-08-22
 - **45.8** Pass 8 — isolate heuristic policy without changing it ✅ 2026-08-22
 - **45.9** Pass 9 — decompose the repository scanner ✅ 2026-08-22
-- **45.10** Pass 10 — decompose glossary storage and validation
+- **45.10** Pass 10 — decompose glossary storage and validation ✅ 2026-08-22
 - **45.11** Pass 11 — decompose the Graphify adapter
 - **45.12** Pass 12 — decompose reconciliation
 - **45.13** Pass 13 — clean comments and synchronize `ARCHITECTURE.md`
@@ -1421,6 +1421,19 @@ now patch `glossabet.corpus.walk_budget` (the owning module; patching the
 facade's re-exported name would be a silent no-op). Dependency ratchet pins
 walk_budget < path_policy < scanner. A/B on the five fixtures: 0 diffs in
 stdout and every artifact; 680 tests; Gates A, B, C green.
+
+**45.10 outcome (2026-08-22):** `glossary/store.py` (644 lines) split by
+reason to change: `glossary/scope.py` (prefix literalness and
+`normalize_scope`, `concept_scope`, `path_in_scope`, `scopes_overlap`,
+`scope_evidence`, the `ScopeOwnerIndex` trie and `VocabularyOwner`),
+`glossary/schema.py` (the size/diagnostic ceilings, `_ValidationErrors`,
+field/string/scope/alias/binding validators, `validate_glossary`,
+`checked_glossary`), and `store.py` (digest, confined load/save, `__all__`
+facade re-exporting every previously importable name; the `MAX_*` ceilings
+are schema-owned and tests now patch `glossabet.glossary.schema`, since
+patching a re-export would be a silent no-op). Validator text, order, and
+truncation untouched; dependency ratchet pins model < scope < schema <
+store. Byte-identical on all five fixtures incl. hostile `save` stdin.
 
 ### Owner self-testing pause — active, not an implementation phase
 
