@@ -3,7 +3,7 @@
 Status: **Phases 0–22, 24–32, 34–44 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
 in progress at 33.2; Phase 45 (maintainability refactor, 15 spec passes) in
-progress at 45.7; owner self-testing pause active before the trusted-alpha
+progress at 45.8; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-22.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1219,7 +1219,7 @@ Steps (each is the same-numbered spec pass):
 - **45.4** Pass 4 — structured glossary and store boundary types ✅ 2026-08-22
 - **45.5** Pass 5 — observed vs heuristic findings as distinct types ✅ 2026-08-22
 - **45.6** Pass 6 — AgentContext and remaining production boundaries ✅ 2026-08-22
-- **45.7** Pass 7 — close the strict static-type gate
+- **45.7** Pass 7 — close the strict static-type gate ✅ 2026-08-22
 - **45.8** Pass 8 — isolate heuristic policy without changing it
 - **45.9** Pass 9 — decompose the repository scanner
 - **45.10** Pass 10 — decompose glossary storage and validation
@@ -1360,6 +1360,25 @@ sample: scan (cold+warm), analyze, drift, validate, show, brief, inspect
 (lean/full/no-graphify), sync-context (both hosts, repeat), install (both
 hosts) — stdout/stderr, every artifact, both host files, and both installed
 trees byte-identical.
+
+**45.7 outcome (2026-08-22):** `[tool.mypy]` now enables
+`disallow_untyped_defs`, `disallow_incomplete_defs`, `disallow_any_generics`,
+`warn_return_any`, and `strict_equality` package-wide (strict equality produced
+no false positive on the validated JSON model, so it is on); every per-module
+override and the migration-allowance comment are deleted, so one
+`mypy glossabet` invocation enforces the final policy. The 63 remaining
+strict-mode errors in `analysis/{graphify,terminology,vocabulary,importance}`
+were closed by real typing: `Counter[str]`/`Counter[tuple[str, ...]]`/
+`Mapping[...]` parameters across the heuristic modules, and in `graphify.py`
+a `_LoadedGraph` (document + node list validated once at load),
+`_Node`/`_Group` `TypedDict`s for normalized nodes and communities,
+`_first_str`/`_first_list` narrowing helpers replacing the untyped
+`types=` argument, and `_usable_cohesion` as a `TypeGuard[float]`. No
+`# type: ignore` exists in the package; the only two `cast` calls are the
+documented validated-boundary casts in `store.checked_glossary` and
+`agent_context._bounded`. New `tests/test_type_contracts.py` walks the
+package AST and rejects bare `dict`/`list`/`set`/`tuple`/`Mapping`/… on any
+exported function or public method (plus a self-test of the checker).
 
 ### Owner self-testing pause — active, not an implementation phase
 

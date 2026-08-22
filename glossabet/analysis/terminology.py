@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from itertools import combinations
 from typing import TypedDict
@@ -71,15 +71,15 @@ LAYER_CAP = 10
 @dataclass
 class _RegisterTally:
     """Which identifier spellings the house register admits, and why."""
-    styles: Counter = field(default_factory=Counter)
-    token_counts_dist: Counter = field(default_factory=Counter)
-    suffixes: Counter = field(default_factory=Counter)
-    prefixes: Counter = field(default_factory=Counter)
-    used_by_reason: Counter = field(default_factory=lambda: Counter({
+    styles: Counter[str] = field(default_factory=Counter)
+    token_counts_dist: Counter[str] = field(default_factory=Counter)
+    suffixes: Counter[str] = field(default_factory=Counter)
+    prefixes: Counter[str] = field(default_factory=Counter)
+    used_by_reason: Counter[str] = field(default_factory=lambda: Counter({
         "structurally_styled": 0,
         "corroborated_flat": 0,
     }))
-    excluded_by_reason: Counter = field(default_factory=lambda: Counter({
+    excluded_by_reason: Counter[str] = field(default_factory=lambda: Counter({
         "no_lexical_tokens": 0,
         "language_tagged_flat": 0,
         "prose_dominated_flat": 0,
@@ -92,8 +92,8 @@ class _RegisterTally:
 
 
 def _register_tally(
-    identifier_counts: Counter,
-    doc_term_counts: Counter,
+    identifier_counts: Counter[str],
+    doc_term_counts: Counter[str],
     token_origins: dict[str, str],
 ) -> _RegisterTally:
     tally = _RegisterTally()
@@ -166,8 +166,8 @@ def _top_affixes(counter: Counter[str]) -> tuple[list[AffixRecord], CoverageLedg
 
 
 def _register(
-    identifier_counts: Counter,
-    doc_term_counts: Counter,
+    identifier_counts: Counter[str],
+    doc_term_counts: Counter[str],
     token_origins: dict[str, str],
 ) -> RegisterSection:
     tally = _register_tally(identifier_counts, doc_term_counts, token_origins)
@@ -254,9 +254,11 @@ def _pattern_label(pattern: tuple[str, ...]) -> str:
     return "_".join(pattern)
 
 
-def _synonym_candidates(top_tokens: list[str], token_counts: Counter,
-                        token_files: dict, token_patterns: dict,
-                        neighbors: dict, token_coverage: CoverageLedger,
+def _synonym_candidates(top_tokens: list[str], token_counts: Counter[str],
+                        token_files: Mapping[str, Counter[str]],
+                        token_patterns: Mapping[str, Counter[tuple[str, ...]]],
+                        neighbors: Mapping[str, Counter[str]],
+                        token_coverage: CoverageLedger,
                         ) -> SynonymCandidatesSection:
     # Inverse-frequency weighting: a ubiquitous context token (a repo's
     # "term"/"prop") says little about which two terms are parallel, so it
@@ -368,7 +370,7 @@ class _DispersionProfile(TypedDict):
 
 def _context_dispersion(
     top_tokens: list[str],
-    module_neighbor_sets: dict,
+    module_neighbor_sets: Mapping[str, Mapping[str, set[str]]],
     module_neighbor_truncated: set[tuple[str, str]],
     token_coverage: CoverageLedger,
 ) -> tuple[list[_DispersionProfile], ContextDispersionSection]:
@@ -457,7 +459,7 @@ def _context_dispersion(
 
 def _overload_candidates(
     dispersion_profiles: list[_DispersionProfile],
-    token_modules: dict,
+    token_modules: Mapping[str, Counter[str]],
     dispersion_coverage: CoverageLedger,
 ) -> OverloadCandidatesSection:
     items: list[OverloadCandidate] = []

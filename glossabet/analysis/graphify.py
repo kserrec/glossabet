@@ -13,9 +13,10 @@ from __future__ import annotations
 import math
 import unicodedata
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import TypedDict
+from typing import TypedDict, TypeGuard
 
 from glossabet.analysis.evidence_types import (
     FreshnessRecord,
@@ -80,18 +81,73 @@ _GLOSSARY_OUTPUT_DIRS = frozenset({"glossabet-out", "glossarize-out"})
 _GLOSSARY_FILES = frozenset({"glossary.md", REPORT_FILE.casefold()})
 
 
-def _first_value(mapping: dict, keys, types=None):
-    """The first present, typed, *non-empty* value among ``keys``: an empty
-    label falls through to the name/id, an empty ``links`` list to a legacy
-    ``edges`` list — emptiness is absence for every field read here."""
+def _first_value(mapping: Mapping[str, object], keys: Sequence[str]) -> object:
+    """The first present, *non-empty* value among ``keys``: an empty label
+    falls through to the name/id — emptiness is absence for every field read
+    here. ``_first_str`` / ``_first_list`` add the type requirement."""
     for key in keys:
         value = mapping.get(key)
-        if value is None or (types is not None and not isinstance(value, types)):
+        if value is None:
             continue
         if isinstance(value, (str, list, dict)) and not value:
             continue
         return value
     return None
+
+
+def _first_str(mapping: Mapping[str, object], keys: Sequence[str]) -> str | None:
+    """``_first_value`` restricted to non-empty strings."""
+    for key in keys:
+        value = mapping.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def _first_list(
+    mapping: Mapping[str, object], keys: Sequence[str]
+) -> list[object] | None:
+    """``_first_value`` restricted to non-empty lists (an empty ``links``
+    list falls through to a legacy ``edges`` list)."""
+    for key in keys:
+        value = mapping.get(key)
+        if isinstance(value, list) and value:
+            return value
+    return None
+
+
+class _NodeCache(TypedDict, total=False):
+    """Per-node memo filled lazily by ``_node_tokens``."""
+
+    tokens: list[str]
+
+
+class _Node(_NodeCache):
+    """One normalized graph node: a bounded label, its provenance class,
+    and the raw community attributes the fallback grouping reads."""
+
+    label: str
+    label_truncated: bool
+    prov: str
+    community: object
+    community_name: str | None
+
+
+class _Group(TypedDict):
+    """One normalized community before it becomes a ``StructuralGroup``."""
+
+    label: str
+    cohesion: float | None
+    members: list[str]
+
+
+@dataclass(frozen=True)
+class _LoadedGraph:
+    """A bounded graph document whose non-empty node list was checked once
+    at load time, so no later reader re-validates the top-level shape."""
+
+    document: dict[str, object]
+    nodes: list[object]
 
 
 def _unavailable(
@@ -121,7 +177,7 @@ def disabled_structural_groups() -> StructuralGroups:
     return _unavailable(present=None, warnings=[], disabled=True)
 
 
-def _load_graph(root: Path) -> tuple[dict | None, bool, list[str]]:
+def _load_graph(root: Path) -> tuple[_LoadedGraph | None, bool, list[str]]:
     try:
         path = confined_artifact_path(root, GRAPH_PATH)
     except ArtifactError as exc:
@@ -139,29 +195,28 @@ def _load_graph(root: Path) -> tuple[dict | None, bool, list[str]]:
             f"{GRAPH_PATH}: unreadable JSON — proceeding lexical-only"
         ]
     data = read.value
-    if (
-        not isinstance(data, dict)
-        or not isinstance(data.get("nodes"), list)
-        or not data["nodes"]
-    ):
+    raw_nodes = data.get("nodes") if isinstance(data, dict) else None
+    if not isinstance(data, dict) or not isinstance(raw_nodes, list) or not raw_nodes:
         return None, True, [
             f"{GRAPH_PATH}: no recognizable node list — proceeding lexical-only"
         ]
-    references = _graph_references(data)
+    graph = _LoadedGraph(document=data, nodes=raw_nodes)
+    references = _graph_references(graph)
     if references > GRAPH_WORK_BUDGET:
         return None, True, [
             f"{GRAPH_PATH}: {references} node/edge/member references exceed "
             f"the adapter's work budget of {GRAPH_WORK_BUDGET} — proceeding "
             "lexical-only"
         ]
-    return data, True, []
+    return graph, True, []
 
 
-def _graph_references(data: dict) -> int:
+def _graph_references(graph: _LoadedGraph) -> int:
     """Nodes + edges + community member references, counted from list
     lengths only — the input work a graph would cost, known before any of
     it is done."""
-    total = len(data["nodes"])
+    data = graph.document
+    total = len(graph.nodes)
     for key in ("links", "edges"):
         value = data.get(key)
         if isinstance(value, list):
@@ -190,14 +245,14 @@ def _normalized_source(value: str) -> str:
     return "/".join(parts)
 
 
-def _provenance(node: dict) -> str:
-    source = _first_value(
-        node, ("source_file", "source", "file", "path", "origin"), str
+def _provenance(node: Mapping[str, object]) -> str:
+    source = _first_str(
+        node, ("source_file", "source", "file", "path", "origin")
     ) or ""
     normalized_source = _normalized_source(source)
     source_parts = PurePosixPath(normalized_source).parts
     ntype = unicodedata.normalize(
-        "NFKC", _first_value(node, ("file_type", "type", "kind"), str) or ""
+        "NFKC", _first_str(node, ("file_type", "type", "kind")) or ""
     ).strip().casefold()
     if (
         ntype in _GLOSSARY_TYPES
@@ -213,7 +268,7 @@ def _provenance(node: dict) -> str:
     return "code"
 
 
-def _usable_cohesion(value: object) -> bool:
+def _usable_cohesion(value: object) -> TypeGuard[float]:
     """A finite, bounded, non-bool number. ``json.loads`` accepts bare NaN/
     Infinity, bool passes ``isinstance(int)``, and an integer beyond float
     range makes ``math.isfinite`` itself raise — none is a usable cohesion."""
@@ -238,7 +293,9 @@ class _FreshnessBase(TypedDict):
     worktree_dirty: bool | None
 
 
-def _freshness(graph: dict, git_stamp: Mapping[str, object] | None) -> FreshnessRecord:
+def _freshness(
+    graph: Mapping[str, object], git_stamp: Mapping[str, object] | None
+) -> FreshnessRecord:
     built_raw = graph.get("built_at_commit")
     built = built_raw.strip() if isinstance(built_raw, str) else None
     current_raw = git_stamp.get("head") if isinstance(git_stamp, dict) else None
@@ -298,9 +355,9 @@ def _freshness(graph: dict, git_stamp: Mapping[str, object] | None) -> Freshness
     }
 
 
-def _normalize_nodes(graph: dict) -> dict[str, dict]:
-    nodes: dict[str, dict] = {}
-    for raw in graph["nodes"]:
+def _normalize_nodes(graph: _LoadedGraph) -> dict[str, _Node]:
+    nodes: dict[str, _Node] = {}
+    for raw in graph.nodes:
         if not isinstance(raw, dict):
             continue
         node_id = _first_value(raw, ("id", "name"))
@@ -313,19 +370,19 @@ def _normalize_nodes(graph: dict) -> dict[str, dict]:
             "label_truncated": len(label) > MAX_NODE_LABEL_CHARS,
             "prov": _provenance(raw),
             "community": raw.get("community"),
-            "community_name": _first_value(raw, ("community_name",), str),
+            "community_name": _first_str(raw, ("community_name",)),
         }
     return nodes
 
 
 def _edge_summary(
-    graph: dict,
-    nodes: dict[str, dict],
+    graph: Mapping[str, object],
+    nodes: Mapping[str, _Node],
     excluded_nodes: set[str],
-) -> tuple[Counter, int]:
-    degree: Counter = Counter()
+) -> tuple[Counter[str], int]:
+    degree: Counter[str] = Counter()
     edge_count = 0
-    links = _first_value(graph, ("links", "edges"), list) or []
+    links = _first_list(graph, ("links", "edges")) or []
     for edge in links:
         if not isinstance(edge, dict):
             continue
@@ -347,10 +404,10 @@ def _edge_summary(
 
 
 def _extract_groups(
-    graph: dict,
-    nodes: dict[str, dict],
+    graph: Mapping[str, object],
+    nodes: Mapping[str, _Node],
     warnings: list[str],
-) -> dict[str, dict]:
+) -> dict[str, _Group]:
     communities = graph.get("communities")
     if isinstance(communities, list) and communities:
         return _groups_from_communities(communities, nodes)
@@ -358,10 +415,10 @@ def _extract_groups(
 
 
 def _groups_from_communities(
-    communities: list, nodes: dict[str, dict]
-) -> dict[str, dict]:
+    communities: list[object], nodes: Mapping[str, _Node]
+) -> dict[str, _Group]:
     """Explicit communities list: each entry names its own members."""
-    groups: dict[str, dict] = {}
+    groups: dict[str, _Group] = {}
     for index, community in enumerate(communities):
         if not isinstance(community, dict):
             continue
@@ -381,10 +438,6 @@ def _groups_from_communities(
             if str(member) in nodes
         ))
         cohesion = community.get("cohesion")
-        # json.loads accepts bare NaN/Infinity and bool passes isinstance
-        # (int); neither is a usable cohesion and NaN would poison scores
-        # and emit non-conformant JSON downstream.
-        usable_cohesion = _usable_cohesion(cohesion)
         if group_id in groups:
             # Two entries claiming one id are one community written twice:
             # merge the members rather than letting the later entry silently
@@ -399,18 +452,21 @@ def _groups_from_communities(
                 _first_value(community, ("label", "name"))
                 or f"community {group_id}"
             ),
-            "cohesion": cohesion if usable_cohesion else None,
+            # json.loads accepts bare NaN/Infinity and bool passes isinstance
+            # (int); neither is a usable cohesion and NaN would poison scores
+            # and emit non-conformant JSON downstream.
+            "cohesion": cohesion if _usable_cohesion(cohesion) else None,
             "members": members,
         }
     return groups
 
 
 def _groups_from_node_attributes(
-    nodes: dict[str, dict], warnings: list[str]
-) -> dict[str, dict]:
+    nodes: Mapping[str, _Node], warnings: list[str]
+) -> dict[str, _Group]:
     """Fallback: fold per-node community attributes into groups."""
-    groups: dict[str, dict] = {}
-    label_counts: dict[str, Counter] = {}
+    groups: dict[str, _Group] = {}
+    label_counts: dict[str, Counter[str]] = {}
     for node_id, node in sorted(nodes.items()):
         community = node["community"]
         if community is None:
@@ -444,7 +500,7 @@ def _groups_from_node_attributes(
     return groups
 
 
-def _node_tokens(node: dict) -> list[str]:
+def _node_tokens(node: _Node) -> list[str]:
     """A node label's tokens, computed once per node however many
     communities list it."""
     tokens = node.get("tokens")
@@ -454,9 +510,9 @@ def _node_tokens(node: dict) -> list[str]:
 
 
 def _group_items(
-    groups: dict[str, dict],
-    nodes: dict[str, dict],
-    degree: Counter,
+    groups: Mapping[str, _Group],
+    nodes: Mapping[str, _Node],
+    degree: Counter[str],
     glossary_nodes: set[str],
 ) -> list[StructuralGroup]:
     items: list[StructuralGroup] = []
@@ -516,7 +572,7 @@ def _group_items(
 
 
 def _god_nodes(
-    nodes: dict[str, dict], degree: Counter, glossary_nodes: set[str]
+    nodes: Mapping[str, _Node], degree: Counter[str], glossary_nodes: set[str]
 ) -> tuple[list[GodNode], CoverageLedger]:
     ranked: list[GodNode] = [
         {"label": nodes[node_id]["label"], "degree": count}
@@ -562,8 +618,8 @@ def build_structural_groups(
         node_id for node_id, node in nodes.items()
         if node["prov"] == "glossary"
     }
-    degree, edge_count = _edge_summary(graph, nodes, glossary_nodes)
-    groups = _extract_groups(graph, nodes, warnings)
+    degree, edge_count = _edge_summary(graph.document, nodes, glossary_nodes)
+    groups = _extract_groups(graph.document, nodes, warnings)
     if not groups:
         warnings.append(
             f"{GRAPH_PATH}: no community structure found — groups unavailable"
@@ -588,7 +644,7 @@ def build_structural_groups(
         "present": True,
         "available": bool(group_items),
         "source": GRAPH_PATH,
-        "freshness": _freshness(graph, git_stamp),
+        "freshness": _freshness(graph.document, git_stamp),
         "source_nodes": len(nodes),
         "nodes": len(nodes) - len(glossary_nodes),
         "edges": edge_count,

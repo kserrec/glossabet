@@ -51,18 +51,18 @@ class ProductionVocabulary:
     """
 
     def __init__(self) -> None:
-        self.token_counts: Counter = Counter()
-        self.token_files: dict[str, Counter] = defaultdict(Counter)
-        self.token_modules: dict[str, Counter] = defaultdict(Counter)
-        self.token_patterns: dict[str, Counter] = defaultdict(Counter)
+        self.token_counts: Counter[str] = Counter()
+        self.token_files: dict[str, Counter[str]] = defaultdict(Counter)
+        self.token_modules: dict[str, Counter[str]] = defaultdict(Counter)
+        self.token_patterns: dict[str, Counter[tuple[str, ...]]] = defaultdict(Counter)
         self.token_origins: dict[str, str] = {}
-        self.neighbors: dict[str, Counter] = defaultdict(Counter)
-        self.module_neighbor_sets: dict[str, dict[str, set]] = defaultdict(
+        self.neighbors: dict[str, Counter[str]] = defaultdict(Counter)
+        self.module_neighbor_sets: dict[str, dict[str, set[str]]] = defaultdict(
             lambda: defaultdict(set)
         )
         self.module_neighbor_truncated: set[tuple[str, str]] = set()
-        self.identifier_counts: Counter = Counter()
-        self.identifier_files: dict[str, Counter] = defaultdict(Counter)
+        self.identifier_counts: Counter[str] = Counter()
+        self.identifier_files: dict[str, Counter[str]] = defaultdict(Counter)
         self._oversized_spellings: set[str] = set()
 
     def fold(
@@ -150,8 +150,8 @@ class DocumentationVocabulary:
     """
 
     def __init__(self) -> None:
-        self.term_counts: Counter = Counter()
-        self.term_files: dict[str, Counter] = defaultdict(Counter)
+        self.term_counts: Counter[str] = Counter()
+        self.term_files: dict[str, Counter[str]] = defaultdict(Counter)
 
     def fold(self, words: dict[str, int], rel: str) -> None:
         """Fold one doc file's word counts into every view."""

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter, defaultdict
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, TypeVar
 
@@ -43,9 +43,9 @@ NOMINATION_DISAMBIGUATION = "deserves disambiguation"
 def _module_candidates(imports_section: ImportsSection,
                        modules: list[ProductionModuleRecord],
                        doc_term_counts: Counter[str]) -> Iterable[ModuleCandidate]:
-    fan_in: dict[str, set] = defaultdict(set)
-    fan_out: dict[str, set] = defaultdict(set)
-    weight: Counter = Counter()
+    fan_in: dict[str, set[str]] = defaultdict(set)
+    fan_out: dict[str, set[str]] = defaultdict(set)
+    weight: Counter[str] = Counter()
     for edge in imports_section["internal_edges"]:
         fan_in[edge["to"]].add(edge["from"])
         fan_out[edge["from"]].add(edge["to"])
@@ -80,11 +80,12 @@ def _module_candidates(imports_section: ImportsSection,
         }
 
 
-def _term_candidates(token_counts: Counter, token_files: dict,
-                     token_modules: dict,
-                     doc_term_counts: Counter,
-                     token_origins: dict[str, str],
-                     token_patterns: dict,
+def _term_candidates(token_counts: Counter[str],
+                     token_files: Mapping[str, Counter[str]],
+                     token_modules: Mapping[str, Counter[str]],
+                     doc_term_counts: Counter[str],
+                     token_origins: Mapping[str, str],
+                     token_patterns: Mapping[str, Counter[tuple[str, ...]]],
                      dispersion_items: Iterable[DispersionRecord],
                      ) -> Iterable[TermCandidate]:
     dispersion_by_term = {item["term"]: item for item in dispersion_items}

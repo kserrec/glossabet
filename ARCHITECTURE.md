@@ -80,8 +80,11 @@ uv run mypy glossabet
 
 Ruff (import and objective correctness rules) and mypy run over the package
 as required gates, locally and in CI's `static` job; their configuration is
-in `pyproject.toml`. The migration allowances recorded there are being
-removed pass by pass under `docs/MAINTAINABILITY-REFACTOR.md`.
+in `pyproject.toml`. The gate is strict package-wide (`disallow_untyped_defs`,
+`disallow_incomplete_defs`, `disallow_any_generics`, `warn_return_any`,
+`strict_equality`) with no per-module relaxation; a source check
+(`tests/test_type_contracts.py`) additionally rejects bare container
+annotations on exported functions.
 
 The preferred Codex distribution is the version-coupled plugin described in
 `DISTRIBUTION.md`; its local source is `plugins/glossabet/` and it is not yet

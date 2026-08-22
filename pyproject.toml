@@ -54,34 +54,10 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 warn_unused_configs = true
 warn_return_any = true
-# Migration allowance (docs/MAINTAINABILITY-REFACTOR.md, Pass 1): bare
-# ``dict``/``list`` annotations and partially annotated definitions are still
-# accepted while the persisted documents gain named types in Passes 2–6.
-# Pass 7 turns these on and removes the per-module relaxations below.
-disallow_any_generics = false
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-
-[[tool.mypy.overrides]]
-# Fully typed layers (Pass 2 onward): held to the final policy now. After
-# Pass 6 only the heuristic analysis modules (graphify, importance,
-# terminology, vocabulary) remain outside this list; Pass 7 makes the policy
-# package-wide and deletes the override.
-module = [
-  "glossabet.runtime.*",
-  "glossabet.corpus.*",
-  "glossabet.analysis.evidence",
-  "glossabet.analysis.evidence_types",
-  "glossabet.analysis.evidence_view",
-  "glossabet.glossary.*",
-  "glossabet.agent.*",
-  "glossabet.install.*",
-  "glossabet.cli",
-  "glossabet.__main__",
-]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 disallow_any_generics = true
+strict_equality = true
 
 [tool.hatch.version]
 path = "glossabet/__init__.py"
