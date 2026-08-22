@@ -1,12 +1,13 @@
 """Importance signals -> ranked "likely deserves a name" nominations.
 
 Every candidate carries its reasons in plain numbers; the score only orders
-the list. Nomination evidence for the skill's Step 3, never truth.
+the list. Nomination evidence for the skill's Step 3, never truth. The
+weights are calibrated nomination policy (``analysis.policy``), not a
+measure of anything.
 """
 
 from __future__ import annotations
 
-import math
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import PurePosixPath
@@ -19,6 +20,15 @@ from glossabet.analysis.evidence_types import (
     ModuleCandidate,
     ProductionModuleRecord,
     TermCandidate,
+)
+from glossabet.analysis.policy import (
+    DEFAULT_IMPORTANCE_POLICY,
+    ImportancePolicy,
+    compound_density,
+    compound_diversity,
+    has_repository_breadth,
+    module_score,
+    term_score,
 )
 from glossabet.analysis.vocabulary import ProductionVocabulary
 from glossabet.corpus.imports import ImportsSection
@@ -33,16 +43,16 @@ if TYPE_CHECKING:  # typeshed's name for what ``sorted`` accepts as a key
 
 C = TypeVar("C")
 
-MODULE_CANDIDATE_CAP = 10
-TERM_CANDIDATE_CAP = 15
-SOURCE_UNIT_ANCHOR_WEIGHT = 15
+MODULE_CANDIDATE_CAP = DEFAULT_IMPORTANCE_POLICY.module_candidate_cap
+TERM_CANDIDATE_CAP = DEFAULT_IMPORTANCE_POLICY.term_candidate_cap
 NOMINATION_CANONICAL_NAME = "deserves a canonical name"
 NOMINATION_DISAMBIGUATION = "deserves disambiguation"
 
 
 def _module_candidates(imports_section: ImportsSection,
                        modules: list[ProductionModuleRecord],
-                       doc_term_counts: Counter[str]) -> Iterable[ModuleCandidate]:
+                       doc_term_counts: Counter[str],
+                       policy: ImportancePolicy) -> Iterable[ModuleCandidate]:
     fan_in: dict[str, set[str]] = defaultdict(set)
     fan_out: dict[str, set[str]] = defaultdict(set)
     weight: Counter[str] = Counter()
@@ -66,11 +76,12 @@ def _module_candidates(imports_section: ImportsSection,
             reasons.append(f"imports {len(fan_out[path])} module(s)")
         if doc_mentions:
             reasons.append(f"mentioned {doc_mentions} time(s) in docs")
-        score = (
-            len(importers) * 3
-            + math.log1p(code_files) * 2
-            + math.log1p(weight[path])
-            + math.log1p(doc_mentions) * 2
+        score = module_score(
+            importers=len(importers),
+            code_files=code_files,
+            import_count=weight[path],
+            doc_mentions=doc_mentions,
+            policy=policy,
         )
         yield {
             "kind": "module",
@@ -87,6 +98,7 @@ def _term_candidates(token_counts: Counter[str],
                      token_origins: Mapping[str, str],
                      token_patterns: Mapping[str, Counter[tuple[str, ...]]],
                      dispersion_items: Iterable[DispersionRecord],
+                     policy: ImportancePolicy,
                      ) -> Iterable[TermCandidate]:
     dispersion_by_term = {item["term"]: item for item in dispersion_items}
     ranked = sorted(token_counts.items(), key=lambda kv: (-kv[1], kv[0]))
@@ -96,13 +108,11 @@ def _term_candidates(token_counts: Counter[str],
         files = len(token_files.get(term, ()))
         spread = len(token_modules.get(term, ()))
         doc_mentions = doc_term_counts.get(term, 0)
-        if spread < 2:
-            continue  # naming importance requires repository breadth
+        if not has_repository_breadth(spread, policy):
+            continue
         patterns = token_patterns.get(term, Counter())
         distinct_compounds = len(patterns)
         compound_uses = sum(patterns.values())
-        compound_density = compound_uses / max(1, count)
-        compound_diversity = distinct_compounds / math.sqrt(max(1, count))
         source_units_named = sum(
             tokenize_identifier(PurePosixPath(path).stem) == [term]
             for path in token_files.get(term, ())
@@ -128,14 +138,15 @@ def _term_candidates(token_counts: Counter[str],
             )
             if dispersion["divergent"]:
                 nomination_kind = NOMINATION_DISAMBIGUATION
-        score = (
-            spread * 2
-            + math.log1p(min(count, 100))
-            + math.log1p(doc_mentions) * 2
-            + compound_diversity * 8
-            + (distinct_compounds / max(1, files)) * 6
-            + compound_density * 4
-            + min(source_units_named, 1) * SOURCE_UNIT_ANCHOR_WEIGHT
+        score = term_score(
+            module_spread=spread,
+            use_count=count,
+            doc_mentions=doc_mentions,
+            compound_diversity=compound_diversity(distinct_compounds, count),
+            patterns_per_file=distinct_compounds / max(1, files),
+            compound_density=compound_density(compound_uses, count),
+            source_units_named=source_units_named,
+            policy=policy,
         )
         yield {
             "kind": "term",
@@ -163,9 +174,14 @@ def build_naming_candidates(imports_section: ImportsSection,
                             vocabulary: ProductionVocabulary,
                             doc_term_counts: Counter[str],
                             context_dispersion: ContextDispersionSection | None = None,
+                            *,
+                            policy: ImportancePolicy | None = None,
                             ) -> LexicalNaming:
     """Ranked module and term naming candidates from import structure, the
-    production vocabulary, documentation, and terminology dispersion."""
+    production vocabulary, documentation, and terminology dispersion, scored
+    under the calibrated ``policy`` (the module default when omitted)."""
+    if policy is None:
+        policy = DEFAULT_IMPORTANCE_POLICY
     token_counts = vocabulary.token_counts
     token_files = vocabulary.token_files
     token_modules = vocabulary.token_modules
@@ -196,8 +212,8 @@ def build_naming_candidates(imports_section: ImportsSection,
             "edge cap were unavailable to module naming candidates"
         )
     module_items, module_coverage = _ranked(
-        _module_candidates(imports_section, modules, doc_term_counts),
-        MODULE_CANDIDATE_CAP,
+        _module_candidates(imports_section, modules, doc_term_counts, policy),
+        policy.module_candidate_cap,
         key=lambda candidate: (-candidate["score"], candidate["path"]),
         label="module naming",
         incomplete_reasons=module_input_reasons,
@@ -205,9 +221,9 @@ def build_naming_candidates(imports_section: ImportsSection,
     term_items, term_coverage = _ranked(
         _term_candidates(
             token_counts, token_files, token_modules, doc_term_counts,
-            token_origins, token_patterns, dispersion_items,
+            token_origins, token_patterns, dispersion_items, policy,
         ),
-        TERM_CANDIDATE_CAP,
+        policy.term_candidate_cap,
         key=lambda candidate: (-candidate["score"], candidate["term"]),
         label="term naming",
         incomplete_reasons=term_input_reasons,

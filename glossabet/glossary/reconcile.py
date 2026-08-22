@@ -64,6 +64,17 @@ from glossabet.glossary.model import (
     GlossaryDocument,
     ScopeEvidence,
 )
+from glossabet.glossary.policy import (
+    DEFAULT_RECONCILIATION_POLICY,
+    MATCH_NONE,
+    MATCH_STRONG,
+    ReconciliationPolicy,
+    is_fragmented,
+    is_overloaded_region,
+    orphan_signal,
+    structural_match_strength,
+    unnamed_structure_signal,
+)
 from glossabet.glossary.repository_glossary import (
     RepositoryGlossarySection,
     repository_glossary_section,
@@ -81,8 +92,8 @@ from glossabet.runtime.engine_run import GLOSSARY_REQUIRED, open_run
 VALIDATION_SCHEMA_VERSION = 8
 VALIDATION_FILE = "validation.json"
 
-FRAGMENTATION_MIN_MODULES = 5
-OVERLOADED_MIN_CONCEPTS = 3
+FRAGMENTATION_MIN_MODULES = DEFAULT_RECONCILIATION_POLICY.fragmentation_min_modules
+OVERLOADED_MIN_CONCEPTS = DEFAULT_RECONCILIATION_POLICY.overloaded_min_concepts
 STRUCTURAL_MATCH_BUDGET = 50_000
 
 
@@ -113,22 +124,8 @@ def _concept_vocab(concept: ConceptRecord) -> tuple[set[str], set[str]]:
     return term_tokens, binding_tokens
 
 
-# Match strengths: 0 none, 1 weak (some token overlap), 2 strong (the
-# concept's full term vocabulary appears in the group), 3 label (the group is
-# literally named with the concept's vocabulary).
-def _match_strength_from_tokens(
-    label_tokens: set[str],
-    combined: set[str],
-    term_tokens: set[str],
-    binding_tokens: set[str],
-) -> int:
-    if term_tokens and term_tokens <= label_tokens:
-        return 3
-    if term_tokens and term_tokens <= combined:
-        return 2
-    if (term_tokens | binding_tokens) & combined:
-        return 1
-    return 0
+# Looked up by name at each call so a test can count or replace it.
+_match_strength_from_tokens = structural_match_strength
 
 
 # Omission ledgers whose entries are paths the scan chose not to read: a
@@ -313,6 +310,7 @@ def _structure_findings(
     canonical: list[ConceptRecord],
     vocab: _ConceptVocab,
     upstream_reasons: list[str],
+    policy: ReconciliationPolicy = DEFAULT_RECONCILIATION_POLICY,
 ) -> tuple[FindingSection, FindingSection, FindingSection, CoverageLedger]:
     """Direction A: structure -> glossary.
 
@@ -347,15 +345,15 @@ def _structure_findings(
         strong = sorted(
             concept_id
             for concept_id, strength in strengths.items()
-            if strength >= 2
+            if strength >= MATCH_STRONG
         )
-        if group_complete and max(strengths.values(), default=0) == 0:
+        if group_complete and max(strengths.values(), default=MATCH_NONE) == MATCH_NONE:
             unnamed.append((group["size"], group["label"], heuristic_finding(
                 "unnamed-structure",
                 f"structural group '{group['label']}' "
                 f"({group['size']} nodes) matches no canonical concept",
                 {"size": group["size"], "members_sample": group["members_sample"]},
-                signal_strength="strong" if group["size"] >= 5 else "moderate",
+                signal_strength=unnamed_structure_signal(group["size"], policy),
                 group=group["label"],
             )))
         group_pair_total = len(strong) * (len(strong) - 1) // 2
@@ -371,7 +369,7 @@ def _structure_findings(
                 concepts=[a, b],
                 group=group["label"],
             ))
-        if len(strong) >= OVERLOADED_MIN_CONCEPTS:
+        if is_overloaded_region(len(strong), policy):
             overloaded.append(heuristic_finding(
                 "overloaded-structural-region",
                 f"group '{group['label']}' matches "
@@ -438,6 +436,7 @@ def _orphan_finding(
     bindings: list[BindingResolution],
     resolved: list[BindingResolution],
     uncertain: list[BindingResolution],
+    policy: ReconciliationPolicy,
 ) -> HeuristicFinding | None:
     """The orphaned-concept finding for a canonical term with weak, complete
     lexical evidence and no resolved or uncertain binding — or None."""
@@ -449,11 +448,8 @@ def _orphan_finding(
     ):
         return None
     count = occurrence["count"]
-    if count == 0:
-        signal_strength = "strong"
-    elif count <= 2:
-        signal_strength = "moderate"
-    else:
+    signal_strength = orphan_signal(count, policy)
+    if signal_strength is None:
         return None
     finding_evidence: dict[str, object] = {
         **occurrence,
@@ -481,6 +477,7 @@ def _concept_findings(
     vocab: _ConceptVocab,
     matcher: EvidenceIndex,
     root: Path | None = None,
+    policy: ReconciliationPolicy = DEFAULT_RECONCILIATION_POLICY,
 ) -> tuple[
     list[HeuristicFinding], list[ObservedFinding], list[HeuristicFinding],
     list[str], list[str],
@@ -511,7 +508,7 @@ def _concept_findings(
         unresolved.extend(_binding_findings(concept, scope, bindings))
         orphan = _orphan_finding(
             concept, scope, term_tokens, occurrence, bindings, resolved,
-            uncertain,
+            uncertain, policy,
         )
         if orphan is not None:
             orphaned.append(orphan)
@@ -529,7 +526,7 @@ def _concept_findings(
             and occurrence["match_kind"] == "token"
             and occurrence["locations_truncated"]
         )
-        if spread >= FRAGMENTATION_MIN_MODULES:
+        if is_fragmented(spread, policy):
             fragmented.append((spread, concept["id"], heuristic_finding(
                 "fragmentation",
                 f"'{concept['term']}' spans {spread} modules — may be "
@@ -612,6 +609,7 @@ def _structural_sections(
     global_canonical: list[ConceptRecord],
     scoped_canonical: list[ConceptRecord],
     vocab: _ConceptVocab,
+    policy: ReconciliationPolicy,
 ) -> tuple[_StructuralSections, CoverageLedger]:
     """The three structure -> glossary sections with their skipped/partial
     flags, plus the match-work ledger. Path-scoped concepts cannot be
@@ -629,7 +627,8 @@ def _structural_sections(
     )
     if graph.usable:
         unnamed, boundary, overloaded, structural_work = _structure_findings(
-            structural, global_canonical, vocab, structural_source_reasons
+            structural, global_canonical, vocab, structural_source_reasons,
+            policy,
         )
     else:
         unnamed = boundary = overloaded = empty_section(graph.unusable_reason)
@@ -682,8 +681,10 @@ def build_validation(
     managed_context: ManagedContextReport | None = None,
     repository_glossary: RepositoryGlossarySection | None = None,
     root: Path | None = None,
+    policy: ReconciliationPolicy | None = None,
 ) -> ValidationDocument:
-    """``root`` (the scanned repository, when the caller has it) lets a
+    """Findings are labelled under the calibrated ``policy`` (the default
+    when omitted). ``root`` (the scanned repository, when the caller has it) lets a
     binding to a real file the inventory never lists (``Makefile``,
     ``config/settings.toml``) be judged ``uncertain`` rather than
     ``unresolved``; without it, existence cannot be checked and only the
@@ -694,15 +695,17 @@ def build_validation(
     vocab = {c["id"]: _concept_vocab(c) for c in canonical}
     global_canonical = [c for c in canonical if concept_scope(c) is None]
     scoped_canonical = [c for c in canonical if concept_scope(c) is not None]
+    if policy is None:
+        policy = DEFAULT_RECONCILIATION_POLICY
     structural = EvidenceView(evidence).structural_groups()
     graph = _graph_status(structural)
     matcher = EvidenceIndex(evidence, glossary_terms(glossary))
 
     structural_sections, structural_work = _structural_sections(
-        structural, graph, global_canonical, scoped_canonical, vocab
+        structural, graph, global_canonical, scoped_canonical, vocab, policy
     )
     orphaned, unresolved, fragmented, fragmentation_reasons, binding_reasons = _concept_findings(
-        canonical, vocab, matcher, root
+        canonical, vocab, matcher, root, policy
     )
     drift = build_drift(
         evidence,

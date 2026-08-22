@@ -3,8 +3,10 @@ new code must be caught with correct evidence — plus the other three checks,
 bounds, determinism, and the no-glossary path."""
 
 import json
+from dataclasses import replace
 
 from glossabet.analysis.evidence import Limits, build_evidence
+from glossabet.analysis.policy import DEFAULT_TERMINOLOGY_POLICY
 from glossabet.cli import main
 from glossabet.glossary.drift import build_drift
 from glossabet.glossary.matching import EvidenceIndex
@@ -425,7 +427,10 @@ def test_partial_production_corpus_cannot_prove_a_term_is_absent(
 def test_terminology_cap_propagates_to_drift_collection_coverage(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr("glossabet.analysis.terminology.PAIR_TOP_N", 1)
+    monkeypatch.setattr(
+        "glossabet.analysis.terminology.DEFAULT_TERMINOLOGY_POLICY",
+        replace(DEFAULT_TERMINOLOGY_POLICY, pair_top_n=1),
+    )
     (tmp_path / "terms.py").write_text(
         "alpha_value = 1\nalpha_record = 2\n"
         "beta_value = 3\nbeta_record = 4\n"

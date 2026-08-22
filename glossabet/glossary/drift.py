@@ -11,7 +11,6 @@ signal strength, not as unmeasured confidence.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from itertools import combinations
 from typing import TypedDict
 
 from glossabet.agent.managed_context import (
@@ -23,7 +22,7 @@ from glossabet.agent.managed_context import (
 from glossabet.analysis.evidence import persist_evidence
 from glossabet.analysis.evidence_types import EvidenceDocument
 from glossabet.analysis.evidence_view import EvidenceView
-from glossabet.analysis.terminology import OVERLOAD_MIN_DISPERSION, OVERLOAD_MIN_MODULES
+from glossabet.analysis.policy import context_dispersion
 from glossabet.corpus.tokenize import tokenize_term
 from glossabet.glossary.findings import (
     DriftDocument,
@@ -45,6 +44,13 @@ from glossabet.glossary.findings import (
 )
 from glossabet.glossary.matching import EvidenceIndex, IdentifierOccurrence
 from glossabet.glossary.model import ConceptRecord, ConceptScope, GlossaryDocument
+from glossabet.glossary.policy import (
+    DEFAULT_DRIFT_POLICY,
+    DriftPolicy,
+    fading_state,
+    overload_signal,
+    parallel_term_signal,
+)
 from glossabet.glossary.store import (
     concept_scope,
     path_in_scope,
@@ -59,7 +65,7 @@ from glossabet.runtime.engine_run import GLOSSARY_REQUIRED, open_run
 DRIFT_SCHEMA_VERSION = 6
 DRIFT_FILE = "drift.json"
 
-FADING_MAX_COUNT = 2
+FADING_MAX_COUNT = DEFAULT_DRIFT_POLICY.fading_max_count
 # Cap on owner-scope overlap comparisons in _parallel_terms.
 PARALLEL_SCOPE_COMPARISON_BUDGET = 500_000
 
@@ -161,7 +167,8 @@ def _sampled_to_zero(occurrence: IdentifierOccurrence) -> bool:
 
 def _parallel_terms(
     view: EvidenceView, canonical: dict[str, list[ConceptRecord]],
-    known_scopes: dict[str, list[ConceptScope]], matcher: EvidenceIndex
+    known_scopes: dict[str, list[ConceptScope]], matcher: EvidenceIndex,
+    policy: DriftPolicy = DEFAULT_DRIFT_POLICY,
 ) -> tuple[list[HeuristicFinding], list[str]]:
     """New prominent terms that behave like an existing canonical term."""
     # (similarity, new term, concept id, finding): the ranking key beside
@@ -202,11 +209,7 @@ def _parallel_terms(
                     suppressed += 1
                 continue
             similarity = item["similarity"]
-            signal_strength = (
-                "strong" if similarity >= 0.7
-                else "moderate" if similarity >= 0.55
-                else "weak"
-            )
+            signal_strength = parallel_term_signal(similarity, policy)
             ranked.append((similarity, new_term, concept["id"], heuristic_finding(
                 "parallel-term",
                 f"new term '{new_term}' parallels canonical "
@@ -267,7 +270,8 @@ def _watched_in_use(
 
 
 def _canonical_fading(
-    glossary: GlossaryDocument, matcher: EvidenceIndex
+    glossary: GlossaryDocument, matcher: EvidenceIndex,
+    policy: DriftPolicy = DEFAULT_DRIFT_POLICY,
 ) -> list[HeuristicFinding]:
     """Canonical terms absent from code or barely hanging on."""
     findings: list[HeuristicFinding] = []
@@ -286,16 +290,12 @@ def _canonical_fading(
         # prose words are not treated as a compound occurrence.
         doc_occurrence = matcher.doc_term_occurrence(concept["term"], scope)
         doc_mentions = doc_occurrence["count"] if len(tokens) == 1 else None
-        if count == 0:
-            signal_strength, state = "strong", "absent from code"
-        elif (
-            count <= FADING_MAX_COUNT
-            and doc_mentions == 0
-            and doc_occurrence["count_complete"]
-        ):
-            signal_strength, state = "moderate", "fading"
-        else:
+        fading = fading_state(
+            count, doc_mentions, doc_occurrence["count_complete"], policy
+        )
+        if fading is None:
             continue
+        signal_strength, state = fading
         finding_evidence: dict[str, object] = {
             **occurrence,
             "lexical_occurrences": count,
@@ -345,7 +345,8 @@ def _overload_details_complete(item: Mapping[str, object]) -> bool:
 
 
 def _canonical_overloaded(
-    view: EvidenceView, canonical: dict[str, list[ConceptRecord]]
+    view: EvidenceView, canonical: dict[str, list[ConceptRecord]],
+    policy: DriftPolicy = DEFAULT_DRIFT_POLICY,
 ) -> list[HeuristicFinding]:
     """Canonical terms used across contexts disjoint enough to collide."""
     # (dispersion, term, concept id, finding)
@@ -372,18 +373,15 @@ def _canonical_overloaded(
                     # module/context display cannot be reinterpreted as an
                     # exhaustive scoped sample.
                     continue
-                if len(modules) < OVERLOAD_MIN_MODULES:
+                if len(modules) < policy.overload_min_modules:
                     continue
-                context_sets = [set(module["contexts"]) for module in modules]
-                similarities = [
-                    len(left & right) / len(left | right)
-                    for left, right in combinations(context_sets, 2)
-                    if left | right
-                ]
-                if not similarities:
+                scoped_dispersion = context_dispersion(
+                    [set(module["contexts"]) for module in modules]
+                )
+                if scoped_dispersion is None:
                     continue
-                dispersion = round(1.0 - sum(similarities) / len(similarities), 3)
-                if dispersion < OVERLOAD_MIN_DISPERSION:
+                dispersion = scoped_dispersion
+                if dispersion < policy.overload_min_dispersion:
                     continue
                 module_count = len(modules)
             ranked.append((dispersion, concept["term"], concept["id"], heuristic_finding(
@@ -395,7 +393,7 @@ def _canonical_overloaded(
                     "modules": modules,
                     "modules_coverage": module_coverage,
                 },
-                signal_strength="strong" if dispersion >= 0.95 else "moderate",
+                signal_strength=overload_signal(dispersion, policy),
                 scope=scope_evidence(scope),
                 term=concept["term"],
                 concept_id=concept["id"],
@@ -439,7 +437,12 @@ def build_drift(
     *,
     matcher: EvidenceIndex | None = None,
     managed_context: ManagedContextReport | None = None,
+    policy: DriftPolicy | None = None,
 ) -> DriftDocument:
+    """The drift document for ``evidence`` against ``glossary``; findings
+    are labelled under the calibrated ``policy`` (the default when omitted)."""
+    if policy is None:
+        policy = DEFAULT_DRIFT_POLICY
     canonical, watched, known_scopes = _index_glossary(glossary)
     matcher = matcher or EvidenceIndex(evidence, glossary_terms(glossary))
     view = matcher.view
@@ -452,7 +455,7 @@ def build_drift(
     matching_limits = matching_reasons(matcher)
 
     parallel_findings, parallel_suppressed = _parallel_terms(
-        view, canonical, known_scopes, matcher
+        view, canonical, known_scopes, matcher, policy
     )
     watched_findings, watched_suppressed = _watched_in_use(watched, matcher)
     sections: dict[str, FindingSection] = {}
@@ -472,12 +475,12 @@ def build_drift(
         ),
         (
             "canonical_fading",
-            _canonical_fading(glossary, matcher),
+            _canonical_fading(glossary, matcher, policy),
             corpus_reasons + vocabulary_reasons + matching_limits,
         ),
         (
             "canonical_overloaded",
-            _canonical_overloaded(view, canonical),
+            _canonical_overloaded(view, canonical, policy),
             corpus_reasons
             + _terminology_reasons(view, "overload_candidates")
             + _scoped_overload_reasons(view, canonical),

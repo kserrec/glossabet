@@ -3,7 +3,7 @@
 Status: **Phases 0–22, 24–32, 34–44 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
 in progress at 33.2; Phase 45 (maintainability refactor, 15 spec passes) in
-progress at 45.8; owner self-testing pause active before the trusted-alpha
+progress at 45.9; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-22.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1220,7 +1220,7 @@ Steps (each is the same-numbered spec pass):
 - **45.5** Pass 5 — observed vs heuristic findings as distinct types ✅ 2026-08-22
 - **45.6** Pass 6 — AgentContext and remaining production boundaries ✅ 2026-08-22
 - **45.7** Pass 7 — close the strict static-type gate ✅ 2026-08-22
-- **45.8** Pass 8 — isolate heuristic policy without changing it
+- **45.8** Pass 8 — isolate heuristic policy without changing it ✅ 2026-08-22
 - **45.9** Pass 9 — decompose the repository scanner
 - **45.10** Pass 10 — decompose glossary storage and validation
 - **45.11** Pass 11 — decompose the Graphify adapter
@@ -1379,6 +1379,29 @@ documented validated-boundary casts in `store.checked_glossary` and
 `agent_context._bounded`. New `tests/test_type_contracts.py` walks the
 package AST and rejects bare `dict`/`list`/`set`/`tuple`/`Mapping`/… on any
 exported function or public method (plus a self-test of the checker).
+
+**45.8 outcome (2026-08-22):** every heuristic weight, threshold, and cap
+is now a named field of a frozen policy object, and every formula a pure
+function beside it. `glossabet/analysis/policy.py` (stdlib-only leaf) owns
+`TerminologyPolicy` (17 fields) and `ImportancePolicy` (14 fields) with
+`module_score`, `term_score`, `compound_density`/`compound_diversity`,
+`weighted_cosine`, `inverse_frequency_weight`, `co_occurrence_rate`,
+`file_overlap_rate`, the staged synonym gates, `context_dispersion`,
+`wide_enough`, `is_divergent`; `glossabet/glossary/policy.py` owns
+`DriftPolicy` (overload thresholds default to the terminology policy's, so
+the layer direction holds) and `ReconciliationPolicy` with
+`parallel_term_signal`, `fading_state`, `overload_signal`,
+`structural_match_strength` (named `MATCH_*` ladder), `unnamed_structure_signal`,
+`is_overloaded_region`, `orphan_signal`, `is_fragmented`. `build_terminology`,
+`build_naming_candidates`, `build_drift`, `build_validation` take an optional
+`policy=`; the prior module constants remain as aliases of the default
+policy's fields. Comments call the values calibrated nomination policy.
+`tests/test_heuristic_policy.py` (24 tests) pins every default number and
+field set, proves default output == explicit-default-policy output for all
+four builders, injects a policy, checks monotonicity, ceiling saturation,
+tie-breaking by name, below/at/above for every threshold gate and signal
+band, the match-strength ladder, and the policy modules' layer position.
+A/B byte-identical on all five fixtures (stdout + every artifact). 680 tests.
 
 ### Owner self-testing pause — active, not an implementation phase
 

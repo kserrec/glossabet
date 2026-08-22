@@ -8,7 +8,6 @@ the human judge. All pairwise work is bounded to the top-N vocabulary
 
 from __future__ import annotations
 
-import math
 from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -28,6 +27,22 @@ from glossabet.analysis.evidence_types import (
     SynonymCandidatesSection,
     TerminologyAnalysis,
 )
+from glossabet.analysis.policy import (
+    DEFAULT_TERMINOLOGY_POLICY,
+    TerminologyPolicy,
+    co_occurrence_rate,
+    colocated,
+    context_dispersion,
+    file_overlap_rate,
+    has_parallel_patterns,
+    has_shared_contexts,
+    inverse_frequency_weight,
+    is_divergent,
+    related_not_synonymous,
+    similar_enough,
+    weighted_cosine,
+    wide_enough,
+)
 from glossabet.analysis.vocabulary import (
     MODULE_CONTEXT_ANALYSIS_CAP,
     ProductionVocabulary,
@@ -46,26 +61,12 @@ from glossabet.runtime.coverage import (
     coverage_reasons,
 )
 
-PAIR_TOP_N = 150
-# Phase 15's pinned corpus found only false sibling-field nominations below
-# 0.55 after the file/pattern gates. Keep the nomination floor aligned with
-# drift's lowest "moderate" signal instead of emitting weak 0.4 candidates.
-SYNONYM_MIN_SIMILARITY = 0.55
-SYNONYM_MAX_CO_RATE = 0.2
-SYNONYM_MAX_FILE_OVERLAP = 0.2
-SYNONYM_MIN_SHARED_CONTEXTS = 2
-SYNONYM_MIN_SHARED_PATTERNS = 2
-SYNONYM_REPORT_CAP = 20
-OVERLOAD_MIN_MODULES = 3
-OVERLOAD_MIN_DISPERSION = 0.8
-OVERLOAD_REPORT_CAP = 10
-OVERLOAD_MODULE_ANALYSIS_CAP = 50
-OVERLOAD_MODULE_DISPLAY_CAP = 4
-SHARED_CONTEXT_SAMPLE = 5
-SHARED_PATTERN_SAMPLE = 5
-MODULE_CONTEXT_SAMPLE = 5
-REGISTER_AFFIX_CAP = 8
-LAYER_CAP = 10
+# The calibrated defaults, named for readers and tests; the analysis itself
+# reads the policy object it was given (``analysis.policy``).
+PAIR_TOP_N = DEFAULT_TERMINOLOGY_POLICY.pair_top_n
+OVERLOAD_MIN_MODULES = DEFAULT_TERMINOLOGY_POLICY.overload_min_modules
+OVERLOAD_MIN_DISPERSION = DEFAULT_TERMINOLOGY_POLICY.overload_min_dispersion
+OVERLOAD_MODULE_ANALYSIS_CAP = DEFAULT_TERMINOLOGY_POLICY.overload_module_analysis_cap
 
 
 @dataclass
@@ -148,7 +149,9 @@ def _pct(counter: Counter[str], total: int) -> dict[str, float]:
     } if total else {}
 
 
-def _top_affixes(counter: Counter[str]) -> tuple[list[AffixRecord], CoverageLedger]:
+def _top_affixes(
+    counter: Counter[str], policy: TerminologyPolicy,
+) -> tuple[list[AffixRecord], CoverageLedger]:
     ranked: list[AffixRecord] = [
         {"token": token, "identifiers": count}
         for token, count in sorted(
@@ -158,9 +161,9 @@ def _top_affixes(counter: Counter[str]) -> tuple[list[AffixRecord], CoverageLedg
     ]
     return capped_collection(
         ranked,
-        REGISTER_AFFIX_CAP,
+        policy.register_affix_cap,
         cap_reason=(
-            f"register affix display cap is {REGISTER_AFFIX_CAP} items"
+            f"register affix display cap is {policy.register_affix_cap} items"
         ),
     )
 
@@ -169,6 +172,7 @@ def _register(
     identifier_counts: Counter[str],
     doc_term_counts: Counter[str],
     token_origins: dict[str, str],
+    policy: TerminologyPolicy,
 ) -> RegisterSection:
     tally = _register_tally(identifier_counts, doc_term_counts, token_origins)
     used_by_reason = tally.used_by_reason
@@ -176,8 +180,8 @@ def _register(
     headline_total = used_by_reason["structurally_styled"]
     used_total = sum(used_by_reason.values())
     excluded_total = sum(excluded_by_reason.values())
-    suffix_items, suffix_coverage = _top_affixes(tally.suffixes)
-    prefix_items, prefix_coverage = _top_affixes(tally.prefixes)
+    suffix_items, suffix_coverage = _top_affixes(tally.suffixes, policy)
+    prefix_items, prefix_coverage = _top_affixes(tally.prefixes, policy)
 
     return {
         # Kept for consumers of the pre-v9 field; it now means the spellings
@@ -203,7 +207,10 @@ def _register(
     }
 
 
-def _layers(token_counts: Counter[str], doc_term_counts: Counter[str]) -> LayersSection:
+def _layers(
+    token_counts: Counter[str], doc_term_counts: Counter[str],
+    policy: TerminologyPolicy,
+) -> LayersSection:
     def top(
         counter: Counter[str], keep: Callable[[str], bool], label: str,
     ) -> tuple[list[str], CoverageLedger]:
@@ -211,8 +218,8 @@ def _layers(token_counts: Counter[str], doc_term_counts: Counter[str]) -> Layers
         items = [term for term, _ in ranked if keep(term)]
         return capped_collection(
             items,
-            LAYER_CAP,
-            cap_reason=f"{label} layer display cap is {LAYER_CAP} items",
+            policy.layer_cap,
+            cap_reason=f"{label} layer display cap is {policy.layer_cap} items",
         )
 
     shared, shared_coverage = top(
@@ -237,19 +244,6 @@ def _layers(token_counts: Counter[str], doc_term_counts: Counter[str]) -> Layers
     }
 
 
-def _cosine(
-    ca: Counter[str], cb: Counter[str], exclude: set[str],
-    weight: Callable[[str], float],
-) -> float:
-    keys = (set(ca) | set(cb)) - exclude
-    dot = sum(ca.get(k, 0) * cb.get(k, 0) * weight(k) ** 2 for k in keys)
-    if not dot:
-        return 0.0
-    na = math.sqrt(sum((v * weight(k)) ** 2 for k, v in ca.items() if k in keys))
-    nb = math.sqrt(sum((v * weight(k)) ** 2 for k, v in cb.items() if k in keys))
-    return dot / (na * nb)
-
-
 def _pattern_label(pattern: tuple[str, ...]) -> str:
     return "_".join(pattern)
 
@@ -259,12 +253,10 @@ def _synonym_candidates(top_tokens: list[str], token_counts: Counter[str],
                         token_patterns: Mapping[str, Counter[tuple[str, ...]]],
                         neighbors: Mapping[str, Counter[str]],
                         token_coverage: CoverageLedger,
+                        policy: TerminologyPolicy,
                         ) -> SynonymCandidatesSection:
-    # Inverse-frequency weighting: a ubiquitous context token (a repo's
-    # "term"/"prop") says little about which two terms are parallel, so it
-    # must not dominate the similarity.
     def weight(k: str) -> float:
-        return 1.0 / (1.0 + math.log1p(token_counts.get(k, 1)))
+        return inverse_frequency_weight(token_counts.get(k, 1))
 
     ranked: list[tuple[float, str, str, SynonymCandidate]] = []
     considered = 0
@@ -273,18 +265,15 @@ def _synonym_candidates(top_tokens: list[str], token_counts: Counter[str],
         if not na or not nb:
             continue
         considered += 1
-        # Frequent direct co-occurrence means related-not-synonymous
-        # (payment_service): skip those pairs.
-        co_rate = na.get(b, 0) / max(1, min(token_counts[a], token_counts[b]))
-        if co_rate > SYNONYM_MAX_CO_RATE:
+        co_rate = co_occurrence_rate(
+            na.get(b, 0), token_counts[a], token_counts[b]
+        )
+        if related_not_synonymous(co_rate, policy):
             continue
-        files_a = set(token_files.get(a, ()))
-        files_b = set(token_files.get(b, ()))
-        file_overlap = len(files_a & files_b) / max(1, min(len(files_a), len(files_b)))
-        # Sibling fields and related concepts commonly share both a file and
-        # surrounding words. A rename usually spreads between old/new files;
-        # heavy colocation is therefore evidence against synonymy.
-        if file_overlap > SYNONYM_MAX_FILE_OVERLAP:
+        file_overlap = file_overlap_rate(
+            set(token_files.get(a, ())), set(token_files.get(b, ()))
+        )
+        if colocated(file_overlap, policy):
             continue
         shared_patterns = sorted(
             token_patterns.get(a, Counter()).keys()
@@ -294,34 +283,30 @@ def _synonym_candidates(top_tokens: list[str], token_counts: Counter[str],
                 pattern,
             ),
         )
-        # Context similarity alone confuses dimensions such as min/duration.
-        # Require two exact substitution shapes (`job_queue`/`task_queue`,
-        # `run_job`/`run_task`) before nominating a parallel vocabulary.
-        if len(shared_patterns) < SYNONYM_MIN_SHARED_PATTERNS:
+        if not has_parallel_patterns(len(shared_patterns), policy):
             continue
         shared = sorted(
             (k for k in na.keys() & nb.keys() if k not in (a, b)),
             key=lambda k: (-min(na[k], nb[k]), k),
         )
-        # One shared context is coincidence, not a parallel vocabulary.
-        if len(shared) < SYNONYM_MIN_SHARED_CONTEXTS:
+        if not has_shared_contexts(len(shared), policy):
             continue
-        similarity = _cosine(na, nb, exclude={a, b}, weight=weight)
-        if similarity < SYNONYM_MIN_SIMILARITY:
+        similarity = weighted_cosine(na, nb, exclude={a, b}, weight=weight)
+        if not similar_enough(similarity, policy):
             continue
         shared_items, shared_coverage = capped_collection(
             shared,
-            SHARED_CONTEXT_SAMPLE,
+            policy.shared_context_sample,
             cap_reason=(
-                f"shared-context display cap is {SHARED_CONTEXT_SAMPLE} items"
+                f"shared-context display cap is {policy.shared_context_sample} items"
             ),
         )
         pattern_labels = [_pattern_label(pattern) for pattern in shared_patterns]
         pattern_items, pattern_coverage = capped_collection(
             pattern_labels,
-            SHARED_PATTERN_SAMPLE,
+            policy.shared_pattern_sample,
             cap_reason=(
-                f"shared-pattern display cap is {SHARED_PATTERN_SAMPLE} items"
+                f"shared-pattern display cap is {policy.shared_pattern_sample} items"
             ),
         )
         ranked.append((round(similarity, 3), a, b, {
@@ -340,9 +325,9 @@ def _synonym_candidates(top_tokens: list[str], token_counts: Counter[str],
     items = [row[3] for row in ranked]
     kept, coverage = capped_collection(
         items,
-        SYNONYM_REPORT_CAP,
+        policy.synonym_report_cap,
         cap_reason=(
-            f"synonym-candidate detail cap is {SYNONYM_REPORT_CAP} items"
+            f"synonym-candidate detail cap is {policy.synonym_report_cap} items"
         ),
         total_items_exact=token_coverage["complete"],
         incomplete_reasons=coverage_reasons(
@@ -373,6 +358,7 @@ def _context_dispersion(
     module_neighbor_sets: Mapping[str, Mapping[str, set[str]]],
     module_neighbor_truncated: set[tuple[str, str]],
     token_coverage: CoverageLedger,
+    policy: TerminologyPolicy,
 ) -> tuple[list[_DispersionProfile], ContextDispersionSection]:
     """Measure bounded cross-module context dispersion once.
 
@@ -387,7 +373,7 @@ def _context_dispersion(
         per_module = {
             m: s for m, s in module_neighbor_sets.get(token, {}).items() if s
         }
-        if len(per_module) < OVERLOAD_MIN_MODULES:
+        if not wide_enough(len(per_module), policy):
             continue
         wide_terms += 1
         token_truncated = sorted(
@@ -401,23 +387,20 @@ def _context_dispersion(
             # partial sample into a seemingly complete collision signal.
             truncated_contexts += len(token_truncated)
             continue
-        if len(per_module) > OVERLOAD_MODULE_ANALYSIS_CAP:
+        if len(per_module) > policy.overload_module_analysis_cap:
             # Pairwise dispersion is quadratic in the number of modules.
             # Keep that work bounded and treat the skipped nomination as
             # unknown rather than drawing a conclusion from a module sample.
             overfull_module_terms += 1
             continue
-        sets = list(per_module.values())
-        sims = [
-            len(x & y) / len(x | y)
-            for x, y in combinations(sets, 2)
-        ]
-        dispersion = round(1.0 - (sum(sims) / len(sims)), 3)
+        dispersion = context_dispersion(list(per_module.values()))
+        if dispersion is None:
+            continue  # unreachable: several non-empty sets always compare
         profiles.append({
             "term": token,
             "dispersion": dispersion,
             "module_count": len(per_module),
-            "divergent": dispersion >= OVERLOAD_MIN_DISPERSION,
+            "divergent": is_divergent(dispersion, policy),
             "_per_module": per_module,
         })
 
@@ -433,7 +416,7 @@ def _context_dispersion(
     if overfull_module_terms:
         incomplete_reasons.append(
             f"{overfull_module_terms} term(s) exceeded the "
-            f"{OVERLOAD_MODULE_ANALYSIS_CAP}-module overload analysis cap"
+            f"{policy.overload_module_analysis_cap}-module overload analysis cap"
         )
     coverage = coverage_ledger(
         wide_terms,
@@ -461,6 +444,7 @@ def _overload_candidates(
     dispersion_profiles: list[_DispersionProfile],
     token_modules: Mapping[str, Counter[str]],
     dispersion_coverage: CoverageLedger,
+    policy: TerminologyPolicy,
 ) -> OverloadCandidatesSection:
     items: list[OverloadCandidate] = []
     for profile in dispersion_profiles:
@@ -478,9 +462,9 @@ def _overload_candidates(
             contexts = sorted(per_module[module])
             context_items, context_coverage = capped_collection(
                 contexts,
-                MODULE_CONTEXT_SAMPLE,
+                policy.module_context_sample,
                 cap_reason=(
-                    f"module-context display cap is {MODULE_CONTEXT_SAMPLE} items"
+                    f"module-context display cap is {policy.module_context_sample} items"
                 ),
             )
             module_items.append({
@@ -490,10 +474,10 @@ def _overload_candidates(
             })
         kept_modules, module_coverage = capped_collection(
             module_items,
-            OVERLOAD_MODULE_DISPLAY_CAP,
+            policy.overload_module_display_cap,
             cap_reason=(
                 "overload-candidate module display cap is "
-                f"{OVERLOAD_MODULE_DISPLAY_CAP} items"
+                f"{policy.overload_module_display_cap} items"
             ),
         )
         items.append({
@@ -505,9 +489,9 @@ def _overload_candidates(
     items.sort(key=lambda i: (-i["dispersion"], i["term"]))
     kept, coverage = capped_collection(
         items,
-        OVERLOAD_REPORT_CAP,
+        policy.overload_report_cap,
         cap_reason=(
-            f"overload-candidate detail cap is {OVERLOAD_REPORT_CAP} items"
+            f"overload-candidate detail cap is {policy.overload_report_cap} items"
         ),
         total_items_exact=dispersion_coverage["complete"],
         incomplete_reasons=coverage_reasons(dispersion_coverage),
@@ -519,10 +503,17 @@ def _overload_candidates(
     }
 
 
-def build_terminology(vocabulary: ProductionVocabulary,
-                      doc_term_counts: Counter[str]) -> TerminologyAnalysis:
+def build_terminology(
+    vocabulary: ProductionVocabulary,
+    doc_term_counts: Counter[str],
+    *,
+    policy: TerminologyPolicy | None = None,
+) -> TerminologyAnalysis:
     """House-register statistics, layers, synonym/overload candidates, and
-    context dispersion for one scan's production vocabulary."""
+    context dispersion for one scan's production vocabulary, under the
+    calibrated nomination ``policy`` (the module default when omitted)."""
+    if policy is None:
+        policy = DEFAULT_TERMINOLOGY_POLICY
     identifier_counts = vocabulary.identifier_counts
     token_counts = vocabulary.token_counts
     token_files = vocabulary.token_files
@@ -551,17 +542,18 @@ def build_terminology(vocabulary: ProductionVocabulary,
     eligible_tokens = [term for term, count in ranked if count >= 2]
     top_tokens, token_coverage = capped_collection(
         eligible_tokens,
-        PAIR_TOP_N,
+        policy.pair_top_n,
         cap_reason=(
-            f"terminology analysis cap is the top {PAIR_TOP_N} eligible tokens"
+            f"terminology analysis cap is the top {policy.pair_top_n} eligible tokens"
         ),
         incomplete_reasons=eligibility_reasons,
     )
-    dispersion_profiles, context_dispersion = _context_dispersion(
+    dispersion_profiles, dispersion_section = _context_dispersion(
         top_tokens,
         module_neighbor_sets,
         module_neighbor_truncated,
         token_coverage,
+        policy,
     )
     return {
         "considered_tokens": len(top_tokens),
@@ -570,16 +562,16 @@ def build_terminology(vocabulary: ProductionVocabulary,
         "language_vocabulary_size": language_tokens_excluded,
         "coverage": {"eligible_tokens": token_coverage},
         "register": _register(
-            identifier_counts, doc_term_counts, token_origins
+            identifier_counts, doc_term_counts, token_origins, policy
         ),
-        "layers": _layers(token_counts, doc_term_counts),
+        "layers": _layers(token_counts, doc_term_counts, policy),
         "synonym_candidates": _synonym_candidates(
             top_tokens, token_counts, token_files, token_patterns, neighbors,
-            token_coverage,
+            token_coverage, policy,
         ),
-        "context_dispersion": context_dispersion,
+        "context_dispersion": dispersion_section,
         "overload_candidates": _overload_candidates(
             dispersion_profiles, token_modules,
-            context_dispersion["coverage"],
+            dispersion_section["coverage"], policy,
         ),
     }
