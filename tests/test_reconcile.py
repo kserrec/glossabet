@@ -306,7 +306,7 @@ def test_usable_graph_with_no_canonical_concepts_finds_unnamed_structure(
 def test_graph_group_cap_makes_structural_validation_explicitly_partial(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr("glossabet.analysis.graphify.GROUP_CAP", 2)
+    monkeypatch.setattr("glossabet.analysis.graphify_groups.GROUP_CAP", 2)
     graph = {
         "nodes": [
             {"id": f"{group}-{member}", "label": f"Node{group}{member}",

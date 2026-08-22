@@ -3,7 +3,7 @@
 Status: **Phases 0–22, 24–32, 34–44 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
 in progress at 33.2; Phase 45 (maintainability refactor, 15 spec passes) in
-progress at 45.11; owner self-testing pause active before the trusted-alpha
+progress at 45.12; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-22.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1223,7 +1223,7 @@ Steps (each is the same-numbered spec pass):
 - **45.8** Pass 8 — isolate heuristic policy without changing it ✅ 2026-08-22
 - **45.9** Pass 9 — decompose the repository scanner ✅ 2026-08-22
 - **45.10** Pass 10 — decompose glossary storage and validation ✅ 2026-08-22
-- **45.11** Pass 11 — decompose the Graphify adapter
+- **45.11** Pass 11 — decompose the Graphify adapter ✅ 2026-08-22
 - **45.12** Pass 12 — decompose reconciliation
 - **45.13** Pass 13 — clean comments and synchronize `ARCHITECTURE.md`
 - **45.14** Pass 14 — resolve the filesystem race / threat-model question
@@ -1434,6 +1434,26 @@ are schema-owned and tests now patch `glossabet.glossary.schema`, since
 patching a re-export would be a silent no-op). Validator text, order, and
 truncation untouched; dependency ratchet pins model < scope < schema <
 store. Byte-identical on all five fixtures incl. hostile `save` stdin.
+
+**45.11 outcome (2026-08-22):** `analysis/graphify.py` (706 lines) split by
+trust boundary. `graphify_input.py` owns the untrusted side: `GRAPH_PATH`,
+`MAX_NODE_LABEL_CHARS`, `GRAPH_WORK_BUDGET`, the provenance sets, the
+tolerant `_first_*` readers, `_Node`/`_LoadedGraph`, `_load_graph` (bounded
+read + work budget judged before materialization), `_graph_references`,
+`_normalized_source`/`_provenance`, `_normalize_nodes`, `_edge_summary`, and
+`_freshness`; it imports only evidence types and runtime artifacts.
+`graphify_groups.py` owns group analysis: the output caps, `_Group`,
+community extraction (explicit list and per-node fallback), memoized
+`_node_tokens`, `_usable_cohesion`, `_group_items`, `_god_nodes`, the
+unavailable/disabled shapes, `build_structural_groups`, and
+`structure_candidates`. `graphify.py` is a facade with an explicit `__all__`
+re-exporting every previously public name; `evidence.py` and
+`evaluation/run.py` import unchanged. Tests that patch `GROUP_CAP`,
+`_groups_from_communities`, or `tokenize_term` now patch `graphify_groups`
+(patching the facade would be a silent no-op). Dependency ratchet pins input
+< groups < facade, neither reaching commands, glossary state, or agent code.
+A/B on the five fixtures (including structural-complete and
+structural-truncation): stdout, warnings, and every artifact identical.
 
 ### Owner self-testing pause — active, not an implementation phase
 

@@ -96,6 +96,22 @@ def test_forbidden_dependency_directions():
             "glossabet.config",
         },
         "git_state": {"glossabet.evidence", "glossabet.brief"},
+        # The Graphify adapter (Phase 45.11): untrusted input adaptation
+        # beneath group analysis beneath the facade; neither extracted module
+        # reaches commands, glossary state, or agent code.
+        "graphify_input": {
+            "glossabet.graphify", "glossabet.graphify_groups", "glossabet.evidence",
+            "glossabet.cli", "glossabet.store", "glossabet.glossary_commands",
+            "glossabet.drift", "glossabet.reconcile", "glossabet.matching",
+            "glossabet.agent_context", "glossabet.brief", "glossabet.context_sync",
+            "glossabet.tokenize",
+        },
+        "graphify_groups": {
+            "glossabet.graphify", "glossabet.evidence",
+            "glossabet.cli", "glossabet.store", "glossabet.glossary_commands",
+            "glossabet.drift", "glossabet.reconcile", "glossabet.matching",
+            "glossabet.agent_context", "glossabet.brief", "glossabet.context_sync",
+        },
         # The glossary schema is a leaf: it owns meaning only and must not
         # reach persistence, validation, or commands.
         "model": {"glossabet.store", "glossabet.glossary_commands", "glossabet.engine_run"},

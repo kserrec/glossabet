@@ -161,7 +161,7 @@ def test_glossary_only_groups_are_not_usable_structure(tmp_path):
 
 
 def test_group_cap_marks_structure_nominations_partial(tmp_path, monkeypatch):
-    monkeypatch.setattr("glossabet.analysis.graphify.GROUP_CAP", 2)
+    monkeypatch.setattr("glossabet.analysis.graphify_groups.GROUP_CAP", 2)
     graph = {
         "nodes": [
             {"id": f"{group}-{member}", "label": f"Node{group}{member}",
@@ -550,7 +550,7 @@ def test_graph_input_work_is_bounded_before_any_member_is_materialized(tmp_path,
     root = make_repo(tmp_path, graph)
     # "Before any member is materialized" is proven structurally: the
     # community materializer must not run at all when the budget is exceeded.
-    from glossabet.analysis import graphify as graphify_module
+    from glossabet.analysis import graphify_groups as graphify_module
 
     def must_not_run(*_args, **_kwargs):
         raise AssertionError("communities were materialized over budget")
@@ -580,7 +580,7 @@ def test_graph_label_tokenizing_is_budgeted_and_memoized(tmp_path, monkeypatch):
     # Memoization is proven by counting: 1000 distinct labels listed in 300
     # communities must be tokenized 1000 times, not 300,000 (a wall-clock
     # bound alone would be runner-dependent and burn a minute when it fails).
-    from glossabet.analysis import graphify as graphify_module
+    from glossabet.analysis import graphify_groups as graphify_module
 
     calls = []
     real_tokenize = graphify_module.tokenize_term

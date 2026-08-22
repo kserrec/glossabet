@@ -233,8 +233,9 @@ glossabet/
   runtime/   engine_run, artifacts, display, coverage, git_state
   corpus/    scanner, path_policy, walk_budget, config, extraction, cache,
              tokenize, imports
-  analysis/  evidence, evidence_view, vocabulary, terminology, importance,
-             graphify, evidence_report
+  analysis/  evidence, evidence_types, evidence_view, vocabulary, policy,
+             terminology, importance, graphify, graphify_input,
+             graphify_groups, evidence_report
   glossary/  model, scope, schema, store, glossary_commands, policy,
              repository_glossary, matching, findings, drift, reconcile
   agent/     agent_context, brief, managed_block, managed_context, context_sync
@@ -455,7 +456,11 @@ prefix each with its subpackage (`glossabet.corpus.scanner`, …).
   Scope-aware occurrence helpers retain explicit completeness metadata.
 
 **The optional structural source (evidence source #2)**
-- `graphify.py` — `build_structural_groups()` reads `graphify-out/graph.json`
+- `graphify.py` — the stable facade over `graphify_input.py` (bounded read,
+  input-work budget, tolerant node/edge normalization, provenance
+  classification, Git freshness) and `graphify_groups.py` (community
+  extraction, memoized member tokens, cohesion, output caps, god nodes,
+  structure nominations). `build_structural_groups()` reads `graphify-out/graph.json`
   if present and turns nodes/links/communities into structural groups plus
   importance signals. The primary contract is Graphify 0.9.42's NetworkX
   node-link export (`links`, `source_file`, `file_type`, per-node
