@@ -90,7 +90,8 @@ _LIST_LIMITS: dict[tuple[str, ...], int] = {
     ("repository_glossary", "nested_ignored"): 50,
 }
 
-# ``inspect --full`` preserves the detailed pre-Phase-27 collection shape.
+# ``inspect --full`` keeps the detailed per-item collection shape (every
+# location list in place) that the routine rollup projection replaced.
 _FULL_LIST_LIMITS: dict[tuple[str, ...], int] = {
     ("modules",): 150,
     ("files", "code"): 250,

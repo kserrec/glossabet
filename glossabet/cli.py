@@ -1,6 +1,6 @@
 """Command-line entry point.
 
-Exit statuses (contract, PLAN.md Phase 1): 0 success, 1 user error (bad
+Exit statuses (a stable contract): 0 success, 1 user error (bad
 usage, missing input, not-yet-implemented command), 2 internal defect.
 """
 

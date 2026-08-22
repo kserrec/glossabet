@@ -57,8 +57,8 @@ def coverage_ledger(
 
     ``dropped_items`` counts known items omitted from the detailed list.  When
     upstream work was omitted, callers keep the known lower-bound total and
-    set ``total_items_exact`` false with a reason; unknown findings are never
-    smuggled into a made-up dropped count.
+    set ``total_items_exact`` false with a reason; an unknown number of
+    findings is not converted into an invented dropped count.
     """
     if total_items < 0 or included_items < 0 or included_items > total_items:
         raise ValueError("invalid collection coverage counts")
@@ -89,7 +89,7 @@ def capped_collection(
 ) -> tuple[list[T], CoverageLedger]:
     """Keep a deterministic prefix and return its shared coverage ledger.
 
-    This is the one way to "cap this list and say so": the ledger's reasons
+    The shared way to "cap this list and say so": the ledger's reasons
     are the caller's upstream ``incomplete_reasons`` followed by
     ``cap_reason`` whenever anything was left out. ``total_items`` defaults
     to ``len(items)``; pass a larger known total when the producer stopped

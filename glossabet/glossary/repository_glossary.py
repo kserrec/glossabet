@@ -35,7 +35,7 @@ from glossabet.runtime.artifacts import READ_OVERSIZED, read_bounded_bytes
 
 REPOSITORY_GLOSSARY_FILE = "GLOSSARY.md"
 MAX_REPOSITORY_GLOSSARY_BYTES = MAX_FILE_BYTES
-# Phase 32: the divergence check does one folded substring search per settled
+# The divergence check does one folded substring search per settled
 # term or alias against the (≤ 2 MB) Markdown. Both factors are capped so the
 # work is at most MAX_DIVERGENCE_TERMS × MAX_DIVERGENCE_TEXT_CHARS character
 # comparisons (~1–2 s): the term count, and the *normalized* text length —

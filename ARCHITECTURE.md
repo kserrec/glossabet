@@ -129,8 +129,9 @@ uv run glossabet analyze .
 
 ## The intermediate representation: RepositoryEvidence
 
-Deterministic engine analysis flows through one dictionary, built by
-`build_evidence()` in `glossabet/evidence.py` and written to
+Deterministic engine analysis flows through one document, the
+`EvidenceDocument` built by `build_evidence()` in
+`glossabet/analysis/evidence.py` and written to
 `<repo>/glossabet-out/evidence.json`. Both evidence sources (the lexical
 scanner and the Graphify adapter) normalize into it, so the terminology report,
 drift, reconciliation, and the agent-context projector are source-agnostic.
@@ -181,9 +182,59 @@ Two invariants govern this structure and are the reason it can be trusted:
   scopes overlap; reuse is valid only between disjoint scopes. Drift and
   lexical validation filter occurrences and stable bindings by that boundary.
 
+## Typed document boundaries
+
+Every persisted JSON document and every record that crosses a module boundary
+has a named type; persisted shapes are `TypedDict`s (plain dictionaries at
+runtime, so serialization is unchanged and costs nothing), and internal
+values that own behaviour or must rule out an invalid state are frozen
+dataclasses. The types live in the lowest layer that owns their meaning —
+there is no central models module:
+
+- `runtime/json_types.py` — `JSONValue`/`JSONObject`/`JSONArray`/`JSONScalar`,
+  the vocabulary for untrusted JSON before validation.
+- `runtime/coverage.py` — `CoverageLedger`, `CappedSection`, `LocationSample`:
+  the one completeness shape every bounded collection carries.
+- `runtime/artifacts.py` — `BoundedRead` with a `ReadStatus` literal;
+  `runtime/git_state.py` — `GitStamp`.
+- `corpus/walk_budget.py`, `corpus/config.py`, `corpus/imports.py`,
+  `corpus/cache.py` — the `skipped`, `configuration`, and `imports` sections
+  and the cache entry shapes, validated before reuse.
+- `analysis/evidence_types.py` — `EvidenceDocument` and every evidence
+  section (inventory, vocabulary tables, terminology, naming candidates,
+  structural groups). `EvidenceView` (`analysis/evidence_view.py`) is the
+  deliberate read boundary over it: it centralizes the key spellings and
+  gives every lookup a precise return type, so a consumer mistake is a
+  static-check failure rather than a runtime surprise (it does not, and
+  cannot, fail at import time).
+- `glossary/model.py` — `GlossaryDocument`, `ConceptRecord`, `AliasRecord`,
+  `BindingRecord`, scope records, and the `VocabularyStatus`/`BindingKind`
+  literals. Input from a file or standard input is an `object` until
+  `schema.checked_glossary()` has validated it completely; only then is it a
+  `GlossaryDocument`.
+- `glossary/findings.py` — `ObservedFinding` (carries `certainty`) and
+  `HeuristicFinding` (carries `signal_strength`) are distinct types built
+  only by `observed_finding()` and `heuristic_finding()`, so a finding cannot
+  be constructed with both or neither epistemic field; `FindingRecord` is
+  their union, and `DriftDocument`/`ValidationDocument` are the two findings
+  documents.
+- `analysis/policy.py` and `glossary/policy.py` — frozen `TerminologyPolicy`,
+  `ImportancePolicy`, `DriftPolicy`, `ReconciliationPolicy`: every heuristic
+  weight, threshold, and cap as a named field, with the pure scoring
+  functions beside them. They are calibrated nomination policy, not measured
+  probability; tests inject a policy, the CLI exposes none.
+- `agent/agent_context.py` — `AgentContextDocument` with its coverage,
+  omission, and register-exemplar records; `agent/managed_context.py` —
+  `ManagedContextReport`; `install/` — installation and plugin result records.
+
+Ruff and a package-wide strict mypy run (`disallow_untyped_defs`,
+`disallow_any_generics`, `warn_return_any`, `strict_equality`) are required
+gates, and `tests/test_type_contracts.py` rejects a bare container annotation
+on any exported function.
+
 ## The agent-facing representation: AgentContext
 
-`glossabet/agent_context.py` projects current `RepositoryEvidence` plus the
+`glossabet/agent/agent_context.py` projects current `RepositoryEvidence` plus the
 strictly validated optional glossary into the JSON printed by
 `glossabet inspect .`. The command loads the glossary through
 `confined_artifact_path()`, performs a fresh scan, atomically refreshes the
@@ -191,7 +242,7 @@ ordinary evidence artifact, and emits no progress text on standard output.
 
 The context carries two glossary channels that are never merged. `glossary`
 is the validated structured state from `glossabet-out/glossary.json`.
-`repository_glossary` (`glossabet/repository_glossary.py`) is the repository's
+`repository_glossary` (`glossabet/glossary/repository_glossary.py`) is the repository's
 own hand-maintained root `GLOSSARY.md`, reported as metadata only — presence,
 `readable` with a named `reason` (`symlink-escapes-repository`,
 `symlink-to-sensitive-file`, `symlink-to-excluded-content`,
@@ -215,8 +266,8 @@ list limit, a string ceiling, and at most 100 omission records.
 `coverage.corpus` preserves scanner coverage; `coverage.context` names the
 projection mode and every omitted section, item, string, or rolled-up file
 location. The routine projection has a repository-level regression target of
-100 KB (80 KB before Phase 39's subpackages lengthened Glossabet's own module
-paths); the universal 1 MB ceiling remains a hard failure backstop. If the
+100 KB (raised from 80 KB when the layer subpackages lengthened Glossabet's
+own module paths); the universal 1 MB ceiling remains a hard failure backstop. If the
 final object cannot fit, the command exits as a user error instead of emitting
 partial JSON. This is a model-context boundary, not a replacement for the full
 deterministic artifact used by other engine commands.
@@ -224,13 +275,14 @@ deterministic artifact used by other engine commands.
 ## Module map
 
 The package is `glossabet/`, laid out as one entry point plus six layer
-subpackages (Phase 39). Imports flow downward through this list; a package
+subpackages. Imports flow downward through this list; a package
 name never repeats a module name, so no `x/x` doubling:
 
 ```
 glossabet/
   cli.py, __main__.py, __init__.py, _skill/     entry point
-  runtime/   engine_run, artifacts, display, coverage, git_state
+  runtime/   engine_run, artifacts, display, coverage, git_state,
+             json_types, executables
   corpus/    scanner, path_policy, walk_budget, config, extraction, cache,
              tokenize, imports
   analysis/  evidence, evidence_types, evidence_view, vocabulary, policy,
@@ -343,7 +395,11 @@ prefix each with its subpackage (`glossabet.corpus.scanner`, …).
   `DocumentationVocabulary`, then build the imports/structural/terminology/
   naming sections and the evidence dict. It owns the evidence schema
   (`EVIDENCE_SCHEMA_VERSION`, `Limits`, the capped vocabulary tables with their
-  location samples) and `write_evidence()`; no printer lives here.
+  location samples) and `persist_evidence()`; no printer lives here.
+- `evidence_types.py` — the `EvidenceDocument` contract and every section
+  and record type it is assembled from (see "Typed document boundaries").
+  `evidence.py` builds the document as typed literals; consumers read it
+  through `EvidenceView`.
 - `extraction.py` — per-file extraction beneath the hub: `read_source()`
   (bytes + digest, or the corpus-budget skip reason), `extract_code_entry()`
   / `extract_doc_entry()`, and `SourceExtractor`, which reuses a valid cache
@@ -439,10 +495,18 @@ prefix each with its subpackage (`glossabet.corpus.scanner`, …).
   register's `composition` accounts for every spelling as structurally styled,
   corroborated flat, language-tagged flat, prose-dominated flat, or without
   lexical tokens; filtered percentages therefore state their denominator.
+- `analysis/policy.py` — `TerminologyPolicy` and `ImportancePolicy` (every
+  terminology and naming-importance weight, threshold, and cap as a named
+  frozen field, numerically the former module constants) with the pure
+  formulas: module/term scores, weighted cosine, the staged synonym gates,
+  context dispersion and the overload decision. `glossary/policy.py` holds
+  the reconciliation-side `DriftPolicy` and `ReconciliationPolicy` with the
+  signal bands and the structural match-strength ladder, so the dependency
+  direction stays analysis → glossary.
 - `coverage.py` — the common bounded-collection ledger. Known totals, retained
   details, known drops, total exactness, completeness, and reasons have one
   shape across evidence, candidates, terminology, Graphify, drift, and
-  validation. `capped_collection()` is the one way to "cap this list and
+  validation. `capped_collection()` is the shared way to "cap this list and
   say so" (upstream reasons first, then the cap reason, optional known
   larger total); `capped_section()` returns it in the
   `{items, dropped_items, coverage}` section shape. Bare `coverage_ledger()`
@@ -542,8 +606,9 @@ prefix each with its subpackage (`glossabet.corpus.scanner`, …).
   scope paths, strings, and diagnostics have semantic ceilings. Vocabulary
   ownership uses a per-term path-prefix trie rather than pairwise owner scans.
 - `findings.py` — the findings document drift and validation share:
-  `finding()` (exactly one of `certainty` / `signal_strength`, the status
-  the renderer keys on), `capped_section()` (the findings-flavoured
+  `observed_finding()` / `heuristic_finding()` (the two record types, one
+  carrying `certainty`, the other `signal_strength` — the status the
+  renderer keys on), `capped_section()` (the findings-flavoured
   `coverage.capped_section` with the reported `FINDINGS_CAP`),
   `empty_section()` (a skipped or scope-limited check with its reason),
   `mark_incomplete()`, the
@@ -885,12 +950,15 @@ structural validation is partial until an adapter supplies trustworthy paths.
 
 ## Where things stand
 
-`PLAN.md` is the authoritative roadmap. Phases 0–22, 24–32, and 34–36 are
-complete (Phase 35 and 36 were zero-behaviour-change refactors, each step
-verified byte-identical against a command oracle over the local corpus
-fixtures); Phase 33.2 (live Claude Code hook evidence) and Phase 36.8 (live
-post-approval skill scenarios) remain, and both need an explicit usage
-authorization to run. The owner self-testing pause is active: no outside
+`PLAN.md` is the authoritative roadmap. Phases 0–22, 24–32, and 34–44 are
+complete, and the maintainability refactor (Phase 45, the passes of
+`docs/MAINTAINABILITY-REFACTOR.md`: typed document boundaries, a strict
+static gate, isolated heuristic policy, and the decomposition of the scanner,
+glossary store, Graphify adapter, and reconciliation) is in progress; every
+refactor step is verified byte-identical against a command oracle over the
+local corpus fixtures. Phase 33.2 (live Claude Code hook evidence) and
+Phase 36.8 (live post-approval skill scenarios) remain, and both need an
+explicit usage authorization to run. The owner self-testing pause is active: no outside
 maintainer invitation, and no Phase 23 work until the trusted-alpha gate
 passes. Package metadata, the embedded plugin wheel, source skill, hook, and
 deterministic artifact record are bound together and current as of

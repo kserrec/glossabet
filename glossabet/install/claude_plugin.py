@@ -4,7 +4,7 @@ Claude Code loads any folder under ``~/.claude/skills/`` that carries a
 ``.claude-plugin/plugin.json`` as the plugin ``<name>@skills-dir`` on the next
 session, so the folder can bundle a ``hooks/hooks.json``. Glossabet uses that
 to run ``brief .`` at session start, resume, clear, and compaction — the
-ambient-consumption route the Codex plugin already provides (PLAN Phase 33).
+ambient-consumption route the Codex plugin already provides.
 
 This module only describes the files (pure data out); ``installer`` writes
 them, and nothing outside the skill folder is ever written.

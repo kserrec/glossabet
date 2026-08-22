@@ -20,9 +20,11 @@ from typing import TypedDict, TypeGuard
 from glossabet import __version__
 from glossabet.runtime.artifacts import read_bounded_json, write_json_atomic
 
-# Version 4 invalidates doc extraction from before Phase 28.3. Reusing a
-# version-3 entry for AGENTS.md/CLAUDE.md could echo a synchronized glossary
-# block into evidence even though the current extractor removes that block.
+# Every change to what an entry means bumps the version, because a stale
+# entry is reused silently otherwise: version 4 invalidated doc entries made
+# before the managed block was stripped from host documents (a reused
+# AGENTS.md/CLAUDE.md entry would echo a synchronized glossary block into
+# evidence even though the current extractor removes that block).
 CACHE_VERSION = 5
 CACHE_FILE = "cache.json"
 CACHE_ROOT_ENV = "GLOSSABET_CACHE_DIR"

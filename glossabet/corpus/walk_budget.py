@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from typing import TypedDict
 
 MAX_FILE_BYTES = 2_000_000
-# Phase 15 calibration: 84 source files / 659,141 bytes took a 0.32-second
+# Calibration: 84 source files / 659,141 bytes took a 0.32-second
 # median cold scan on the reference host. These immutable safety ceilings
 # retain roughly 119x file and 49x byte headroom while bounding lexical work.
 MAX_SOURCE_FILES = 10_000

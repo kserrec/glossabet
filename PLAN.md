@@ -3,7 +3,7 @@
 Status: **Phases 0–22, 24–32, 34–44 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
 in progress at 33.2; Phase 45 (maintainability refactor, 15 spec passes) in
-progress at 45.13; owner self-testing pause active before the trusted-alpha
+progress at 45.14; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-22.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1225,7 +1225,7 @@ Steps (each is the same-numbered spec pass):
 - **45.10** Pass 10 — decompose glossary storage and validation ✅ 2026-08-22
 - **45.11** Pass 11 — decompose the Graphify adapter ✅ 2026-08-22
 - **45.12** Pass 12 — decompose reconciliation ✅ 2026-08-22
-- **45.13** Pass 13 — clean comments and synchronize `ARCHITECTURE.md`
+- **45.13** Pass 13 — clean comments and synchronize `ARCHITECTURE.md` ✅ 2026-08-22
 - **45.14** Pass 14 — resolve the filesystem race / threat-model question
 - **45.15** Pass 15 — performance baseline; optimize only proven hotspots
 
@@ -1476,6 +1476,26 @@ monkeypatches (`STRUCTURAL_MATCH_BUDGET`, the match counter) target
 reconcile; neither producer reaches commands, rendering, the run preamble,
 drift, or evidence assembly. A/B on the five fixtures: every command's
 output and artifact identical.
+
+**45.13 outcome (2026-08-22):** the five numbered-phase references in
+production Python (`cli`, `cache`, `walk_budget`, `repository_glossary`,
+`claude_plugin`) and the `pre-Phase-27` note in `agent_context` now state the
+lasting reason (cache versioning rule, calibration origin, divergence bound,
+the rollup-versus-detailed projection); the two argumentative phrasings in
+`coverage.py` ("the one way", "never smuggled") are neutral. Every other
+comment was reviewed and kept: each names a threat boundary, a Unicode or
+platform hazard, a bound or formula, a partial-evidence downgrade, or a
+compatibility constraint. `rg "Phase [0-9]" glossabet/` is empty. Every
+changed module is AST-identical to HEAD after docstring stripping.
+`ARCHITECTURE.md`: stale `glossabet/evidence.py`, `glossabet/agent_context.py`,
+and `glossabet/repository_glossary.py` paths corrected; new "Typed document
+boundaries" section (json_types, coverage, evidence_types/EvidenceView with
+the honest static-check claim, model/checked_glossary, the two finding
+factories, both policy modules, AgentContextDocument, the strict gate); module
+map entries added for `evidence_types`, `analysis/policy`, `json_types`,
+`executables`; `finding()`/`write_evidence()` references updated; "Where
+things stand" names Phase 45. Gates A, B, C green; 680 tests; A/B over five
+fixtures TOTAL DIFFS 0.
 
 ### Owner self-testing pause — active, not an implementation phase
 
