@@ -164,6 +164,8 @@ The complete pre-release verification and publication procedure is in
   boundaries.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) explains the implementation and its
   design constraints.
+- [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) is the reproducible performance
+  baseline.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) records the current contribution pause
   and the terms that will apply afterward.
 

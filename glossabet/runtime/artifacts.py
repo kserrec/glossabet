@@ -16,7 +16,7 @@ import tempfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Literal
+from typing import BinaryIO, Final, Literal
 
 OUT_DIR = "glossabet-out"
 # The human-readable vocabulary-health report the /glossabet skill writes at
@@ -70,6 +70,29 @@ class BoundedRead:
         return self.status == READ_OK
 
 
+# Bounded reads take the file in growing chunks (doubling from the first
+# size up to the ceiling): a single ``read(cap + 1)`` would allocate the
+# whole cap (64 MB for repository JSON) up front for every small file, so
+# peak memory followed the bound rather than the content.
+READ_FIRST_CHUNK_BYTES = 1 << 16
+READ_CHUNK_BYTES = 1 << 20
+
+
+def _read_up_to(handle: BinaryIO, limit: int) -> bytes:
+    """Every byte the file yields up to ``limit``, read in bounded chunks."""
+    chunks: list[bytes] = []
+    remaining = limit
+    size = READ_FIRST_CHUNK_BYTES
+    while remaining > 0:
+        chunk = handle.read(min(remaining, size))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        remaining -= len(chunk)
+        size = min(size * 2, READ_CHUNK_BYTES)
+    return b"".join(chunks)
+
+
 def read_bounded_bytes(path: Path | str, cap: int) -> BoundedRead:
     """Read a regular file of at most ``cap`` bytes; ``cap + 1`` bytes are
     requested so the bound is decided by what was read."""
@@ -77,7 +100,7 @@ def read_bounded_bytes(path: Path | str, cap: int) -> BoundedRead:
         return BoundedRead(READ_ABSENT, cap)
     try:
         with open(path, "rb") as handle:
-            payload = handle.read(cap + 1)
+            payload = _read_up_to(handle, cap + 1)
     except OSError as exc:
         return BoundedRead(READ_UNREADABLE, cap, error=str(exc))
     if len(payload) > cap:

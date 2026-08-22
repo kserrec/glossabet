@@ -143,3 +143,33 @@ def test_written_artifacts_get_the_modes_a_plain_open_would(tmp_path):
             assert stat.S_IMODE(path.stat().st_mode) == expected, oct(umask)
     finally:
         os.umask(original)
+
+
+def test_bounded_read_memory_follows_content_not_cap(tmp_path):
+    """A small file under a large cap must not allocate the cap: the reader
+    takes bounded chunks, so peak heap tracks the bytes actually read."""
+    import tracemalloc
+
+    from glossabet.runtime.artifacts import (
+        READ_CHUNK_BYTES,
+        READ_FIRST_CHUNK_BYTES,
+        READ_OK,
+        READ_OVERSIZED,
+        read_bounded_bytes,
+    )
+
+    small = tmp_path / "small.json"
+    small.write_bytes(b"{}")
+    cap = 64_000_000
+    tracemalloc.start()
+    read = read_bounded_bytes(small, cap)
+    peak = tracemalloc.get_traced_memory()[1]
+    tracemalloc.stop()
+    assert read.status == READ_OK and read.payload == b"{}"
+    assert peak < 4 * READ_FIRST_CHUNK_BYTES
+
+    # The bound is still judged from bytes read across chunk boundaries.
+    big = tmp_path / "big.bin"
+    big.write_bytes(b"x" * (READ_CHUNK_BYTES + 5))
+    assert read_bounded_bytes(big, READ_CHUNK_BYTES + 5).payload == b"x" * (READ_CHUNK_BYTES + 5)
+    assert read_bounded_bytes(big, READ_CHUNK_BYTES + 4).status == READ_OVERSIZED

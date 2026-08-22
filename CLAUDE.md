@@ -101,6 +101,7 @@ glossabet cache-clear           # remove Glossabet's own user cache (never a rep
 uv build --no-sources            # build wheel + source distribution, do not publish
 uv run python scripts/build_plugin.py dist
 uv run python scripts/check_workflows.py
+uv run python scripts/benchmark.py   # offline performance baseline (docs/PERFORMANCE.md)
 uv run python evaluation/run.py --verify-results evaluation/results.json
 uv run python scripts/agent_eval.py --verify-results evaluation/agent-results.json
 uv run python evaluation/review.py --verify-results evaluation/reviewer-results.json

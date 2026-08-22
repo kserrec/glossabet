@@ -2,8 +2,8 @@
 
 Status: **Phases 0–22, 24–32, 34–44 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
-in progress at 33.2; Phase 45 (maintainability refactor, 15 spec passes) in
-progress at 45.15; owner self-testing pause active before the trusted-alpha
+in progress at 33.2; Phase 45 (maintainability refactor, all 15 spec passes)
+complete; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-22.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1186,7 +1186,7 @@ tests, plus R1 as ruled:
 
 Suite: 623 tests green.
 
-### Phase 45 — Maintainability refactor, spec-driven (added 2026-08-22, in progress)
+### Phase 45 — Maintainability refactor, spec-driven ✅ 2026-08-22
 
 **Origin:** Kyle brought in an external "Glossabet Maintainability Refactor
 Specification" on 2026-08-22 and asked for it to be pulled in with fidelity
@@ -1227,7 +1227,7 @@ Steps (each is the same-numbered spec pass):
 - **45.12** Pass 12 — decompose reconciliation ✅ 2026-08-22
 - **45.13** Pass 13 — clean comments and synchronize `ARCHITECTURE.md` ✅ 2026-08-22
 - **45.14** Pass 14 — resolve the filesystem race / threat-model question ✅ 2026-08-22
-- **45.15** Pass 15 — performance baseline; optimize only proven hotspots
+- **45.15** Pass 15 — performance baseline; optimize only proven hotspots ✅ 2026-08-22
 
 **45.1 outcome (2026-08-22):** `ruff==0.16.4` and `mypy==2.3.1` pinned as
 dev-only dependencies and locked; Ruff rules `E4,E7,E9,F,I,B` on py310;
@@ -1521,6 +1521,19 @@ target; `before_replace` abort leaves the original; `clear_cache` swaps
 lose only the link / leave the entry in place; walk-time size is what the
 ledger charges. No production code changed except that one docstring; no
 filesystem rewrite was needed because every continued claim has a test.
+
+**45.15 outcome (2026-08-22):** `scripts/benchmark.py` (stdlib only,
+fixtures copied to a temp dir, cache confined, one warm-up then `--repeat`
+timed runs; median wall time, tracemalloc peak, serialized bytes, ledger
+counts; `--json`, `--profile`, `--only`) plus `tests/test_benchmark.py` and
+`docs/PERFORMANCE.md` with this machine's baseline. Profiling showed time
+dominated by the `git` freshness subprocess with no dominant Python hotspot
+— no time optimization justified. One memory hotspot dominated: the bounded
+reader's single `read(cap + 1)` preallocated the 64 MB JSON bound for every
+small cache/graph/glossary file (~62 MB peak). `read_bounded_bytes` now reads
+growing chunks (64 KiB → 1 MiB) to the same limit; output byte-identical,
+peak ~140 KiB on the affected cases, regression test pins memory and the
+cross-chunk bound. **Phase 45 complete: all 15 spec passes done.**
 
 ### Owner self-testing pause — active, not an implementation phase
 
