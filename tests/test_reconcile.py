@@ -581,7 +581,7 @@ def test_structural_matching_uses_inverted_token_candidates(
         ],
     }
     calls = 0
-    from glossabet.glossary import reconcile as reconcile_module
+    from glossabet.glossary import structural_validation as reconcile_module
     real_match = reconcile_module._match_strength_from_tokens
 
     def counted_match(*args):
@@ -627,7 +627,10 @@ def test_structural_match_budget_reports_omitted_candidate_evaluations(
             for term in terms
         ],
     }
-    monkeypatch.setattr("glossabet.glossary.reconcile.STRUCTURAL_MATCH_BUDGET", 2)
+    # Patch the owning module: the facade's re-export is a separate name.
+    monkeypatch.setattr(
+        "glossabet.glossary.structural_validation.STRUCTURAL_MATCH_BUDGET", 2
+    )
 
     validation = build_validation(build_evidence(tmp_path), glossary)
     work = validation["coverage"]["work"]["structural_matches"]
@@ -872,7 +875,7 @@ def test_bindings_into_paths_the_scan_excluded_are_uncertain_not_unresolved(tmp_
     assert validate_glossary(glossary) == []
     evidence = build_evidence(tmp_path)
     assert evidence["skipped"]["corpus_budget"]["complete"] is True
-    from glossabet.glossary.reconcile import _resolve_bindings
+    from glossabet.glossary.binding_validation import _resolve_bindings
 
     statuses = {
         b["ref"]: b["status"]
@@ -909,7 +912,7 @@ def test_bindings_into_paths_the_scan_excluded_are_uncertain_not_unresolved(tmp_
         {"ref": "file:../outside"}, {"ref": "file:/etc/hosts"},
         {"ref": "file:rootlink/etc"},
     ]
-    from glossabet.glossary.reconcile import _exists_confined
+    from glossabet.glossary.binding_validation import _exists_confined
 
     # The escaping link is in the scan's own omission ledger (uncertain by
     # that rule); the disk probe itself must still refuse to follow it.

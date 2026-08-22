@@ -237,7 +237,8 @@ glossabet/
              terminology, importance, graphify, graphify_input,
              graphify_groups, evidence_report
   glossary/  model, scope, schema, store, glossary_commands, policy,
-             repository_glossary, matching, findings, drift, reconcile
+             repository_glossary, matching, findings, drift,
+             binding_validation, structural_validation, reconcile
   agent/     agent_context, brief, managed_block, managed_context, context_sync
   install/   installer, claude_plugin
 ```
@@ -568,7 +569,15 @@ prefix each with its subpackage (`glossabet.corpus.scanner`, …).
   Schema 6 also records the read-only managed-context inspection and prints
   stale, edited, or uninspectable host blocks without counting them as lexical
   findings.
-- `reconcile.py` — `build_validation()`: two-directional coverage plus the
+- `reconcile.py` — `build_validation()`: composes the validation document
+  from two producer modules beneath it — `binding_validation.py` (direction
+  B, glossary → evidence: stable binding resolution, orphaned concepts,
+  unresolved bindings, fragmentation) and `structural_validation.py`
+  (direction A, structure → glossary: graph usability, bounded structural
+  concept matching with its match-work ledger, unnamed structure, boundary
+  mismatch, overloaded regions) — reuses drift, assembles the final
+  coverage, and owns `ValidationView`, the report, and the command. Together:
+  two-directional coverage plus the
   mismatch taxonomy (unnamed structure, orphaned concept, unresolved binding,
   boundary mismatch, fragmentation, overloaded region) — exact compound
   occurrence checks for lexical evidence, full-term matching inside a

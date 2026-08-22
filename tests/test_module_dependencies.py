@@ -80,6 +80,22 @@ def test_forbidden_dependency_directions():
         },
         "drift": {"glossabet.context_sync", "glossabet.cli"},
         "reconcile": {"glossabet.context_sync", "glossabet.cli"},
+        # Validation producers (Phase 45.12) sit beneath the reconcile facade:
+        # binding resolution lowest, structural matching above it; neither
+        # reaches commands, rendering, or the run preamble.
+        "binding_validation": {
+            "glossabet.reconcile", "glossabet.structural_validation",
+            "glossabet.context_sync", "glossabet.cli", "glossabet.engine_run",
+            "glossabet.evidence_report", "glossabet.glossary_commands",
+            "glossabet.managed_context", "glossabet.drift", "glossabet.evidence",
+            "glossabet.display",
+        },
+        "structural_validation": {
+            "glossabet.reconcile", "glossabet.context_sync", "glossabet.cli",
+            "glossabet.engine_run", "glossabet.evidence_report",
+            "glossabet.glossary_commands", "glossabet.managed_context",
+            "glossabet.drift", "glossabet.evidence", "glossabet.display",
+        },
         "vocabulary": {"glossabet.evidence", "glossabet.scanner"},
         "brief": {"glossabet.evidence", "glossabet.scanner"},
         "managed_block": {"glossabet.context_sync", "glossabet.evidence"},

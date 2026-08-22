@@ -6,6 +6,11 @@ end-to-end pipeline over a scanned corpus is proven once per command in
 `test_drift.py` / `test_reconcile.py`."""
 
 from glossabet.analysis.evidence_view import EvidenceView
+from glossabet.glossary.binding_validation import (
+    _concept_findings,
+    _concept_vocab,
+    _resolve_bindings,
+)
 from glossabet.glossary.drift import (
     _canonical_fading,
     _canonical_overloaded,
@@ -14,12 +19,7 @@ from glossabet.glossary.drift import (
     _watched_in_use,
 )
 from glossabet.glossary.matching import EvidenceIndex
-from glossabet.glossary.reconcile import (
-    _concept_findings,
-    _concept_vocab,
-    _resolve_bindings,
-    _structure_findings,
-)
+from glossabet.glossary.structural_validation import _structure_findings
 
 # ---- a hand-built RepositoryEvidence, only the parts the producers read ----
 

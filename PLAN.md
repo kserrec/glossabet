@@ -3,7 +3,7 @@
 Status: **Phases 0–22, 24–32, 34–44 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
 in progress at 33.2; Phase 45 (maintainability refactor, 15 spec passes) in
-progress at 45.12; owner self-testing pause active before the trusted-alpha
+progress at 45.13; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-22.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1224,7 +1224,7 @@ Steps (each is the same-numbered spec pass):
 - **45.9** Pass 9 — decompose the repository scanner ✅ 2026-08-22
 - **45.10** Pass 10 — decompose glossary storage and validation ✅ 2026-08-22
 - **45.11** Pass 11 — decompose the Graphify adapter ✅ 2026-08-22
-- **45.12** Pass 12 — decompose reconciliation
+- **45.12** Pass 12 — decompose reconciliation ✅ 2026-08-22
 - **45.13** Pass 13 — clean comments and synchronize `ARCHITECTURE.md`
 - **45.14** Pass 14 — resolve the filesystem race / threat-model question
 - **45.15** Pass 15 — performance baseline; optimize only proven hotspots
@@ -1454,6 +1454,28 @@ re-exporting every previously public name; `evidence.py` and
 < groups < facade, neither reaching commands, glossary state, or agent code.
 A/B on the five fixtures (including structural-complete and
 structural-truncation): stdout, warnings, and every artifact identical.
+
+**45.12 outcome (2026-08-22):** `glossary/reconcile.py` (978 lines) split
+along its two directions. `binding_validation.py` (direction B, glossary →
+evidence): `_tokens`, `_ConceptVocab`, `BindingResolution`, `_concept_vocab`,
+the excluded-path ledgers, `_exists_confined`, `_path_binding_status`,
+`_resolve_bindings`, `_binding_findings`, `_orphan_finding`,
+`_concept_findings`. `structural_validation.py` (direction A, structure →
+glossary): `STRUCTURAL_MATCH_BUDGET`, the name-bound
+`_match_strength_from_tokens`, `_group_match_contexts`,
+`_structural_incompleteness`, `_structure_findings`, `_GraphStatus`,
+`_graph_status`, `_structural_sections`. `reconcile.py` (398 lines) keeps
+the schema constants, `build_validation`, `ValidationView`, rendering, and
+`validate_command`, with an explicit `__all__` re-exporting every previously
+public name (`cli`, `evaluation/run.py`, and the `build_validation` test
+imports unchanged). Code moved verbatim; sorting, caps, suppression, and
+total-completeness stayed with their algorithms; no coverage logic
+duplicated. Producer tests import from the owning modules and the two
+monkeypatches (`STRUCTURAL_MATCH_BUDGET`, the match counter) target
+`structural_validation`. Dependency ratchet: binding < structural <
+reconcile; neither producer reaches commands, rendering, the run preamble,
+drift, or evidence assembly. A/B on the five fixtures: every command's
+output and artifact identical.
 
 ### Owner self-testing pause — active, not an implementation phase
 
