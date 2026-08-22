@@ -8,10 +8,27 @@ recorded in the artifact so truncated never reads as complete.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TypedDict, TypeVar
 
 from glossabet import __version__
+from glossabet.analysis.evidence_types import (
+    DocFileEntry,
+    DocTermEntry,
+    DocTermTable,
+    EvidenceDocument,
+    IdentifierEntry,
+    IdentifierTable,
+    ModuleRecord,
+    NamingCandidates,
+    ProductionModuleRecord,
+    TokenEntry,
+    TokenTable,
+    TruncationMarker,
+    VocabularySection,
+)
 from glossabet.analysis.graphify import (
     build_structural_groups,
     disabled_structural_groups,
@@ -28,7 +45,13 @@ from glossabet.corpus.scanner import WalkResult, detect_monorepo, walk_repositor
 from glossabet.corpus.tokenize import tokenization_contract, tokenize_identifier
 from glossabet.runtime import git_state
 from glossabet.runtime.artifacts import write_artifact
-from glossabet.runtime.coverage import capped_collection, location_sample
+from glossabet.runtime.coverage import (
+    CoverageLedger,
+    capped_collection,
+    location_sample,
+)
+
+E = TypeVar("E")
 
 EVIDENCE_SCHEMA_VERSION = 15
 
@@ -45,35 +68,44 @@ class Limits:
     locations_per_term: int = 5
 
 
-def _capped(counter: Counter, cap: int, entry) -> dict:
-    """Top-`cap` entries by (-count, key), with the remainder logged."""
+def _capped(
+    counter: Counter[str], cap: int, entry: Callable[[str, int], E],
+) -> tuple[list[E], TruncationMarker | None, CoverageLedger]:
+    """Top-`cap` entries by (-count, key), with the remainder logged: the
+    kept entries, the truncation marker (``None`` when nothing was dropped),
+    and the coverage ledger — the three fields of one vocabulary table."""
     ranked = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
     kept, coverage = capped_collection(
         ranked, cap, cap_reason=f"evidence detail cap is {cap} items"
     )
     dropped = ranked[cap:]
-    return {
-        "items": [entry(term, count) for term, count in kept],
-        "truncated": None if not dropped else {
-            "dropped_terms": len(dropped),
-            "dropped_occurrences": sum(c for _, c in dropped),
-        },
-        "coverage": coverage,
+    truncated: TruncationMarker | None = None if not dropped else {
+        "dropped_terms": len(dropped),
+        "dropped_occurrences": sum(c for _, c in dropped),
     }
+    return [entry(term, count) for term, count in kept], truncated, coverage
+
+
+class _ModuleFold(TypedDict):
+    """Per-module tallies of the code-file pass."""
+
+    code_files: int
+    languages: set[str]
+    code_files_by_role: Counter[str]
+
+
+def _empty_module_fold() -> _ModuleFold:
+    return {"code_files": 0, "languages": set(), "code_files_by_role": Counter()}
 
 
 @dataclass
 class _CodeFold:
     """What one pass over the walk's code files accumulates besides the
     production vocabulary itself."""
-    languages: Counter = field(default_factory=Counter)
-    modules: dict[str, dict] = field(default_factory=lambda: defaultdict(
-        lambda: {
-            "code_files": 0,
-            "languages": set(),
-            "code_files_by_role": Counter(),
-        }
-    ))
+    languages: Counter[str] = field(default_factory=Counter)
+    modules: dict[str, _ModuleFold] = field(
+        default_factory=lambda: defaultdict(_empty_module_fold)
+    )
     file_imports: list[tuple[str, str, list[str]]] = field(default_factory=list)
     production_code_files: list[tuple[str, str]] = field(default_factory=list)
     analyzed_production_files: int = 0
@@ -107,9 +139,9 @@ def _fold_code_files(
 def _fold_doc_files(
     walk: WalkResult, extractor: SourceExtractor,
     documentation: DocumentationVocabulary,
-) -> tuple[list[dict], int, int]:
+) -> tuple[list[DocFileEntry], int, int]:
     """Doc inventory entries, total words, and the production doc count."""
-    doc_entries = []
+    doc_entries: list[DocFileEntry] = []
     doc_word_total = 0
     analyzed_production_doc_files = 0
     for rel, role in walk.doc_files:
@@ -131,9 +163,11 @@ def _fold_doc_files(
     return doc_entries, doc_word_total, analyzed_production_doc_files
 
 
-def _module_lists(modules: dict[str, dict]) -> tuple[list[dict], list[dict]]:
+def _module_lists(
+    modules: dict[str, _ModuleFold],
+) -> tuple[list[ModuleRecord], list[ProductionModuleRecord]]:
     """All modules, and the production-scoped modules naming ranks over."""
-    modules_list = [
+    modules_list: list[ModuleRecord] = [
         {
             "path": path,
             "code_files": info["code_files"],
@@ -142,7 +176,7 @@ def _module_lists(modules: dict[str, dict]) -> tuple[list[dict], list[dict]]:
         }
         for path, info in sorted(modules.items())
     ]
-    production_modules_list = [
+    production_modules_list: list[ProductionModuleRecord] = [
         {
             "path": path,
             "code_files": info["code_files_by_role"].get("production", 0),
@@ -157,8 +191,8 @@ def _module_lists(modules: dict[str, dict]) -> tuple[list[dict], list[dict]]:
 def _vocabulary_section(
     vocabulary: ProductionVocabulary, documentation: DocumentationVocabulary,
     limits: Limits,
-) -> dict:
-    def token_entry(term: str, count: int) -> dict:
+) -> VocabularySection:
+    def token_entry(term: str, count: int) -> TokenEntry:
         per_file = vocabulary.token_files[term]
         locations, locations_truncated = location_sample(
             per_file, limits.locations_per_term
@@ -173,7 +207,7 @@ def _vocabulary_section(
             "locations_truncated": locations_truncated,
         }
 
-    def identifier_entry(name: str, count: int) -> dict:
+    def identifier_entry(name: str, count: int) -> IdentifierEntry:
         per_file = vocabulary.identifier_files[name]
         locations, locations_truncated = location_sample(
             per_file, limits.locations_per_term
@@ -187,7 +221,7 @@ def _vocabulary_section(
             "locations_truncated": locations_truncated,
         }
 
-    def doc_term_entry(term: str, count: int) -> dict:
+    def doc_term_entry(term: str, count: int) -> DocTermEntry:
         per_file = documentation.term_files[term]
         locations, locations_truncated = location_sample(
             per_file, limits.locations_per_term
@@ -200,15 +234,32 @@ def _vocabulary_section(
             "locations_truncated": locations_truncated,
         }
 
+    tokens, tokens_truncated, tokens_coverage = _capped(
+        vocabulary.token_counts, limits.tokens, token_entry
+    )
+    identifiers, identifiers_truncated, identifiers_coverage = _capped(
+        vocabulary.identifier_counts, limits.identifiers, identifier_entry
+    )
+    doc_terms, doc_terms_truncated, doc_terms_coverage = _capped(
+        documentation.term_counts, limits.doc_terms, doc_term_entry
+    )
+    token_table: TokenTable = {
+        "items": tokens, "truncated": tokens_truncated,
+        "coverage": tokens_coverage,
+    }
+    identifier_table: IdentifierTable = {
+        "items": identifiers, "truncated": identifiers_truncated,
+        "coverage": identifiers_coverage,
+    }
+    doc_term_table: DocTermTable = {
+        "items": doc_terms, "truncated": doc_terms_truncated,
+        "coverage": doc_terms_coverage,
+    }
     return {
         "normalization": tokenization_contract(),
-        "tokens": _capped(vocabulary.token_counts, limits.tokens, token_entry),
-        "identifiers": _capped(
-            vocabulary.identifier_counts, limits.identifiers, identifier_entry,
-        ),
-        "doc_terms": _capped(
-            documentation.term_counts, limits.doc_terms, doc_term_entry,
-        ),
+        "tokens": token_table,
+        "identifiers": identifier_table,
+        "doc_terms": doc_term_table,
     }
 
 
@@ -216,8 +267,8 @@ DEFAULT_LIMITS = Limits()
 
 
 def build_evidence(root: Path, limits: Limits = DEFAULT_LIMITS,
-                   cache: bool = False, stats: dict | None = None,
-                   graphify: bool = True) -> dict:
+                   cache: bool = False, stats: dict[str, int] | None = None,
+                   graphify: bool = True) -> EvidenceDocument:
     """Cold and warm scans share this one aggregation path, so a cached run
     is byte-identical to a fresh one by construction."""
     root = root.resolve()
@@ -260,8 +311,23 @@ def build_evidence(root: Path, limits: Limits = DEFAULT_LIMITS,
         documentation.term_counts, terminology["context_dispersion"],
     )
     structural_naming = structure_candidates(structural)
-    naming["coverage"].update(structural_naming.pop("coverage"))
-    naming.update(structural_naming)
+    naming_candidates: NamingCandidates = {
+        "modules": naming["modules"],
+        "modules_dropped": naming["modules_dropped"],
+        "terms": naming["terms"],
+        "terms_dropped": naming["terms_dropped"],
+        "structures": structural_naming["structures"],
+        "structures_dropped": structural_naming["structures_dropped"],
+        "structures_source_groups_dropped": (
+            structural_naming["structures_source_groups_dropped"]
+        ),
+        "structures_complete": structural_naming["structures_complete"],
+        "coverage": {
+            "modules": naming["coverage"]["modules"],
+            "terms": naming["coverage"]["terms"],
+            "structures": structural_naming["coverage"]["structures"],
+        },
+    }
 
     return {
         "schema_version": EVIDENCE_SCHEMA_VERSION,
@@ -286,7 +352,7 @@ def build_evidence(root: Path, limits: Limits = DEFAULT_LIMITS,
         "languages": dict(sorted(code.languages.items())),
         "modules": modules_list,
         "imports": imports_section,
-        "naming_candidates": naming,
+        "naming_candidates": naming_candidates,
         "structural_groups": structural,
         "files": {
             "code": [
@@ -313,15 +379,15 @@ def build_evidence(root: Path, limits: Limits = DEFAULT_LIMITS,
     }
 
 
-def write_evidence(root: Path, evidence: dict) -> Path:
+def write_evidence(root: Path, evidence: EvidenceDocument) -> Path:
     return write_artifact(root, EVIDENCE_FILE, evidence)
 
 
-def persist_evidence(root: Path, **options) -> dict:
+def persist_evidence(root: Path, *, graphify: bool = True) -> EvidenceDocument:
     """Build the evidence for one command run through the cache and write
     it — the step every evidence-reading command performs after opening
-    its run. ``options`` are ``build_evidence`` keyword arguments."""
-    evidence = build_evidence(root, cache=True, **options)
+    its run."""
+    evidence = build_evidence(root, cache=True, graphify=graphify)
     write_evidence(root, evidence)
     return evidence
 

@@ -24,6 +24,11 @@ from glossabet.agent.managed_context import (
     unchecked_managed_context,
 )
 from glossabet.analysis.evidence import persist_evidence
+from glossabet.analysis.evidence_types import (
+    EvidenceDocument,
+    StructuralGroup,
+    StructuralGroups,
+)
 from glossabet.analysis.evidence_view import EvidenceView
 from glossabet.corpus.tokenize import tokenize_term
 from glossabet.glossary import findings
@@ -199,8 +204,8 @@ def _resolve_bindings(
 
 
 def _group_match_contexts(
-    structural: dict, canonical: list[dict], vocab: dict
-) -> tuple[list[tuple[dict, set[str], set[str], list[str]]], int]:
+    structural: StructuralGroups, canonical: list[dict], vocab: dict
+) -> tuple[list[tuple[StructuralGroup, set[str], set[str], list[str]]], int]:
     """Per structural group: (group, label tokens, label+member tokens,
     candidate concept ids reached through an inverted token index), sorted
     by label then id; plus how many groups lacked complete member_tokens."""
@@ -271,7 +276,7 @@ def _structural_incompleteness(
 
 
 def _structure_findings(
-    structural: dict,
+    structural: StructuralGroups,
     canonical: list[dict],
     vocab: dict,
     upstream_reasons: list[str],
@@ -524,7 +529,7 @@ class _GraphStatus:
         return self.skip_reason
 
 
-def _graph_status(structural: dict) -> _GraphStatus:
+def _graph_status(structural: StructuralGroups) -> _GraphStatus:
     usable = bool(structural.get("available"))
     groups_dropped = int(structural.get("groups_dropped", 0))
     if usable:
@@ -545,7 +550,7 @@ def _graph_status(structural: dict) -> _GraphStatus:
 
 
 def _structural_sections(
-    structural: dict,
+    structural: StructuralGroups,
     graph: _GraphStatus,
     global_canonical: list[dict],
     scoped_canonical: list[dict],
@@ -614,7 +619,7 @@ def _structural_sections(
 
 
 def build_validation(
-    evidence: dict,
+    evidence: EvidenceDocument,
     glossary: dict,
     *,
     managed_context: dict | None = None,

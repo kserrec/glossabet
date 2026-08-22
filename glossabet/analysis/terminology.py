@@ -10,9 +10,24 @@ from __future__ import annotations
 
 import math
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from itertools import combinations
+from typing import TypedDict
 
+from glossabet.analysis.evidence_types import (
+    AffixRecord,
+    ContextDispersionSection,
+    DispersionRecord,
+    LayersSection,
+    OverloadCandidate,
+    OverloadCandidatesSection,
+    OverloadModuleRecord,
+    RegisterSection,
+    SynonymCandidate,
+    SynonymCandidatesSection,
+    TerminologyAnalysis,
+)
 from glossabet.analysis.vocabulary import (
     MODULE_CONTEXT_ANALYSIS_CAP,
     ProductionVocabulary,
@@ -25,10 +40,8 @@ from glossabet.corpus.tokenize import (
     tokenize_identifier,
 )
 from glossabet.runtime.coverage import (
-    CappedSection,
     CoverageLedger,
     capped_collection,
-    capped_section,
     coverage_ledger,
     coverage_reasons,
 )
@@ -128,15 +141,15 @@ def _register_tally(
     return tally
 
 
-def _pct(counter: Counter, total: int) -> dict:
+def _pct(counter: Counter[str], total: int) -> dict[str, float]:
     return {
         k: round(100.0 * v / total, 1)
         for k, v in sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
     } if total else {}
 
 
-def _top_affixes(counter: Counter) -> tuple[list[dict], CoverageLedger]:
-    ranked = [
+def _top_affixes(counter: Counter[str]) -> tuple[list[AffixRecord], CoverageLedger]:
+    ranked: list[AffixRecord] = [
         {"token": token, "identifiers": count}
         for token, count in sorted(
             counter.items(), key=lambda kv: (-kv[1], kv[0])
@@ -156,7 +169,7 @@ def _register(
     identifier_counts: Counter,
     doc_term_counts: Counter,
     token_origins: dict[str, str],
-) -> dict:
+) -> RegisterSection:
     tally = _register_tally(identifier_counts, doc_term_counts, token_origins)
     used_by_reason = tally.used_by_reason
     excluded_by_reason = tally.excluded_by_reason
@@ -190,8 +203,10 @@ def _register(
     }
 
 
-def _layers(token_counts: Counter, doc_term_counts: Counter) -> dict:
-    def top(counter: Counter, keep, label: str) -> tuple[list[str], CoverageLedger]:
+def _layers(token_counts: Counter[str], doc_term_counts: Counter[str]) -> LayersSection:
+    def top(
+        counter: Counter[str], keep: Callable[[str], bool], label: str,
+    ) -> tuple[list[str], CoverageLedger]:
         ranked = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
         items = [term for term, _ in ranked if keep(term)]
         return capped_collection(
@@ -222,7 +237,10 @@ def _layers(token_counts: Counter, doc_term_counts: Counter) -> dict:
     }
 
 
-def _cosine(ca: Counter, cb: Counter, exclude: set, weight) -> float:
+def _cosine(
+    ca: Counter[str], cb: Counter[str], exclude: set[str],
+    weight: Callable[[str], float],
+) -> float:
     keys = (set(ca) | set(cb)) - exclude
     dot = sum(ca.get(k, 0) * cb.get(k, 0) * weight(k) ** 2 for k in keys)
     if not dot:
@@ -238,14 +256,15 @@ def _pattern_label(pattern: tuple[str, ...]) -> str:
 
 def _synonym_candidates(top_tokens: list[str], token_counts: Counter,
                         token_files: dict, token_patterns: dict,
-                        neighbors: dict, token_coverage: CoverageLedger) -> dict:
+                        neighbors: dict, token_coverage: CoverageLedger,
+                        ) -> SynonymCandidatesSection:
     # Inverse-frequency weighting: a ubiquitous context token (a repo's
     # "term"/"prop") says little about which two terms are parallel, so it
     # must not dominate the similarity.
     def weight(k: str) -> float:
         return 1.0 / (1.0 + math.log1p(token_counts.get(k, 1)))
 
-    ranked: list[tuple[float, str, str, dict[str, object]]] = []
+    ranked: list[tuple[float, str, str, SynonymCandidate]] = []
     considered = 0
     for a, b in combinations(top_tokens, 2):
         na, nb = neighbors.get(a, Counter()), neighbors.get(b, Counter())
@@ -317,7 +336,7 @@ def _synonym_candidates(top_tokens: list[str], token_counts: Counter,
         }))
     ranked.sort(key=lambda row: (-row[0], row[1], row[2]))
     items = [row[3] for row in ranked]
-    section = capped_section(
+    kept, coverage = capped_collection(
         items,
         SYNONYM_REPORT_CAP,
         cap_reason=(
@@ -329,11 +348,22 @@ def _synonym_candidates(top_tokens: list[str], token_counts: Counter,
         ),
     )
     return {
-        "items": section["items"],
+        "items": kept,
         "considered_pairs": considered,
-        "dropped_items": section["dropped_items"],
-        "coverage": section["coverage"],
+        "dropped_items": coverage["dropped_items"],
+        "coverage": coverage,
     }
+
+
+class _DispersionProfile(TypedDict):
+    """Internal: a ``DispersionRecord`` plus the complete per-module
+    context sets overload detail is built from."""
+
+    term: str
+    dispersion: float
+    module_count: int
+    divergent: bool
+    _per_module: dict[str, set[str]]
 
 
 def _context_dispersion(
@@ -341,13 +371,13 @@ def _context_dispersion(
     module_neighbor_sets: dict,
     module_neighbor_truncated: set[tuple[str, str]],
     token_coverage: CoverageLedger,
-) -> tuple[list[dict], CappedSection]:
+) -> tuple[list[_DispersionProfile], ContextDispersionSection]:
     """Measure bounded cross-module context dispersion once.
 
     Internal profiles retain complete context sets for overload detail. The
     public projection keeps only plain numbers for importance consumers.
     """
-    profiles = []
+    profiles: list[_DispersionProfile] = []
     wide_terms = 0
     truncated_contexts = 0
     overfull_module_terms = 0
@@ -389,7 +419,7 @@ def _context_dispersion(
             "_per_module": per_module,
         })
 
-    profiles.sort(key=lambda item: str(item["term"]))
+    profiles.sort(key=lambda item: item["term"])
     incomplete_reasons = coverage_reasons(
         token_coverage, "eligible token input"
     )
@@ -409,7 +439,7 @@ def _context_dispersion(
         total_items_exact=token_coverage["complete"],
         reasons=incomplete_reasons,
     )
-    public_items: list[object] = [
+    public_items: list[DispersionRecord] = [
         {
             "term": item["term"],
             "dispersion": item["dispersion"],
@@ -426,11 +456,11 @@ def _context_dispersion(
 
 
 def _overload_candidates(
-    dispersion_profiles: list[dict],
+    dispersion_profiles: list[_DispersionProfile],
     token_modules: dict,
     dispersion_coverage: CoverageLedger,
-) -> CappedSection:
-    items = []
+) -> OverloadCandidatesSection:
+    items: list[OverloadCandidate] = []
     for profile in dispersion_profiles:
         if not profile["divergent"]:
             continue
@@ -441,7 +471,7 @@ def _overload_candidates(
             per_module,
             key=lambda m: (-token_modules[token].get(m, 0), m),
         )
-        module_items = []
+        module_items: list[OverloadModuleRecord] = []
         for module in modules:
             contexts = sorted(per_module[module])
             context_items, context_coverage = capped_collection(
@@ -471,7 +501,7 @@ def _overload_candidates(
             "coverage": {"modules": module_coverage},
         })
     items.sort(key=lambda i: (-i["dispersion"], i["term"]))
-    return capped_section(
+    kept, coverage = capped_collection(
         items,
         OVERLOAD_REPORT_CAP,
         cap_reason=(
@@ -480,10 +510,15 @@ def _overload_candidates(
         total_items_exact=dispersion_coverage["complete"],
         incomplete_reasons=coverage_reasons(dispersion_coverage),
     )
+    return {
+        "items": kept,
+        "dropped_items": coverage["dropped_items"],
+        "coverage": coverage,
+    }
 
 
 def build_terminology(vocabulary: ProductionVocabulary,
-                      doc_term_counts: Counter) -> dict:
+                      doc_term_counts: Counter[str]) -> TerminologyAnalysis:
     """House-register statistics, layers, synonym/overload candidates, and
     context dispersion for one scan's production vocabulary."""
     identifier_counts = vocabulary.identifier_counts

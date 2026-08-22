@@ -10,6 +10,7 @@ signal strength, not as unmeasured confidence.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from itertools import combinations
 
 from glossabet.agent.managed_context import (
@@ -18,6 +19,7 @@ from glossabet.agent.managed_context import (
     unchecked_managed_context,
 )
 from glossabet.analysis.evidence import persist_evidence
+from glossabet.analysis.evidence_types import EvidenceDocument
 from glossabet.analysis.evidence_view import EvidenceView
 from glossabet.analysis.terminology import OVERLOAD_MIN_DISPERSION, OVERLOAD_MIN_MODULES
 from glossabet.corpus.tokenize import tokenize_term
@@ -290,22 +292,32 @@ def _canonical_fading(
     return findings
 
 
-def _overload_details_complete(item: dict) -> bool:
+def _overload_details_complete(item: Mapping[str, object]) -> bool:
     """Whether the retained module/context details cover the whole candidate.
 
     A capped display cannot be reinterpreted as an exhaustive scoped sample;
     the scoped-overload check and its omission report must agree on this.
     """
-    module_coverage = item.get("coverage", {}).get("modules", {})
-    return (
-        module_coverage.get("complete", True)
-        and all(
-            module.get("coverage", {}).get("contexts", {}).get(
-                "complete", True
-            )
-            for module in item["modules"]
-        )
+    # Read tolerantly: a candidate without ledgers (older or hand-built
+    # evidence) is not reported as capped.
+    coverage = item.get("coverage")
+    module_coverage = (
+        coverage.get("modules") if isinstance(coverage, Mapping) else None
     )
+    if isinstance(module_coverage, Mapping) and not module_coverage.get(
+        "complete", True
+    ):
+        return False
+    modules = item["modules"]
+    for module in modules if isinstance(modules, list) else []:
+        module_ledgers = module.get("coverage") if isinstance(module, Mapping) else None
+        contexts = (
+            module_ledgers.get("contexts")
+            if isinstance(module_ledgers, Mapping) else None
+        )
+        if isinstance(contexts, Mapping) and not contexts.get("complete", True):
+            return False
+    return True
 
 
 def _canonical_overloaded(view: EvidenceView, canonical: dict) -> list[dict]:
@@ -395,7 +407,7 @@ def _scoped_overload_reasons(view: EvidenceView, canonical: dict) -> list[str]:
 
 
 def build_drift(
-    evidence: dict,
+    evidence: EvidenceDocument,
     glossary: dict,
     *,
     matcher: EvidenceIndex | None = None,

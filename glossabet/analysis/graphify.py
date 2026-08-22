@@ -15,7 +15,16 @@ import unicodedata
 from collections import Counter
 from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
+from typing import TypedDict
 
+from glossabet.analysis.evidence_types import (
+    FreshnessRecord,
+    GodNode,
+    StructuralGroup,
+    StructuralGroups,
+    StructureCandidate,
+    StructureNaming,
+)
 from glossabet.corpus.tokenize import tokenize_term
 from glossabet.runtime.artifacts import (
     READ_ABSENT,
@@ -87,7 +96,7 @@ def _first_value(mapping: dict, keys, types=None):
 
 def _unavailable(
     *, present: bool | None, warnings: list[str], disabled: bool = False
-) -> dict:
+) -> StructuralGroups:
     return {
         "adapter_enabled": not disabled,
         "present": present,
@@ -107,7 +116,7 @@ def _unavailable(
     }
 
 
-def disabled_structural_groups() -> dict:
+def disabled_structural_groups() -> StructuralGroups:
     """Evidence shape when the caller explicitly disables the adapter."""
     return _unavailable(present=None, warnings=[], disabled=True)
 
@@ -223,13 +232,19 @@ def _same_commit(built: str, current: str) -> bool:
     )
 
 
-def _freshness(graph: dict, git_stamp: Mapping[str, object] | None) -> dict:
+class _FreshnessBase(TypedDict):
+    built_at_commit: str | None
+    current_commit: str | None
+    worktree_dirty: bool | None
+
+
+def _freshness(graph: dict, git_stamp: Mapping[str, object] | None) -> FreshnessRecord:
     built_raw = graph.get("built_at_commit")
     built = built_raw.strip() if isinstance(built_raw, str) else None
     current_raw = git_stamp.get("head") if isinstance(git_stamp, dict) else None
     current = current_raw.strip() if isinstance(current_raw, str) else None
     dirty = git_stamp.get("dirty") if isinstance(git_stamp, dict) else None
-    base = {
+    base: _FreshnessBase = {
         "built_at_commit": built,
         "current_commit": current,
         "worktree_dirty": dirty if isinstance(dirty, bool) else None,
@@ -443,8 +458,8 @@ def _group_items(
     nodes: dict[str, dict],
     degree: Counter,
     glossary_nodes: set[str],
-) -> list[dict]:
-    items = []
+) -> list[StructuralGroup]:
+    items: list[StructuralGroup] = []
     for group_id, group in groups.items():
         members = group["members"]
         if not members:
@@ -502,8 +517,8 @@ def _group_items(
 
 def _god_nodes(
     nodes: dict[str, dict], degree: Counter, glossary_nodes: set[str]
-) -> tuple[list[dict], CoverageLedger]:
-    ranked = [
+) -> tuple[list[GodNode], CoverageLedger]:
+    ranked: list[GodNode] = [
         {"label": nodes[node_id]["label"], "degree": count}
         for node_id, count in sorted(
             degree.items(), key=lambda item: (-item[1], item[0])
@@ -519,7 +534,7 @@ def _god_nodes(
 
 def build_structural_groups(
     root: Path, git_stamp: Mapping[str, object] | None = None
-) -> dict:
+) -> StructuralGroups:
     graph, present, warnings = _load_graph(root)
     if graph is None:
         return _unavailable(present=present, warnings=warnings)
@@ -593,12 +608,12 @@ def build_structural_groups(
     }
 
 
-def structure_candidates(structural: dict) -> dict:
+def structure_candidates(structural: StructuralGroups) -> StructureNaming:
     """Group-based naming nominations for the importance section."""
     source_groups_dropped = structural.get("naming_groups_dropped", 0)
-    if not structural.get("available"):
-        group_coverage = structural.get("coverage", {}).get("groups", {})
-        total_exact = group_coverage.get("total_items_exact") is not False
+    if not structural["available"]:
+        group_coverage = structural["coverage"]["groups"]
+        total_exact = group_coverage["total_items_exact"] is not False
         reasons = [] if total_exact else [
             "structural groups could not be normalized completely"
         ]
@@ -612,7 +627,7 @@ def structure_candidates(structural: dict) -> dict:
             "structures_complete": coverage["complete"],
             "coverage": {"structures": coverage},
         }
-    candidates = []
+    candidates: list[StructureCandidate] = []
     for group in structural["groups"]:
         if group["size"] < 2:
             continue

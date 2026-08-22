@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from typing import TypedDict
 
 _PATTERNS: dict[str, list[re.Pattern[str]]] = {
     "python": [
@@ -253,8 +254,28 @@ class Resolver:
         return "internal", None
 
 
+# ``from`` is a keyword, so this record uses the functional form.
+ImportEdge = TypedDict("ImportEdge", {"from": str, "to": str, "count": int})
+
+
+class ExternalImport(TypedDict):
+    name: str
+    count: int
+
+
+class ImportsSection(TypedDict):
+    """The persisted ``imports`` section: capped internal edges and
+    external targets from regex-level extraction (``lossy`` by design)."""
+
+    lossy: bool
+    internal_edges: list[ImportEdge]
+    edges_truncated: int
+    external_top: list[ExternalImport]
+    external_truncated: int
+
+
 def build_imports_section(file_imports: list[tuple[str, str, list[str]]],
-                          code_files: list[tuple[str, str]]) -> dict[str, object]:
+                          code_files: list[tuple[str, str]]) -> ImportsSection:
     """file_imports: (path, language, import specs) per scanned file."""
     resolver = Resolver(code_files)
     edges: Counter[tuple[str, str]] = Counter()

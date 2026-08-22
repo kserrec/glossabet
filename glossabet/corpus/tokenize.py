@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Iterator
+from typing import TypedDict
 
 from glossabet.corpus.unicode_marks import mark_class_body
 
@@ -108,7 +109,18 @@ STRUCTURED_IDENTIFIER_STYLES = frozenset({
 })
 
 
-def tokenization_contract() -> dict[str, object]:
+class TokenizationContract(TypedDict):
+    """The persisted ``vocabulary.normalization`` record."""
+
+    unicode_normalization: str
+    identifier_characters: str
+    acronyms: str
+    digits: str
+    forms: list[str]
+    parser_backed: bool
+
+
+def tokenization_contract() -> TokenizationContract:
     """Machine-readable summary of the lexical normalization semantics."""
     return {
         "unicode_normalization": "NFKC+casefold",

@@ -8,15 +8,30 @@ from __future__ import annotations
 
 import math
 from collections import Counter, defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import PurePosixPath
+from typing import TYPE_CHECKING, TypeVar
 
+from glossabet.analysis.evidence_types import (
+    ContextDispersionSection,
+    DispersionRecord,
+    LexicalNaming,
+    ModuleCandidate,
+    ProductionModuleRecord,
+    TermCandidate,
+)
 from glossabet.analysis.vocabulary import ProductionVocabulary
+from glossabet.corpus.imports import ImportsSection
 from glossabet.corpus.tokenize import (
     TOKEN_ORIGIN_DOMAIN,
     tokenize_identifier,
 )
 from glossabet.runtime.coverage import CoverageLedger, capped_collection
+
+if TYPE_CHECKING:  # typeshed's name for what ``sorted`` accepts as a key
+    from _typeshed import SupportsRichComparison
+
+C = TypeVar("C")
 
 MODULE_CANDIDATE_CAP = 10
 TERM_CANDIDATE_CAP = 15
@@ -25,8 +40,9 @@ NOMINATION_CANONICAL_NAME = "deserves a canonical name"
 NOMINATION_DISAMBIGUATION = "deserves disambiguation"
 
 
-def _module_candidates(imports_section: dict, modules: list[dict],
-                       doc_term_counts: Counter) -> Iterable[dict]:
+def _module_candidates(imports_section: ImportsSection,
+                       modules: list[ProductionModuleRecord],
+                       doc_term_counts: Counter[str]) -> Iterable[ModuleCandidate]:
     fan_in: dict[str, set] = defaultdict(set)
     fan_out: dict[str, set] = defaultdict(set)
     weight: Counter = Counter()
@@ -39,8 +55,8 @@ def _module_candidates(imports_section: dict, modules: list[dict],
     for path, importers in fan_in.items():
         if path == ".":
             continue  # the repo root is not a nameable part
-        info = by_path.get(path, {})
-        code_files = info.get("code_files", 0)
+        info = by_path.get(path)
+        code_files = info["code_files"] if info is not None else 0
         base = path.rsplit("/", 1)[-1].lower()
         doc_mentions = doc_term_counts.get(base, 0)
         reasons = [f"imported by {len(importers)} module(s)"]
@@ -69,11 +85,9 @@ def _term_candidates(token_counts: Counter, token_files: dict,
                      doc_term_counts: Counter,
                      token_origins: dict[str, str],
                      token_patterns: dict,
-                     context_dispersion: dict) -> Iterable[dict]:
-    dispersion_by_term = {
-        item["term"]: item
-        for item in context_dispersion.get("items", [])
-    }
+                     dispersion_items: Iterable[DispersionRecord],
+                     ) -> Iterable[TermCandidate]:
+    dispersion_by_term = {item["term"]: item for item in dispersion_items}
     ranked = sorted(token_counts.items(), key=lambda kv: (-kv[1], kv[0]))
     for term, count in ranked:
         if token_origins.get(term) != TOKEN_ORIGIN_DOMAIN:
@@ -132,9 +146,9 @@ def _term_candidates(token_counts: Counter, token_files: dict,
 
 
 def _ranked(
-    candidates: Iterable[dict], cap: int, key, label: str,
+    candidates: Iterable[C], cap: int, key: Callable[[C], SupportsRichComparison], label: str,
     *, incomplete_reasons: Iterable[str] = (),
-) -> tuple[list[dict], CoverageLedger]:
+) -> tuple[list[C], CoverageLedger]:
     return capped_collection(
         sorted(candidates, key=key),
         cap,
@@ -143,10 +157,12 @@ def _ranked(
     )
 
 
-def build_naming_candidates(imports_section: dict, modules: list[dict],
+def build_naming_candidates(imports_section: ImportsSection,
+                            modules: list[ProductionModuleRecord],
                             vocabulary: ProductionVocabulary,
-                            doc_term_counts: Counter,
-                            context_dispersion: dict | None = None) -> dict:
+                            doc_term_counts: Counter[str],
+                            context_dispersion: ContextDispersionSection | None = None,
+                            ) -> LexicalNaming:
     """Ranked module and term naming candidates from import structure, the
     production vocabulary, documentation, and terminology dispersion."""
     token_counts = vocabulary.token_counts
@@ -154,7 +170,9 @@ def build_naming_candidates(imports_section: dict, modules: list[dict],
     token_modules = vocabulary.token_modules
     token_origins = vocabulary.token_origins
     token_patterns = vocabulary.token_patterns
-    context_dispersion = context_dispersion or {}
+    dispersion_items = (
+        context_dispersion["items"] if context_dispersion else []
+    )
     language_tokens_excluded = vocabulary.language_token_count()
     untagged_tokens_excluded = sum(
         term not in token_origins for term in token_counts
@@ -186,7 +204,7 @@ def build_naming_candidates(imports_section: dict, modules: list[dict],
     term_items, term_coverage = _ranked(
         _term_candidates(
             token_counts, token_files, token_modules, doc_term_counts,
-            token_origins, token_patterns, context_dispersion,
+            token_origins, token_patterns, dispersion_items,
         ),
         TERM_CANDIDATE_CAP,
         key=lambda candidate: (-candidate["score"], candidate["term"]),

@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypedDict
 
 from glossabet.runtime.artifacts import (
     READ_ABSENT,
@@ -33,7 +34,19 @@ EXCLUDED_CONTENT_ROLES = frozenset({"generated", "vendored"})
 # section so a user or agent meets it exactly where the role classification
 # is on screen. Defined beside the loader so the description cannot drift
 # from what ``load_config`` accepts.
-CONFIG_SHAPE = {
+class ConfigurationEvidence(TypedDict):
+    """The persisted ``configuration`` section: what was configured and
+    the documented shape a configuration file may take."""
+
+    present: bool
+    file: str | None
+    schema_version: int
+    ignore_paths: list[str]
+    path_roles: dict[str, list[str]]
+    shape: dict[str, object]
+
+
+CONFIG_SHAPE: dict[str, object] = {
     "file": f"optional {CONFIG_FILE} at the scanned root",
     "schema_version": CONFIG_SCHEMA_VERSION,
     "keys": {
@@ -175,7 +188,7 @@ class RepositoryConfig:
             for path in paths
         )
 
-    def as_evidence(self) -> dict[str, object]:
+    def as_evidence(self) -> ConfigurationEvidence:
         return {
             "present": self.present,
             "file": CONFIG_FILE if self.present else None,

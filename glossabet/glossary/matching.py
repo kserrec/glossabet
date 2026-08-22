@@ -12,11 +12,20 @@ import unicodedata
 from collections import Counter
 from collections.abc import Iterable
 
+from glossabet.analysis.evidence_types import (
+    EvidenceDocument,
+    IdentifierEntry,
+    VocabularyEntry,
+)
 from glossabet.analysis.evidence_view import EvidenceView
 from glossabet.corpus.imports import module_of
 from glossabet.corpus.tokenize import doc_words, tokenize_identifier, tokenize_term
 from glossabet.glossary.store import path_in_scope, scope_evidence
-from glossabet.runtime.coverage import coverage_ledger, location_sample
+from glossabet.runtime.coverage import (
+    LocationSample,
+    coverage_ledger,
+    location_sample,
+)
 
 LOCATION_SAMPLE = 5
 COMPOUND_MATCH_START_BUDGET = 250_000
@@ -24,17 +33,17 @@ MAX_COMPOUND_TERM_TOKENS = 32
 
 
 def _match_compounds(
-    units: list[tuple[dict, list[str]]],
+    units: list[tuple[IdentifierEntry, list[str]]],
     supported: set[tuple[str, ...]],
     start_budget: int,
-) -> tuple[dict[tuple[str, ...], list[dict]], int, int]:
+) -> tuple[dict[tuple[str, ...], list[IdentifierEntry]], int, int]:
     """One bounded trie pass mapping each supported compound to its entries.
 
     Returns (matches, processed starts, total starts). A start is one
     identifier position where a compound could begin; the budget caps how
     many are examined across the whole index.
     """
-    matches: dict[tuple[str, ...], list[dict]] = {
+    matches: dict[tuple[str, ...], list[IdentifierEntry]] = {
         wanted: [] for wanted in supported
     }
     total_starts = sum(len(unit) for _, unit in units) if supported else 0
@@ -70,15 +79,17 @@ def _match_compounds(
     return matches, processed_starts, total_starts
 
 
-def _matching_locations(entry: dict, scope: tuple[str, ...]) -> list[dict]:
+def _matching_locations(
+    entry: VocabularyEntry, scope: tuple[str, ...],
+) -> list[LocationSample]:
     return [
-        location for location in entry.get("locations", [])
+        location for location in entry["locations"]
         if path_in_scope(location["path"], scope)
     ]
 
 
 def _scoped_entry_occurrence(
-    entry: dict,
+    entry: VocabularyEntry,
     scope: tuple[str, ...],
     corpus_complete: bool,
 ) -> dict:
@@ -107,7 +118,7 @@ class EvidenceIndex:
 
     def __init__(
         self,
-        evidence: dict,
+        evidence: EvidenceDocument,
         terms: Iterable[str] = (),
         *,
         compound_start_budget: int = COMPOUND_MATCH_START_BUDGET,
@@ -149,7 +160,7 @@ class EvidenceIndex:
         }
         self._unsupported_compounds = requested - supported
 
-        units = []
+        units: list[tuple[IdentifierEntry, list[str]]] = []
         for entry in self.identifier_section["items"]:
             unit = entry.get("tokens")
             if not isinstance(unit, list):

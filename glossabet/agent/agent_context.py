@@ -10,10 +10,16 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 
 from glossabet.analysis.evidence import persist_evidence
+from glossabet.analysis.evidence_types import (
+    EvidenceDocument,
+    IdentifierTable,
+    VocabularyTable,
+)
 from glossabet.analysis.evidence_view import EvidenceView
 from glossabet.corpus.imports import module_of
 from glossabet.corpus.tokenize import STRUCTURED_IDENTIFIER_STYLES, identifier_style
@@ -164,8 +170,23 @@ def _bounded_copy(
     )
 
 
+def _projection_copy(section: Mapping[str, object]) -> dict:
+    """A deep copy of one evidence section as a freely mutable dictionary.
+
+    The projection adds keys the evidence contract does not carry
+    (``exemplars``, per-term ``locations``) and replaces whole subsections,
+    so it works on an untyped copy. This is the one place typed evidence
+    becomes an untyped working document; AgentContext receives its own named
+    types in Pass 6 of docs/MAINTAINABILITY-REFACTOR.md.
+    """
+    copied: object = deepcopy(section)
+    if not isinstance(copied, dict):
+        raise AgentContextError("evidence section is not a JSON object")
+    return copied
+
+
 def _module_rollup_section(
-    section: dict,
+    section: VocabularyTable,
     section_name: str,
     omissions: _ProjectionOmissions,
 ) -> dict:
@@ -204,15 +225,17 @@ def _module_rollup_section(
 
 
 def _register_exemplars(
-    identifier_section: dict,
+    identifier_section: IdentifierTable,
     omissions: _ProjectionOmissions,
 ) -> dict:
-    eligible = []
+    eligible: list[dict[str, object]] = []
     for item in identifier_section["items"]:
         style = identifier_style(item["name"])
         if len(item["tokens"]) < 2 or style not in STRUCTURED_IDENTIFIER_STYLES:
             continue
-        eligible.append({**deepcopy(item), "style": style})
+        exemplar: dict[str, object] = dict(deepcopy(item))
+        exemplar["style"] = style
+        eligible.append(exemplar)
     source_ledger = identifier_section["coverage"]
     kept, coverage = capped_collection(
         eligible,
@@ -236,7 +259,7 @@ def _naming_with_locations(
     view: EvidenceView,
     omissions: _ProjectionOmissions,
 ) -> dict:
-    naming = deepcopy(view.naming_candidates())
+    naming = _projection_copy(view.naming_candidates())
     token_entries = {
         item["term"]: item for item in view.vocabulary_table("tokens")["items"]
     }
@@ -264,7 +287,7 @@ def _naming_with_locations(
 
 
 def build_agent_context(
-    evidence: dict,
+    evidence: EvidenceDocument,
     glossary: dict | None,
     *,
     repository_glossary: dict | None = None,
@@ -297,10 +320,12 @@ def build_agent_context(
     omissions.record(("imports",), "section_excluded", 1)
 
     view = EvidenceView(evidence)
-    terminology = deepcopy(view.terminology())
+    terminology = _projection_copy(view.terminology())
+    vocabulary: dict
+    naming_candidates: dict
     if full:
-        vocabulary = deepcopy(view.vocabulary())
-        naming_candidates = deepcopy(view.naming_candidates())
+        vocabulary = _projection_copy(view.vocabulary())
+        naming_candidates = _projection_copy(view.naming_candidates())
     else:
         vocabulary = {
             "normalization": deepcopy(view.normalization()),

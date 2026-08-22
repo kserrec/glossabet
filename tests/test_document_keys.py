@@ -92,3 +92,20 @@ def test_views_cover_every_top_level_evidence_key(tmp_path):
     assert set(reachable) == set(evidence)
     for key, value in reachable.items():
         assert value is evidence[key]
+
+
+def test_evidence_view_returns_only_named_types():
+    # The view is a typed read boundary: every method names the section type
+    # it returns (evidence_types), never a bare ``dict`` / ``list`` / ``list[dict]``.
+    source = (ROOT / "glossabet" / "analysis" / "evidence_view.py").read_text(
+        encoding="utf-8"
+    )
+    tree = ast.parse(source)
+    bare = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef) or node.returns is None:
+            continue
+        rendered = ast.unparse(node.returns)
+        if rendered in {"dict", "list"} or "[dict]" in rendered or "dict |" in rendered:
+            bare.append(f"{node.name} -> {rendered}")
+    assert not bare, bare

@@ -6,16 +6,22 @@ here is read back out of the evidence dict, never recomputed."""
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterable
 
 from glossabet.analysis.evidence import build_evidence, write_evidence
+from glossabet.analysis.evidence_types import StructuralGroups
 from glossabet.analysis.evidence_view import EvidenceView
-from glossabet.corpus.config import CONFIG_FILE, PATH_ROLES
-from glossabet.corpus.scanner import exclusion_sentences
+from glossabet.corpus.config import CONFIG_FILE, PATH_ROLES, ConfigurationEvidence
+from glossabet.corpus.scanner import (
+    CorpusBudgetEvidence,
+    MonorepoEvidence,
+    exclusion_sentences,
+)
 from glossabet.runtime.display import escape_terminal_text, join_escaped
 from glossabet.runtime.engine_run import open_run
 
 
-def configuration_hint(configuration: dict) -> str:
+def configuration_hint(configuration: ConfigurationEvidence) -> str:
     """One line telling the user where the roles came from and that a root
     ``glossabet.json`` adjusts them — printed exactly where the exclusions
     and role totals are on screen, so the option is met at the point of
@@ -32,14 +38,15 @@ def configuration_hint(configuration: dict) -> str:
 
 
 def _print_candidates(
-    kind: str, candidates: list[dict], name_key: str, *, tag_key: str | None = None
+    kind: str, candidates: Iterable[tuple[str, str | None, list[str]]],
 ) -> None:
-    for candidate in candidates:
-        name = escape_terminal_text(candidate[name_key])
+    """``candidates`` are ``(name, tag or None, reasons)`` rows."""
+    for candidate_name, candidate_tag, candidate_reasons in candidates:
+        name = escape_terminal_text(candidate_name)
         tag = (
-            f" [{escape_terminal_text(candidate[tag_key])}]" if tag_key else ""
+            f" [{escape_terminal_text(candidate_tag)}]" if candidate_tag else ""
         )
-        reasons = join_escaped(candidate["reasons"], "; ")
+        reasons = join_escaped(candidate_reasons, "; ")
         print(f"{kind} {name}{tag} — {reasons}")
 
 
@@ -85,19 +92,20 @@ def _print_terminology_report(view: EvidenceView) -> None:
         f"{k} words {v}%" for k, v in reg["token_count_distribution_pct"].items()
     )
     print(f"identifier length (structurally styled spellings): {dist or 'n/a'}")
-    for label, key in (("suffixes", "common_suffix_tokens"),
-                       ("prefixes", "common_prefix_tokens")):
+    for label, affix_records in (("suffixes", reg["common_suffix_tokens"]),
+                                 ("prefixes", reg["common_prefix_tokens"])):
         affixes = ", ".join(
             f"{escape_terminal_text(a['token'])} ({a['identifiers']})"
-            for a in reg[key]
+            for a in affix_records
         )
         print(f"common {label}: {affixes or 'none'}")
 
     layers = terminology["layers"]
     print("\n== code vs docs vocabulary ==")
-    for label, key in (("shared", "shared_top"), ("code-only", "code_only_top"),
-                       ("doc-only", "doc_only_top")):
-        values = join_escaped(layers[key])
+    for label, layer_terms in (("shared", layers["shared_top"]),
+                               ("code-only", layers["code_only_top"]),
+                               ("doc-only", layers["doc_only_top"])):
+        values = join_escaped(layer_terms)
         print(f"{label}: {values or 'none'}")
 
     syn = terminology["synonym_candidates"]
@@ -120,18 +128,26 @@ def _print_terminology_report(view: EvidenceView) -> None:
     print("\n== possibly overloaded terms ==")
     if not over["items"]:
         print("none nominated")
-    for item in over["items"]:
-        mods = join_escaped(module["path"] for module in item["modules"])
-        term_name = escape_terminal_text(item["term"])
-        print(f"{term_name} across {mods} (dispersion {item['dispersion']})")
+    for overload in over["items"]:
+        mods = join_escaped(module["path"] for module in overload["modules"])
+        term_name = escape_terminal_text(overload["term"])
+        print(f"{term_name} across {mods} (dispersion {overload['dispersion']})")
     if over["dropped_items"]:
         print(f"... and {over['dropped_items']} more not shown")
 
     naming = view.naming_candidates()
     print("\n== naming candidates (import graph is best-effort) ==")
-    _print_candidates("module", naming["modules"], "path")
-    _print_candidates("term", naming["terms"], "term", tag_key="nomination_kind")
-    _print_candidates("structure", naming["structures"], "label")
+    _print_candidates(
+        "module", ((c["path"], None, c["reasons"]) for c in naming["modules"])
+    )
+    _print_candidates(
+        "term",
+        ((c["term"], c["nomination_kind"], c["reasons"]) for c in naming["terms"]),
+    )
+    _print_candidates(
+        "structure",
+        ((c["label"], None, c["reasons"]) for c in naming["structures"]),
+    )
     dropped = (naming["modules_dropped"] + naming["terms_dropped"]
                + naming["structures_dropped"])
     if dropped:
@@ -151,7 +167,7 @@ def _print_terminology_report(view: EvidenceView) -> None:
     )
 
 
-def _print_graphify_summary(structural: dict) -> None:
+def _print_graphify_summary(structural: StructuralGroups) -> None:
     for warning in structural.get("warnings", []):
         print(
             f"graphify adapter: {escape_terminal_text(warning)}",
@@ -175,7 +191,7 @@ def _print_graphify_summary(structural: dict) -> None:
         print("graphify graph present, but no usable structural groups loaded")
 
 
-def _print_corpus_budget_warning(budget: dict) -> None:
+def _print_corpus_budget_warning(budget: CorpusBudgetEvidence) -> None:
     if budget["complete"]:
         return
     omitted = budget["skipped"]["source_files"]
@@ -193,7 +209,7 @@ def _print_corpus_budget_warning(budget: dict) -> None:
     )
 
 
-def _print_monorepo_notice(mono: dict) -> None:
+def _print_monorepo_notice(mono: MonorepoEvidence) -> None:
     if not mono["detected"]:
         return
     print(
@@ -209,7 +225,7 @@ def _print_monorepo_notice(mono: dict) -> None:
 
 def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
     run = open_run(path_arg)
-    stats: dict = {}
+    stats: dict[str, int] = {}
     evidence = build_evidence(
         run.root, cache=True, stats=stats, graphify=graphify
     )

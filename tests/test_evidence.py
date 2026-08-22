@@ -8,6 +8,7 @@ import pytest
 
 from glossabet.analysis.evidence import Limits, build_evidence, write_evidence
 from glossabet.cli import main
+from glossabet.corpus.scanner import EXCLUSION_KINDS, SkippedPaths, WalkResult
 
 
 def make_repo(tmp_path):
@@ -875,3 +876,13 @@ def test_root_manifest_probe_applies_the_configured_ignore_rules_to_links(tmp_pa
     os.symlink(tmp_path / "scratch" / "manifest.json", tmp_path / "package.json")
     mono = build_evidence(tmp_path)["monorepo"]
     assert mono["detected"] is False
+
+
+def test_skipped_paths_contract_pins_the_exclusion_ledger():
+    # ``SkippedPaths`` spells the ledger's keys statically; the ledger is the
+    # runtime source of truth. They must agree in set and in order, and an
+    # empty walk must serialize one empty list per kind.
+    keys = [kind.key for kind in EXCLUSION_KINDS]
+    assert list(SkippedPaths.__annotations__) == keys
+    assert list(WalkResult().skipped_as_evidence()) == keys
+    assert all(value == [] for value in WalkResult().skipped_as_evidence().values())

@@ -18,6 +18,7 @@ import os
 import unicodedata
 from pathlib import Path
 
+from glossabet.analysis.evidence_types import EvidenceDocument
 from glossabet.analysis.evidence_view import EvidenceView
 from glossabet.corpus.scanner import (
     LINK_ESCAPES_REPOSITORY,
@@ -248,7 +249,7 @@ def repository_glossary_divergence(glossary: dict, payload: bytes) -> dict:
 
 
 def repository_glossary_section(
-    root: Path, evidence: dict, glossary: dict | None = None
+    root: Path, evidence: EvidenceDocument, glossary: dict | None = None
 ) -> dict:
     """The agent-context section: discovery plus nested exclusions.
 

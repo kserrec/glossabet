@@ -222,6 +222,65 @@ class PathReasonSample(TypedDict):
     reason: str
 
 
+class BudgetLimits(TypedDict):
+    file_bytes: int
+    walk_entries: int
+    directory_entries: int
+    source_files: int
+    source_bytes: int
+
+
+class BudgetUsed(TypedDict):
+    walk_entries: int
+    source_files: int
+    source_bytes: int
+
+
+class BudgetSkipped(TypedDict):
+    source_files: int
+    production_source_files: int
+    source_bytes: int
+    sample: list[PathReasonSample]
+    sample_truncated: bool
+
+
+class WalkRemainder(TypedDict):
+    truncated: bool
+    minimum_entries_omitted: int
+    exact: bool
+    sample: list[PathReasonSample]
+    sample_truncated: bool
+
+
+class CorpusBudgetEvidence(TypedDict):
+    """The persisted ``skipped.corpus_budget`` record."""
+
+    complete: bool
+    production_complete: bool
+    limits: BudgetLimits
+    used: BudgetUsed
+    skipped: BudgetSkipped
+    walk_remainder: WalkRemainder
+
+
+class SkippedPaths(TypedDict):
+    """The walk's path exclusions of ``evidence["skipped"]``: one sorted
+    list per ``EXCLUSION_KINDS`` entry, keyed by that entry's ``key``. The
+    keys here and the ledger are pinned to each other by a test."""
+
+    sensitive: list[str]
+    oversized: list[str]
+    symlinks_escaping_repo: list[str]
+    symlinks_to_excluded_content: list[str]
+    symlinked_directories: list[str]
+    unreadable: list[str]
+    configured: list[str]
+    generated: list[str]
+    vendored: list[str]
+    self_glossaries: list[str]
+    self_reports: list[str]
+
+
 class MonorepoEvidence(TypedDict):
     """The persisted ``monorepo`` section."""
 
@@ -296,7 +355,7 @@ class CorpusBudget:
         if len(self.walk_sample) < BUDGET_PATH_SAMPLE:
             self.walk_sample.append({"path": relative, "reason": reason})
 
-    def as_evidence(self) -> dict[str, object]:
+    def as_evidence(self) -> CorpusBudgetEvidence:
         complete = not self.walk_truncated and not self.skipped_source_files
         production_complete = (
             not self.walk_truncated
@@ -396,14 +455,15 @@ EXCLUSION_KINDS: tuple[ExclusionKind, ...] = (
 SKIPPED_SELF_GLOSSARIES = "self_glossaries"
 
 
-def exclusion_sentences(skipped: Mapping[str, Sized]) -> list[str]:
+def exclusion_sentences(skipped: Mapping[str, object]) -> list[str]:
     """Human sentences for every non-empty exclusion kind in an evidence
     ``skipped`` section, in ledger order."""
-    return [
-        kind.sentence.format(n=len(skipped[kind.key]))
-        for kind in EXCLUSION_KINDS
-        if skipped.get(kind.key)
-    ]
+    sentences = []
+    for kind in EXCLUSION_KINDS:
+        paths = skipped.get(kind.key)
+        if isinstance(paths, Sized) and len(paths):
+            sentences.append(kind.sentence.format(n=len(paths)))
+    return sentences
 
 
 @dataclass
@@ -429,12 +489,24 @@ class WalkResult:
     workspace_manifests: list[str] = field(default_factory=list)
     corpus_budget: CorpusBudget = field(default_factory=CorpusBudget)
 
-    def skipped_as_evidence(self) -> dict[str, list[str]]:
+    def skipped_as_evidence(self) -> SkippedPaths:
         """The path exclusions of ``evidence["skipped"]``, keyed and sorted
-        as the ledger dictates (the caller adds its non-walk entries)."""
+        as the ledger dictates (the caller adds its non-walk entries). Spelled
+        in ``EXCLUSION_KINDS`` order; ``test_scanner`` pins the two."""
         return {
-            kind.key: sorted(getattr(self, kind.attribute))
-            for kind in EXCLUSION_KINDS
+            "sensitive": sorted(self.skipped_sensitive),
+            "oversized": sorted(self.skipped_oversized),
+            "symlinks_escaping_repo": sorted(self.skipped_symlinks),
+            "symlinks_to_excluded_content": sorted(
+                self.skipped_symlinks_to_excluded
+            ),
+            "symlinked_directories": sorted(self.skipped_symlinked_directories),
+            "unreadable": sorted(self.skipped_unreadable),
+            "configured": sorted(self.skipped_configured),
+            "generated": sorted(self.skipped_generated),
+            "vendored": sorted(self.skipped_vendored),
+            "self_glossaries": sorted(self.skipped_self_glossaries),
+            "self_reports": sorted(self.skipped_self_reports),
         }
 
 

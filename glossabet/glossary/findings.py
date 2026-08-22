@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from glossabet.analysis.evidence_types import EvidenceDocument
 from glossabet.analysis.evidence_view import EvidenceView
 from glossabet.runtime import coverage
 from glossabet.runtime.coverage import coverage_ledger, coverage_reasons
@@ -154,7 +155,7 @@ def mark_incomplete(
 
 
 def vocabulary_omission_reasons(
-    evidence: dict,
+    evidence: EvidenceDocument,
     names: Iterable[str],
     template: str = VOCABULARY_MATCHING_OMISSION,
 ) -> list[str]:

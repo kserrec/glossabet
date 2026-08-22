@@ -3,7 +3,7 @@
 Status: **Phases 0–22, 24–32, 34–44 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
 in progress at 33.2; Phase 45 (maintainability refactor, 15 spec passes) in
-progress at 45.3; owner self-testing pause active before the trusted-alpha
+progress at 45.4; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-22.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1215,7 +1215,7 @@ Steps (each is the same-numbered spec pass):
   `static` job, checker hardening) ✅ 2026-08-22
 - **45.2** Pass 2 — JSON and coverage foundation types ✅ 2026-08-22
 - **45.3** Pass 3 — `RepositoryEvidence` contract and a fully typed
-  `EvidenceView`
+  `EvidenceView` ✅ 2026-08-22
 - **45.4** Pass 4 — structured glossary and store boundary types
 - **45.5** Pass 5 — observed vs heuristic findings as distinct types
 - **45.6** Pass 6 — AgentContext and remaining production boundaries
@@ -1268,6 +1268,29 @@ ledger/section annotations renamed where the TypedDict crosses into them.
 `tests/test_coverage.py` pins the serialized shapes. A/B byte-identical for
 scan (cold and warm), analyze, drift, validate, show, brief, every artifact,
 and the cache file. Suite 648.
+
+**45.3 outcome (2026-08-22):** `analysis/evidence_types.py` declares the
+`EvidenceDocument` contract and every analysis-owned section (vocabulary
+tables and entries, terminology, naming candidates, structural groups,
+skipped) as `TypedDict`s; lower layers own theirs (`ConfigurationEvidence`
+in config, `ImportsSection` in imports, `CorpusBudgetEvidence`/`SkippedPaths`
+in scanner — the latter spelled literally and pinned to `EXCLUSION_KINDS` by
+`test_evidence`, `TokenizationContract` in tokenize) and coverage/Git types
+are reused, not redeclared. Producers (`build_terminology`,
+`build_naming_candidates`, `build_structural_groups`, `structure_candidates`,
+`_capped`, `_vocabulary_section`, `_module_lists`) return the named types;
+`build_evidence`/`persist_evidence` return `EvidenceDocument`.
+`EvidenceView` takes the contract, has no bare-container return (pinned by
+`test_document_keys`), uses `Literal` overloads for `vocabulary_table`,
+`file_entries`, and `terminology_section`, and its docstring no longer
+claims import-time failure. Consumers (`evidence_report`, `matching`,
+`drift`, `reconcile`, `findings`, `repository_glossary`) take the typed
+sections; `agent_context` copies sections through one explicit
+`_projection_copy` boundary (untyped working copy, removed in Pass 6).
+`evidence`, `evidence_types`, `evidence_view` are under the strict override;
+`evidence_view`/`terminology` left the `warn_return_any` relaxation. A/B
+byte-identical for scan (cold+warm), analyze, drift, validate, show, brief,
+inspect, inspect --full, inspect --no-graphify, and every artifact. Suite 650.
 
 ### Owner self-testing pause — active, not an implementation phase
 
