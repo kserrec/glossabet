@@ -413,7 +413,7 @@ def test_partial_production_corpus_cannot_prove_a_term_is_absent(
             "status": "canonical",
         }],
     }
-    monkeypatch.setattr("glossabet.corpus.scanner.MAX_SOURCE_FILES", 1)
+    monkeypatch.setattr("glossabet.corpus.walk_budget.MAX_SOURCE_FILES", 1)
     (tmp_path / "a.py").write_text("ordinary_name = 1\n")
     (tmp_path / "z.py").write_text("workspace_record = 1\n")
 
@@ -740,7 +740,7 @@ def test_watched_count_is_qualified_under_a_partial_corpus(tmp_path, monkeypatch
     """When the production corpus was cut by a budget, a watched term's
     occurrence count is a floor, and the finding says so ("at least N");
     an exact-looking count under a partial corpus is a coverage lie."""
-    monkeypatch.setattr("glossabet.corpus.scanner.MAX_SOURCE_FILES", 1)
+    monkeypatch.setattr("glossabet.corpus.walk_budget.MAX_SOURCE_FILES", 1)
     (tmp_path / "a.py").write_text("charge_request = 1\ncharge_total = 2\n")
     (tmp_path / "b.py").write_text("charge_more = 3\n")
     glossary = {
@@ -759,7 +759,7 @@ def test_watched_count_is_qualified_under_a_partial_corpus(tmp_path, monkeypatch
     assert "at least 2 lexical occurrence(s)" in finding["summary"]
     assert drift["watched_terms_in_use"]["coverage"]["complete"] is False
 
-    monkeypatch.setattr("glossabet.corpus.scanner.MAX_SOURCE_FILES", 10_000)
+    monkeypatch.setattr("glossabet.corpus.walk_budget.MAX_SOURCE_FILES", 10_000)
     (finding,) = build_drift(build_evidence(tmp_path), glossary)[
         "watched_terms_in_use"
     ]["items"]

@@ -1,9 +1,13 @@
-"""Repository walk: path roles, exclusions, and monorepo detection.
+"""Repository walk: deterministic traversal, file and directory
+classification, and monorepo detection.
 
-Sensitive and self-output exclusions are non-overridable trust boundaries.
-Repository configuration can add ignores or override conservative path roles;
-tests and fixtures stay inventoried, while generated and vendored content is
-pruned before a lexical read and reported.
+Path trust rules live in ``path_policy`` and budget accounting in
+``walk_budget``; this module orchestrates them and remains the public facade
+for every name the rest of the package imports from the scanner. Sensitive
+and self-output exclusions are non-overridable trust boundaries. Repository
+configuration can add ignores or override conservative path roles; tests and
+fixtures stay inventoried, while generated and vendored content is pruned
+before a lexical read and reported.
 """
 
 from __future__ import annotations
@@ -11,14 +15,67 @@ from __future__ import annotations
 import errno
 import json
 import os
-import re
-from collections.abc import Mapping, Sized
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypedDict
 
 from glossabet.corpus.config import EXCLUDED_CONTENT_ROLES, RepositoryConfig
-from glossabet.runtime.artifacts import REPORT_FILE
+from glossabet.corpus.path_policy import (
+    LINK_ESCAPES_REPOSITORY,
+    LINK_TO_EXCLUDED_CONTENT,
+    LINK_TO_SENSITIVE_FILE,
+    SELF_DIRS,
+    SELF_FILES,
+    SELF_REPORT_FILES,
+    WORKSPACE_MANIFESTS,
+    _resolves_outside_root,
+    _target_relative,
+    entry_named_exactly,
+    glossary_link_refusal,
+    is_sensitive,
+    symlink_content_refusal,
+)
+from glossabet.corpus.walk_budget import (
+    BUDGET_PATH_SAMPLE,
+    EXCLUSION_KINDS,
+    MAX_DIRECTORY_ENTRIES,
+    MAX_FILE_BYTES,
+    MAX_SOURCE_BYTES,
+    MAX_SOURCE_FILES,
+    MAX_WALK_ENTRIES,
+    SKIPPED_SELF_GLOSSARIES,
+    BudgetLimits,
+    BudgetSkipped,
+    BudgetUsed,
+    CorpusBudget,
+    CorpusBudgetEvidence,
+    ExclusionKind,
+    PathReasonSample,
+    SkippedPaths,
+    WalkRemainder,
+    exclusion_sentences,
+)
+
+__all__ = [
+    # owned here
+    "CODE_LANGUAGES", "DOC_EXTENSIONS", "PACKAGE_MANIFESTS",
+    "MONOREPO_SUBROOT_THRESHOLD", "MONOREPO_CODE_FILE_THRESHOLD",
+    "MonorepoEvidence", "WalkResult", "walk_repository", "detect_monorepo",
+    # path policy (glossabet.corpus.path_policy)
+    "LINK_ESCAPES_REPOSITORY", "LINK_TO_EXCLUDED_CONTENT",
+    "LINK_TO_SENSITIVE_FILE", "SELF_DIRS", "SELF_FILES", "SELF_REPORT_FILES",
+    "WORKSPACE_MANIFESTS", "entry_named_exactly", "glossary_link_refusal",
+    "is_sensitive", "symlink_content_refusal",
+    # budget and coverage (glossabet.corpus.walk_budget); the limits are
+    # re-exported for reading — to change one for a test, patch it on
+    # ``walk_budget``, where the walk and the ledger read it.
+    "BUDGET_PATH_SAMPLE", "EXCLUSION_KINDS", "MAX_DIRECTORY_ENTRIES",
+    "MAX_FILE_BYTES", "MAX_SOURCE_BYTES", "MAX_SOURCE_FILES",
+    "MAX_WALK_ENTRIES", "SKIPPED_SELF_GLOSSARIES", "BudgetLimits",
+    "BudgetSkipped", "BudgetUsed", "CorpusBudget", "CorpusBudgetEvidence",
+    "ExclusionKind", "PathReasonSample", "SkippedPaths", "WalkRemainder",
+    "exclusion_sentences",
+]
 
 CODE_LANGUAGES = {
     ".py": "python", ".pyi": "python",
@@ -37,248 +94,12 @@ CODE_LANGUAGES = {
 
 DOC_EXTENSIONS = {".md", ".rst", ".txt", ".adoc"}
 
-# Filename patterns that must never enter evidence.
-_SENSITIVE_RES = [
-    re.compile(p) for p in (
-        r"^\.env$", r"\.env$", r"^\.env\.", r"\.env\.",
-        r"\.(pem|key|p12|pfx|jks|keystore|der|p8|ppk|kdbx|asc|gpg|pgp)$",
-        r"^id_(rsa|dsa|ecdsa|ed25519)$",
-        r"^\.(netrc|npmrc|pypirc|htpasswd|dockercfg)$",
-        r"secret", r"credential",
-    )
-]
-
-# Tool artifacts, not repo content: glossabet's own outputs (so the glossary
-# can't echo through the evidence and blind drift detection) and graphify's
-# outputs (so its generated reports can't leak into doc vocabulary — the
-# graph is consumed through the adapter, never the lexical walk).
-SELF_DIRS = frozenset({
-    "glossabet-out",
-    ".glossabet",
-    # Pre-rename artifacts remain excluded so an old local run cannot echo
-    # back into evidence after upgrading to Glossabet.
-    "glossarize-out",
-    ".glossarize",
-    "graphify-out",
-})
-# Excluded at any depth: a monorepo sub-project's settled glossary echoes
-# through evidence exactly like the root one would.
-SELF_FILES = frozenset({"GLOSSARY.md"})
-# Also excluded at any depth, for a different reason: GLOSSARY.md is
-# maintainer-authored and is kept out so Glossabet can validate it
-# independently; GLOSSABET.md is Glossabet's own derived vocabulary-health
-# report (written by the skill at the scan root), kept out because a report's
-# proposed names, explanations, and open questions must never count as
-# repository vocabulary for the report's next run. Neither is a Glossabet
-# machine-state file: deleting either changes no canonical state.
-SELF_REPORT_FILES = frozenset({REPORT_FILE})
-
-MAX_FILE_BYTES = 2_000_000
-# Phase 15 calibration: 84 source files / 659,141 bytes took a 0.32-second
-# median cold scan on the reference host. These immutable safety ceilings
-# retain roughly 119x file and 49x byte headroom while bounding lexical work.
-MAX_SOURCE_FILES = 10_000
-MAX_SOURCE_BYTES = 32_000_000
-MAX_WALK_ENTRIES = 100_000
-MAX_DIRECTORY_ENTRIES = 10_000
-BUDGET_PATH_SAMPLE = 20
-
 PACKAGE_MANIFESTS = frozenset({
     "package.json", "pyproject.toml", "setup.py", "Cargo.toml", "go.mod",
     "pom.xml", "build.gradle", "dune-project", "mix.exs", "Gemfile",
 })
-WORKSPACE_MANIFESTS = frozenset({
-    "pnpm-workspace.yaml", "lerna.json", "go.work",
-    "WORKSPACE", "WORKSPACE.bazel", "MODULE.bazel",
-})
 MONOREPO_SUBROOT_THRESHOLD = 3
 MONOREPO_CODE_FILE_THRESHOLD = 5000
-
-
-def is_sensitive(name: str) -> bool:
-    lower = name.lower()
-    return any(p.search(lower) for p in _SENSITIVE_RES)
-
-
-def _resolves_outside_root(full: str, root: Path) -> bool:
-    """True if the path's real target lies outside the repo root."""
-    try:
-        Path(os.path.realpath(full)).relative_to(root)
-    except ValueError:
-        return True
-    return False
-
-
-# The one content rule for a symlinked repository path, shared by the walk
-# and by root GLOSSARY.md discovery (which must declare readable exactly what
-# the walk would have read — the skill reads what the engine declares
-# readable). Reasons are the reported vocabulary of both.
-LINK_ESCAPES_REPOSITORY = "symlink-escapes-repository"
-LINK_TO_SENSITIVE_FILE = "symlink-to-sensitive-file"
-LINK_TO_EXCLUDED_CONTENT = "symlink-to-excluded-content"
-
-
-def _target_relative(full: str, root: Path) -> str | None:
-    """The link target's repository-relative POSIX path, or ``None`` when it
-    resolves outside the root."""
-    try:
-        return Path(os.path.realpath(full)).relative_to(root).as_posix()
-    except ValueError:
-        return None
-
-
-def entry_named_exactly(root: Path, name: str) -> bool | None:
-    """Whether ``root`` holds a directory entry spelled exactly ``name`` — as
-    the walk's fixed-name rules see it — not a path lookup, which on a
-    case-insensitive filesystem would also find ``glossary.md`` or
-    ``agents.md``, files the walk treats as ordinary evidence. The path lookup
-    is the cheap fast path (absent → done, no directory scan); the exact-name
-    confirmation iterates ``scandir`` under the walk-entry cap instead of
-    materializing the whole listing, so a root with millions of entries costs
-    no memory.
-
-    Returns True/False when the answer is known, and None when something is
-    there but its exact name could not be confirmed (the root cannot be
-    listed, or the cap was reached first). Callers never report None as
-    absent: a false absence claim is the one failure to avoid.
-    """
-    if not os.path.lexists(os.path.join(root, name)):
-        return False
-    try:
-        with os.scandir(root) as entries:
-            for index, entry in enumerate(entries):
-                if index >= MAX_WALK_ENTRIES:
-                    return None
-                if entry.name == name:
-                    return True
-    except OSError:
-        return None
-    return False
-
-
-def glossary_link_refusal(full: str, root: Path) -> str | None:
-    """Why a symlinked root ``GLOSSARY.md`` may not be read as the repository
-    glossary, or ``None``. The discovery channel exists to read that file,
-    so only the rules that protect *what* is read apply: an escaping target,
-    a sensitive target, or Glossabet's own output posing as the glossary. A
-    link into ``docs/GLOSSARY.md`` or a hidden/vendored directory is the
-    maintainers' choice and is followed."""
-    target = _target_relative(full, root)
-    if target is None:
-        return LINK_ESCAPES_REPOSITORY
-    parts = target.split("/")
-    if any(is_sensitive(part) for part in parts):
-        return LINK_TO_SENSITIVE_FILE
-    if any(part in SELF_DIRS for part in parts[:-1]) or parts[-1] in SELF_REPORT_FILES:
-        return LINK_TO_EXCLUDED_CONTENT
-    return None
-
-
-def symlink_content_refusal(
-    full: str, root: Path, config: RepositoryConfig | None = None
-) -> str | None:
-    """Why a symlinked path is not repository content, or ``None`` when its
-    confined target may be read like an ordinary file.
-
-    A link resolving outside the repo is not repo content: reading it would
-    ingest arbitrary host files into evidence (``os.walk``'s
-    ``followlinks=False`` guards dirs, not files). A link with an innocent
-    name pointing at content every other rule excludes (``notes.py -> .env``,
-    ``x.md -> GLOSSARY.md``, ``y.js -> node_modules/...``) would otherwise
-    launder that content into evidence, so the resolved target's complete
-    repository-relative path is classified by the same rules the walk applies
-    to the paths it meets directly: sensitive names anywhere in the path,
-    Glossabet's own directories and files, hidden components, configured
-    ignores, and generated/vendored roles (``config`` supplies the last two;
-    without it those two rules are not applied).
-    """
-    target = _target_relative(full, root)
-    if target is None:
-        return LINK_ESCAPES_REPOSITORY
-    parts = target.split("/")
-    directories, name = parts[:-1], parts[-1]
-    if any(is_sensitive(part) for part in parts):
-        return LINK_TO_SENSITIVE_FILE
-    if (
-        any(part in SELF_DIRS for part in directories)
-        or name in SELF_FILES
-        or name in SELF_REPORT_FILES
-        or any(part.startswith(".") for part in directories)
-        or (name.startswith(".") and name not in WORKSPACE_MANIFESTS)
-    ):
-        return LINK_TO_EXCLUDED_CONTENT
-    if config is not None and (
-        config.is_ignored(target)
-        or config.role_for(target) in EXCLUDED_CONTENT_ROLES
-    ):
-        return LINK_TO_EXCLUDED_CONTENT
-    return None
-
-
-class PathReasonSample(TypedDict):
-    """One ``{path, reason}`` record of a budget sample."""
-
-    path: str
-    reason: str
-
-
-class BudgetLimits(TypedDict):
-    file_bytes: int
-    walk_entries: int
-    directory_entries: int
-    source_files: int
-    source_bytes: int
-
-
-class BudgetUsed(TypedDict):
-    walk_entries: int
-    source_files: int
-    source_bytes: int
-
-
-class BudgetSkipped(TypedDict):
-    source_files: int
-    production_source_files: int
-    source_bytes: int
-    sample: list[PathReasonSample]
-    sample_truncated: bool
-
-
-class WalkRemainder(TypedDict):
-    truncated: bool
-    minimum_entries_omitted: int
-    exact: bool
-    sample: list[PathReasonSample]
-    sample_truncated: bool
-
-
-class CorpusBudgetEvidence(TypedDict):
-    """The persisted ``skipped.corpus_budget`` record."""
-
-    complete: bool
-    production_complete: bool
-    limits: BudgetLimits
-    used: BudgetUsed
-    skipped: BudgetSkipped
-    walk_remainder: WalkRemainder
-
-
-class SkippedPaths(TypedDict):
-    """The walk's path exclusions of ``evidence["skipped"]``: one sorted
-    list per ``EXCLUSION_KINDS`` entry, keyed by that entry's ``key``. The
-    keys here and the ledger are pinned to each other by a test."""
-
-    sensitive: list[str]
-    oversized: list[str]
-    symlinks_escaping_repo: list[str]
-    symlinks_to_excluded_content: list[str]
-    symlinked_directories: list[str]
-    unreadable: list[str]
-    configured: list[str]
-    generated: list[str]
-    vendored: list[str]
-    self_glossaries: list[str]
-    self_reports: list[str]
 
 
 class MonorepoEvidence(TypedDict):
@@ -287,183 +108,6 @@ class MonorepoEvidence(TypedDict):
     detected: bool
     reasons: list[str]
     sub_roots: list[str]
-
-
-@dataclass
-class CorpusBudget:
-    walk_entries: int = 0
-    source_files: int = 0
-    source_bytes: int = 0
-    skipped_source_files: int = 0
-    skipped_source_bytes: int = 0
-    skipped_production_source_files: int = 0
-    skipped_sample: list[PathReasonSample] = field(default_factory=list)
-    walk_truncated: bool = False
-    walk_truncations: int = 0
-    minimum_entries_omitted: int = 0
-    walk_sample: list[PathReasonSample] = field(default_factory=list)
-    # Walk-time size of every admitted file, so a later read failure
-    # reclassifies exactly the bytes that were charged (a fresh stat could
-    # differ, or fail, if the file changed or vanished in between).
-    admitted_sizes: dict[str, int] = field(default_factory=dict)
-
-    def include_source(self, relative: str, size: int) -> None:
-        self.source_files += 1
-        self.source_bytes += size
-        self.admitted_sizes[relative] = size
-
-    def skip_source(
-        self,
-        relative: str,
-        size: int,
-        reason: str,
-        *,
-        production: bool,
-    ) -> None:
-        self.skipped_source_files += 1
-        self.skipped_source_bytes += size
-        if production:
-            self.skipped_production_source_files += 1
-        if len(self.skipped_sample) < BUDGET_PATH_SAMPLE:
-            self.skipped_sample.append({"path": relative, "reason": reason})
-
-    def reclassify_unread(
-        self,
-        relative: str,
-        reason: str,
-        *,
-        production: bool,
-    ) -> None:
-        """Move one walk-admitted file to the skipped ledger.
-
-        The walk admits files by stat alone; a later read failure means the
-        file never actually joined the corpus. Keeping it on both sides
-        would make used + skipped exceed the inventory, and the bytes moved
-        are the ones the walk charged.
-        """
-        size = self.admitted_sizes.pop(relative, 0)
-        self.source_files -= 1
-        self.source_bytes -= size
-        self.skip_source(relative, size, reason, production=production)
-
-    def truncate_walk(
-        self, relative: str, minimum_omitted: int, reason: str
-    ) -> None:
-        self.walk_truncated = True
-        self.walk_truncations += 1
-        self.minimum_entries_omitted += minimum_omitted
-        if len(self.walk_sample) < BUDGET_PATH_SAMPLE:
-            self.walk_sample.append({"path": relative, "reason": reason})
-
-    def as_evidence(self) -> CorpusBudgetEvidence:
-        complete = not self.walk_truncated and not self.skipped_source_files
-        production_complete = (
-            not self.walk_truncated
-            and not self.skipped_production_source_files
-        )
-        return {
-            "complete": complete,
-            "production_complete": production_complete,
-            "limits": {
-                "file_bytes": MAX_FILE_BYTES,
-                "walk_entries": MAX_WALK_ENTRIES,
-                "directory_entries": MAX_DIRECTORY_ENTRIES,
-                "source_files": MAX_SOURCE_FILES,
-                "source_bytes": MAX_SOURCE_BYTES,
-            },
-            "used": {
-                "walk_entries": self.walk_entries,
-                "source_files": self.source_files,
-                "source_bytes": self.source_bytes,
-            },
-            "skipped": {
-                "source_files": self.skipped_source_files,
-                "production_source_files": (
-                    self.skipped_production_source_files
-                ),
-                "source_bytes": self.skipped_source_bytes,
-                "sample": list(self.skipped_sample),
-                "sample_truncated": (
-                    self.skipped_source_files > len(self.skipped_sample)
-                ),
-            },
-            "walk_remainder": {
-                "truncated": self.walk_truncated,
-                "minimum_entries_omitted": self.minimum_entries_omitted,
-                "exact": not self.walk_truncated,
-                "sample": list(self.walk_sample),
-                "sample_truncated": self.walk_truncations > len(self.walk_sample),
-            },
-        }
-
-
-@dataclass(frozen=True)
-class ExclusionKind:
-    """One reason the walk leaves a path out of lexical evidence: its stable
-    key under ``evidence["skipped"]``, the ``WalkResult`` list that collects
-    it, and the sentence the scan reports it with. Every exclusion is
-    reported — capped or filtered output never reads as complete — and this
-    ledger is the only place the key, the sentence, and the collection are
-    spelled, so adding a kind is one entry here."""
-    key: str
-    attribute: str
-    sentence: str  # ``{n}`` is the path count
-
-
-EXCLUSION_KINDS: tuple[ExclusionKind, ...] = (
-    ExclusionKind("sensitive", "skipped_sensitive",
-                  "excluded {n} sensitive path(s) from evidence"),
-    ExclusionKind("oversized", "skipped_oversized",
-                  "skipped {n} oversized file(s) (>2MB)"),
-    ExclusionKind("symlinks_escaping_repo", "skipped_symlinks",
-                  "skipped {n} symlink(s) resolving outside the repository"),
-    # A confined link whose target the walk itself would exclude (Glossabet's
-    # own files, hidden, ignored, generated, vendored): the target's own
-    # exclusion is what applies, reported here so it is never silent.
-    ExclusionKind("symlinks_to_excluded_content",
-                  "skipped_symlinks_to_excluded",
-                  "skipped {n} symlink(s) whose target is excluded content"),
-    # A confined directory symlink is never descended into (its real path is
-    # walked); reported so the non-descent is not silent.
-    ExclusionKind("symlinked_directories", "skipped_symlinked_directories",
-                  "did not descend into {n} symlinked director(ies) inside "
-                  "the repository (content is read at its real path, if that "
-                  "path is not itself excluded)"),
-    # Entries the walk met but could not stat or read at all: dangling
-    # links, permission denied. Not source evidence and not silently gone.
-    ExclusionKind("unreadable", "skipped_unreadable",
-                  "skipped {n} unreadable path(s) (dangling link or "
-                  "permission denied)"),
-    ExclusionKind("configured", "skipped_configured",
-                  "ignored {n} configured path(s)"),
-    ExclusionKind("generated", "skipped_generated",
-                  "excluded {n} generated path(s) from lexical analysis"),
-    ExclusionKind("vendored", "skipped_vendored",
-                  "excluded {n} vendored path(s) from lexical analysis"),
-    # Every GLOSSARY.md the walk saw and excluded (root and nested), so the
-    # self-file exclusion is never silent; the root file's safe discovery is
-    # a separate channel (glossabet.repository_glossary).
-    ExclusionKind("self_glossaries", "skipped_self_glossaries",
-                  "excluded {n} GLOSSARY.md file(s) from lexical evidence "
-                  "(never evidence for itself)"),
-    # Every GLOSSABET.md the walk saw and excluded (root and nested):
-    # derived Glossabet report output.
-    ExclusionKind("self_reports", "skipped_self_reports",
-                  "excluded {n} GLOSSABET.md report(s) from lexical evidence "
-                  "(derived Glossabet output)"),
-)
-SKIPPED_SELF_GLOSSARIES = "self_glossaries"
-
-
-def exclusion_sentences(skipped: Mapping[str, object]) -> list[str]:
-    """Human sentences for every non-empty exclusion kind in an evidence
-    ``skipped`` section, in ledger order."""
-    sentences = []
-    for kind in EXCLUSION_KINDS:
-        paths = skipped.get(kind.key)
-        if isinstance(paths, Sized) and len(paths):
-            sentences.append(kind.sentence.format(n=len(paths)))
-    return sentences
 
 
 @dataclass
@@ -531,12 +175,8 @@ def _bounded_directory_entries(
     try:
         with os.scandir(path) as iterator:
             for entry in iterator:
-                if len(entries) >= MAX_DIRECTORY_ENTRIES:
-                    budget.truncate_walk(
-                        relative,
-                        MAX_DIRECTORY_ENTRIES + 1,
-                        "directory-entry-limit",
-                    )
+                if budget.directory_snapshot_full(len(entries)):
+                    budget.truncate_directory(relative)
                     return None
                 entries.append(entry)
     except OSError:
@@ -598,7 +238,7 @@ def _classify_directories(
         # these fixed names.
         if name in SELF_DIRS:
             continue
-        if result.corpus_budget.walk_entries >= MAX_WALK_ENTRIES:
+        if result.corpus_budget.walk_entries_exhausted:
             result.corpus_budget.truncate_walk(
                 rel_dir,
                 len(directories) - index + file_count,
@@ -656,7 +296,7 @@ def _classify_files(
         if fname in SELF_REPORT_FILES:
             result.skipped_self_reports.append(rel)
             continue
-        if result.corpus_budget.walk_entries >= MAX_WALK_ENTRIES:
+        if result.corpus_budget.walk_entries_exhausted:
             result.corpus_budget.truncate_walk(
                 rel_dir,
                 len(files) - index,
@@ -718,29 +358,12 @@ def _classify_files(
                     rel, 0, "unreadable", production=role == "production"
                 )
             continue
-        if size > MAX_FILE_BYTES:
-            result.skipped_oversized.append(rel)
+        refusal = result.corpus_budget.source_refusal(size)
+        if refusal is not None:
+            if refusal == "file-size-limit":
+                result.skipped_oversized.append(rel)
             result.corpus_budget.skip_source(
-                rel,
-                size,
-                "file-size-limit",
-                production=role == "production",
-            )
-            continue
-        if result.corpus_budget.source_files >= MAX_SOURCE_FILES:
-            result.corpus_budget.skip_source(
-                rel,
-                size,
-                "source-file-limit",
-                production=role == "production",
-            )
-            continue
-        if result.corpus_budget.source_bytes + size > MAX_SOURCE_BYTES:
-            result.corpus_budget.skip_source(
-                rel,
-                size,
-                "source-byte-limit",
-                production=role == "production",
+                rel, size, refusal, production=role == "production"
             )
             continue
         result.corpus_budget.include_source(rel, size)
@@ -802,7 +425,7 @@ def _read_root_manifest(
     if not path.is_file():
         return None
     try:
-        if path.stat().st_size > MAX_FILE_BYTES:
+        if walk.corpus_budget.oversized(path.stat().st_size):
             if rel not in walk.skipped_oversized:
                 walk.skipped_oversized.append(rel)
             return None

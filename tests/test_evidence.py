@@ -202,7 +202,7 @@ def test_truncation_is_capped_marked_and_counted(tmp_path):
 
 
 def test_corpus_file_budget_is_deterministic_and_reported(tmp_path, monkeypatch):
-    monkeypatch.setattr("glossabet.corpus.scanner.MAX_SOURCE_FILES", 2)
+    monkeypatch.setattr("glossabet.corpus.walk_budget.MAX_SOURCE_FILES", 2)
     for name in ("c.py", "a.py", "b.py"):
         (tmp_path / name).write_text(f"{name[0]}_identifier = 1\n")
 
@@ -225,7 +225,7 @@ def test_corpus_file_budget_is_deterministic_and_reported(tmp_path, monkeypatch)
 def test_oversized_production_source_marks_corpus_incomplete(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr("glossabet.corpus.scanner.MAX_FILE_BYTES", 40)
+    monkeypatch.setattr("glossabet.corpus.walk_budget.MAX_FILE_BYTES", 40)
     (tmp_path / "small.py").write_text("ordinary = 1\n")
     (tmp_path / "large.py").write_text(
         "hidden_canonical_term = 1\n" + "# padding\n" * 10
@@ -246,7 +246,7 @@ def test_oversized_production_source_marks_corpus_incomplete(
 def test_skipped_nonproduction_source_keeps_production_corpus_complete(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr("glossabet.corpus.scanner.MAX_SOURCE_FILES", 1)
+    monkeypatch.setattr("glossabet.corpus.walk_budget.MAX_SOURCE_FILES", 1)
     (tmp_path / "a.py").write_text("production_name = 1\n")
     tests = tmp_path / "tests"
     tests.mkdir()
@@ -262,7 +262,7 @@ def test_skipped_nonproduction_source_keeps_production_corpus_complete(
 def test_corpus_byte_budget_reports_skips_and_can_use_later_space(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr("glossabet.corpus.scanner.MAX_SOURCE_BYTES", 35)
+    monkeypatch.setattr("glossabet.corpus.walk_budget.MAX_SOURCE_BYTES", 35)
     (tmp_path / "a.py").write_text("alpha_identifier = 1\n")
     (tmp_path / "b.py").write_text("bravo_identifier = 2\n")
     (tmp_path / "c.py").write_text("c = 3\n")
@@ -280,7 +280,7 @@ def test_corpus_byte_budget_reports_skips_and_can_use_later_space(
 
 
 def test_walk_work_budget_marks_unknown_remainder(tmp_path, monkeypatch):
-    monkeypatch.setattr("glossabet.corpus.scanner.MAX_WALK_ENTRIES", 2)
+    monkeypatch.setattr("glossabet.corpus.walk_budget.MAX_WALK_ENTRIES", 2)
     for name in ("a.py", "b.py", "c.py"):
         (tmp_path / name).write_text(f"{name[0]}_identifier = 1\n")
 
@@ -302,8 +302,8 @@ def test_walk_work_budget_marks_unknown_remainder(tmp_path, monkeypatch):
 
 
 def test_corpus_budget_skip_sample_is_itself_bounded(tmp_path, monkeypatch):
-    monkeypatch.setattr("glossabet.corpus.scanner.MAX_SOURCE_FILES", 1)
-    monkeypatch.setattr("glossabet.corpus.scanner.BUDGET_PATH_SAMPLE", 1)
+    monkeypatch.setattr("glossabet.corpus.walk_budget.MAX_SOURCE_FILES", 1)
+    monkeypatch.setattr("glossabet.corpus.walk_budget.BUDGET_PATH_SAMPLE", 1)
     for name in ("a.py", "b.py", "c.py"):
         (tmp_path / name).write_text(f"{name[0]}_identifier = 1\n")
 
@@ -317,7 +317,7 @@ def test_corpus_budget_skip_sample_is_itself_bounded(tmp_path, monkeypatch):
 def test_overfull_directory_is_skipped_whole_to_preserve_determinism(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr("glossabet.corpus.scanner.MAX_DIRECTORY_ENTRIES", 2)
+    monkeypatch.setattr("glossabet.corpus.walk_budget.MAX_DIRECTORY_ENTRIES", 2)
     for name in ("a.py", "b.py", "c.py"):
         (tmp_path / name).write_text(f"{name[0]}_identifier = 1\n")
 
@@ -423,7 +423,7 @@ def test_unicode_and_language_forms_round_trip_through_evidence(tmp_path):
 
 
 def test_scan_reports_partial_corpus_budget(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr("glossabet.corpus.scanner.MAX_SOURCE_FILES", 1)
+    monkeypatch.setattr("glossabet.corpus.walk_budget.MAX_SOURCE_FILES", 1)
     (tmp_path / "a.py").write_text("alpha_identifier = 1\n")
     (tmp_path / "b.py").write_text("bravo_identifier = 2\n")
 
@@ -498,7 +498,7 @@ def test_output_directory_symlink_cannot_redirect_writes(tmp_path, capsys):
 
 
 def test_oversized_root_workspace_manifest_is_skipped(tmp_path, monkeypatch):
-    monkeypatch.setattr("glossabet.corpus.scanner.MAX_FILE_BYTES", 50)
+    monkeypatch.setattr("glossabet.corpus.walk_budget.MAX_FILE_BYTES", 50)
     (tmp_path / "main.py").write_text("ordinary_identifier = 1\n")
     (tmp_path / "package.json").write_text(
         json.dumps({"workspaces": ["packages/*"], "padding": "x" * 100})

@@ -687,9 +687,9 @@ def test_presence_confirmation_never_materializes_the_root_listing(
     # Something is there (lexists) but its exact name could not be confirmed
     # within the cap: never "absent" — a false absence claim is the one
     # failure this channel must not produce.
-    import glossabet.corpus.scanner as scanner_module
+    from glossabet.corpus import walk_budget
 
-    monkeypatch.setattr(scanner_module, "MAX_WALK_ENTRIES", 0)
+    monkeypatch.setattr(walk_budget, "MAX_WALK_ENTRIES", 0)
     assert discover_repository_glossary(tmp_path) == {
         "present": True,
         "path": "GLOSSARY.md",
@@ -697,7 +697,7 @@ def test_presence_confirmation_never_materializes_the_root_listing(
         "reason": "root-listing-unconfirmed",
     }
     # Sibling: the root cannot be listed at all.
-    monkeypatch.setattr(scanner_module, "MAX_WALK_ENTRIES", 100)
+    monkeypatch.setattr(walk_budget, "MAX_WALK_ENTRIES", 100)
 
     def _unlistable(*_a, **_k):
         raise PermissionError("listing denied")

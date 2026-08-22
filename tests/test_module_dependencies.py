@@ -84,6 +84,17 @@ def test_forbidden_dependency_directions():
         "brief": {"glossabet.evidence", "glossabet.scanner"},
         "managed_block": {"glossabet.context_sync", "glossabet.evidence"},
         "scanner": {"glossabet.repository_glossary", "glossabet.evidence"},
+        # Path policy and budget accounting sit beneath the walk (Phase 45.9):
+        # budget lowest, policy above it, the traversal facade on top.
+        "path_policy": {
+            "glossabet.scanner", "glossabet.repository_glossary",
+            "glossabet.evidence", "glossabet.extraction",
+        },
+        "walk_budget": {
+            "glossabet.scanner", "glossabet.path_policy",
+            "glossabet.repository_glossary", "glossabet.evidence",
+            "glossabet.config",
+        },
         "git_state": {"glossabet.evidence", "glossabet.brief"},
         # The glossary schema is a leaf: it owns meaning only and must not
         # reach persistence, validation, or commands.

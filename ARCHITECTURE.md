@@ -231,7 +231,8 @@ name never repeats a module name, so no `x/x` doubling:
 glossabet/
   cli.py, __main__.py, __init__.py, _skill/     entry point
   runtime/   engine_run, artifacts, display, coverage, git_state
-  corpus/    scanner, config, extraction, cache, tokenize, imports
+  corpus/    scanner, path_policy, walk_budget, config, extraction, cache,
+             tokenize, imports
   analysis/  evidence, evidence_view, vocabulary, terminology, importance,
              graphify, evidence_report
   glossary/  store, glossary_commands, repository_glossary, matching,
@@ -283,7 +284,13 @@ prefix each with its subpackage (`glossabet.corpus.scanner`, …).
   built-in path classification.
 
 **The lexical scanner (evidence source #1)**
-- `scanner.py` — `walk_repository()` walks the tree and assigns every included
+- `scanner.py` — the traversal and facade; `path_policy.py` owns the
+  trust rules named below (sensitive names, self-output exclusions, exact
+  root-name lookup, the symlink content rule) and `walk_budget.py` owns the
+  work ceilings, `CorpusBudget`, the exclusion ledger, and the serialized
+  `skipped` shapes; every name stays importable from `scanner`, and a test
+  that lowers a ceiling patches it on `walk_budget`, where the walk and the
+  ledger read it. `walk_repository()` walks the tree and assigns every included
   code/doc path a `production`, `test`, or `fixture` role. This is where the
   load-bearing exclusions live: sensitive files and directories
   (`is_sensitive`, by pattern — `.env`, keys, anything named secret/credential)

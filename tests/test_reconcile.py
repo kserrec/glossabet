@@ -184,7 +184,7 @@ def test_uncertain_symbol_binding_does_not_create_a_false_orphan(tmp_path):
 def test_partial_inventory_does_not_claim_missing_bindings_or_orphans(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr("glossabet.corpus.scanner.MAX_SOURCE_FILES", 1)
+    monkeypatch.setattr("glossabet.corpus.walk_budget.MAX_SOURCE_FILES", 1)
     (tmp_path / "a.py").write_text("ordinary_name = 1\n")
     hidden = tmp_path / "z"
     hidden.mkdir()

@@ -3,7 +3,7 @@
 Status: **Phases 0–22, 24–32, 34–44 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
 in progress at 33.2; Phase 45 (maintainability refactor, 15 spec passes) in
-progress at 45.9; owner self-testing pause active before the trusted-alpha
+progress at 45.10; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-22.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1221,7 +1221,7 @@ Steps (each is the same-numbered spec pass):
 - **45.6** Pass 6 — AgentContext and remaining production boundaries ✅ 2026-08-22
 - **45.7** Pass 7 — close the strict static-type gate ✅ 2026-08-22
 - **45.8** Pass 8 — isolate heuristic policy without changing it ✅ 2026-08-22
-- **45.9** Pass 9 — decompose the repository scanner
+- **45.9** Pass 9 — decompose the repository scanner ✅ 2026-08-22
 - **45.10** Pass 10 — decompose glossary storage and validation
 - **45.11** Pass 11 — decompose the Graphify adapter
 - **45.12** Pass 12 — decompose reconciliation
@@ -1402,6 +1402,25 @@ four builders, injects a policy, checks monotonicity, ceiling saturation,
 tie-breaking by name, below/at/above for every threshold gate and signal
 band, the match-strength ladder, and the policy modules' layer position.
 A/B byte-identical on all five fixtures (stdout + every artifact). 680 tests.
+
+**45.9 outcome (2026-08-22):** `corpus/scanner.py` (851 lines) split by
+responsibility with no constant or rule changed: `corpus/walk_budget.py`
+(lowest; the five work ceilings and `BUDGET_PATH_SAMPLE`, the budget
+TypedDicts, `CorpusBudget` — now also the one place the ceilings are
+compared, via `walk_entries_exhausted`, `directory_snapshot_full`,
+`truncate_directory`, `oversized`, and `source_refusal`, which returns the
+same three reasons in the same order — plus the `EXCLUSION_KINDS` ledger,
+`exclusion_sentences`, and `SkippedPaths`), `corpus/path_policy.py` (sensitive
+patterns, `SELF_*`, `WORKSPACE_MANIFESTS`, the link reasons,
+`entry_named_exactly`, `glossary_link_refusal`, `symlink_content_refusal`;
+reads the walk-entry cap from `walk_budget` at call time), and `scanner.py`
+(475 lines: languages/extensions, package manifests, monorepo thresholds,
+`WalkResult`, traversal, `detect_monorepo`, and an explicit `__all__` facade
+re-exporting every previously importable name). Tests that lower a ceiling
+now patch `glossabet.corpus.walk_budget` (the owning module; patching the
+facade's re-exported name would be a silent no-op). Dependency ratchet pins
+walk_budget < path_policy < scanner. A/B on the five fixtures: 0 diffs in
+stdout and every artifact; 680 tests; Gates A, B, C green.
 
 ### Owner self-testing pause — active, not an implementation phase
 
