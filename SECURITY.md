@@ -34,6 +34,54 @@ Glossary structure and the agent-facing output have independent semantic
 ceilings, and repository-controlled terminal text must not execute control
 sequences or reorder the displayed result.
 
+## Threat model and concurrency assumptions
+
+Every filesystem claim in this document holds under a stated concurrency
+assumption. Three situations are distinguished:
+
+1. **A hostile repository that is not mutated while a command runs — in
+   scope and enforced.** Every path check below (symlink components,
+   escape from the root, sensitive names, exact-name confirmation) is
+   evaluated against the checkout as it is when the command starts, and
+   the code then uses the path it checked.
+2. **Ordinary concurrent edits — detected where the table says so, never
+   made atomic.** A command is not a filesystem snapshot. Where a change
+   between check and use would matter, the implementation either judges
+   the outcome from the bytes actually read (size bounds), compares file
+   identity across the open (managed host file), or rechecks immediately
+   before commit (managed host file write). A detected change fails closed
+   with a user error or a reported partial result; an undetected one (a
+   source file that grows after the walk charged its size) is read as the
+   file then is.
+3. **An adversarial local process racing path components between check
+   and use — out of scope.** Such a process already runs as the same
+   operating-system user and could equally modify the installed Glossabet
+   program, its cache, or its output artifacts. Glossabet does not use
+   descriptor-relative traversal (`openat`/`O_NOFOLLOW` on every
+   component) and does not claim immunity here; the claims below are
+   protection against hostile *initial* paths and detected ordinary
+   changes. Do not run Glossabet on a checkout an untrusted process is
+   rewriting.
+
+The check/use sequences, what each checks, what could change in the window,
+and what covers it (regressions in `tests/test_filesystem_races.py` unless
+named otherwise):
+
+| Site | Checked | Could change before use | Covered by |
+| --- | --- | --- | --- |
+| `artifacts.confined_artifact_path` → `write_json_atomic` (`glossabet-out/*.json`, `glossary.json` via `save`) | no symlink component; resolves inside root | a parent directory swapped for a symlink redirects `os.replace` into its target | assumption 3 (out of scope). The *final* component swapped for a symlink is harmless: `os.replace` replaces the link entry, never its target — `test_atomic_replace_onto_a_symlink_replaces_the_link_not_its_target` (POSIX) |
+| `artifacts.read_bounded_bytes` (`glossabet.json`, `graph.json`, `glossary.json`, user cache) | regular file exists | file replaced or grown between the check and the open | bound judged from bytes read (`cap + 1` requested), never from a stat — `test_bounded_read_stays_bounded_when_the_file_grows_after_the_check`. A swap to a symlink in that window is assumption 3 |
+| `managed_context.read_regular_target` (`AGENTS.md`/`CLAUDE.md` read by `sync-context`, `drift`, `validate`) | `lstat`: exact name, not a link, regular, under size | target swapped for a symlink or another file between `lstat` and `open` | `O_NOFOLLOW` where the platform has it (POSIX) plus a (device, inode) comparison of the pre-open `lstat`, the open descriptor, and a post-open `lstat` (all platforms, including Windows which lacks `O_NOFOLLOW`); read takes `cap + 1` bytes — `test_host_file_swapped_for_a_symlink_after_the_check_is_never_read`, `test_host_file_replaced_by_another_regular_file_after_the_check_is_refused` (POSIX), `test_host_file_read_is_bounded_even_if_it_grows_after_the_size_check` |
+| `context_sync._write_bytes_atomic` (`sync-context` write) | bytes and mode re-read immediately before `os.replace` | an edit between that recheck and the replace | assumption 2, detected up to the recheck (`test_concurrent_target_change_is_not_overwritten`, `test_atomic_replace_aborts_when_the_pre_replace_check_fails`); the remaining window is stated below under "Managed project context" |
+| `cache.load_cache` / `save_cache` | not a link, regular, bounded read; content digests per file | anything — the cache is user-owned state | reuse is by content SHA-256 of the current bytes, so a stale or swapped cache can only cause a miss (`tests/test_cache.py`); a same-user process is assumption 3 |
+| `cache.clear_cache` | each entry checked with non-following `is_dir`/`is_file` before `unlink`/`rmdir` | an entry swapped for a symlink after its check | `unlink` removes the link itself; `rmdir` on a link fails and the entry is reported left in place — `test_cache_file_swapped_for_a_symlink_after_the_check_loses_only_the_link`, `test_cache_entry_swapped_for_a_directory_symlink_is_left_in_place` |
+| `scanner` walk → `extraction.read_source` | link mode, resolved target inside root and not sensitive, size at walk time | a file replaced or grown between the walk and the read | assumption 1. The ledger charges the walk-time size and reclassifies exactly those bytes on a read failure (`test_walk_time_size_is_what_the_ledger_charges`); a file that grows after the walk is read whole, so the per-file 2 MB bound is a walk-time bound, not a read-time bound |
+| `scanner._read_root_manifest`, `repository_glossary` root `GLOSSARY.md` | link mode, resolved target, regular, size | as above | assumption 1; the `GLOSSARY.md` read requests `MAX_FILE_BYTES + 1` bytes and judges from what it read |
+| `installer._install_file` / Claude plugin files | symlink components rejected before and again after `mkdir`; existing bytes compared | a component swapped for a symlink between the second check and `os.replace` | assumption 3; a final-component swap is harmless as for artifacts (`test_install_refuses_symlinked_destination_components` covers the initial-path rule) |
+
+No site uses a stat-derived size as its read bound except the walk (row 7),
+which is why that row is assumption 1 rather than "detected".
+
 ## Boundaries enforced in code
 
 ### Repository reads
@@ -48,7 +96,8 @@ sequences or reorder the displayed result.
   `test_escaping_root_workspace_manifest_symlink_is_not_read`.
 - **Direct JSON paths are stricter than source paths.** Every component of
   `glossabet.json`, `graphify-out/graph.json`, and
-  `glossabet-out/glossary.json` must be a real path, not a symlink. A graph
+  `glossabet-out/glossary.json` must be a real path, not a symlink, as
+  checked when the command starts (concurrency assumption 1). A graph
   violation becomes a visible lexical-only warning; a configuration or
   glossary violation is a clean user error. This prevents a hostile checkout
   from using a direct-input symlink to read another file, including an
@@ -58,9 +107,11 @@ sequences or reorder the displayed result.
   `test_glossary_symlink_is_rejected_without_reading_target`, and
   `test_inspect_rejects_symlinked_glossary_without_reading_target`.
 - **Reads are individually size-bounded.** Walked code, documentation, and
-  inspected root manifests are capped at `MAX_FILE_BYTES` (2 MB). Direct JSON
-  artifacts and the user cache are capped at `MAX_JSON_BYTES` (64 MB) before
-  `json.loads`; `glossabet.json` has a tighter 1 MB cap. An oversized graph
+  inspected root manifests are capped at `MAX_FILE_BYTES` (2 MB), judged at
+  walk time (assumption 1; a file that grows after the walk is read whole).
+  Direct JSON artifacts and the user cache are capped at `MAX_JSON_BYTES`
+  (64 MB) before `json.loads`, judged from the bytes actually read
+  (assumption 2, detected); `glossabet.json` has a tighter 1 MB cap. An oversized graph
   degrades to lexical-only, an oversized configuration or glossary is a user
   error, an oversized cache is a miss, and an oversized root manifest is
   skipped and reported. Regressions include
@@ -119,7 +170,9 @@ sequences or reorder the displayed result.
 
 - **Generated writes cannot be redirected through symlinks.** The
   `glossabet-out` directory and final artifact path may contain no symlink
-  component. An unsafe path is a clean user error, and no target is written.
+  component when checked (assumption 1; a parent swapped for a symlink
+  afterwards is assumption 3). An unsafe path is a clean user error, and no
+  target is written.
   Regressions: `test_evidence_symlink_cannot_overwrite_outside_file`,
   `test_output_directory_symlink_cannot_redirect_writes`.
 - **JSON artifacts are replaced atomically.** Glossabet writes a complete
@@ -138,8 +191,9 @@ sequences or reorder the displayed result.
   accepted. `install`, `brief`, the plugin hook, the agent skill's glossary
   finalization, and every analysis command do not call it. Regression:
   `test_every_other_repository_command_leaves_host_file_byte_identical`.
-- **The target is bounded and cannot redirect the read or write.** Existing
-  targets must be regular UTF-8 files no larger than 2,000,000 bytes. The
+- **The target is bounded and cannot redirect the read, and a detected
+  change aborts the write.** Existing targets must be regular UTF-8 files no
+  larger than 2,000,000 bytes. The
   reader uses a non-following file descriptor where the platform supplies it,
   compares pre-open, opened, and post-open identities, and reads at most one
   byte beyond the cap. Symlinks, directories, other non-files, invalid UTF-8,
@@ -170,12 +224,13 @@ sequences or reorder the displayed result.
   `test_drift_and_validate_flag_stale_and_edited_blocks` and
   `test_managed_block_never_echoes_into_repository_evidence`.
 
-The pre-commit identity check catches an ordinary concurrent edit before the
-replacement, but portable `os.replace` is not a filesystem compare-and-swap.
-Do not run `sync-context` while another process is concurrently changing the
-same host file. This is the same live-checkout limitation stated for scans,
-not a claim that hostile concurrent mutation can be made atomic on every
-supported platform.
+The pre-commit recheck catches an ordinary concurrent edit made before it
+(assumption 2), but portable `os.replace` is not a filesystem
+compare-and-swap: an edit landing between the recheck and the replace is
+overwritten. Do not run `sync-context` while another process is changing the
+same host file. This is the same limitation stated under "Threat model and
+concurrency assumptions", not a claim that concurrent mutation can be made
+atomic on every supported platform.
 
 ### Agent skill installation
 
@@ -185,8 +240,8 @@ supported platform.
   is explicit. Neighboring files are never replaced. Regression:
   `test_install_refuses_different_existing_skill_without_force`.
 - **A symlink cannot redirect installation.** Every existing destination
-  component is checked before and after directory creation; symlinked
-  components and non-file targets are refused. The final file is written by a
+  component is checked before and after directory creation (assumption 1);
+  symlinked components and non-file targets are refused. The final file is written by a
   same-directory temporary file plus `os.replace`. Regressions:
   `test_install_refuses_symlinked_destination_components` and
   `test_force_replaces_only_the_skill_file_and_leaves_no_temporary_file`.
@@ -352,8 +407,8 @@ supported platform.
 
 The cache protects against the hostile-repository attacker defined above. It
 does not try to defend against another process already able to modify files as
-the same operating-system user; that process could also modify the installed
-Glossabet program or its output artifacts.
+the same operating-system user (concurrency assumption 3); that process could
+also modify the installed Glossabet program or its output artifacts.
 
 ### Content, execution, and malformed input
 
@@ -517,9 +572,11 @@ the opt-in developer/release operations that do use the network.
   repository content. Direct artifact symlinks are rejected for the separate
   read/write-redirection reasons above.
 - The scanner assumes the repository is not being adversarially mutated
-  concurrently between path validation and file access. Do not run it while an
-  untrusted process is rewriting the same checkout. An `inspect` context is
-  generated in one command, but is not an atomic filesystem snapshot.
+  concurrently between path validation and file access (concurrency
+  assumption 1; the full per-site inventory is in "Threat model and
+  concurrency assumptions"). Do not run it while an untrusted process is
+  rewriting the same checkout. An `inspect` context is generated in one
+  command, but is not an atomic filesystem snapshot.
 - Corpus ceilings make lexical processing finite, but reaching one necessarily
   makes repository coverage partial. `walk_remainder.exact: false` means the
   number and nature of unseen paths are unknown; consumers must not interpret

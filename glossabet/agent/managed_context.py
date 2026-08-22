@@ -1,6 +1,6 @@
 """The managed host-context block as an *inspected* thing: render the
 block one glossary deserves, read a root host file safely (no symlinks, no
-oversize, no swap-under-us), classify the block a file carries (absent /
+oversize, a swap between check and open detected by identity), classify the block a file carries (absent /
 current / stale / edited / uninspectable), and report the classification.
 
 `context_sync` (the command that writes the block) sits above this module

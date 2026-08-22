@@ -3,7 +3,7 @@
 Status: **Phases 0–22, 24–32, 34–44 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
 in progress at 33.2; Phase 45 (maintainability refactor, 15 spec passes) in
-progress at 45.14; owner self-testing pause active before the trusted-alpha
+progress at 45.15; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-22.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1226,7 +1226,7 @@ Steps (each is the same-numbered spec pass):
 - **45.11** Pass 11 — decompose the Graphify adapter ✅ 2026-08-22
 - **45.12** Pass 12 — decompose reconciliation ✅ 2026-08-22
 - **45.13** Pass 13 — clean comments and synchronize `ARCHITECTURE.md` ✅ 2026-08-22
-- **45.14** Pass 14 — resolve the filesystem race / threat-model question
+- **45.14** Pass 14 — resolve the filesystem race / threat-model question ✅ 2026-08-22
 - **45.15** Pass 15 — performance baseline; optimize only proven hotspots
 
 **45.1 outcome (2026-08-22):** `ruff==0.16.4` and `mypy==2.3.1` pinned as
@@ -1496,6 +1496,31 @@ map entries added for `evidence_types`, `analysis/policy`, `json_types`,
 `executables`; `finding()`/`write_evidence()` references updated; "Where
 things stand" names Phase 45. Gates A, B, C green; 680 tests; A/B over five
 fixtures TOTAL DIFFS 0.
+
+**45.14 outcome (2026-08-22):** Threat model stated explicitly in
+`SECURITY.md` ("Threat model and concurrency assumptions"): (1) a hostile,
+non-mutated repository is in scope and enforced; (2) ordinary concurrent
+edits are detected where the per-site table says so, never made atomic;
+(3) an adversarial same-user process racing path components is out of
+scope — no descriptor-relative traversal is used or claimed. The table
+inventories nine check/use sites (artifact writes, bounded JSON reads,
+managed host-file read and write, cache load/save/clear, walked-source
+reads, root manifests/`GLOSSARY.md`, installation) with what could change
+in each window and what covers it. Narrowed claims: direct-JSON symlink
+rule, artifact-write redirection, per-file 2 MB walk bound (walk-time; a
+file that grows after the walk is read whole), installer symlink rule,
+cache same-user limit, and the `sync-context` recheck window, each now
+naming its assumption; the `managed_context` docstring no longer says
+"no swap-under-us". New `tests/test_filesystem_races.py` (9 tests, 2
+POSIX-only with reasons): bounded read survives a grow-after-check; host
+file swapped to a symlink or another inode after `lstat` is refused and
+the canary never read (the symlink case also runs on Windows, exercising
+the identity comparison instead of `O_NOFOLLOW`); in-place growth caught by
+the `cap + 1` read; `os.replace` onto a symlink replaces the link not the
+target; `before_replace` abort leaves the original; `clear_cache` swaps
+lose only the link / leave the entry in place; walk-time size is what the
+ledger charges. No production code changed except that one docstring; no
+filesystem rewrite was needed because every continued claim has a test.
 
 ### Owner self-testing pause — active, not an implementation phase
 
