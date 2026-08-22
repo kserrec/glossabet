@@ -23,6 +23,7 @@ from glossabet.analysis.evidence_types import (
 from glossabet.analysis.evidence_view import EvidenceView
 from glossabet.corpus.imports import module_of
 from glossabet.corpus.tokenize import STRUCTURED_IDENTIFIER_STYLES, identifier_style
+from glossabet.glossary.model import GlossaryDocument
 from glossabet.glossary.repository_glossary import repository_glossary_section
 from glossabet.runtime.artifacts import ArtifactError
 from glossabet.runtime.coverage import capped_collection, coverage_reasons
@@ -288,7 +289,7 @@ def _naming_with_locations(
 
 def build_agent_context(
     evidence: EvidenceDocument,
-    glossary: dict | None,
+    glossary: GlossaryDocument | None,
     *,
     repository_glossary: dict | None = None,
     full: bool = False,

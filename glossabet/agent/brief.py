@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from glossabet.glossary.model import AliasRecord, ConceptRecord, GlossaryDocument
 from glossabet.glossary.store import (
     GLOSSARY_FILE,
     GLOSSARY_SCHEMA_VERSION,
@@ -63,17 +64,17 @@ def _git_value(value: object) -> str:
     return "unavailable"
 
 
-def _entry_sort_key(concept: dict) -> tuple[str, str, str]:
+def _entry_sort_key(concept: ConceptRecord) -> tuple[str, str, str]:
     term = concept["term"]
     return (term.casefold(), term, concept["id"])
 
 
-def _alias_sort_key(alias: dict) -> tuple[str, str, str]:
+def _alias_sort_key(alias: AliasRecord) -> tuple[str, str, str]:
     term = alias["term"]
     return (term.casefold(), term, alias["status"])
 
 
-def _render_entry(concept: dict, byte_limit: int) -> tuple[str, bool]:
+def _render_entry(concept: ConceptRecord, byte_limit: int) -> tuple[str, bool]:
     """Render one canonical concept without exceeding its assigned byte budget."""
     parts: list[str] = []
     truncated = False
@@ -133,7 +134,7 @@ def _coverage_line(
     )
 
 
-def _render_brief(glossary: dict, state_line: str, origin: str) -> str:
+def _render_brief(glossary: GlossaryDocument, state_line: str, origin: str) -> str:
     """Build one bounded vocabulary projection with a caller-owned stamp."""
     canonical = sorted(
         (
@@ -210,7 +211,7 @@ def _brief_git_stamp(root: Path) -> dict:
     return stamp
 
 
-def build_brief(glossary: dict, git_stamp: dict) -> str:
+def build_brief(glossary: GlossaryDocument, git_stamp: dict) -> str:
     """Build deterministic ambient text from one already validated glossary.
 
     The first line names the origin so a reader of an agent transcript can
@@ -231,7 +232,7 @@ def build_brief(glossary: dict, git_stamp: dict) -> str:
     return _render_brief(glossary, line + "\n", LIVE_BRIEF_ORIGIN)
 
 
-def build_managed_brief(glossary: dict) -> str:
+def build_managed_brief(glossary: GlossaryDocument) -> str:
     """Build the stable projection embedded in a managed host-context block.
 
     A persistent file cannot truthfully carry live Git dirtiness: writing the

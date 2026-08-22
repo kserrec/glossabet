@@ -36,6 +36,7 @@ from glossabet.glossary.findings import (
     vocabulary_omission_reasons,
 )
 from glossabet.glossary.matching import EvidenceIndex
+from glossabet.glossary.model import ConceptRecord, ConceptScope, GlossaryDocument
 from glossabet.glossary.store import (
     concept_scope,
     path_in_scope,
@@ -57,12 +58,14 @@ PARALLEL_SCOPE_COMPARISON_BUDGET = 500_000
 _WATCHED_STATUSES = {"discouraged", "deprecated"}
 
 
-def _index_glossary(glossary: dict):
+def _index_glossary(glossary: GlossaryDocument) -> tuple[
+    dict[str, list[ConceptRecord]], list[dict], dict[str, list[ConceptScope]]
+]:
     """canonical token map, watched (discouraged/deprecated) entries, and the
     scopes in which every glossary token is already owned (any status)."""
-    canonical: dict[str, list[dict]] = {}
+    canonical: dict[str, list[ConceptRecord]] = {}
     watched: list[dict] = []
-    known_scopes: dict[str, list[tuple[str, ...] | None]] = {}
+    known_scopes: dict[str, list[ConceptScope]] = {}
     for concept in glossary["concepts"]:
         scope = concept_scope(concept)
         tokens = tokenize_term(concept["term"])
@@ -102,7 +105,7 @@ def _index_glossary(glossary: dict):
 def _known_in_scope(
     token: str,
     scope: tuple[str, ...] | None,
-    known_scopes: dict[str, list[tuple[str, ...] | None]],
+    known_scopes: dict[str, list[ConceptScope]],
 ) -> bool:
     return any(scopes_overlap(scope, owner) for owner in known_scopes.get(token, []))
 
@@ -139,7 +142,8 @@ def _sampled_to_zero(occurrence: dict) -> bool:
 
 
 def _parallel_terms(
-    view: EvidenceView, canonical: dict, known_scopes: dict, matcher: EvidenceIndex
+    view: EvidenceView, canonical: dict[str, list[ConceptRecord]],
+    known_scopes: dict[str, list[ConceptScope]], matcher: EvidenceIndex
 ) -> tuple[list[dict], list[str]]:
     """New prominent terms that behave like an existing canonical term."""
     findings: list[dict] = []
@@ -243,7 +247,7 @@ def _watched_in_use(
 
 
 def _canonical_fading(
-    glossary: dict, matcher: EvidenceIndex
+    glossary: GlossaryDocument, matcher: EvidenceIndex
 ) -> list[dict]:
     """Canonical terms absent from code or barely hanging on."""
     findings: list[dict] = []
@@ -320,7 +324,9 @@ def _overload_details_complete(item: Mapping[str, object]) -> bool:
     return True
 
 
-def _canonical_overloaded(view: EvidenceView, canonical: dict) -> list[dict]:
+def _canonical_overloaded(
+    view: EvidenceView, canonical: dict[str, list[ConceptRecord]]
+) -> list[dict]:
     """Canonical terms used across contexts disjoint enough to collide."""
     findings: list[dict] = []
     for item in view.terminology_section("overload_candidates")["items"]:
@@ -389,7 +395,9 @@ def _terminology_reasons(view: EvidenceView, section: str) -> list[str]:
     return []
 
 
-def _scoped_overload_reasons(view: EvidenceView, canonical: dict) -> list[str]:
+def _scoped_overload_reasons(
+    view: EvidenceView, canonical: dict[str, list[ConceptRecord]]
+) -> list[str]:
     omitted = 0
     for item in view.terminology_section("overload_candidates")["items"]:
         if _overload_details_complete(item):
@@ -408,7 +416,7 @@ def _scoped_overload_reasons(view: EvidenceView, canonical: dict) -> list[str]:
 
 def build_drift(
     evidence: EvidenceDocument,
-    glossary: dict,
+    glossary: GlossaryDocument,
     *,
     matcher: EvidenceIndex | None = None,
     managed_context: dict | None = None,

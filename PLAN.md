@@ -3,7 +3,7 @@
 Status: **Phases 0–22, 24–32, 34–44 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
 in progress at 33.2; Phase 45 (maintainability refactor, 15 spec passes) in
-progress at 45.4; owner self-testing pause active before the trusted-alpha
+progress at 45.5; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-22.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1216,7 +1216,7 @@ Steps (each is the same-numbered spec pass):
 - **45.2** Pass 2 — JSON and coverage foundation types ✅ 2026-08-22
 - **45.3** Pass 3 — `RepositoryEvidence` contract and a fully typed
   `EvidenceView` ✅ 2026-08-22
-- **45.4** Pass 4 — structured glossary and store boundary types
+- **45.4** Pass 4 — structured glossary and store boundary types ✅ 2026-08-22
 - **45.5** Pass 5 — observed vs heuristic findings as distinct types
 - **45.6** Pass 6 — AgentContext and remaining production boundaries
 - **45.7** Pass 7 — close the strict static-type gate
@@ -1291,6 +1291,27 @@ sections; `agent_context` copies sections through one explicit
 `evidence_view`/`terminology` left the `warn_return_any` relaxation. A/B
 byte-identical for scan (cold+warm), analyze, drift, validate, show, brief,
 inspect, inspect --full, inspect --no-graphify, and every artifact. Suite 650.
+
+**45.4 outcome (2026-08-22):** new leaf module `glossary/model.py` owns the
+persisted schema: `GlossaryDocument`, `ConceptRecord`, `AliasRecord`,
+`BindingRecord`, `PathPrefixScope`, the `VocabularyStatus`/`BindingKind`
+literals (the runtime `STATUSES`/`BINDING_KINDS` sets are derived from them,
+so there is one definition), `ConceptScope` (internal normalized scope) and
+the `ScopeEvidence` union that drift/validation serialize. `store.py`
+re-exports the names its callers used and adds `checked_glossary(object)`,
+the one boundary where untrusted JSON becomes a `GlossaryDocument` (after
+complete validation; diagnostics unchanged and in the same order);
+`load_glossary`/`save_glossary` go through it, and `save_glossary` rebuilds
+the normalized document as a typed literal instead of mutating a copy.
+`Run.glossary`, scope helpers, hashing, and every consumer signature
+(`drift`, `reconcile`, `findings`, `repository_glossary`, `brief`,
+`managed_context`, `context_sync`, `agent_context`) take the typed document;
+`finding(scope=…)` takes `ScopeEvidence`. Strict mypy override extended to
+`glossary.model`, `glossary.store`, `glossary.glossary_commands`. Tests:
+`model` pinned as a package-import-free leaf; `checked_glossary` boundary;
+literal/set agreement. A/B vs HEAD identical for scan (cold+warm), analyze,
+drift, validate, show, brief, inspect, inspect --full, `save` (valid and
+invalid stdin) stdout and every artifact; suite 653 green.
 
 ### Owner self-testing pause — active, not an implementation phase
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 
+from glossabet.glossary.model import ConceptRecord, GlossaryDocument
 from glossabet.glossary.store import (
     GLOSSARY_FILE,
     GlossaryError,
@@ -33,9 +34,9 @@ def show_command(path_arg: str) -> int:
     return 0
 
 
-def _print_glossary(glossary: dict) -> None:
+def _print_glossary(glossary: GlossaryDocument) -> None:
     concepts = sorted(glossary["concepts"], key=lambda c: c["id"])
-    by_status: dict[str, list[dict]] = {}
+    by_status: dict[str, list[ConceptRecord]] = {}
     for concept in concepts:
         by_status.setdefault(concept["status"], []).append(concept)
     counts = ", ".join(

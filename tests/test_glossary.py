@@ -9,9 +9,11 @@ import os
 import pytest
 
 from glossabet.cli import main
+from glossabet.glossary.model import BINDING_KINDS, STATUSES
 from glossabet.glossary.store import (
     MAX_VALIDATION_ERRORS,
     GlossaryError,
+    checked_glossary,
     load_glossary,
     path_in_scope,
     save_glossary,
@@ -1055,3 +1057,24 @@ def test_hostile_glossary_family_never_raises_and_accepted_documents_survive_eve
         for name in ("AGENTS.md", "CLAUDE.md"):
             (root / name).unlink(missing_ok=True)
     assert dumped >= 100 and accepted >= 15, (dumped, accepted)
+
+
+def test_checked_glossary_is_the_only_typed_boundary():
+    """Untrusted JSON becomes a ``GlossaryDocument`` only after every
+    validation rule accepted it; a rejected document yields the same
+    diagnostics ``validate_glossary`` reports, in the same order."""
+    document, errors = checked_glossary(GLOSSARY)
+    assert document is GLOSSARY and errors == []
+    for hostile in (None, [], "x", {"schema_version": 2, "concepts": 3}):
+        document, errors = checked_glossary(hostile)
+        assert document is None
+        assert errors == validate_glossary(hostile) and errors
+
+
+def test_schema_literals_match_the_accepted_sets():
+    """The ``Literal`` types in ``glossary.model`` and the runtime sets the
+    validator enforces are one definition, never two drifting copies."""
+    assert STATUSES == {
+        "canonical", "proposed", "alias", "discouraged", "deprecated", "unknown"
+    }
+    assert BINDING_KINDS == {"symbol", "file", "module"}

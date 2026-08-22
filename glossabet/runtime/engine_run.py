@@ -14,6 +14,7 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path
 
+from glossabet.glossary.model import GlossaryDocument
 from glossabet.glossary.store import GLOSSARY_FILE, GlossaryError, load_glossary
 from glossabet.runtime.artifacts import OUT_DIR, ArtifactError
 
@@ -33,10 +34,10 @@ class Run:
     exists)."""
 
     root: Path
-    glossary: dict[str, object] | None
+    glossary: GlossaryDocument | None
 
     @property
-    def required_glossary(self) -> dict[str, object]:
+    def required_glossary(self) -> GlossaryDocument:
         """The glossary of a ``GLOSSARY_REQUIRED`` run. ``open_run`` has
         already refused such a run without one, so this never fails for a
         command that asked for a required glossary."""

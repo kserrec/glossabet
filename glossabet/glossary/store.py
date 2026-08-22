@@ -15,9 +15,23 @@ from __future__ import annotations
 import hashlib
 import json
 import unicodedata
+from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 from glossabet.corpus.tokenize import term_words
+from glossabet.glossary.model import (
+    BINDING_KINDS,
+    GLOSSARY_SCHEMA_VERSION,
+    SCOPE_PATHS_KEY,
+    STATUSES,
+    ConceptRecord,
+    ConceptScope,
+    GlossaryDocument,
+    PathPrefixScopeEvidence,
+    RepositoryScopeEvidence,
+    ScopeEvidence,
+)
 from glossabet.runtime.artifacts import (
     OUT_DIR,
     READ_ABSENT,
@@ -29,17 +43,18 @@ from glossabet.runtime.artifacts import (
 )
 from glossabet.runtime.display import first_terminal_control
 
-GLOSSARY_SCHEMA_VERSION = 1
 GLOSSARY_FILE = "glossary.json"
 
-STATUSES = frozenset(
-    {"canonical", "proposed", "alias", "discouraged", "deprecated", "unknown"}
-)
-# Bindings target stable identities only (PLAN principle 7): never graph
-# community numbers or node ids, which shift across rebuilds.
-BINDING_KINDS = frozenset({"symbol", "file", "module"})
+# The schema itself (statuses, binding kinds, scope key, record shapes) is
+# owned by ``glossary.model``; the names above are re-exported here for the
+# callers that address the glossary through its store.
+__all__ = [
+    "BINDING_KINDS", "GLOSSARY_FILE", "GLOSSARY_SCHEMA_VERSION",
+    "SCOPE_PATHS_KEY", "STATUSES", "GlossaryError", "checked_glossary",
+    "concept_scope", "glossary_sha256", "load_glossary", "path_in_scope",
+    "save_glossary", "scope_evidence", "scopes_overlap", "validate_glossary",
+]
 _REQUIRED_CONCEPT_KEYS = ("id", "term", "definition", "status")
-SCOPE_PATHS_KEY = "path_prefixes"
 
 _TOP_LEVEL_KEYS = frozenset({"schema_version", "concepts"})
 _CONCEPT_KEYS = frozenset(
@@ -70,7 +85,7 @@ class GlossaryError(ValueError):
     """The glossary file exists but is not usable as written."""
 
 
-def glossary_sha256(glossary: dict) -> str:
+def glossary_sha256(glossary: GlossaryDocument) -> str:
     """Return the semantic digest used to bind every vocabulary projection."""
     canonical = json.dumps(
         glossary,
@@ -131,7 +146,7 @@ class _ValidationErrors:
 
 
 def _unknown_fields(
-    value: dict, allowed: frozenset[str], where: str,
+    value: dict[object, object], allowed: frozenset[str], where: str,
     errors: _ValidationErrors,
 ) -> None:
     unknown_count = 0
@@ -182,7 +197,7 @@ def _string_field(
 
 def _scope_from_raw(
     raw: object, where: str, errors: _ValidationErrors,
-) -> tuple[tuple[str, ...] | None, bool]:
+) -> tuple[ConceptScope, bool]:
     """Validate and normalize one concept scope; ``None`` means repository-wide."""
     if raw is None:
         errors.add(f"{where}.scope must be an object; omit it for repository-wide")
@@ -260,9 +275,7 @@ class _ScopeOwnerIndex:
         self.global_owner: tuple[int, str, str] | None = None
         self.root = _ScopeNode()
 
-    def conflict(
-        self, scope: tuple[str, ...] | None
-    ) -> tuple[int, str, str] | None:
+    def conflict(self, scope: ConceptScope) -> tuple[int, str, str] | None:
         if self.global_owner is not None:
             return self.global_owner
         if scope is None:
@@ -283,9 +296,7 @@ class _ScopeOwnerIndex:
                     return node.subtree_owner
         return None
 
-    def add(
-        self, scope: tuple[str, ...] | None, owner: tuple[int, str, str]
-    ) -> None:
+    def add(self, scope: ConceptScope, owner: tuple[int, str, str]) -> None:
         if scope is None:
             if self.global_owner is None:
                 self.global_owner = owner
@@ -360,16 +371,16 @@ def _within_aggregate_limits(
     return errors.total == starting_errors
 
 
-def concept_scope(concept: dict) -> tuple[str, ...] | None:
+def concept_scope(concept: ConceptRecord) -> ConceptScope:
     """Return a validated concept's normalized prefixes, or None for global."""
     raw = concept.get("scope")
     if raw is None:
         return None
-    prefixes = raw.get(SCOPE_PATHS_KEY, []) if isinstance(raw, dict) else []
+    prefixes = raw.get(SCOPE_PATHS_KEY, [])
     return tuple(sorted(prefixes)) if prefixes else None
 
 
-def path_in_scope(path: str, scope: tuple[str, ...] | None) -> bool:
+def path_in_scope(path: str, scope: ConceptScope) -> bool:
     """Whether a repository-relative file/module path falls inside scope.
 
     Compared in NFC: macOS reports decomposed (NFD) names for a directory a
@@ -384,9 +395,7 @@ def path_in_scope(path: str, scope: tuple[str, ...] | None) -> bool:
     )
 
 
-def scopes_overlap(
-    left: tuple[str, ...] | None, right: tuple[str, ...] | None
-) -> bool:
+def scopes_overlap(left: ConceptScope, right: ConceptScope) -> bool:
     """Repository-wide overlaps everything; path scopes overlap by ancestry."""
     if left is None or right is None:
         return True
@@ -397,17 +406,26 @@ def scopes_overlap(
     )
 
 
-def scope_evidence(scope: tuple[str, ...] | None) -> dict:
+def scope_evidence(scope: ConceptScope) -> ScopeEvidence:
     """Stable serialized scope metadata used by drift and validation reports."""
     if scope is None:
-        return {"kind": "repository"}
-    return {"kind": "path-prefixes", SCOPE_PATHS_KEY: list(scope)}
+        repository: RepositoryScopeEvidence = {"kind": "repository"}
+        return repository
+    scoped: PathPrefixScopeEvidence = {
+        "kind": "path-prefixes", SCOPE_PATHS_KEY: list(scope),
+    }
+    return scoped
+
+
+_VocabularyClaim = Callable[
+    [str, tuple[int, str, str], ConceptScope], "tuple[int, str, str] | None"
+]
 
 
 def _validate_aliases(
-    concept: dict, i: int, where: str, owner_id: str,
-    scope: tuple[str, ...] | None, scope_valid: bool,
-    claim_vocabulary, errors: _ValidationErrors,
+    concept: dict[object, object], i: int, where: str, owner_id: str,
+    scope: ConceptScope, scope_valid: bool,
+    claim_vocabulary: _VocabularyClaim, errors: _ValidationErrors,
 ) -> None:
     aliases = concept.get("aliases", [])
     if not isinstance(aliases, list):
@@ -456,7 +474,7 @@ def _validate_aliases(
 
 
 def _validate_bindings(
-    concept: dict, where: str, errors: _ValidationErrors
+    concept: dict[object, object], where: str, errors: _ValidationErrors
 ) -> None:
     bindings = concept.get("bindings", [])
     if not isinstance(bindings, list):
@@ -509,8 +527,7 @@ def validate_glossary(glossary: object) -> list[str]:
     vocabulary_owners: dict[str, _ScopeOwnerIndex] = {}
 
     def claim_vocabulary(
-        folded: str, owner: tuple[int, str, str],
-        scope: tuple[str, ...] | None,
+        folded: str, owner: tuple[int, str, str], scope: ConceptScope,
     ) -> tuple[int, str, str] | None:
         index = vocabulary_owners.setdefault(folded, _ScopeOwnerIndex())
         previous = index.conflict(scope)
@@ -576,7 +593,17 @@ def validate_glossary(glossary: object) -> list[str]:
     return errors.finish()
 
 
-def load_glossary(root: Path) -> dict | None:
+def checked_glossary(value: object) -> tuple[GlossaryDocument | None, list[str]]:
+    """The one place untrusted JSON becomes a ``GlossaryDocument``: the
+    document after ``validate_glossary`` accepted every field, status, scope,
+    and ownership rule, or ``None`` with the diagnostics in their order."""
+    errors = validate_glossary(value)
+    if errors or not isinstance(value, dict):
+        return None, errors
+    return cast(GlossaryDocument, value), []
+
+
+def load_glossary(root: Path) -> GlossaryDocument | None:
     """Return the validated glossary, None if absent, GlossaryError if bad."""
     try:
         path = confined_artifact_path(root, f"{OUT_DIR}/{GLOSSARY_FILE}")
@@ -591,30 +618,27 @@ def load_glossary(root: Path) -> dict | None:
         )
     if not read.ok:
         raise GlossaryError(f"{path}: unreadable JSON ({read.error})")
-    glossary = read.value
-    errors = validate_glossary(glossary)
-    # A non-object document is already an error, so the narrowing never
-    # changes the diagnostic; it only makes the return a validated dict.
-    if errors or not isinstance(glossary, dict):
+    glossary, errors = checked_glossary(read.value)
+    if glossary is None:
         raise GlossaryError(f"{path}: " + "; ".join(errors))
     return glossary
 
 
-def save_glossary(root: Path, glossary: object) -> Path:
+def save_glossary(root: Path, document: object) -> Path:
     """Validate an untrusted JSON document and write it as the glossary."""
-    errors = validate_glossary(glossary)
-    if errors or not isinstance(glossary, dict):
+    glossary, errors = checked_glossary(document)
+    if glossary is None:
         raise GlossaryError("refusing to save invalid glossary: "
                             + "; ".join(errors))
-    glossary = dict(glossary)
-    concepts = []
+    concepts: list[ConceptRecord] = []
     for original in glossary["concepts"]:
-        concept = dict(original)
+        concept = original.copy()
         scope = concept.get("scope")
-        if isinstance(scope, dict):
-            concept["scope"] = {
-                SCOPE_PATHS_KEY: sorted(scope[SCOPE_PATHS_KEY])
-            }
+        if scope is not None:
+            concept["scope"] = {SCOPE_PATHS_KEY: sorted(scope[SCOPE_PATHS_KEY])}
         concepts.append(concept)
-    glossary["concepts"] = sorted(concepts, key=lambda c: c["id"])
-    return write_artifact(root, GLOSSARY_FILE, glossary)
+    normalized: GlossaryDocument = {
+        "schema_version": glossary["schema_version"],
+        "concepts": sorted(concepts, key=lambda c: c["id"]),
+    }
+    return write_artifact(root, GLOSSARY_FILE, normalized)

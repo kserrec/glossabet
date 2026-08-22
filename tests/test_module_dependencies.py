@@ -85,8 +85,20 @@ def test_forbidden_dependency_directions():
         "managed_block": {"glossabet.context_sync", "glossabet.evidence"},
         "scanner": {"glossabet.repository_glossary", "glossabet.evidence"},
         "git_state": {"glossabet.evidence", "glossabet.brief"},
+        # The glossary schema is a leaf: it owns meaning only and must not
+        # reach persistence, validation, or commands.
+        "model": {"glossabet.store", "glossabet.glossary_commands", "glossabet.engine_run"},
     }
     for module, banned in forbidden.items():
         banned = {_qualified(name.removeprefix("glossabet.")) for name in banned}
         found = _imports(module) & banned
         assert not found, f"{module} imports {sorted(found)}"
+
+
+def test_glossary_model_imports_nothing_from_the_package():
+    """The persisted glossary schema must stay a leaf module so that every
+    layer can name the document without a dependency cycle."""
+    package_imports = {
+        name for name in _imports("model") if name.startswith("glossabet")
+    }
+    assert package_imports == set()

@@ -17,6 +17,7 @@ from glossabet.agent.managed_context import (
     read_regular_target,
     render_block,
 )
+from glossabet.glossary.model import GlossaryDocument
 from glossabet.runtime.artifacts import replace_file_atomic
 from glossabet.runtime.display import escape_terminal_text, print_error
 from glossabet.runtime.engine_run import GLOSSARY_REQUIRED, open_run
@@ -63,7 +64,7 @@ def _append_block(text: str, block: str, newline: str) -> str:
 
 def sync_context(
     root: Path,
-    glossary: dict,
+    glossary: GlossaryDocument,
     agent: str,
     *,
     force: bool = False,

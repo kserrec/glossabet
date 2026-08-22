@@ -71,6 +71,9 @@ module = [
   "glossabet.analysis.evidence",
   "glossabet.analysis.evidence_types",
   "glossabet.analysis.evidence_view",
+  "glossabet.glossary.model",
+  "glossabet.glossary.store",
+  "glossabet.glossary.glossary_commands",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

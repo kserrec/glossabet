@@ -17,6 +17,7 @@ from collections.abc import Iterable
 
 from glossabet.analysis.evidence_types import EvidenceDocument
 from glossabet.analysis.evidence_view import EvidenceView
+from glossabet.glossary.model import GlossaryDocument, ScopeEvidence
 from glossabet.runtime import coverage
 from glossabet.runtime.coverage import coverage_ledger, coverage_reasons
 from glossabet.runtime.display import escape_terminal_text, join_escaped
@@ -31,7 +32,7 @@ VOCABULARY_MATCHING_OMISSION = (
 
 
 
-def glossary_terms(glossary: dict) -> list[str]:
+def glossary_terms(glossary: GlossaryDocument) -> list[str]:
     """Every concept term and alias term, in document order — the term set
     the evidence matcher indexes for drift and validation."""
     return [
@@ -65,7 +66,7 @@ def finding(
     *,
     certainty: str | None = None,
     signal_strength: str | None = None,
-    scope: dict | None = None,
+    scope: ScopeEvidence | None = None,
     **fields,
 ) -> dict:
     """One finding. Exactly one of ``certainty`` (observed facts) or

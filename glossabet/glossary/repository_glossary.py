@@ -29,6 +29,7 @@ from glossabet.corpus.scanner import (
     entry_named_exactly,
     glossary_link_refusal,
 )
+from glossabet.glossary.model import ConceptRecord, GlossaryDocument
 from glossabet.runtime.artifacts import READ_OVERSIZED, read_bounded_bytes
 
 REPOSITORY_GLOSSARY_FILE = "GLOSSARY.md"
@@ -144,7 +145,7 @@ def _fold(text: str) -> str:
     return _collapse_whitespace(_normalize(text))
 
 
-def _superseded_aliases(concept: dict) -> list[tuple[str, str]]:
+def _superseded_aliases(concept: ConceptRecord) -> list[tuple[str, str]]:
     return [
         (alias["term"], alias["status"])
         for alias in concept.get("aliases", [])
@@ -173,7 +174,7 @@ def _divergence_result(
     return result
 
 
-def repository_glossary_divergence(glossary: dict, payload: bytes) -> dict:
+def repository_glossary_divergence(glossary: GlossaryDocument, payload: bytes) -> dict:
     """The one reconciliation signal the engine can give without parsing
     Markdown: is each settled term lexically present in the document?
 
@@ -249,7 +250,7 @@ def repository_glossary_divergence(glossary: dict, payload: bytes) -> dict:
 
 
 def repository_glossary_section(
-    root: Path, evidence: EvidenceDocument, glossary: dict | None = None
+    root: Path, evidence: EvidenceDocument, glossary: GlossaryDocument | None = None
 ) -> dict:
     """The agent-context section: discovery plus nested exclusions.
 

@@ -48,6 +48,7 @@ from glossabet.glossary.findings import (
     vocabulary_omission_reasons,
 )
 from glossabet.glossary.matching import EvidenceIndex
+from glossabet.glossary.model import ConceptRecord, ConceptScope, GlossaryDocument
 from glossabet.glossary.repository_glossary import repository_glossary_section
 from glossabet.glossary.store import (
     concept_scope,
@@ -71,7 +72,7 @@ def _tokens(text: str) -> set[str]:
     return set(tokenize_term(text))
 
 
-def _concept_vocab(concept: dict) -> tuple[set[str], set[str]]:
+def _concept_vocab(concept: ConceptRecord) -> tuple[set[str], set[str]]:
     term_tokens = _tokens(concept["term"])
     binding_tokens: set[str] = set()
     for binding in concept.get("bindings", []):
@@ -167,7 +168,7 @@ def _path_binding_status(
 
 
 def _resolve_bindings(
-    concept: dict, matcher: EvidenceIndex, root: Path | None = None
+    concept: ConceptRecord, matcher: EvidenceIndex, root: Path | None = None
 ) -> list[dict]:
     inventory_complete = matcher.view.repository_corpus_complete()
     excluded = _excluded_prefixes(matcher.view)
@@ -204,7 +205,7 @@ def _resolve_bindings(
 
 
 def _group_match_contexts(
-    structural: StructuralGroups, canonical: list[dict], vocab: dict
+    structural: StructuralGroups, canonical: list[ConceptRecord], vocab: dict
 ) -> tuple[list[tuple[StructuralGroup, set[str], set[str], list[str]]], int]:
     """Per structural group: (group, label tokens, label+member tokens,
     candidate concept ids reached through an inverted token index), sorted
@@ -277,7 +278,7 @@ def _structural_incompleteness(
 
 def _structure_findings(
     structural: StructuralGroups,
-    canonical: list[dict],
+    canonical: list[ConceptRecord],
     vocab: dict,
     upstream_reasons: list[str],
 ) -> tuple[CappedSection, CappedSection, CappedSection, CoverageLedger]:
@@ -372,7 +373,9 @@ def _structure_findings(
     )
 
 
-def _binding_findings(concept: dict, scope, bindings: list[dict]) -> list[dict]:
+def _binding_findings(
+    concept: ConceptRecord, scope: ConceptScope, bindings: list[dict]
+) -> list[dict]:
     """One finding per binding that no longer resolves inside the scope."""
     found = []
     for binding in bindings:
@@ -398,7 +401,8 @@ def _binding_findings(concept: dict, scope, bindings: list[dict]) -> list[dict]:
 
 
 def _orphan_finding(
-    concept: dict, scope, term_tokens: set[str], occurrence: dict,
+    concept: ConceptRecord, scope: ConceptScope, term_tokens: set[str],
+    occurrence: dict,
     bindings: list[dict], resolved: list[dict], uncertain: list[dict],
 ) -> dict | None:
     """The orphaned-concept finding for a canonical term with weak, complete
@@ -439,7 +443,7 @@ def _orphan_finding(
 
 
 def _concept_findings(
-    canonical: list[dict],
+    canonical: list[ConceptRecord],
     vocab: dict,
     matcher: EvidenceIndex,
     root: Path | None = None,
@@ -552,8 +556,8 @@ def _graph_status(structural: StructuralGroups) -> _GraphStatus:
 def _structural_sections(
     structural: StructuralGroups,
     graph: _GraphStatus,
-    global_canonical: list[dict],
-    scoped_canonical: list[dict],
+    global_canonical: list[ConceptRecord],
+    scoped_canonical: list[ConceptRecord],
     vocab: dict,
 ) -> tuple[dict, CoverageLedger]:
     """The three structure -> glossary sections with their skipped/partial
@@ -620,7 +624,7 @@ def _structural_sections(
 
 def build_validation(
     evidence: EvidenceDocument,
-    glossary: dict,
+    glossary: GlossaryDocument,
     *,
     managed_context: dict | None = None,
     repository_glossary: dict | None = None,

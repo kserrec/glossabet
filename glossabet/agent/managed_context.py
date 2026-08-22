@@ -28,6 +28,7 @@ from glossabet.agent.managed_block import (
     START_MARKER,
 )
 from glossabet.corpus.scanner import entry_named_exactly
+from glossabet.glossary.model import GlossaryDocument
 from glossabet.glossary.store import glossary_sha256
 from glossabet.runtime.display import escape_terminal_text
 
@@ -55,7 +56,7 @@ def _content_sha256(text: str) -> str:
     return hashlib.sha256(_normalized_newlines(text).encode("utf-8")).hexdigest()
 
 
-def render_block(glossary: dict, *, newline: str = "\n") -> str:
+def render_block(glossary: GlossaryDocument, *, newline: str = "\n") -> str:
     body = build_managed_brief(glossary)
     if any(marker in body for marker in (START_MARKER, END_MARKER, MARKER_PREFIX)):
         raise ContextSyncError(
@@ -71,7 +72,7 @@ def render_block(glossary: dict, *, newline: str = "\n") -> str:
     return block if newline == "\n" else block.replace("\n", newline)
 
 
-def analyze_managed_block(text: str, glossary: dict) -> _Analysis:
+def analyze_managed_block(text: str, glossary: GlossaryDocument) -> _Analysis:
     if MARKER_PREFIX not in text:
         return _Analysis("absent", "no Glossabet managed context block")
     if text.count(START_MARKER) != 1 or text.count(END_MARKER) != 1:
@@ -206,7 +207,7 @@ def read_regular_target(path: Path) -> tuple[bytes | None, int]:
     return payload, stat.S_IMODE(opened.st_mode)
 
 
-def _inspect_target(path: Path, glossary: dict) -> dict:
+def _inspect_target(path: Path, glossary: GlossaryDocument) -> dict:
     try:
         existing, _mode = read_regular_target(path)
     except ContextSyncError as exc:
@@ -223,7 +224,7 @@ def _inspect_target(path: Path, glossary: dict) -> dict:
     return {"path": path.name, "status": analysis.status, "detail": analysis.detail}
 
 
-def inspect_managed_context(root: Path, glossary: dict) -> dict:
+def inspect_managed_context(root: Path, glossary: GlossaryDocument) -> dict:
     """Inspect both supported root host files without writing or following links."""
     targets = [
         _inspect_target(root / filename, glossary)
