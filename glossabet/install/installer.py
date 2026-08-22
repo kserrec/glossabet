@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from importlib import resources
 from pathlib import Path
+from typing import Literal, NamedTuple
 
 from glossabet.install.claude_plugin import (
     ClaudePluginError,
@@ -39,6 +40,17 @@ _DESTINATIONS = {
 
 class InstallError(ValueError):
     """The requested skill installation is unsafe or cannot be completed."""
+
+
+InstallOutcome = Literal["installed", "current", "replaced"]
+
+
+class InstalledFile(NamedTuple):
+    """What ``install_claude_plugin`` did with one plugin file."""
+
+    label: str
+    path: Path
+    outcome: InstallOutcome
 
 
 def default_skill_directory(agent: str, *, home: Path | None = None) -> Path:
@@ -84,7 +96,7 @@ def _install_file(
     *,
     label: str,
     force: bool,
-) -> tuple[Path, str]:
+) -> tuple[Path, InstallOutcome]:
     """Write one owned file inside ``destination``; return ``(path, outcome)``.
 
     ``outcome`` is ``installed``, ``current``, or ``replaced``. A different
@@ -119,7 +131,7 @@ def _install_file(
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         _reject_symlink_components(target)
-        outcome = "replaced" if target.exists() else "installed"
+        outcome: InstallOutcome = "replaced" if target.exists() else "installed"
         replace_file_atomic(target, payload, mode=0o644)
     except InstallError:
         raise
@@ -128,7 +140,9 @@ def _install_file(
     return target, outcome
 
 
-def install_skill(destination: Path, *, force: bool = False) -> tuple[Path, str]:
+def install_skill(
+    destination: Path, *, force: bool = False
+) -> tuple[Path, InstallOutcome]:
     """Install the canonical skill and return ``(path, outcome)``.
 
     ``outcome`` is ``installed``, ``current``, or ``replaced``.
@@ -148,19 +162,19 @@ def install_claude_plugin(
     executable: Path,
     *,
     force: bool = False,
-) -> list[tuple[str, Path, str]]:
+) -> list[InstalledFile]:
     """Write the manifest and hook beside SKILL.md; return ``(label, path, outcome)``."""
     destination = destination.expanduser().absolute()
-    written = []
+    written: list[InstalledFile] = []
     for label, relative, payload in claude_plugin_files(executable):
         path, outcome = _install_file(
             destination, relative, payload, label=label, force=force
         )
-        written.append((label, path, outcome))
+        written.append(InstalledFile(label, path, outcome))
     return written
 
 
-_VERBS = {
+_VERBS: dict[InstallOutcome, str] = {
     "installed": "Installed",
     "current": "Already current",
     "replaced": "Replaced",

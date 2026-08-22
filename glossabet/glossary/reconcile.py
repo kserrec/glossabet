@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import TypedDict
 
 from glossabet.agent.managed_context import (
+    ManagedContextReport,
     inspect_managed_context,
     print_managed_context_issues,
     unchecked_managed_context,
@@ -678,7 +679,7 @@ def build_validation(
     evidence: EvidenceDocument,
     glossary: GlossaryDocument,
     *,
-    managed_context: dict[str, object] | None = None,
+    managed_context: ManagedContextReport | None = None,
     repository_glossary: RepositoryGlossarySection | None = None,
     root: Path | None = None,
 ) -> ValidationDocument:

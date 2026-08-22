@@ -15,6 +15,7 @@ from itertools import combinations
 from typing import TypedDict
 
 from glossabet.agent.managed_context import (
+    ManagedContextReport,
     inspect_managed_context,
     print_managed_context_issues,
     unchecked_managed_context,
@@ -437,7 +438,7 @@ def build_drift(
     glossary: GlossaryDocument,
     *,
     matcher: EvidenceIndex | None = None,
-    managed_context: dict[str, object] | None = None,
+    managed_context: ManagedContextReport | None = None,
 ) -> DriftDocument:
     canonical, watched, known_scopes = _index_glossary(glossary)
     matcher = matcher or EvidenceIndex(evidence, glossary_terms(glossary))

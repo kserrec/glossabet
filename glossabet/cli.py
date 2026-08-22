@@ -203,9 +203,23 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+class _Arguments(argparse.Namespace):
+    """The parsed command line, named so dispatch reads typed attributes.
+    Each subcommand sets only the attributes its parser defines."""
+
+    command: str | None
+    path: str
+    no_graphify: bool
+    full: bool
+    agent: str
+    force: bool
+    skill_only: bool
+    destination: str | None
+
+
 def _run(argv: list[str] | None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(argv, namespace=_Arguments())
 
     if args.command is None:
         parser.print_help(sys.stderr)

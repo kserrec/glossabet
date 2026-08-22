@@ -16,6 +16,7 @@ import stat
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal, TypedDict
 
 from glossabet.agent.brief import build_managed_brief
 from glossabet.agent.managed_block import (
@@ -40,9 +41,33 @@ class ContextSyncError(ValueError):
     """A host-context target is unsafe, ambiguous, or cannot be updated."""
 
 
+ManagedBlockStatus = Literal["absent", "current", "stale", "edited", "uninspectable"]
+ISSUE_STATUSES: frozenset[ManagedBlockStatus] = frozenset(
+    {"stale", "edited", "uninspectable"}
+)
+
+
+class ManagedTargetReport(TypedDict):
+    """One root host file's managed block, classified."""
+
+    path: str
+    status: ManagedBlockStatus
+    detail: str
+
+
+class ManagedContextReport(TypedDict):
+    """The persisted ``managed_context`` section of drift and validation.
+    ``checked`` is false for the pure builders' placeholder."""
+
+    schema_version: int
+    checked: bool
+    targets: list[ManagedTargetReport]
+    issue_count: int
+
+
 @dataclass(frozen=True)
 class _Analysis:
-    status: str
+    status: ManagedBlockStatus
     detail: str
     start: int | None = None
     end: int | None = None
@@ -207,7 +232,7 @@ def read_regular_target(path: Path) -> tuple[bytes | None, int]:
     return payload, stat.S_IMODE(opened.st_mode)
 
 
-def _inspect_target(path: Path, glossary: GlossaryDocument) -> dict:
+def _inspect_target(path: Path, glossary: GlossaryDocument) -> ManagedTargetReport:
     try:
         existing, _mode = read_regular_target(path)
     except ContextSyncError as exc:
@@ -224,22 +249,23 @@ def _inspect_target(path: Path, glossary: GlossaryDocument) -> dict:
     return {"path": path.name, "status": analysis.status, "detail": analysis.detail}
 
 
-def inspect_managed_context(root: Path, glossary: GlossaryDocument) -> dict:
+def inspect_managed_context(
+    root: Path, glossary: GlossaryDocument
+) -> ManagedContextReport:
     """Inspect both supported root host files without writing or following links."""
     targets = [
         _inspect_target(root / filename, glossary)
         for filename in sorted(AGENT_TARGETS.values())
     ]
-    issue_statuses = {"stale", "edited", "uninspectable"}
     return {
         "schema_version": MANAGED_CONTEXT_SCHEMA_VERSION,
         "checked": True,
         "targets": targets,
-        "issue_count": sum(target["status"] in issue_statuses for target in targets),
+        "issue_count": sum(target["status"] in ISSUE_STATUSES for target in targets),
     }
 
 
-def unchecked_managed_context() -> dict:
+def unchecked_managed_context() -> ManagedContextReport:
     """Explicit state for pure builders whose caller supplied no repository."""
     return {
         "schema_version": MANAGED_CONTEXT_SCHEMA_VERSION,
@@ -249,11 +275,11 @@ def unchecked_managed_context() -> dict:
     }
 
 
-def print_managed_context_issues(report: dict) -> None:
-    for target in report.get("targets", []):
-        if target.get("status") not in {"stale", "edited", "uninspectable"}:
+def print_managed_context_issues(report: ManagedContextReport) -> None:
+    for target in report["targets"]:
+        if target["status"] not in ISSUE_STATUSES:
             continue
-        path = escape_terminal_text(str(target.get("path", "host context")))
-        status = escape_terminal_text(str(target.get("status", "issue")))
-        detail = escape_terminal_text(str(target.get("detail", "")))
+        path = escape_terminal_text(target["path"])
+        status = escape_terminal_text(target["status"])
+        detail = escape_terminal_text(target["detail"])
         print(f"managed context {path}: {status} — {detail}", file=sys.stderr)

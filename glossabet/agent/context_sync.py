@@ -9,6 +9,7 @@ surrounding byte remains untouched.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from glossabet.agent.managed_block import AGENT_TARGETS
 from glossabet.agent.managed_context import (
@@ -21,6 +22,15 @@ from glossabet.glossary.model import GlossaryDocument
 from glossabet.runtime.artifacts import replace_file_atomic
 from glossabet.runtime.display import escape_terminal_text, print_error
 from glossabet.runtime.engine_run import GLOSSARY_REQUIRED, open_run
+
+SyncOutcome = Literal["created", "appended", "updated", "repaired", "current"]
+_VERBS: dict[SyncOutcome, str] = {
+    "created": "Created",
+    "appended": "Appended",
+    "updated": "Updated",
+    "repaired": "Repaired",
+    "current": "Already current",
+}
 
 
 def _detect_newline(text: str) -> str:
@@ -68,7 +78,7 @@ def sync_context(
     agent: str,
     *,
     force: bool = False,
-) -> tuple[Path, str]:
+) -> tuple[Path, SyncOutcome]:
     """Synchronize one explicitly selected host file.
 
     Returns ``(path, outcome)`` where outcome is ``created``, ``appended``,
@@ -110,6 +120,7 @@ def sync_context(
                 "only if replacing that managed block is intended"
             )
 
+    outcome: SyncOutcome
     if analysis.status == "absent":
         updated = _append_block(existing, block, newline)
         outcome = "created" if existing_bytes is None else "appended"
@@ -143,13 +154,6 @@ def sync_context_command(path_arg: str, agent: str, *, force: bool = False) -> i
     except ContextSyncError as exc:
         print_error(exc)
         return 1
-    verbs = {
-        "created": "Created",
-        "appended": "Appended",
-        "updated": "Updated",
-        "repaired": "Repaired",
-        "current": "Already current",
-    }
     safe_path = escape_terminal_text(str(path))
-    print(f"{verbs[outcome]} managed vocabulary context: {safe_path}")
+    print(f"{_VERBS[outcome]} managed vocabulary context: {safe_path}")
     return 0

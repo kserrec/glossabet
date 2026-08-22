@@ -18,6 +18,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Protocol, TypedDict, TypeGuard, Union
 
+from glossabet.agent.managed_context import ManagedContextReport
 from glossabet.analysis.evidence_types import EvidenceDocument, FreshnessRecord
 from glossabet.analysis.evidence_view import EvidenceView
 from glossabet.glossary.model import GlossaryDocument, ScopeEvidence
@@ -119,7 +120,7 @@ class DriftDocument(TypedDict):
     total_findings_complete: bool
     scope_summary: DriftScopeSummary
     total_findings: int
-    managed_context: dict[str, object]
+    managed_context: ManagedContextReport
     parallel_terms: FindingSection
     watched_terms_in_use: FindingSection
     canonical_fading: FindingSection
@@ -166,7 +167,7 @@ class ValidationDocument(TypedDict):
     graph_available: bool
     total_findings: int
     total_findings_complete: bool
-    managed_context: dict[str, object]
+    managed_context: ManagedContextReport
     repository_glossary: RepositoryGlossarySection
     unnamed_structure: FindingSection
     boundary_mismatch: FindingSection
@@ -480,7 +481,7 @@ class FindingsDocumentView:
         """Per-section coverage ledgers keyed by section."""
         return self.coverage()["collections"]
 
-    def managed_context(self) -> dict[str, object]:
+    def managed_context(self) -> ManagedContextReport:
         return self._d["managed_context"]
 
     def section(self, key: str) -> FindingSection:

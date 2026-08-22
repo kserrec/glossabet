@@ -15,6 +15,7 @@ from glossabet.runtime import git_state
 from glossabet.runtime.artifacts import OUT_DIR, ArtifactError
 from glossabet.runtime.display import escape_terminal_text, join_escaped
 from glossabet.runtime.engine_run import GLOSSARY_OPTIONAL, open_run
+from glossabet.runtime.git_state import GitStamp
 
 BRIEF_FORMAT_VERSION = 1
 # First-line origin markers. The live marker tells a transcript reader where
@@ -33,6 +34,13 @@ _ELLIPSIS = "…"
 
 class BriefError(ArtifactError):
     """A safe vocabulary brief could not be produced within its contract."""
+
+
+class BriefGitStamp(GitStamp, total=False):
+    """The repository stamp plus, when Git answered, the state of the one
+    non-derived file under ``glossabet-out/``."""
+
+    glossary_json: str | None
 
 
 def _utf8_size(text: str) -> int:
@@ -202,16 +210,16 @@ def _render_brief(glossary: GlossaryDocument, state_line: str, origin: str) -> s
     return output
 
 
-def _brief_git_stamp(root: Path) -> dict:
-    stamp = dict(git_state.repository_git_stamp(root))
-    if stamp.get("head") is not None:
+def _brief_git_stamp(root: Path) -> BriefGitStamp:
+    stamp: BriefGitStamp = {**git_state.repository_git_stamp(root)}
+    if stamp["head"] is not None:
         stamp["glossary_json"] = git_state.path_git_state(
             root, f"{OUT_DIR}/{GLOSSARY_FILE}"
         )
     return stamp
 
 
-def build_brief(glossary: GlossaryDocument, git_stamp: dict) -> str:
+def build_brief(glossary: GlossaryDocument, git_stamp: BriefGitStamp) -> str:
     """Build deterministic ambient text from one already validated glossary.
 
     The first line names the origin so a reader of an agent transcript can

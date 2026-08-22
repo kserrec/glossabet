@@ -63,33 +63,25 @@ disallow_untyped_defs = false
 disallow_incomplete_defs = false
 
 [[tool.mypy.overrides]]
-# Fully typed layers (Pass 2 onward): the foundation is held to the final
-# policy now; Pass 7 extends it to the whole package.
+# Fully typed layers (Pass 2 onward): held to the final policy now. After
+# Pass 6 only the heuristic analysis modules (graphify, importance,
+# terminology, vocabulary) remain outside this list; Pass 7 makes the policy
+# package-wide and deletes the override.
 module = [
   "glossabet.runtime.*",
   "glossabet.corpus.*",
   "glossabet.analysis.evidence",
   "glossabet.analysis.evidence_types",
   "glossabet.analysis.evidence_view",
-  "glossabet.glossary.model",
-  "glossabet.glossary.store",
-  "glossabet.glossary.glossary_commands",
-  "glossabet.glossary.findings",
-  "glossabet.glossary.matching",
-  "glossabet.glossary.drift",
-  "glossabet.glossary.reconcile",
-  "glossabet.glossary.repository_glossary",
+  "glossabet.glossary.*",
+  "glossabet.agent.*",
+  "glossabet.install.*",
+  "glossabet.cli",
+  "glossabet.__main__",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 disallow_any_generics = true
-
-[[tool.mypy.overrides]]
-# This module returns values read out of untyped documents. The relaxation
-# is removed by the pass that types its documents: agent_context (Pass 6).
-# Do not add modules here.
-module = ["glossabet.agent.agent_context"]
-warn_return_any = false
 
 [tool.hatch.version]
 path = "glossabet/__init__.py"

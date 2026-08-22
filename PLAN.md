@@ -3,7 +3,7 @@
 Status: **Phases 0–22, 24–32, 34–44 complete (36.8, live
 post-approval skill scenarios, planned); Phase 33 (Claude Code ambient parity)
 in progress at 33.2; Phase 45 (maintainability refactor, 15 spec passes) in
-progress at 45.6; owner self-testing pause active before the trusted-alpha
+progress at 45.7; owner self-testing pause active before the trusted-alpha
 gate** as of 2026-08-22.
 Phases 18–23 are the complete
 post-audit route from the current local package to a defensible trusted alpha.
@@ -1218,7 +1218,7 @@ Steps (each is the same-numbered spec pass):
   `EvidenceView` ✅ 2026-08-22
 - **45.4** Pass 4 — structured glossary and store boundary types ✅ 2026-08-22
 - **45.5** Pass 5 — observed vs heuristic findings as distinct types ✅ 2026-08-22
-- **45.6** Pass 6 — AgentContext and remaining production boundaries
+- **45.6** Pass 6 — AgentContext and remaining production boundaries ✅ 2026-08-22
 - **45.7** Pass 7 — close the strict static-type gate
 - **45.8** Pass 8 — isolate heuristic policy without changing it
 - **45.9** Pass 9 — decompose the repository scanner
@@ -1337,6 +1337,29 @@ field, both keyword-required, `finding` gone). A/B on payment-service and the
 four path-sourced corpus fixtures: save/scan/analyze/drift/validate/show/
 brief/inspect/inspect --full stdout, rc, and every artifact byte-identical.
 Suite 654; Gates A, B, C green; plugin rebuilt.
+
+**45.6 outcome (2026-08-22):** `agent_context.py` owns AgentContext v3 as
+named types — `AgentContextDocument` (= the bounded `_ContextSource` plus
+`coverage`), `ContextCoverage`/`ContextOmission`/`ContextLimits`,
+`ContextGlossarySection`, `LeanVocabularySection` over `ModuleRollupTable`
+(entries stay a `dict[str, object]` because the rollup keeps each table's
+own entry keys), `RegisterExemplar(s)`, `ContextTerminology` with a
+`ContextRegisterSection` that may carry exemplars, and
+`ContextNamingCandidates`/`ContextTermCandidate` with locations. The untyped
+`_projection_copy` seam is gone; the one `cast` lives in `_bounded`, stating
+the documented invariant that bounding preserves shape. `managed_context.py`
+exposes `ManagedContextReport`/`ManagedTargetReport`/`ManagedBlockStatus`
+(used by findings, drift, reconcile); `brief.py` a `BriefGitStamp`;
+`context_sync.py` a `SyncOutcome` literal; `installer.py` `InstallOutcome`
+and `InstalledFile`; `claude_plugin.py` `ClaudePluginManifest`,
+`ClaudeHooksFile`, and `PluginFile`. CLI dispatch reads a small typed
+`_Arguments` namespace (same argparse, same lazy imports). The strict mypy
+override now covers every module except the four heuristic analysis modules,
+and the last `warn_return_any` relaxation is deleted. A/B vs HEAD on the
+sample: scan (cold+warm), analyze, drift, validate, show, brief, inspect
+(lean/full/no-graphify), sync-context (both hosts, repeat), install (both
+hosts) — stdout/stderr, every artifact, both host files, and both installed
+trees byte-identical.
 
 ### Owner self-testing pause — active, not an implementation phase
 

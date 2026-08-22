@@ -13,23 +13,58 @@ from collections import Counter
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
+from typing import Literal, TypedDict, TypeVar, cast
 
 from glossabet.analysis.evidence import persist_evidence
 from glossabet.analysis.evidence_types import (
+    ContextDispersionSection,
     EvidenceDocument,
+    FilesSection,
+    GeneratorRecord,
+    IdentifierEntry,
     IdentifierTable,
+    LayersSection,
+    ModuleCandidate,
+    ModuleRecord,
+    NamingCandidates,
+    NamingCoverage,
+    OverloadCandidatesSection,
+    RegisterSection,
+    RepositoryRecord,
+    SkippedSection,
+    StructuralGroups,
+    StructureCandidate,
+    SynonymCandidatesSection,
+    TermCandidate,
+    TerminologyCoverage,
+    TerminologyScope,
+    TerminologySection,
+    TotalsRecord,
+    TruncationMarker,
+    VocabularySection,
     VocabularyTable,
 )
 from glossabet.analysis.evidence_view import EvidenceView
+from glossabet.corpus.config import ConfigurationEvidence
 from glossabet.corpus.imports import module_of
-from glossabet.corpus.tokenize import STRUCTURED_IDENTIFIER_STYLES, identifier_style
-from glossabet.glossary.model import GlossaryDocument
+from glossabet.corpus.scanner import CorpusBudgetEvidence, MonorepoEvidence
+from glossabet.corpus.tokenize import (
+    STRUCTURED_IDENTIFIER_STYLES,
+    TokenizationContract,
+    identifier_style,
+)
+from glossabet.glossary.model import ConceptRecord, GlossaryDocument
 from glossabet.glossary.repository_glossary import (
     RepositoryGlossarySection,
     repository_glossary_section,
 )
 from glossabet.runtime.artifacts import ArtifactError
-from glossabet.runtime.coverage import capped_collection, coverage_reasons
+from glossabet.runtime.coverage import (
+    CoverageLedger,
+    LocationSample,
+    capped_collection,
+    coverage_reasons,
+)
 from glossabet.runtime.engine_run import GLOSSARY_OPTIONAL, open_run
 
 AGENT_CONTEXT_SCHEMA_VERSION = 3
@@ -73,9 +108,166 @@ class AgentContextError(ArtifactError):
     """A safe agent context could not be produced within its contract."""
 
 
+# -- the AgentContext v3 document -------------------------------------------
+
+Projection = Literal["lean", "full"]
+
+
+class ContextOmission(TypedDict):
+    """One bounded-projection omission: a key pattern (list indexes folded
+    to ``*``), what was left out, and how much."""
+
+    path: str
+    kind: str
+    amount: int
+
+
+class ContextLimits(TypedDict):
+    serialized_bytes: int
+    routine_target_bytes: int
+    string_characters: int
+    default_list_items: int
+    list_items: dict[str, int]
+    omission_records: int
+    register_exemplars: int
+
+
+class ContextCoverage(TypedDict):
+    """``coverage.context``: whether the projection is complete and every
+    reason it is not."""
+
+    complete: bool
+    projection: Projection
+    omissions: list[ContextOmission]
+    affected_sections: list[str]
+    omission_counts: dict[str, int]
+    omitted_amounts: dict[str, int]
+    limits: ContextLimits
+
+
+class AgentContextCoverage(TypedDict):
+    corpus: CorpusBudgetEvidence
+    context: ContextCoverage
+
+
+class ContextFreshness(TypedDict):
+    status: str
+    basis: str
+
+
+class _ContextGlossaryRequired(TypedDict):
+    present: bool
+
+
+class ContextGlossarySection(_ContextGlossaryRequired, total=False):
+    """The managed glossary as the skill sees it; the optional keys are
+    present exactly when the glossary is."""
+
+    schema_version: int
+    concepts: list[ConceptRecord]
+
+
+# A vocabulary entry with its file locations rolled up into per-module
+# counts. The rollup keeps every other key of the table's own entry type
+# (token, identifier, or doc-term), so the three shapes share one mapping.
+ModuleRollupEntry = dict[str, object]
+
+
+class ModuleRollupTable(TypedDict):
+    items: list[ModuleRollupEntry]
+    truncated: TruncationMarker | None
+    coverage: CoverageLedger
+
+
+class LeanVocabularySection(TypedDict):
+    normalization: TokenizationContract
+    tokens: ModuleRollupTable
+    identifiers: ModuleRollupTable
+    doc_terms: ModuleRollupTable
+
+
+class RegisterExemplar(IdentifierEntry):
+    style: str
+
+
+class RegisterExemplars(TypedDict):
+    items: list[RegisterExemplar]
+    coverage: CoverageLedger
+
+
+class ContextRegisterSection(RegisterSection, total=False):
+    exemplars: RegisterExemplars
+
+
+class ContextTerminology(TypedDict):
+    """The evidence terminology section whose register may carry the lean
+    projection's exemplars."""
+
+    considered_tokens: int
+    vocabulary_size: int
+    domain_vocabulary_size: int
+    language_vocabulary_size: int
+    coverage: TerminologyCoverage
+    register: ContextRegisterSection
+    layers: LayersSection
+    synonym_candidates: SynonymCandidatesSection
+    context_dispersion: ContextDispersionSection
+    overload_candidates: OverloadCandidatesSection
+    scope: TerminologyScope
+
+
+class ContextTermCandidate(TermCandidate):
+    locations: list[LocationSample]
+    locations_truncated: bool
+
+
+class ContextNamingCandidates(TypedDict):
+    """``naming_candidates`` with each term's source locations attached."""
+
+    modules: list[ModuleCandidate]
+    modules_dropped: int
+    terms: list[ContextTermCandidate]
+    terms_dropped: int
+    structures: list[StructureCandidate]
+    structures_dropped: int
+    structures_source_groups_dropped: int
+    structures_complete: bool
+    coverage: NamingCoverage
+
+
+class _ContextSource(TypedDict):
+    """The projection before bounding; ``AgentContextDocument`` adds the
+    coverage computed while bounding it."""
+
+    context_schema_version: int
+    evidence_schema_version: int
+    generator: GeneratorRecord
+    freshness: ContextFreshness
+    repository: RepositoryRecord
+    configuration: ConfigurationEvidence
+    totals: TotalsRecord
+    languages: dict[str, int]
+    modules: list[ModuleRecord]
+    files: FilesSection
+    vocabulary: VocabularySection | LeanVocabularySection
+    terminology: ContextTerminology
+    naming_candidates: NamingCandidates | ContextNamingCandidates
+    structural_groups: StructuralGroups
+    monorepo: MonorepoEvidence
+    skipped: SkippedSection
+    glossary: ContextGlossarySection
+    repository_glossary: RepositoryGlossarySection
+
+
+class AgentContextDocument(_ContextSource):
+    """AgentContext v3: what ``inspect`` prints."""
+
+    coverage: AgentContextCoverage
+
+
 @dataclass
 class _ProjectionOmissions:
-    omissions: list[dict] = field(default_factory=list)
+    omissions: list[ContextOmission] = field(default_factory=list)
     affected_sections: set[str] = field(default_factory=set)
     omission_counts: dict[str, int] = field(default_factory=dict)
     omitted_amounts: dict[str, int] = field(default_factory=dict)
@@ -107,9 +299,9 @@ class _ProjectionOmissions:
     def as_dict(
         self,
         *,
-        projection: str,
-        list_limits: dict[tuple[str, ...], int],
-    ) -> dict:
+        projection: Projection,
+        list_limits: Mapping[tuple[str, ...], int],
+    ) -> ContextCoverage:
         return {
             "complete": not self.omissions,
             "projection": projection,
@@ -132,12 +324,15 @@ class _ProjectionOmissions:
         }
 
 
+_Section = TypeVar("_Section")
+
+
 def _bounded_copy(
     value: object,
     path: tuple[str, ...],
     omissions: _ProjectionOmissions,
-    list_limits: dict[tuple[str, ...], int],
-):
+    list_limits: Mapping[tuple[str, ...], int],
+) -> object:
     if value is None or isinstance(value, (bool, int, float)):
         return value
     if isinstance(value, str):
@@ -174,33 +369,25 @@ def _bounded_copy(
     )
 
 
-def _projection_copy(section: Mapping[str, object]) -> dict:
-    """A deep copy of one evidence section as a freely mutable dictionary.
-
-    The projection adds keys the evidence contract does not carry
-    (``exemplars``, per-term ``locations``) and replaces whole subsections,
-    so it works on an untyped copy. This is the one place typed evidence
-    becomes an untyped working document; AgentContext receives its own named
-    types in Pass 6 of docs/MAINTAINABILITY-REFACTOR.md.
-    """
-    copied: object = deepcopy(section)
-    if not isinstance(copied, dict):
-        raise AgentContextError("evidence section is not a JSON object")
-    return copied
+def _bounded(
+    section: _Section,
+    omissions: _ProjectionOmissions,
+    list_limits: Mapping[tuple[str, ...], int],
+) -> _Section:
+    """Bound a whole document. Bounding preserves shape — every key, scalar
+    type, and list element type survives; only string lengths and list
+    lengths shrink — so the bounded value has the document's own type. The
+    cast states that invariant of ``_bounded_copy`` for the type checker."""
+    return cast(_Section, _bounded_copy(section, (), omissions, list_limits))
 
 
 def _module_rollup_section(
     section: VocabularyTable,
     section_name: str,
     omissions: _ProjectionOmissions,
-) -> dict:
+) -> ModuleRollupTable:
     """Replace repeated file paths with compact per-module occurrence counts."""
-    projected = {
-        key: deepcopy(value)
-        for key, value in section.items()
-        if key != "items"
-    }
-    projected_items = []
+    projected_items: list[ModuleRollupEntry] = []
     location_records = 0
     for item in section["items"]:
         locations = item.get("locations", [])
@@ -208,7 +395,7 @@ def _module_rollup_section(
         module_counts: Counter[str] = Counter()
         for location in locations:
             module_counts[module_of(location["path"])] += location["count"]
-        projected_item = {
+        projected_item: ModuleRollupEntry = {
             key: deepcopy(value)
             for key, value in item.items()
             if key not in {"locations", "locations_truncated"}
@@ -218,27 +405,29 @@ def _module_rollup_section(
             item.get("locations_truncated", False)
         )
         projected_items.append(projected_item)
-    projected["items"] = projected_items
     if location_records:
         omissions.record(
             ("vocabulary", section_name, "items", "*", "locations"),
             "file_locations_rolled_up",
             location_records,
         )
-    return projected
+    return {
+        "items": projected_items,
+        "truncated": deepcopy(section["truncated"]),
+        "coverage": deepcopy(section["coverage"]),
+    }
 
 
 def _register_exemplars(
     identifier_section: IdentifierTable,
     omissions: _ProjectionOmissions,
-) -> dict:
-    eligible: list[dict[str, object]] = []
+) -> RegisterExemplars:
+    eligible: list[RegisterExemplar] = []
     for item in identifier_section["items"]:
         style = identifier_style(item["name"])
         if len(item["tokens"]) < 2 or style not in STRUCTURED_IDENTIFIER_STYLES:
             continue
-        exemplar: dict[str, object] = dict(deepcopy(item))
-        exemplar["style"] = style
+        exemplar: RegisterExemplar = {**deepcopy(item), "style": style}
         eligible.append(exemplar)
     source_ledger = identifier_section["coverage"]
     kept, coverage = capped_collection(
@@ -262,32 +451,67 @@ def _register_exemplars(
 def _naming_with_locations(
     view: EvidenceView,
     omissions: _ProjectionOmissions,
-) -> dict:
-    naming = _projection_copy(view.naming_candidates())
+) -> ContextNamingCandidates:
+    naming = deepcopy(view.naming_candidates())
     token_entries = {
         item["term"]: item for item in view.vocabulary_table("tokens")["items"]
     }
     unavailable = 0
-    terms = []
+    terms: list[ContextTermCandidate] = []
     for item in naming["terms"]:
-        projected = deepcopy(item)
         source = token_entries.get(item["term"])
+        projected: ContextTermCandidate
         if source is None:
             unavailable += 1
-            projected["locations"] = []
-            projected["locations_truncated"] = True
+            projected = {
+                **deepcopy(item),
+                "locations": [],
+                "locations_truncated": True,
+            }
         else:
-            projected["locations"] = deepcopy(source["locations"])
-            projected["locations_truncated"] = source["locations_truncated"]
+            projected = {
+                **deepcopy(item),
+                "locations": deepcopy(source["locations"]),
+                "locations_truncated": source["locations_truncated"],
+            }
         terms.append(projected)
-    naming["terms"] = terms
     if unavailable:
         omissions.record(
             ("naming_candidates", "terms", "*", "locations"),
             "source_items_unavailable",
             unavailable,
         )
-    return naming
+    return {
+        "modules": naming["modules"],
+        "modules_dropped": naming["modules_dropped"],
+        "terms": terms,
+        "terms_dropped": naming["terms_dropped"],
+        "structures": naming["structures"],
+        "structures_dropped": naming["structures_dropped"],
+        "structures_source_groups_dropped": naming["structures_source_groups_dropped"],
+        "structures_complete": naming["structures_complete"],
+        "coverage": naming["coverage"],
+    }
+
+
+def _context_terminology(section: TerminologySection) -> ContextTerminology:
+    """A deep copy of the terminology section whose register can take the
+    lean projection's exemplars."""
+    copied = deepcopy(section)
+    register: ContextRegisterSection = {**copied["register"]}
+    return {
+        "considered_tokens": copied["considered_tokens"],
+        "vocabulary_size": copied["vocabulary_size"],
+        "domain_vocabulary_size": copied["domain_vocabulary_size"],
+        "language_vocabulary_size": copied["language_vocabulary_size"],
+        "coverage": copied["coverage"],
+        "register": register,
+        "layers": copied["layers"],
+        "synonym_candidates": copied["synonym_candidates"],
+        "context_dispersion": copied["context_dispersion"],
+        "overload_candidates": copied["overload_candidates"],
+        "scope": copied["scope"],
+    }
 
 
 def build_agent_context(
@@ -296,7 +520,7 @@ def build_agent_context(
     *,
     repository_glossary: RepositoryGlossarySection | None = None,
     full: bool = False,
-) -> dict:
+) -> AgentContextDocument:
     """Project full engine evidence into the versioned agent-facing shape.
 
     ``glossary`` is Glossabet-managed structured state (glossary.json);
@@ -304,17 +528,13 @@ def build_agent_context(
     root GLOSSARY.md (metadata only, never content). They are two distinct
     channels and are never merged or overloaded.
     """
-    glossary_section: dict = {"present": glossary is not None}
+    glossary_section: ContextGlossarySection = {"present": glossary is not None}
     if glossary is not None:
-        glossary_section.update(
-            {
-                "schema_version": glossary["schema_version"],
-                "concepts": glossary["concepts"],
-            }
-        )
+        glossary_section["schema_version"] = glossary["schema_version"]
+        glossary_section["concepts"] = glossary["concepts"]
 
     omissions = _ProjectionOmissions()
-    projection = "full" if full else "lean"
+    projection: Projection = "full" if full else "lean"
     list_limits = _FULL_LIST_LIMITS if full else _LIST_LIMITS
 
     # Imports are engine plumbing rather than a skill protocol field. Naming
@@ -324,12 +544,12 @@ def build_agent_context(
     omissions.record(("imports",), "section_excluded", 1)
 
     view = EvidenceView(evidence)
-    terminology = _projection_copy(view.terminology())
-    vocabulary: dict
-    naming_candidates: dict
+    terminology = _context_terminology(view.terminology())
+    vocabulary: VocabularySection | LeanVocabularySection
+    naming_candidates: NamingCandidates | ContextNamingCandidates
     if full:
-        vocabulary = _projection_copy(view.vocabulary())
-        naming_candidates = _projection_copy(view.naming_candidates())
+        vocabulary = deepcopy(view.vocabulary())
+        naming_candidates = deepcopy(view.naming_candidates())
     else:
         vocabulary = {
             "normalization": deepcopy(view.normalization()),
@@ -348,7 +568,7 @@ def build_agent_context(
         )
         naming_candidates = _naming_with_locations(view, omissions)
 
-    source = {
+    source: _ContextSource = {
         "context_schema_version": AGENT_CONTEXT_SCHEMA_VERSION,
         "evidence_schema_version": view.schema_version(),
         "generator": view.generator(),
@@ -375,18 +595,21 @@ def build_agent_context(
             else repository_glossary
         ),
     }
-    context = _bounded_copy(source, (), omissions, list_limits)
-    context["coverage"] = {
-        "corpus": context["skipped"]["corpus_budget"],
-        "context": omissions.as_dict(
-            projection=projection,
-            list_limits=list_limits,
-        ),
+    bounded = _bounded(source, omissions, list_limits)
+    context: AgentContextDocument = {
+        **bounded,
+        "coverage": {
+            "corpus": bounded["skipped"]["corpus_budget"],
+            "context": omissions.as_dict(
+                projection=projection,
+                list_limits=list_limits,
+            ),
+        },
     }
     return context
 
 
-def serialize_agent_context(context: dict) -> str:
+def serialize_agent_context(context: AgentContextDocument) -> str:
     serialized = json.dumps(
         context,
         separators=(",", ":"),

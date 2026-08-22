@@ -15,7 +15,9 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from collections.abc import Mapping
 from pathlib import Path
+from typing import NamedTuple, TypedDict
 
 from glossabet import __version__
 from glossabet.runtime.executables import which_on_path
@@ -46,7 +48,51 @@ class ClaudePluginError(ValueError):
     """The Claude Code plugin cannot be described safely."""
 
 
-def claude_plugin_manifest() -> dict:
+class ClaudePluginManifest(TypedDict):
+    """``.claude-plugin/plugin.json``."""
+
+    name: str
+    version: str
+    description: str
+    author: dict[str, str]
+    homepage: str
+    repository: str
+    license: str
+    keywords: list[str]
+    skills: list[str]
+
+
+class HookCommand(TypedDict):
+    type: str
+    command: str
+    timeout: int
+    statusMessage: str
+
+
+class SessionStartHook(TypedDict):
+    matcher: str
+    hooks: list[HookCommand]
+
+
+class ClaudeHookEvents(TypedDict):
+    SessionStart: list[SessionStartHook]
+
+
+class ClaudeHooksFile(TypedDict):
+    """``hooks/hooks.json``."""
+
+    hooks: ClaudeHookEvents
+
+
+class PluginFile(NamedTuple):
+    """One file the installer writes beside ``SKILL.md``."""
+
+    label: str
+    relative: Path
+    payload: bytes
+
+
+def claude_plugin_manifest() -> ClaudePluginManifest:
     """The ``.claude-plugin/plugin.json`` that makes the skill folder a plugin.
 
     ``"skills": ["./"]`` keeps the folder's own root ``SKILL.md`` a skill (the
@@ -78,7 +124,7 @@ def hook_command(executable: Path) -> str:
     return f'"{text}" brief .'
 
 
-def claude_hooks(executable: Path) -> dict:
+def claude_hooks(executable: Path) -> ClaudeHooksFile:
     """The ``hooks/hooks.json`` SessionStart contract for Claude Code.
 
     Plain stdout of a SessionStart command hook becomes session context on
@@ -105,15 +151,17 @@ def claude_hooks(executable: Path) -> dict:
     }
 
 
-def _json_bytes(payload: dict) -> bytes:
+def _json_bytes(payload: Mapping[str, object]) -> bytes:
     return (json.dumps(payload, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
 
-def claude_plugin_files(executable: Path) -> list[tuple[str, Path, bytes]]:
+def claude_plugin_files(executable: Path) -> list[PluginFile]:
     """The files written beside ``SKILL.md``: ``(label, relative path, bytes)``."""
     return [
-        (MANIFEST_LABEL, CLAUDE_MANIFEST_RELATIVE, _json_bytes(claude_plugin_manifest())),
-        (HOOK_LABEL, CLAUDE_HOOKS_RELATIVE, _json_bytes(claude_hooks(executable))),
+        PluginFile(
+            MANIFEST_LABEL, CLAUDE_MANIFEST_RELATIVE, _json_bytes(claude_plugin_manifest())
+        ),
+        PluginFile(HOOK_LABEL, CLAUDE_HOOKS_RELATIVE, _json_bytes(claude_hooks(executable))),
     ]
 
 
@@ -137,7 +185,7 @@ def executable_location_warnings(path: Path) -> list[str]:
     """Why persisting ``path`` into a session-start hook is fragile: it lives
     inside the current directory or a project virtual environment, which the
     project's own tooling rewrites or deletes."""
-    warnings = []
+    warnings: list[str] = []
     resolved = path.resolve()
     try:
         resolved.relative_to(Path.cwd().resolve())
