@@ -170,7 +170,17 @@ step and stops); each pass ends green with no recorded-evidence change.
   attribute is gone: a cleanup failure is a distinct exception type.
   `tests/test_claude_lane.py` proves offline modules import no host and
   default verification spawns nothing and never touches the home directory.
-- [ ] Pass 6 — extract Claude host, scenarios, and runner; thin wrapper.
+- [x] Pass 6 — extract Claude host, scenarios, and runner (2026-08-22).
+  `evaluation/claude/host.py` (sanitized normal-profile environment,
+  version/auth preflight, installed-plugin inspection, the zero-tool
+  `claude` command, output sanitization, scratch ownership), `fixtures.py`
+  (scenario repositories and write-diff snapshot; only `git` is spawned),
+  `scenarios.py` (pure per-scenario judgment), `runner.py` (three bounded
+  host calls, guaranteed scratch removal, typed `AbortedRun` retained
+  before the original exception is re-raised), `cli.py`.
+  `scripts/claude_eval.py` is an 18-line wrapper. `tests/test_claude_lane.py`
+  proves scratch removal under ordinary failure and interruption and that
+  a cleanup failure is a typed error carrying no attached attribute.
 - [ ] Pass 7 — split deterministic sources and scoring (formulas intact, typed
   production documents).
 - [ ] Pass 8 — split deterministic aggregation, verification, and CLI; thin

@@ -9,9 +9,12 @@ from pathlib import Path
 
 import pytest
 
-import scripts.claude_eval as claude_eval
+from evaluation.claude import cli as claude_cli
 from evaluation.claude import history as claude_history
+from evaluation.claude import host as claude_host
 from evaluation.claude import results as claude_results
+from evaluation.claude import runner as claude_runner
+from evaluation.claude.cli import main
 from evaluation.claude.contract import (
     CANONICAL_DEFINITION,
     CANONICAL_SKILL,
@@ -35,18 +38,17 @@ from evaluation.claude.history import (
     promote_current_result,
     validated_output,
 )
+from evaluation.claude.host import (
+    claude_command,
+    normal_profile_environment,
+    preflight,
+    remove_owned_scratch,
+)
 from evaluation.claude.results import verify_history, verify_results
+from evaluation.claude.runner import run_evaluation
 from evaluation.harness.io import dotenv_part
 from glossabet import __version__
 from glossabet.install.claude_plugin import claude_hooks, claude_plugin_manifest
-from scripts.claude_eval import (
-    _claude_command,
-    _normal_profile_environment,
-    _remove_owned_scratch,
-    main,
-    preflight,
-    run_evaluation,
-)
 
 
 def _make_executable(path: Path, source: str) -> Path:
@@ -256,12 +258,12 @@ def evidence_area(monkeypatch, tmp_path):
         + "\n",
         encoding="utf-8",
     )
-    for module in (claude_eval, claude_history, claude_results):
+    for module in (claude_cli, claude_history, claude_results):
         monkeypatch.setattr(module, "ROOT", root, raising=False)
         monkeypatch.setattr(module, "RUNS_PATH", runs, raising=False)
         monkeypatch.setattr(module, "HISTORY_PATH", history, raising=False)
         monkeypatch.setattr(module, "DEFAULT_RESULTS", results, raising=False)
-    monkeypatch.setattr(claude_eval.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(claude_host.platform, "system", lambda: "Linux")
     return {"root": root, "runs": runs, "history": history, "results": results}
 
 
@@ -326,7 +328,7 @@ def test_claude_command_disables_tools_mcp_persistence_and_retries():
     schema = load_response_schema()
 
     for scenario in manifest["scenarios"]:
-        command = _claude_command(Path("/usr/bin/claude"), scenario, manifest, schema)
+        command = claude_command(Path("/usr/bin/claude"), scenario, manifest, schema)
         assert command.count("-p") == 1
         assert command[-1] == scenario["prompt"]
         assert command[command.index("--tools") + 1] == ""
@@ -340,10 +342,10 @@ def test_claude_command_disables_tools_mcp_persistence_and_retries():
         assert "login" not in command
         assert "logout" not in command
         assert "setup-token" not in command
-    assert "--disable-slash-commands" in _claude_command(
+    assert "--disable-slash-commands" in claude_command(
         Path("claude"), manifest["scenarios"][0], manifest, schema
     )
-    assert "--disable-slash-commands" not in _claude_command(
+    assert "--disable-slash-commands" not in claude_command(
         Path("claude"), manifest["scenarios"][2], manifest, schema
     )
 
@@ -354,7 +356,7 @@ def test_normal_profile_environment_strips_every_provider_override(monkeypatch):
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/tmp/not-normal")
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "must-not-survive")
 
-    environment = _normal_profile_environment(
+    environment = normal_profile_environment(
         {
             "ANTHROPIC_API_KEY": "cannot-be-reintroduced",
             "FAKE_MARKER": "retained",
@@ -393,7 +395,7 @@ def test_tree_identity_never_reads_dotenv_contents(monkeypatch, tmp_path):
 def test_preflight_refuses_non_linux_before_inspecting_host_paths(
     monkeypatch, tmp_path
 ):
-    monkeypatch.setattr(claude_eval.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(claude_host.platform, "system", lambda: "Windows")
 
     with pytest.raises(ClaudeEvaluationError, match="scoped to Linux"):
         preflight(tmp_path / "missing-claude", tmp_path / "missing-plugin")
@@ -401,7 +403,7 @@ def test_preflight_refuses_non_linux_before_inspecting_host_paths(
 
 def test_preflight_uses_normal_max_auth_and_sanitizes_identity(monkeypatch, tmp_path):
     claude, _, plugin, environment = _fake_host(tmp_path)
-    monkeypatch.setattr(claude_eval.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(claude_host.platform, "system", lambda: "Linux")
 
     record, executable = preflight(
         claude,
@@ -446,7 +448,7 @@ def test_preflight_uses_normal_max_auth_and_sanitizes_identity(monkeypatch, tmp_
 def test_preflight_fails_before_model_calls(monkeypatch, tmp_path, mode, message):
     claude, _, plugin, environment = _fake_host(tmp_path)
     environment["FAKE_CLAUDE_MODE"] = mode
-    monkeypatch.setattr(claude_eval.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(claude_host.platform, "system", lambda: "Linux")
 
     with pytest.raises(ClaudeEvaluationError, match=message):
         preflight(claude, plugin, environment=environment)
@@ -547,7 +549,7 @@ def test_cleanup_failure_is_never_reported_as_safe(
     def fail_cleanup(_root, _parent):
         raise OSError("synthetic cleanup refusal")
 
-    monkeypatch.setattr(claude_eval, "_remove_owned_scratch", fail_cleanup)
+    monkeypatch.setattr(claude_runner, "remove_owned_scratch", fail_cleanup)
     with pytest.raises(ClaudeEvaluationError, match="scratch cleanup failed") as caught:
         run_evaluation(
             output,
@@ -667,11 +669,11 @@ def test_output_and_cleanup_are_confined(evidence_area, tmp_path):
     parent.mkdir()
     owned = parent / "glossabet-claude-eval-owned"
     owned.mkdir()
-    assert _remove_owned_scratch(owned, parent) is True
+    assert remove_owned_scratch(owned, parent) is True
     foreign = parent / "foreign"
     foreign.mkdir()
     with pytest.raises(ClaudeEvaluationError, match="unowned"):
-        _remove_owned_scratch(foreign, parent)
+        remove_owned_scratch(foreign, parent)
     assert foreign.is_dir()
 
 
@@ -685,7 +687,7 @@ def test_main_refuses_live_run_without_confirmation_before_any_host_call(
     def unexpected(*_args, **_kwargs):
         raise AssertionError("live host must not run without the confirmation phrase")
 
-    monkeypatch.setattr(claude_eval, "run_evaluation", unexpected)
+    monkeypatch.setattr(claude_runner, "run_evaluation", unexpected)
 
     assert main(["--run", "--claude", str(claude)]) == 1
     assert json.loads(evidence_area["history"].read_text())["attempts"] == []
