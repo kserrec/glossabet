@@ -14,7 +14,9 @@ from evaluation.codex.contract import DEFAULT_RESULTS
 
 ROOT = Path(__file__).resolve().parents[1]
 LANE = ROOT / "evaluation" / "codex"
-OFFLINE_MODULES = ("contract", "scenarios", "results", "history", "artifact")
+OFFLINE_MODULES = (
+    "contract", "scenarios", "results", "history", "artifact", "trace", "fixtures"
+)
 
 
 def _imports(path: Path) -> set[str]:
@@ -51,3 +53,32 @@ def test_default_verification_spawns_nothing_and_reads_no_user_state(monkeypatch
     monkeypatch.setattr("os.path.expanduser", forbidden)
 
     assert results.verify_results(DEFAULT_RESULTS) == []
+
+
+@pytest.mark.parametrize("module", ["scenarios", "trace"])
+def test_judgment_modules_spawn_nothing(module):
+    """Scenario judgment and trace parsing are pure: they never reach for a
+    process, an executable search, or a temporary directory — so they cannot
+    install, remove, or invoke a plugin."""
+    names = _imports(LANE / f"{module}.py")
+    assert not names & {"subprocess", "shutil", "tempfile", "os"}, names
+
+
+def test_fixtures_only_ever_run_git():
+    """Fixture construction may spawn git to build the two graph fixtures and
+    nothing else."""
+    tree = ast.parse((LANE / "fixtures.py").read_text(encoding="utf-8"))
+    spawned = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "run"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "subprocess"
+    ]
+    assert len(spawned) == 1
+    command = spawned[0].args[0]
+    assert isinstance(command, ast.List)
+    first = command.elts[0]
+    assert isinstance(first, ast.Constant) and first.value == "git"

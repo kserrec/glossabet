@@ -138,8 +138,15 @@ step and stops); each pass ends green with no recorded-evidence change.
   Open heuristic observation: nomination ranking is sensitive to how
   non-product tooling is laid out across modules. Recorded
   `evaluation/results.json` is untouched and still verifies as genuine.
-- [ ] Pass 3 — extract Codex traces and scenarios (pure parsing, fixtures
-  separated from judgments).
+- [x] Pass 3 — extract Codex traces and scenarios (2026-08-22).
+  `evaluation/codex/trace.py` (bounded JSONL/event parsing, command
+  extraction, path-redacting summaries, installed-version check),
+  `fixtures.py` (per-scenario repositories and the write-diff snapshot; its
+  only process is `git` for the two graph fixtures), `scenarios.py`
+  (manifest validation plus every per-scenario, session-hook, and
+  missing-CLI judgment, pure). `scripts/agent_eval.py` is 932 lines of host
+  lifecycle and orchestration. `tests/test_codex_lane.py` proves judgment
+  modules import no process machinery and fixtures spawn only `git`.
 - [ ] Pass 4 — extract Codex host lifecycle (explicit `PluginLifecycle`
   dataclass, cleanup tests at every stage); `scripts/agent_eval.py` becomes a
   thin wrapper.

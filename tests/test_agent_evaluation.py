@@ -18,6 +18,7 @@ from evaluation.codex.contract import (
     HOOK_TERM,
     AgentEvaluationError,
 )
+from evaluation.codex.fixtures import make_scenario, snapshot
 from evaluation.codex.history import (
     append_attempt,
     attempt_from_error,
@@ -33,17 +34,14 @@ from evaluation.codex.results import (
     usage_totals,
     verify_results,
 )
+from evaluation.codex.scenarios import evaluate_scenario, evaluate_session_hook
+from evaluation.codex.trace import installed_version_command
 from evaluation.harness.io import tree_sha256
 from scripts.agent_eval import (
     _codex_exec_command,
     _competing_standalone_skill_paths,
     _disabled_skills_config,
-    _evaluate_scenario,
-    _evaluate_session_hook,
-    _installed_version_command,
-    _make_scenario,
     _run_missing_cli_scenario,
-    _snapshot,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -96,15 +94,15 @@ def test_session_hook_prompt_does_not_supply_the_answer_or_product_name():
 
 def test_session_hook_scenario_requires_ambient_context_without_commands(tmp_path):
     root = tmp_path / "session-hook"
-    _make_scenario(root, "session-hook")
-    before = _snapshot(root)
+    make_scenario(root, "session-hook")
+    before = snapshot(root)
     scenario = {
         "id": "session-hook",
         "delivery": "plugin-hook",
         "expected_status": "grounded",
     }
 
-    result = _evaluate_session_hook(
+    result = evaluate_session_hook(
         scenario,
         root=root,
         commands=[],
@@ -150,7 +148,7 @@ def test_session_hook_scenario_requires_ambient_context_without_commands(tmp_pat
         if write:
             (root / "written-by-agent.txt").write_text("x", encoding="utf-8")
         try:
-            return _evaluate_session_hook(
+            return evaluate_session_hook(
                 scenario, root=root, commands=list(commands), response=response,
                 before=before, workspace=tmp_path,
                 limits={"stored_command_characters": 1200,
@@ -351,7 +349,7 @@ def test_attempt_history_rejects_stale_artifact_or_safety_claim(tmp_path):
         path.write_text(json.dumps(doc), encoding="utf-8")
         return history_errors(path)
 
-    from scripts.agent_eval import SENSITIVE_CANARY
+    from evaluation.codex.contract import SENSITIVE_CANARY
 
     def retained(doc):
         return next(a for a in doc["attempts"] if a.get("raw_result"))
@@ -620,7 +618,7 @@ def test_missing_cli_host_run_disables_profile_and_login_shell(
     monkeypatch.setattr(agent_eval, "_run_codex", run_codex)
     monkeypatch.setattr(
         agent_eval,
-        "_evaluate_scenario",
+        "evaluate_scenario",
         lambda *args, **kwargs: {"id": "missing-cli", "passed": True},
     )
 
@@ -656,7 +654,7 @@ def test_agent_eval_reports_a_competing_standalone_version_command(tmp_path):
     limits = {"stored_command_characters": 1200}
 
     with pytest.raises(AgentEvaluationError) as raised:
-        _installed_version_command(
+        installed_version_command(
             commands,
             installed_path=installed,
             workspace=tmp_path,
@@ -675,7 +673,7 @@ def test_missing_cli_accepts_the_exact_skill_boundary_without_a_shell_read(
     skill = root / ".agents" / "skills" / "glossabet" / "SKILL.md"
     skill.parent.mkdir(parents=True)
     skill.write_text("installed by the scenario\n", encoding="utf-8")
-    before = _snapshot(root)
+    before = snapshot(root)
     runner = skill.parent / "scripts" / "run_glossabet.py"
     commands = [
         {
@@ -691,7 +689,7 @@ def test_missing_cli_accepts_the_exact_skill_boundary_without_a_shell_read(
         }
     ]
 
-    result = _evaluate_scenario(
+    result = evaluate_scenario(
         {
             "id": "missing-cli",
             "delivery": "standalone-skill",
@@ -726,7 +724,7 @@ def test_missing_cli_accepts_the_exact_skill_boundary_without_a_shell_read(
     # skill, tried `inspect` anyway, ran an unrelated shell command, or saw
     # the engine succeed.
     def evaluate(trace):
-        return _evaluate_scenario(
+        return evaluate_scenario(
             {"id": "missing-cli", "delivery": "standalone-skill",
              "expected_status": "stopped"},
             root=root, commands=trace,
@@ -827,7 +825,7 @@ def test_agent_verifier_rejects_unretained_weakened_or_unsafe_evidence(
 
     # The safety and coherence gates the release CLI is trusted for
     # (test-audit): each proven to fire on its own tampering.
-    from scripts.agent_eval import SENSITIVE_CANARY
+    from evaluation.codex.contract import SENSITIVE_CANARY
 
     def tampered(mutate, expected):
         doc = deepcopy(original)
@@ -989,7 +987,7 @@ def test_cleanup_only_removes_state_that_was_created(monkeypatch):
 def test_trace_summary_redacts_home_and_repo_paths():
     from pathlib import Path
 
-    from scripts.agent_eval import _trace_summary
+    from evaluation.codex.trace import trace_summary
 
     home = str(Path.home())
     command = {
@@ -999,7 +997,7 @@ def test_trace_summary_redacts_home_and_repo_paths():
         "exit_code": 0,
         "status": "completed",
     }
-    summary = _trace_summary(
+    summary = trace_summary(
         command,
         Path("/tmp/ws"),
         {"stored_command_characters": 2000, "stored_output_characters": 600},
@@ -1016,12 +1014,12 @@ def test_markdown_glossary_fixtures_match_the_digest_the_checker_expects(tmp_pat
     Windows)."""
     import hashlib
 
-    from scripts.agent_eval import MARKDOWN_GLOSSARY_TEXT
+    from evaluation.codex.contract import MARKDOWN_GLOSSARY_TEXT
 
     expected = hashlib.sha256(MARKDOWN_GLOSSARY_TEXT.encode("utf-8")).hexdigest()
     for scenario_id in ("markdown-glossary", "both-glossaries"):
         root = tmp_path / scenario_id
-        _make_scenario(root, scenario_id)
+        make_scenario(root, scenario_id)
         written = (root / "GLOSSARY.md").read_bytes()
         assert hashlib.sha256(written).hexdigest() == expected
         assert b"\r\n" not in written
