@@ -315,6 +315,7 @@ def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path, monkey
     describe today's fixture trees: editing an evaluation fixture without
     regenerating results.json fails here, with the reasons listed."""
     import evaluation.run as run
+    from evaluation.deterministic import scoring, sources
 
     real_build = run.build_evidence
     memo: dict = {}
@@ -327,15 +328,15 @@ def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path, monkey
 
     monkeypatch.setattr(run, "build_evidence", memoized_build)
 
-    manifest, manifest_sha256 = run._read_manifest(MANIFEST)
+    manifest, manifest_sha256 = sources.read_manifest(MANIFEST)
     current = json.loads(RESULTS.read_text(encoding="utf-8"))
-    current["engine"] = run._engine_metadata()
+    current["engine"] = sources.engine_metadata()
     current["manifest_sha256"] = manifest_sha256
     self_evidence = run.build_evidence(ROOT, cache=False, graphify=False)
-    current["self_register"] = run._evaluate_self_register(
+    current["self_register"] = scoring.evaluate_self_register(
         manifest["self_register"], self_evidence
     )
-    current["self_nominations"] = run._evaluate_self_nominations(
+    current["self_nominations"] = scoring.evaluate_self_nominations(
         manifest["self_nominations"], self_evidence
     )
     current["aggregate"] = run._aggregate(
@@ -495,7 +496,8 @@ def test_aggregate_tolerates_an_empty_corpus_reuse_rate():
 def test_manifest_rejects_non_https_corpus_url(tmp_path):
     from copy import deepcopy
 
-    from evaluation.run import EvaluationError, _read_manifest
+    from evaluation.deterministic.contract import EvaluationError
+    from evaluation.deterministic.sources import read_manifest
 
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     poisoned = deepcopy(manifest)
@@ -507,7 +509,7 @@ def test_manifest_rejects_non_https_corpus_url(tmp_path):
     path.write_text(json.dumps(poisoned), encoding="utf-8")
 
     try:
-        _read_manifest(path)
+        read_manifest(path)
         raise AssertionError("an ext:: corpus url was accepted")
     except EvaluationError as exc:
         assert "url must be an https" in str(exc)
@@ -527,21 +529,23 @@ def _poison_first_source(overrides: dict, drop: tuple[str, ...] = ()) -> dict:
 def test_manifest_rejects_escaping_checkout_dir(tmp_path):
     # corpus.json is contributor-editable; a `..`/absolute checkout_dir joined
     # onto the temp checkout root writes attacker files outside the sandbox.
-    from evaluation.run import EvaluationError, _read_manifest
+    from evaluation.deterministic.contract import EvaluationError
+    from evaluation.deterministic.sources import read_manifest
 
     for bad in ("../../pwn", "/tmp/pwn", "a/../../pwn"):
         poisoned = _poison_first_source({"checkout_dir": bad})
         path = tmp_path / "corpus.json"
         path.write_text(json.dumps(poisoned), encoding="utf-8")
         try:
-            _read_manifest(path)
+            read_manifest(path)
             raise AssertionError(f"escaping checkout_dir accepted: {bad}")
         except EvaluationError as exc:
             assert "checkout_dir" in str(exc)
 
 
 def test_manifest_rejects_escaping_local_path(tmp_path):
-    from evaluation.run import EvaluationError, _read_manifest
+    from evaluation.deterministic.contract import EvaluationError
+    from evaluation.deterministic.sources import read_manifest
 
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     manifest["sources"] = [{
@@ -552,7 +556,7 @@ def test_manifest_rejects_escaping_local_path(tmp_path):
     path = tmp_path / "corpus.json"
     path.write_text(json.dumps(manifest), encoding="utf-8")
     try:
-        _read_manifest(path)
+        read_manifest(path)
         raise AssertionError("escaping local path accepted")
     except EvaluationError as exc:
         assert "path must be a safe relative path" in str(exc)
@@ -561,26 +565,28 @@ def test_manifest_rejects_escaping_local_path(tmp_path):
 def test_manifest_rejects_non_hex_commit(tmp_path):
     # A commit beginning with `-` is parsed by git as an option in a refspec
     # slot; require a 40/64-char hex object name.
-    from evaluation.run import EvaluationError, _read_manifest
+    from evaluation.deterministic.contract import EvaluationError
+    from evaluation.deterministic.sources import read_manifest
 
     poisoned = _poison_first_source({"commit": "--upload-pack=touch /tmp/pwn"})
     path = tmp_path / "corpus.json"
     path.write_text(json.dumps(poisoned), encoding="utf-8")
     try:
-        _read_manifest(path)
+        read_manifest(path)
         raise AssertionError("a non-hex commit was accepted")
     except EvaluationError as exc:
         assert "commit must be" in str(exc)
 
 
 def test_manifest_rejects_oversized_file(tmp_path):
-    from evaluation.run import EvaluationError, _read_manifest
+    from evaluation.deterministic.contract import EvaluationError
+    from evaluation.deterministic.sources import read_manifest
     from glossabet.runtime.artifacts import MAX_JSON_BYTES
 
     path = tmp_path / "corpus.json"
     path.write_bytes(b'{"x":' + b" " * (MAX_JSON_BYTES + 10) + b"1}")
     try:
-        _read_manifest(path)
+        read_manifest(path)
         raise AssertionError("an oversized manifest was accepted")
     except EvaluationError as exc:
         assert "exceeds" in str(exc)
@@ -590,22 +596,23 @@ def test_recall_where_complete_counts_only_hits_inside_the_measured_set():
     """A real-repository true positive where recall is not measured must not
     inflate the fixture-only recall figure: one incomplete case with nine
     hits plus one complete case at 1/4 is 25% recall, not 10/13."""
-    from evaluation.run import _aggregate, _score
+    from evaluation.deterministic.scoring import score_labels
+    from evaluation.run import _aggregate
 
     def block(**overrides):
         base = {"checks": 0, "passed_checks": 0, "passed": None, "failures": []}
         base.update(overrides)
         return base
 
-    incomplete = _score(
+    incomplete = score_labels(
         {f"t{i}" for i in range(9)},
         {f"t{i}": {"useful": True} for i in range(9)},
         set(),  # recall not measured for this case
     )
-    complete = _score(
+    complete = score_labels(
         {"a"}, {k: {"useful": True} for k in "abcd"}, {"a", "b", "c", "d"}
     )
-    empty = _score(set(), {}, set())
+    empty = score_labels(set(), {}, set())
     cases = []
     for terminology in (incomplete, complete):
         cases.append({

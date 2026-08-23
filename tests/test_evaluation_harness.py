@@ -11,6 +11,7 @@ import pytest
 
 import evaluation.claude.results as claude_results
 import evaluation.codex.results as codex_results
+import evaluation.deterministic.sources as deterministic_sources
 import evaluation.review as review
 import evaluation.run as run
 from evaluation.harness.identity import (
@@ -158,7 +159,7 @@ def test_real_lanes_include_wrapper_and_harness():
         (codex_results, "lane_source_identity"),
         (claude_results, "lane_source_identity"),
         (review, "lane_source_identity"),
-        (run, "lane_source_paths"),
+        (deterministic_sources, "lane_source_paths"),
     ],
 )
 def test_default_verification_never_consults_current_evaluator_source(
@@ -184,7 +185,7 @@ def test_default_verification_never_consults_current_evaluator_source(
             claude_results.verify_results(
                 claude_results.DEFAULT_RESULTS, current=True
             )
-    elif module is run:
+    elif module is deterministic_sources:
         assert run.verify_results(run.DEFAULT_RESULTS, run.DEFAULT_MANIFEST) == []
         with pytest.raises(AssertionError):
             run.verify_results(

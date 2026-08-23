@@ -181,8 +181,17 @@ step and stops); each pass ends green with no recorded-evidence change.
   `scripts/claude_eval.py` is an 18-line wrapper. `tests/test_claude_lane.py`
   proves scratch removal under ordinary failure and interruption and that
   a cleanup failure is a typed error carrying no attached attribute.
-- [ ] Pass 7 — split deterministic sources and scoring (formulas intact, typed
-  production documents).
+- [x] Pass 7 — split deterministic sources and scoring (2026-08-22).
+  `evaluation/deterministic/contract.py` (paths, schema version, pinned
+  threshold metric set, confined Git configuration, section vocabularies,
+  `EvaluationError`), `sources.py` (hostile-manifest validation, confined
+  Git fetch, engine/corpus identity, cache and timed builds — the one
+  process is `git` under `GIT_SAFE_CONFIG`), `scoring.py` (lexical,
+  register, nomination, drift, structural families kept whole; entry points
+  typed with the production `EvidenceDocument`, `DriftDocument`,
+  `ValidationDocument`). Formulas moved verbatim; three shadowed locals in
+  `run.py` renamed. `tests/test_deterministic_lane.py` proves scoring is
+  pure and sources spawn only safe-configured `git`.
 - [ ] Pass 8 — split deterministic aggregation, verification, and CLI; thin
   wrapper.
 - [ ] Pass 9 — split the reviewer lane; thin wrapper; explicit narrow
