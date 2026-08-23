@@ -143,14 +143,24 @@ deliberate naming; they do not prove that Glossabet improves real projects.
 
 ## Development and release verification
 
-Create the locked development environment and run the test suite and the
-static gates (Ruff and mypy, both pinned development dependencies):
+Create the locked development environment and run the test suite, static
+checks, and project-specific workflow policy:
 
 ```bash
 uv sync --locked
-uv run pytest -q
-uv run ruff check .
-uv run mypy glossabet
+uv run --locked pytest -q
+uv run --locked ruff check .
+uv run --locked mypy glossabet
+uv run --locked python scripts/check_workflows.py
+```
+
+Workflow changes also run actionlint 1.7.12, the standard GitHub Actions
+syntax and expression checker. Install that pinned version with Go, then run
+it from the repository root:
+
+```bash
+go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+actionlint
 ```
 
 The complete pre-release verification and publication procedure is in
@@ -158,16 +168,18 @@ The complete pre-release verification and publication procedure is in
 
 ## Documentation
 
-- [`EVALUATION.md`](EVALUATION.md) records the evaluation method, evidence,
-  results, and limitations.
-- [`SECURITY.md`](SECURITY.md) defines the threat model and enforced trust
-  boundaries.
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) explains the implementation and its
-  design constraints.
-- [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) is the reproducible performance
-  baseline.
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) records the current contribution pause
-  and the terms that will apply afterward.
+| Need | Document |
+| --- | --- |
+| Understand the product and try it | This README and the executable [`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md) |
+| Understand code organization and constraints | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
+| Follow the implementation in execution order | [`docs/CODE-WALKTHROUGH.md`](docs/CODE-WALKTHROUGH.md) |
+| Understand security claims and limits | [`SECURITY.md`](SECURITY.md) |
+| Understand local and model-provider data flow | [`PRIVACY.md`](PRIVACY.md) |
+| Understand empirical evaluation | [`EVALUATION.md`](EVALUATION.md) |
+| Reproduce performance observations | [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) |
+| Build or release distributions | [`DISTRIBUTION.md`](DISTRIBUTION.md) and [`RELEASING.md`](RELEASING.md) |
+| See current/future work or contribute | [`PLAN.md`](PLAN.md) and [`CONTRIBUTING.md`](CONTRIBUTING.md) |
+| Read construction history | Optional [`docs/history/`](docs/history/README.md) archive |
 
 ## Provenance and affiliation
 
@@ -178,4 +190,5 @@ identify third-party hosts or optional tools and remain their owners' marks.
 
 Glossabet is developed with AI coding assistants under human direction and
 review. Claude Code contributions are recorded in the commit history;
-`PLAN.md` records ChatGPT's contribution to the initial 2026-08-14 plan.
+the [historical plan](docs/history/PLAN-THROUGH-2026-08-22.md) records
+ChatGPT's contribution to the initial 2026-08-14 product plan.

@@ -1,11 +1,11 @@
 """Shared artifact plumbing: safe paths, deterministic writes, and repo roots.
 
 Every artifact is written the same way — sorted keys, stable indentation,
-trailing newline — so identical content is identical bytes (determinism,
-PLAN.md principle 6). Repository-owned artifact paths reject symlink
-components so a hostile checkout cannot redirect either a direct read or a
-write. Writes use a same-directory temporary file plus ``os.replace`` so an
-interrupted command cannot leave a partially-written JSON document.
+trailing newline — so identical content is identical bytes. Repository-owned
+artifact paths reject symlink components so a hostile checkout cannot redirect
+either a direct read or a write. Writes use a same-directory temporary file
+plus ``os.replace`` so an interrupted command cannot leave a partially-written
+JSON document.
 """
 
 from __future__ import annotations

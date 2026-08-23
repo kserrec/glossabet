@@ -9,12 +9,12 @@ plus the `/glossabet` agent skill as its primary interface. The machinery
 gathers evidence, the LLM brainstorms and reasons, and the human decides what
 becomes canonical — that division of labor is the product's central rule.
 
-`PLAN.md` is the only authoritative roadmap. Read its principles, non-goals,
-and current phase before nontrivial work. The canonical skill at
+`PLAN.md` is the authoritative current roadmap and product-boundary summary.
+Read its current gates before nontrivial work. The canonical skill at
 `skill/SKILL.md` is the behavioral spec; its philosophy is preserved verbatim,
 never diluted by machinery.
 
-## Binding rules (digest — full versions in PLAN.md)
+## Binding rules
 
 - **Human authority.** Never finalize vocabulary unilaterally; never
   mass-rename code. A term is meant to become canonical only after human
@@ -43,16 +43,18 @@ never diluted by machinery.
   casefold, with documented acronym/digit and language-form rules. The scanner
   remains lexical, not parser-backed; comments and strings are not syntax-
   excluded.
-- **No secrets ingested.** Sensitive files (`.env` and kin, keys, credentials)
-  never enter any artifact; tests prove it.
+- **Sensitive paths stay opaque.** Dotenv variants and other configured
+  key/credential path families are excluded without reading their contents.
+  Ordinary included source can still contain secrets, so outputs are not
+  anonymized; `PRIVACY.md` is authoritative.
 - **Staleness is a trust problem.** Evidence artifacts carry a git stamp; the
   skill never silently grounds itself on stale evidence.
 - **Determinism.** Same repo state → same evidence output.
 - **Graphify is optional, and its artifacts are never mutated.** Glossabet
   owns `glossabet-out/`; Graphify owns `graphify-out/`.
 - **Dependencies earn their place.** Real use site + one-line cost/reason, or
-  it doesn't enter. Stdlib-first. Phase 16 measured 15/15 lexical labels and
-  rejected a parser adapter with no remaining labelled gain.
+  it doesn't enter. Stdlib-first. The labelled lexical cases currently leave
+  no parser-specific accuracy failure that would justify a parser adapter.
 - **Bounded work with logged truncation.** No unbounded quadratic analysis;
   every cap is stated and every drop reported — capped output never reads as
   complete. Treat `skipped.corpus_budget.complete: false` as partial evidence,
@@ -62,12 +64,13 @@ never diluted by machinery.
 ## Workflow
 
 - Honor any pause recorded at the top of `PLAN.md`. The current owner
-  self-testing pause forbids outside maintainer invitations, Phase 23, and
-  publication setup until Kyle explicitly ends it.
-- Implement exactly one PLAN phase per pass; split oversized phases in the
-  plan before touching code. `$next` selects the first incomplete phase whose
-  dependencies are complete, implements, verifies, marks complete, stops.
-- Each phase ends with its acceptance check and a commit naming the phase.
+  self-testing pause forbids outside maintainer invitations,
+  release-candidate work, and publication setup until Kyle explicitly ends it.
+- Execute one coherent roadmap chunk at a time. Split work before editing when
+  it cannot be implemented and verified in one pass. `$next` selects the first
+  eligible current item, implements and verifies one chunk, updates the plan,
+  and stops.
+- Each chunk ends with its acceptance checks and an accurate plan update.
 - Ambiguous semantic choices stop with the competing options and their
   consequences rather than being decided by convenience.
 

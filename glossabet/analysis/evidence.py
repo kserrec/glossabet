@@ -1,8 +1,8 @@
 """RepositoryEvidence: build and persist glossabet-out/evidence.json.
 
 Deterministic by construction: no timestamps, sorted collections, stable
-tie-breaks. Bounded by construction (PLAN.md principle 12): every cap is
-recorded in the artifact so truncated never reads as complete.
+tie-breaks. Bounded by construction: every cap is recorded in the artifact so
+truncated never reads as complete.
 """
 
 from __future__ import annotations
@@ -390,4 +390,3 @@ def persist_evidence(root: Path, *, graphify: bool = True) -> EvidenceDocument:
     evidence = build_evidence(root, cache=True, graphify=graphify)
     write_evidence(root, evidence)
     return evidence
-

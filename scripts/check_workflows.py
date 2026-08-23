@@ -1,392 +1,322 @@
 #!/usr/bin/env python3
-"""Enforce the release workflow's full-matrix and static-gate dependency chain.
+"""Check the release invariants that generic workflow tooling cannot know.
 
-The project deliberately avoids adding a YAML parser solely for policy tests.
-These checks parse only the small, pinned subset of workflow syntax that owns
-the release gate and fail closed when that shape changes.
+PyYAML owns YAML parsing. ``actionlint`` owns GitHub Actions syntax,
+expressions, action inputs, and script-injection diagnostics. This module
+checks only Glossabet's expected jobs, matrices, release gates, permissions,
+and pinned external actions; it is not a workflow-security proof.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from pathlib import Path
+
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 QUALITY_WORKFLOW = "./.github/workflows/quality.yml"
 SUPPORTED_OSES = ["ubuntu-latest", "macos-latest", "windows-latest"]
 SUPPORTED_PYTHONS = ["3.10", "3.11", "3.12", "3.13", "3.14"]
+SETUP_GO_ACTION = (
+    "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e"  # v7.0.0
+)
+ACTIONLINT_INSTALL = (
+    "go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12"
+)
+PUBLISH_ACTION = (
+    "pypa/gh-action-pypi-publish@"
+    "dc37677b2e1c63e2034f94d8a5b11f265b73ba33"
+)
+
+TEST_RUNS = [
+    "uv sync --locked --python ${{ matrix.python-version }}",
+    "uv run --locked pytest -q",
+]
+STATIC_RUNS = [
+    'uv sync --locked --python "3.10"',
+    "uv run --locked ruff check .",
+    "uv run --locked mypy glossabet",
+    ACTIONLINT_INSTALL,
+    "actionlint",
+]
+PACKAGE_RUNS = [
+    "python scripts/check_workflows.py",
+    "python evaluation/run.py --verify-results evaluation/results.json",
+    "python scripts/agent_eval.py --verify-results evaluation/agent-results.json",
+    "python evaluation/review.py --verify-results evaluation/reviewer-results.json",
+    "uv build --no-sources --clear",
+    "python scripts/build_plugin.py dist",
+    "python scripts/check_distribution.py dist",
+    "python scripts/wheel_smoke.py dist",
+]
+PUBLISH_RUNS = [
+    "python scripts/check_workflows.py",
+    "python evaluation/run.py --verify-results evaluation/results.json --current",
+    "python scripts/agent_eval.py --verify-results evaluation/agent-results.json --current",
+    "python evaluation/review.py --verify-results evaluation/reviewer-results.json --current",
+    "uv build --no-sources --clear",
+    "python scripts/build_plugin.py dist",
+    "git diff --exit-code -- plugins/glossabet",
+    'python scripts/check_distribution.py dist --tag "$RELEASE_TAG" --current',
+    "python scripts/wheel_smoke.py dist",
+]
 
 
-def _strip_trailing_comment(line: str) -> str:
-    """Cut a trailing ``# ...`` that is outside single/double quotes; a ``#``
-    inside a quoted string is content (``echo "a #" ${{ ... }}``)."""
-    in_single = in_double = False
-    for index, char in enumerate(line):
-        if char == "'" and not in_double:
-            in_single = not in_single
-        elif char == '"' and not in_single:
-            in_double = not in_double
-        elif char == "#" and not in_single and not in_double and (
-            index == 0 or line[index - 1] in " \t"
-        ):
-            return line[:index].rstrip()
-    return line.rstrip()
+def _mapping(value: object) -> dict[str, object]:
+    return value if isinstance(value, dict) else {}
 
 
-def _strip_comments(workflow: str) -> str:
-    """Drop comment lines and trailing comments so a required fragment or a
-    guard condition present only inside a comment cannot satisfy a check,
-    and a forbidden construct cannot hide behind one."""
-    kept = []
-    for line in workflow.splitlines():
-        stripped = line.lstrip()
-        if stripped.startswith("#") or stripped.startswith("- #"):
-            continue
-        kept.append(_strip_trailing_comment(line))
-    return "\n".join(kept)
-
-
-def _logical_values(workflow: str):
-    """Yield ``(key, value_text)`` for every mapping entry, with block scalars
-    (``key: |`` / ``key: >``), continuation lines, and folded plain scalars
-    joined into one value — so an expression on line 2 of a ``run: |`` block
-    is seen as part of that ``run``."""
-    lines = workflow.splitlines()
-    index = 0
-    key_re = re.compile(r"^(?P<indent>\s*)(?:- )?(?P<key>[A-Za-z_][\w.-]*):(?P<rest>.*)$")
-    parents: list[tuple[int, str]] = []  # (indent, key) of enclosing mappings
-    while index < len(lines):
-        match = key_re.match(lines[index])
-        if match is None:
-            index += 1
-            continue
-        indent = len(match.group("indent")) + (2 if lines[index].lstrip().startswith("- ") else 0)
-        while parents and parents[-1][0] >= indent:
-            parents.pop()
-        parent = parents[-1][1] if parents else None
-        parents.append((indent, match.group("key")))
-        value = match.group("rest").strip()
-        parts = [value] if value and value not in ("|", ">", "|-", ">-", "|+", ">+") else []
-        index += 1
-        while index < len(lines):
-            line = lines[index]
-            if not line.strip():
-                index += 1
-                continue
-            line_indent = len(line) - len(line.lstrip())
-            if line_indent <= indent or key_re.match(line) and line_indent <= indent:
-                break
-            if key_re.match(line) and value not in ("|", ">", "|-", ">-", "|+", ">+"):
-                break  # a nested mapping, not a continuation of this scalar
-            parts.append(line.strip())
-            index += 1
-        yield match.group("key"), " ".join(parts), parent
-
-
-def _job_block(workflow: str, name: str) -> str | None:
-    lines = workflow.splitlines()
-    marker = f"  {name}:"
-    try:
-        start = lines.index(marker)
-    except ValueError:
-        return None
-    end = len(lines)
-    for index in range(start + 1, len(lines)):
-        if re.fullmatch(r"  [A-Za-z0-9_-]+:", lines[index]):
-            end = index
-            break
-    return "\n".join(lines[start:end])
-
-
-def _job_names(workflow: str) -> list[str]:
-    lines = workflow.splitlines()
-    try:
-        start = lines.index("jobs:") + 1
-    except ValueError:
+def _steps(job: dict[str, object]) -> list[dict[str, object]]:
+    value = job.get("steps")
+    if not isinstance(value, list):
         return []
-    return [
-        match.group(1)
-        for line in lines[start:]
-        if (match := re.fullmatch(r"  ([A-Za-z0-9_-]+):", line))
-    ]
+    return [step for step in value if isinstance(step, dict)]
 
 
-def _inline_list(block: str, key: str) -> list[str] | None:
-    match = re.search(
-        rf"(?m)^\s+{re.escape(key)}:\s*\[([^]]*)\]\s*$",
-        block,
-    )
-    if match is None:
-        return None
-    return [part.strip().strip('"\'') for part in match.group(1).split(",")]
+def _needs(job: dict[str, object]) -> list[str]:
+    value = job.get("needs")
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, str)]
+    return []
 
 
-def _requires_in_order(block: str, fragments: list[str], errors: list[str],
-                       label: str) -> None:
-    # Each search starts past the previous fragment, so an out-of-order
-    # fragment is reported as missing.
-    cursor = -1
-    for fragment in fragments:
-        position = block.find(fragment, cursor + 1)
-        if position < 0:
-            errors.append(f"{label} is missing required step {fragment!r}")
-            continue
-        cursor = position
+def _scalar_strings(value: object) -> Iterable[str]:
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for key, child in value.items():
+            yield from _scalar_strings(key)
+            yield from _scalar_strings(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _scalar_strings(child)
 
 
-def _requires_exact_lines(block: str, lines: list[str], errors: list[str],
-                          label: str) -> None:
-    """Each required line must appear exactly (whole line, in order), so
-    ``mypy glossabet/cli.py`` cannot stand in for ``mypy glossabet``."""
-    block_lines = block.splitlines()
-    cursor = -1
-    for required in lines:
+def _parse_workflows(
+    workflow_texts: dict[str, str], errors: list[str]
+) -> dict[str, dict[str, object]]:
+    parsed: dict[str, dict[str, object]] = {}
+    for name, text in workflow_texts.items():
         try:
-            cursor = block_lines.index(required, cursor + 1)
-        except ValueError:
-            errors.append(f"{label} is missing required step {required.strip()!r}")
-
-
-def _check_pinned_actions(name: str, workflow: str, errors: list[str]) -> None:
-    for key, value, _parent in _logical_values(workflow):
-        if key != "uses":
+            document = yaml.safe_load(text)
+        except yaml.YAMLError as error:
+            errors.append(f"{name} is invalid YAML: {error}")
             continue
-        target = value.strip().strip("\"'")
-        if not target:
-            errors.append(f"{name} has an empty uses: target")
+        if not isinstance(document, dict):
+            errors.append(f"{name} must contain a YAML mapping")
             continue
-        if target.startswith("./"):
+        if "on" not in document and True in document:
+            errors.append(
+                f'{name} must quote its top-level "on" key for PyYAML'
+            )
             continue
-        if re.fullmatch(r"[^@\s]+@[0-9a-f]{40}", target) is None:
-            errors.append(f"{name} has an unpinned action: {target}")
+        parsed[name] = document
+    return parsed
 
 
-def validate_workflow_texts(workflows: dict[str, str]) -> list[str]:
-    """Return every release-gate policy violation in supplied workflow text.
+def _require_runs(
+    label: str,
+    job: dict[str, object],
+    required: list[str],
+    errors: list[str],
+) -> None:
+    """Require exact, unconditional run steps in the specified order."""
+    steps = _steps(job)
+    cursor = 0
+    for command in required:
+        while cursor < len(steps) and steps[cursor].get("run") != command:
+            cursor += 1
+        if cursor == len(steps):
+            errors.append(f"{label} is missing required run step {command!r}")
+            continue
+        if "if" in steps[cursor]:
+            errors.append(f"{label} makes required run step conditional: {command!r}")
+        cursor += 1
 
-    ``workflows`` must hold EVERY file in the workflows directory: the three
-    named ones carry the release gate; any other file is still held to the
-    global rules (pinned actions, no fork-PR secret exposure, no expression
-    interpolated into a shell line)."""
+
+def _check_action_steps(
+    name: str, jobs: dict[str, object], errors: list[str]
+) -> None:
+    """Enforce repository-wide action pins and checkout credential handling."""
+    for job_name, raw_job in jobs.items():
+        job = _mapping(raw_job)
+        if "continue-on-error" in job:
+            errors.append(f"{name} job {job_name} is allowed to fail")
+        for step in _steps(job):
+            if "continue-on-error" in step:
+                errors.append(f"{name} job {job_name} has a step allowed to fail")
+            target = step.get("uses")
+            if not isinstance(target, str):
+                continue
+            if not target.startswith("./") and re.fullmatch(
+                r"[^@\s]+@[0-9a-f]{40}", target
+            ) is None:
+                errors.append(f"{name} has an unpinned action: {target}")
+            if target.startswith("actions/checkout@"):
+                options = _mapping(step.get("with"))
+                if options.get("persist-credentials") is not False:
+                    errors.append(
+                        f"{name} checkout must set persist-credentials: false"
+                    )
+
+
+def _expect_job_names(
+    name: str,
+    jobs: dict[str, object],
+    expected: list[str],
+    errors: list[str],
+) -> None:
+    if list(jobs) != expected:
+        errors.append(f"{name} jobs must be exactly {', '.join(expected)}")
+
+
+def _check_quality(workflow: dict[str, object], errors: list[str]) -> None:
+    triggers = _mapping(workflow.get("on"))
+    if set(triggers) != {"workflow_call"}:
+        errors.append("quality.yml must be reusable through workflow_call only")
+    if workflow.get("permissions") != {"contents": "read"}:
+        errors.append("quality.yml top-level permissions must be contents: read")
+
+    jobs = _mapping(workflow.get("jobs"))
+    _expect_job_names("quality.yml", jobs, ["test", "static", "package"], errors)
+    test = _mapping(jobs.get("test"))
+    static = _mapping(jobs.get("static"))
+    package = _mapping(jobs.get("package"))
+    for label, job in (("test", test), ("static", static), ("package", package)):
+        if "if" in job:
+            errors.append(f"quality {label} job must be unconditional")
+
+    strategy = _mapping(test.get("strategy"))
+    matrix = _mapping(strategy.get("matrix"))
+    if test.get("runs-on") != "${{ matrix.os }}":
+        errors.append("quality test job must run on every matrix OS")
+    if strategy.get("fail-fast") is not False:
+        errors.append("quality test matrix must set fail-fast: false")
+    if matrix.get("os") != SUPPORTED_OSES:
+        errors.append("quality test matrix must cover every supported OS")
+    if matrix.get("python-version") != SUPPORTED_PYTHONS:
+        errors.append("quality test matrix must cover every supported Python")
+    _require_runs("quality test job", test, TEST_RUNS, errors)
+
+    if static.get("runs-on") != "ubuntu-latest":
+        errors.append("quality static job must run on Ubuntu")
+    setup_go = next(
+        (step for step in _steps(static) if step.get("uses") == SETUP_GO_ACTION),
+        None,
+    )
+    if setup_go is None or _mapping(setup_go.get("with")) != {
+        "go-version": "1.25.x",
+        "cache": False,
+    }:
+        errors.append("quality static job must install the pinned Go toolchain")
+    _require_runs("quality static job", static, STATIC_RUNS, errors)
+
+    if _needs(package) != ["test", "static"]:
+        errors.append("quality package job must require test and static")
+    _require_runs("quality package job", package, PACKAGE_RUNS, errors)
+
+
+def _check_ci(workflow: dict[str, object], errors: list[str]) -> None:
+    if set(_mapping(workflow.get("on"))) != {"push", "pull_request"}:
+        errors.append("ci.yml must run for pushes and pull requests")
+    if workflow.get("permissions") != {"contents": "read"}:
+        errors.append("ci.yml top-level permissions must be contents: read")
+    jobs = _mapping(workflow.get("jobs"))
+    _expect_job_names("ci.yml", jobs, ["quality"], errors)
+    quality = _mapping(jobs.get("quality"))
+    if quality != {"uses": QUALITY_WORKFLOW}:
+        errors.append("ci.yml must delegate only to the reusable quality workflow")
+
+
+def _check_release(workflow: dict[str, object], errors: list[str]) -> None:
+    triggers = _mapping(workflow.get("on"))
+    if set(triggers) != {"workflow_dispatch"}:
+        errors.append("release.yml must be manually dispatched only")
+    dispatch = _mapping(triggers.get("workflow_dispatch"))
+    confirmation = _mapping(_mapping(dispatch.get("inputs")).get("confirmation"))
+    if confirmation.get("required") is not True or confirmation.get("type") != "string":
+        errors.append("release dispatch must require a string confirmation")
+    if workflow.get("permissions") != {"contents": "read"}:
+        errors.append("release.yml top-level permissions must be contents: read")
+
+    jobs = _mapping(workflow.get("jobs"))
+    _expect_job_names("release.yml", jobs, ["quality", "publish"], errors)
+    quality = _mapping(jobs.get("quality"))
+    if quality != {"uses": QUALITY_WORKFLOW}:
+        errors.append("release quality job must call the reusable quality workflow")
+
+    publish = _mapping(jobs.get("publish"))
+    if _needs(publish) != ["quality"]:
+        errors.append("release publish job must require the quality job")
+    expected_guard = (
+        "github.ref_type == 'tag' && "
+        "startsWith(github.ref_name, 'v') && "
+        "inputs.confirmation == 'publish-glossabet-to-pypi'"
+    )
+    if publish.get("if") != expected_guard:
+        errors.append("release publish job must use the exact tag and confirmation guard")
+    if _mapping(publish.get("environment")).get("name") != "pypi":
+        errors.append("release publish job must use the pypi environment")
+    if publish.get("permissions") != {"contents": "read", "id-token": "write"}:
+        errors.append(
+            "release publish permissions must be exactly contents: read and id-token: write"
+        )
+    _require_runs("release publish job", publish, PUBLISH_RUNS, errors)
+
+    steps = _steps(publish)
+    if not any(step.get("uses") == PUBLISH_ACTION for step in steps):
+        errors.append("release publish job must use the pinned PyPI publisher")
+    distribution_step = next(
+        (step for step in steps if step.get("run") == PUBLISH_RUNS[-2]),
+        None,
+    )
+    if distribution_step is None or distribution_step.get("env") != {
+        "RELEASE_TAG": "${{ github.ref_name }}"
+    }:
+        errors.append("release tag must reach distribution checking through env")
+    if any(
+        "${{" in command
+        for step in steps
+        if isinstance(command := step.get("run"), str)
+    ):
+        errors.append("release publish run steps must not interpolate expressions")
+    if any("secrets." in value for value in _scalar_strings(publish)):
+        errors.append("release publish job must not use stored secrets")
+
+
+def validate_workflow_texts(workflow_texts: dict[str, str]) -> list[str]:
+    """Return all project-specific policy violations in supplied workflows."""
     errors: list[str] = []
-    workflows = {name: _strip_comments(text) for name, text in workflows.items()}
-    missing = sorted({"quality.yml", "ci.yml", "release.yml"} - workflows.keys())
+    required = {"quality.yml", "ci.yml", "release.yml"}
+    missing = sorted(required - workflow_texts.keys())
     if missing:
-        return [f"missing workflow file(s): {', '.join(missing)}"]
+        errors.append(f"missing workflow file(s): {', '.join(missing)}")
+    workflows = _parse_workflows(workflow_texts, errors)
+    if not required <= workflows.keys():
+        return errors
 
-    quality = workflows["quality.yml"]
-    ci = workflows["ci.yml"]
-    release = workflows["release.yml"]
-
-    if "on:\n  workflow_call:" not in quality:
-        errors.append("quality.yml is not reusable through workflow_call")
-    if re.search(r"(?m)^  (push|pull_request|release|workflow_dispatch):", quality):
-        errors.append("quality.yml has a direct trigger instead of workflow_call only")
-    if _job_names(quality) != ["test", "static", "package"]:
-        errors.append("quality.yml must contain only test, static, then package jobs")
-
-    test = _job_block(quality, "test") or ""
-    static = _job_block(quality, "static") or ""
-    package = _job_block(quality, "package") or ""
-    for label, block in (("test", test), ("static", static), ("package", package)):
-        if re.search(r"(?m)^    if:", block):
-            errors.append(f"quality {label} job must not be conditionally skipped")
-    if _inline_list(test, "os") != SUPPORTED_OSES:
-        errors.append("quality.yml does not cover the exact supported OS matrix")
-    if _inline_list(test, "python-version") != SUPPORTED_PYTHONS:
-        errors.append("quality.yml does not cover the exact supported Python matrix")
-    if "fail-fast: false" not in test:
-        errors.append("quality.yml must run every matrix cell after a failure")
-    _requires_in_order(
-        test,
-        [
-            "uv sync --locked --python ${{ matrix.python-version }}",
-            "uv run --locked pytest -q",
-        ],
-        errors,
-        "quality test job",
-    )
-    if "    runs-on: ubuntu-latest" not in static:
-        errors.append("quality static job must run on Linux")
-    if 'python-version: "3.10"' not in static:
-        errors.append("quality static job must check under the oldest supported Python")
-    _requires_exact_lines(
-        static,
-        [
-            '      - run: uv sync --locked --python "3.10"',
-            "      - run: uv run --locked ruff check .",
-            "      - run: uv run --locked mypy glossabet",
-        ],
-        errors,
-        "quality static job",
-    )
-    if _inline_list(package, "needs") != ["test", "static"]:
-        errors.append(
-            "quality package job does not require both the full test matrix "
-            "and the static gate"
-        )
-    _requires_in_order(
-        package,
-        [
-            "python scripts/check_workflows.py",
-            "python evaluation/run.py --verify-results evaluation/results.json",
-            "python scripts/agent_eval.py --verify-results evaluation/agent-results.json",
-            "python evaluation/review.py --verify-results evaluation/reviewer-results.json",
-            "uv build --no-sources --clear",
-            "python scripts/build_plugin.py dist",
-            "python scripts/check_distribution.py dist",
-            "python scripts/wheel_smoke.py dist",
-        ],
-        errors,
-        "quality package job",
-    )
-    if "--current" in quality:
-        errors.append(
-            "quality.yml demands evidence currency outside the release gate"
-        )
-
-    if _job_names(ci) != ["quality"]:
-        errors.append("ci.yml must delegate its only job to the reusable quality gate")
-    ci_quality = _job_block(ci, "quality") or ""
-    if f"uses: {QUALITY_WORKFLOW}" not in ci_quality:
-        errors.append("ci.yml does not call the reusable quality gate")
-    if "run:" in ci_quality:
-        errors.append("ci.yml embeds commands instead of delegating the gate")
-
-    if "workflow_dispatch:" not in release:
-        errors.append("release.yml is not manually dispatched")
-    if re.search(r"(?m)^  (push|pull_request|release):", release):
-        errors.append("release.yml has a non-manual trigger")
-    if _job_names(release) != ["quality", "publish"]:
-        errors.append("release.yml must contain only quality then publish jobs")
-    release_quality = _job_block(release, "quality") or ""
-    publish = _job_block(release, "publish") or ""
-    if f"uses: {QUALITY_WORKFLOW}" not in release_quality:
-        errors.append("release.yml does not call the reusable quality gate")
-    if "if:" in release_quality:
-        errors.append("release quality gate must not be conditionally skipped")
-    if "needs: quality" not in publish:
-        errors.append("release publish job does not require the reusable quality gate")
-    for condition in (
-        "github.ref_type == 'tag'",
-        "startsWith(github.ref_name, 'v')",
-        "inputs.confirmation == 'publish-glossabet-to-pypi'",
-    ):
-        if condition not in publish:
-            errors.append(f"release publish guard is missing {condition!r}")
-    if "id-token: write" not in publish:
-        errors.append("release publish job lacks scoped Trusted Publishing permission")
-    permissions = re.findall(r"(?m)^      ([a-z-]+):\s*(read|write|write-all|none)\s*$", publish)
-    if "write-all" in publish or set(permissions) != {("contents", "read"), ("id-token", "write")}:
-        errors.append("release publish job permissions are not exactly contents: read + id-token: write")
-    if "persist-credentials: false" not in publish:
-        errors.append("release publish checkout must not persist credentials")
-    if "secrets." in publish:
-        errors.append(
-            "release publish job references a stored secret; publishing uses "
-            "Trusted Publishing only"
-        )
-    _requires_in_order(
-        publish,
-        [
-            "python scripts/check_workflows.py",
-            "python evaluation/run.py --verify-results evaluation/results.json --current",
-            "python scripts/agent_eval.py --verify-results evaluation/agent-results.json --current",
-            "python evaluation/review.py --verify-results evaluation/reviewer-results.json --current",
-            "uv build --no-sources --clear",
-            "python scripts/build_plugin.py dist",
-            "git diff --exit-code -- plugins/glossabet",
-            'python scripts/check_distribution.py dist --tag "$RELEASE_TAG" --current',
-            "RELEASE_TAG: ${{ github.ref_name }}",
-            "python scripts/wheel_smoke.py dist",
-            "pypa/gh-action-pypi-publish@",
-        ],
-        errors,
-        "release publish job",
-    )
-
-    for label, block in (
-        ("quality test job", test), ("quality static job", static),
-        ("quality package job", package), ("release publish job", publish),
-    ):
-        _check_steps_cannot_be_softened(label, block, errors)
-
+    _check_quality(workflows["quality.yml"], errors)
+    _check_ci(workflows["ci.yml"], errors)
+    _check_release(workflows["release.yml"], errors)
     for name, workflow in workflows.items():
-        _check_pinned_actions(name, workflow, errors)
-        _check_global_rules(name, workflow, errors)
+        _check_action_steps(name, _mapping(workflow.get("jobs")), errors)
     return errors
 
 
-_SHELL_SOFTENERS = re.compile(
-    r"\|\|\s*(?:true\b|:(?!\S)|exit\s+0\b)|;\s*true\s*$|\bset\s+\+e\b"
-)
-
-
-def _check_steps_cannot_be_softened(label: str, block: str, errors: list[str]) -> None:
-    """A required step counts only if its failure fails the job: no
-    ``continue-on-error``, no step-level ``if:`` (gate steps are
-    unconditional; a job-level guard is a different key with a different
-    parent), and no shell softener (``|| true``, ``|| exit 0``, ``set +e``)
-    in any ``run:`` of a gate job — otherwise the required command is
-    present as text while its result is discarded. Heuristic: ``|| echo``,
-    a mid-block ``; true``, ``shell: bash {0}`` (no ``-e``) and
-    ``sh -c "$(curl …)"`` are not recognized."""
-    for key, value, parent in _logical_values(block):
-        if key == "continue-on-error":
-            errors.append(f"{label} step is allowed to fail (continue-on-error)")
-        elif key == "if" and parent == "steps":
-            errors.append(f"{label} step is conditional (if: {value[:60]})")
-        elif key == "run" and _SHELL_SOFTENERS.search(value):
-            errors.append(f"{label} run step discards its own failure: {value[:80]}")
-
-
-# Anywhere inside ``${{ … }}`` — a ``toJSON(github.event.…)`` or
-# ``format('{0}', inputs.x)`` wrapper is the same untrusted value.
-_EVENT_EXPRESSION = re.compile(
-    r"\$\{\{(?:(?!\}\}).)*?(?:github\.event\b|github\.head_ref|github\.ref_name|"
-    r"inputs\.|steps\.(?:(?!\}\}).)*outputs)"
-)
-
-
-def _check_global_rules(name: str, workflow: str, errors: list[str]) -> None:
-    """Rules every workflow file obeys, whatever its job: no fork-PR trigger
-    that exposes secrets (any spelling of the trigger), no attacker-influenced
-    expression anywhere except an ``if:`` condition or an ``env:`` value
-    (``run:`` blocks, ``with:`` arguments, and everything else must receive
-    it through ``env:``), no ``curl | sh``, and no ``secrets.`` reference at
-    any level of any file (Trusted Publishing needs none)."""
-    if re.search(r"\bpull_request_target\b", workflow):
-        errors.append(f"{name} uses pull_request_target (secrets exposed to fork PRs)")
-    for key, value, parent in _logical_values(workflow):
-        if key == "if" or parent == "env":  # a condition, or an env: value
-            continue
-        if _EVENT_EXPRESSION.search(value):
-            errors.append(
-                f"{name} interpolates an untrusted expression outside env:/if: "
-                f"({key}: {value[:80]})"
-            )
-        if re.search(
-            r"(?:curl|wget)[^|]*\|\s*(?:(?:sudo|env|nice)\s+(?:\S+\s+)*)?"
-            r"(?:ba|z|da|k)?sh\b",
-            value,
-        ):
-            errors.append(f"{name} pipes a download into a shell: {value[:80]}")
-    if re.search(r"\bsecrets\.", workflow):
-        # Trusted Publishing needs no stored secret; a ``secrets.`` reference
-        # at any level (a top-level ``env:`` reaches every job, including a
-        # fork-triggered one) is a decision to make deliberately, here.
-        errors.append(f"{name} references a stored secret (secrets.…)")
-
-
 def check_workflows(directory: Path = WORKFLOWS) -> list[str]:
-    """Every ``*.yml``/``*.yaml`` in the directory — an extra workflow file
-    is checked, never ignored."""
-    return validate_workflow_texts({
-        path.name: path.read_text(encoding="utf-8")
-        for path in sorted(directory.iterdir())
-        if path.suffix.lower() in (".yml", ".yaml") and path.is_file()
-    })
+    """Parse and check every workflow file, including newly added ones."""
+    return validate_workflow_texts(
+        {
+            path.name: path.read_text(encoding="utf-8")
+            for path in sorted(directory.iterdir())
+            if path.suffix.lower() in (".yml", ".yaml") and path.is_file()
+        }
+    )
 
 
 def main() -> int:

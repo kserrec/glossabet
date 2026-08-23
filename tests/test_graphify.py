@@ -8,6 +8,7 @@ import os
 
 from glossabet.analysis.evidence import build_evidence, write_evidence
 from glossabet.analysis.graphify import build_structural_groups
+from glossabet.analysis.graphify_input import GraphInput, load_graph_input
 from glossabet.cli import main
 
 GRAPH = {
@@ -87,6 +88,20 @@ def make_repo(tmp_path, graph=GRAPH):
         "graphreportword appears only in graphify output\n"
     )
     return tmp_path
+
+
+def test_normalized_graph_input_is_one_cohesive_handoff(tmp_path):
+    graph = load_graph_input(make_repo(tmp_path), {"head": None, "dirty": None})
+
+    assert isinstance(graph, GraphInput)
+    assert graph.present is True
+    assert set(graph.nodes) == {"n1", "n2", "n3", "n4", "n5", "n6"}
+    assert graph.communities is None
+    assert graph.edge_count == 3
+    assert graph.glossary_nodes == frozenset({"n4"})
+    assert graph.freshness is not None
+    assert graph.freshness["status"] == "unverified"
+    assert graph.warnings == ()
 
 
 def test_groups_map_with_provenance_and_discounting(tmp_path):

@@ -3,7 +3,7 @@ synonym/overload nominations.
 
 Everything here is a nomination with evidence, never a verdict — the LLM and
 the human judge. All pairwise work is bounded to the top-N vocabulary
-(principle 12) and the bound is reported in the output.
+and every bound is reported in the output.
 """
 
 from __future__ import annotations

@@ -19,8 +19,8 @@ import unicodedata
 from pathlib import Path
 from typing import TypedDict
 
+from glossabet.analysis.evidence_facts import skipped_path_entries
 from glossabet.analysis.evidence_types import EvidenceDocument
-from glossabet.analysis.evidence_view import EvidenceView
 from glossabet.corpus.scanner import (
     LINK_ESCAPES_REPOSITORY,
     LINK_TO_EXCLUDED_CONTENT,
@@ -314,8 +314,8 @@ def repository_glossary_section(
         section["divergence"] = repository_glossary_divergence(glossary, payload)
     nested = [
         rel
-        for rel in EvidenceView(evidence).skipped_paths(SKIPPED_SELF_GLOSSARIES)
-        if rel != REPOSITORY_GLOSSARY_FILE
+        for rel in skipped_path_entries(evidence, SKIPPED_SELF_GLOSSARIES)
+        if isinstance(rel, str) and rel != REPOSITORY_GLOSSARY_FILE
     ]
     section["nested_ignored"] = sorted(nested)
     return section

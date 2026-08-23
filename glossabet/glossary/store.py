@@ -1,7 +1,7 @@
 """The persistent glossary: glossabet-out/glossary.json.
 
-Deliberately minimal schema (PLAN.md: the ontology grows only when a consumer
-needs a field). The status lifecycle exists from day one because drift
+Deliberately minimal schema: every field has a current consumer. The status
+lifecycle exists because drift
 detection is defined against it. A term is meant to be "canonical" only after
 human approval — the engine validates and persists; it never promotes on its
 own. That is the skill's instruction, not a mechanical guarantee: `save`

@@ -229,8 +229,8 @@ def test_skill_referenced_fields_exist_in_agent_context(tmp_path):
 
 
 def test_skill_repository_glossary_protocol_matches_engine(tmp_path):
-    """Phase 31: the skill distinguishes the four glossary states, forms its
-    baseline before reading GLOSSARY.md, reconciles into named categories,
+    """The skill distinguishes the four glossary states, forms its baseline
+    before reading GLOSSARY.md, reconciles into named categories,
     never promotes Markdown terms to canonical, and never clobbers a
     pre-existing GLOSSARY.md."""
     from glossabet.glossary.repository_glossary import (
@@ -308,8 +308,8 @@ def test_skill_repository_glossary_protocol_matches_engine(tmp_path):
 
 
 def test_skill_report_protocol_keeps_the_three_artifacts_separate():
-    """Phase 34: GLOSSABET.md is the skill's derived vocabulary-health report —
-    written at Step 7 (finalize, or on request), never opened during the
+    """GLOSSABET.md is the skill's derived vocabulary-health report, written
+    at Step 7 (finalize, or on request), never opened during the
     baseline steps, refreshed rather than appended, with proposals never
     worded as canonical, empty sections omitted, and the same three-artifact
     model the engine enforces (excluded from evidence at any depth, excluded

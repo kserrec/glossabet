@@ -14,8 +14,11 @@ For `scan`, `analyze`, `inspect`, `drift`, and `validate`, the CLI may read:
 
 - ordinary source and documentation files under the selected repository;
 - root `glossabet.json` and Glossabet-owned JSON artifacts when the selected
-  command needs them (`GLOSSARY.md` and the derived `GLOSSABET.md` report
-  are deliberately excluded from analysis);
+  command needs them;
+- an exact root `GLOSSARY.md` through a bounded safe-read path for presence,
+  size/digest metadata and, during validation, lexical term-presence only; its
+  words never enter repository evidence or agent context, and nested
+  `GLOSSARY.md` files are ignored;
 - optional `graphify-out/graph.json` as repository-controlled structural
   evidence; and
 - local Git commit and worktree status through a constrained `git` subprocess.
@@ -73,6 +76,9 @@ canonical skill bundled in the installed wheel and writes one `SKILL.md` to
 the reported personal or explicitly selected skill directory. It does not
 contact Codex, Claude, OpenAI, Anthropic, PyPI, or GitHub. Package installation
 itself may contact the package index chosen by the user's package manager.
+With `--agent claude`, the installer may also write a plugin manifest and
+SessionStart hook inside that same reported skill folder; `--skill-only`
+suppresses those files. It writes nothing outside the selected folder.
 
 The Codex plugin route keeps both components inside Codex's plugin cache. Its
 skill-local runner verifies and imports the bundled wheel directly; it does
@@ -131,7 +137,8 @@ generated, or configured.
 
 ## Explicit network exceptions in this repository
 
-The production CLI has no network path. Two developer/release activities do:
+The production CLI has no network path. Several developer/release activities
+can use one:
 
 - `evaluation/run.py --fetch` invokes `git` to fetch only the public revisions
   pinned in `evaluation/corpus.json` into a temporary directory. Without
@@ -156,6 +163,17 @@ The production CLI has no network path. Two developer/release activities do:
   current result, and appends its outcome; the
   `--refresh-artifact` and `--verify-results` modes are local-only and do not
   invoke Codex or the network.
+- An explicitly authorized `scripts/claude_eval.py --run` invokes the existing
+  normal-profile Claude Code authentication for exactly three tool-disabled
+  scenarios. It neither reads nor changes authentication files, disables
+  session persistence, confines fixtures to one named temporary directory,
+  records bounded raw events and reported usage, and removes only its own
+  temporary state. Verification/history modes are local-only. The recorded
+  attempt stopped before model use; any new run still requires separate
+  account/cost authorization.
+- `evaluation/review.py --run-reviewer` invokes one authenticated, ephemeral,
+  read-only Codex review over a blinded bounded packet. Its verification mode
+  is local-only.
 
 There are no hidden analytics, crash-report uploads, update checks, or remote
 feature flags in Glossabet 0.1.0.

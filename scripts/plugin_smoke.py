@@ -91,6 +91,10 @@ def _dotenv_part(name: str) -> bool:
     )
 
 
+def _copy_ignore(_directory: str, names: list[str]) -> set[str]:
+    return {name for name in names if _dotenv_part(name)}
+
+
 def _extract_sdist(sdist: Path, destination: Path) -> Path:
     with tarfile.open(sdist, mode="r:gz") as archive:
         members = archive.getmembers()
@@ -376,7 +380,11 @@ def main() -> int:
         workspace = Path(raw)
         marketplace = workspace / "marketplace"
         (marketplace / "plugins").mkdir(parents=True)
-        shutil.copytree(PLUGIN, marketplace / "plugins" / "glossabet")
+        shutil.copytree(
+            PLUGIN,
+            marketplace / "plugins" / "glossabet",
+            ignore=_copy_ignore,
+        )
         _marketplace_file(marketplace, marketplace_name)
         updated_plugin, next_version = _prepare_update(
             sdist, workspace, version
@@ -409,7 +417,11 @@ def main() -> int:
 
             previous = marketplace / "plugins" / f"glossabet-{version}"
             os.replace(marketplace / "plugins" / "glossabet", previous)
-            shutil.copytree(updated_plugin, marketplace / "plugins" / "glossabet")
+            shutil.copytree(
+                updated_plugin,
+                marketplace / "plugins" / "glossabet",
+                ignore=_copy_ignore,
+            )
             _run(
                 ["codex", "plugin", "marketplace", "add", str(marketplace), "--json"],
                 cwd=ROOT,

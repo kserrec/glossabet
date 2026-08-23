@@ -9,8 +9,8 @@ import sys
 from collections.abc import Iterable
 
 from glossabet.analysis.evidence import build_evidence, write_evidence
-from glossabet.analysis.evidence_types import StructuralGroups
-from glossabet.analysis.evidence_view import EvidenceView
+from glossabet.analysis.evidence_types import EvidenceDocument, StructuralGroups
+from glossabet.command_run import open_run
 from glossabet.corpus.config import CONFIG_FILE, PATH_ROLES, ConfigurationEvidence
 from glossabet.corpus.scanner import (
     CorpusBudgetEvidence,
@@ -18,7 +18,6 @@ from glossabet.corpus.scanner import (
     exclusion_sentences,
 )
 from glossabet.runtime.display import escape_terminal_text, join_escaped
-from glossabet.runtime.engine_run import open_run
 
 
 def configuration_hint(configuration: ConfigurationEvidence) -> str:
@@ -50,8 +49,8 @@ def _print_candidates(
         print(f"{kind} {name}{tag} — {reasons}")
 
 
-def _print_terminology_report(view: EvidenceView) -> None:
-    terminology = view.terminology()
+def _print_terminology_report(evidence: EvidenceDocument) -> None:
+    terminology = evidence["terminology"]
     reg = terminology["register"]
     print(
         f"\n== house register ({reg['unique_identifiers']} unique identifiers, "
@@ -135,7 +134,7 @@ def _print_terminology_report(view: EvidenceView) -> None:
     if over["dropped_items"]:
         print(f"... and {over['dropped_items']} more not shown")
 
-    naming = view.naming_candidates()
+    naming = evidence["naming_candidates"]
     print("\n== naming candidates (import graph is best-effort) ==")
     _print_candidates(
         "module", ((c["path"], None, c["reasons"]) for c in naming["modules"])
@@ -230,28 +229,27 @@ def _scan(path_arg: str, report: bool, graphify: bool = True) -> int:
         run.root, cache=True, stats=stats, graphify=graphify
     )
     out_path = write_evidence(run.root, evidence)
-    view = EvidenceView(evidence)
-    _print_graphify_summary(view.structural_groups())
+    _print_graphify_summary(evidence["structural_groups"])
     if stats.get("reused"):
         print(
             f"cache: reused {stats['reused']} extraction(s), "
             f"re-extracted {stats['extracted']}"
         )
-    totals = view.totals()
+    totals = evidence["totals"]
     print(
         f"scanned {totals['code_files']} code files, "
         f"{totals['doc_files']} doc files "
-        f"({len(view.languages())} languages); terminology scope: "
-        f"{view.terminology_scope()['code_files']} production code "
+        f"({len(evidence['languages'])} languages); terminology scope: "
+        f"{evidence['terminology']['scope']['code_files']} production code "
         f"file(s) -> {escape_terminal_text(str(out_path))}"
     )
-    for sentence in exclusion_sentences(view.skipped()):
+    for sentence in exclusion_sentences(evidence["skipped"]):
         print(sentence, file=sys.stderr)
-    print(configuration_hint(view.configuration()))
-    _print_corpus_budget_warning(view.corpus_budget())
-    _print_monorepo_notice(view.monorepo())
+    print(configuration_hint(evidence["configuration"]))
+    _print_corpus_budget_warning(evidence["skipped"]["corpus_budget"])
+    _print_monorepo_notice(evidence["monorepo"])
     if report:
-        _print_terminology_report(view)
+        _print_terminology_report(evidence)
     return 0
 
 

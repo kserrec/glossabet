@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from glossabet.command_run import GLOSSARY_OPTIONAL, open_run
 from glossabet.glossary.model import AliasRecord, ConceptRecord, GlossaryDocument
 from glossabet.glossary.store import (
     GLOSSARY_FILE,
@@ -14,7 +15,6 @@ from glossabet.glossary.store import (
 from glossabet.runtime import git_state
 from glossabet.runtime.artifacts import OUT_DIR, ArtifactError
 from glossabet.runtime.display import escape_terminal_text, join_escaped
-from glossabet.runtime.engine_run import GLOSSARY_OPTIONAL, open_run
 from glossabet.runtime.git_state import GitStamp
 
 BRIEF_FORMAT_VERSION = 1

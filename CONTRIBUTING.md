@@ -50,3 +50,5 @@ trailer before merging if it is missing.
 
 Development setup, the test suite, and the release gate are described in
 `README.md` ("Development and release verification") and `RELEASING.md`.
+Changes under `.github/workflows/` must pass both the parsed structural policy
+checker and the pinned actionlint version documented there.

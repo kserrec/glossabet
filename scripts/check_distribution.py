@@ -36,6 +36,7 @@ SDIST_REQUIRED_RELATIVE = frozenset({
     "README.md",
     "RELEASING.md",
     "SECURITY.md",
+    "docs/CODE-WALKTHROUGH.md",
     "docs/WALKTHROUGH.md",
     "examples/payment-service/glossabet-out/glossary.json",
     "examples/payment-service/src/payment_service.py",

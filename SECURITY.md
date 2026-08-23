@@ -1,707 +1,264 @@
 # Security
 
+Glossabet 0.1.0 is an unreleased local source alpha. This policy describes the
+current code; it is not a claim that every hostile operating-system condition
+is contained.
+
 ## Threat model
 
-The Glossabet CLI is a local tool. Its repository-analysis commands are
-read-mostly: they do not run a server, open a network socket, import
-target-project modules, evaluate source, or invoke a shell. Their one external
-process is `git`, called with argument lists and a timeout. The separate
-`install` command does not analyze a repository; it copies the wheel-bundled
-canonical skill to a reported personal or explicitly selected directory.
+The production command-line program treats the selected repository as hostile
+static data. An attacker may control names and contents below that repository,
+including source, documentation, Git metadata, `glossabet.json`,
+`graphify-out/graph.json`, `glossabet-out/glossary.json`, and pre-created output
+paths.
 
-The realistic attacker is a **hostile repository**: a user clones or receives
-an untrusted project and runs Glossabet against it. Repository-controlled
-inputs include source and documentation files, Git metadata, the two JSON
-artifacts plus repository configuration read directly, and any paths
-pre-created where Glossabet writes:
+The enforced goals are:
 
-- `glossabet.json`
-- `graphify-out/graph.json`
-- `glossabet-out/glossary.json`
-- `glossabet-out/` output paths
-
-The incremental extraction cache is deliberately not on that list. It is
-user-owned local state outside the scanned repository.
-
-The enforced goal is that repository-controlled paths cannot make Glossabet
-read content outside the repository, redirect an artifact write, or execute
-repository code; individual inputs are size-bounded and malformed inputs
-degrade according to a documented contract. Aggregate lexical work is bounded
-per scan by source-file, source-byte, walked-entry, and per-directory-entry
-ceilings. These ceilings bound input work; they are not a fixed wall-clock or
-peak-memory guarantee because identifiers and repository layouts vary.
-Glossary structure and the agent-facing output have independent semantic
-ceilings, and repository-controlled terminal text must not execute control
-sequences or reorder the displayed result.
-
-## Threat model and concurrency assumptions
-
-Every filesystem claim in this document holds under a stated concurrency
-assumption. Three situations are distinguished:
-
-1. **A hostile repository that is not mutated while a command runs — in
-   scope and enforced.** Every path check below (symlink components,
-   escape from the root, sensitive names, exact-name confirmation) is
-   evaluated against the checkout as it is when the command starts, and
-   the code then uses the path it checked.
-2. **Ordinary concurrent edits — detected where the table says so, never
-   made atomic.** A command is not a filesystem snapshot. Where a change
-   between check and use would matter, the implementation either judges
-   the outcome from the bytes actually read (size bounds), compares file
-   identity across the open (managed host file), or rechecks immediately
-   before commit (managed host file write). A detected change fails closed
-   with a user error or a reported partial result; an undetected one (a
-   source file that grows after the walk charged its size) is read as the
-   file then is.
-3. **An adversarial local process racing path components between check
-   and use — out of scope.** Such a process already runs as the same
-   operating-system user and could equally modify the installed Glossabet
-   program, its cache, or its output artifacts. Glossabet does not use
-   descriptor-relative traversal (`openat`/`O_NOFOLLOW` on every
-   component) and does not claim immunity here; the claims below are
-   protection against hostile *initial* paths and detected ordinary
-   changes. Do not run Glossabet on a checkout an untrusted process is
-   rewriting.
-
-The check/use sequences, what each checks, what could change in the window,
-and what covers it (regressions in `tests/test_filesystem_races.py` unless
-named otherwise):
-
-| Site | Checked | Could change before use | Covered by |
-| --- | --- | --- | --- |
-| `artifacts.confined_artifact_path` → `write_json_atomic` (`glossabet-out/*.json`, `glossary.json` via `save`) | no symlink component; resolves inside root | a parent directory swapped for a symlink redirects `os.replace` into its target | assumption 3 (out of scope). The *final* component swapped for a symlink is harmless: `os.replace` replaces the link entry, never its target — `test_atomic_replace_onto_a_symlink_replaces_the_link_not_its_target` (POSIX) |
-| `artifacts.read_bounded_bytes` (`glossabet.json`, `graph.json`, `glossary.json`, user cache) | regular file exists | file replaced or grown between the check and the open | bound judged from bytes read (`cap + 1` requested), never from a stat — `test_bounded_read_stays_bounded_when_the_file_grows_after_the_check`. A swap to a symlink in that window is assumption 3 |
-| `managed_context.read_regular_target` (`AGENTS.md`/`CLAUDE.md` read by `sync-context`, `drift`, `validate`) | `lstat`: exact name, not a link, regular, under size | target swapped for a symlink or another file between `lstat` and `open` | `O_NOFOLLOW` where the platform has it (POSIX) plus a (device, inode) comparison of the pre-open `lstat`, the open descriptor, and a post-open `lstat` (all platforms, including Windows which lacks `O_NOFOLLOW`); read takes `cap + 1` bytes — `test_host_file_swapped_for_a_symlink_after_the_check_is_never_read`, `test_host_file_replaced_by_another_regular_file_after_the_check_is_refused` (POSIX), `test_host_file_read_is_bounded_even_if_it_grows_after_the_size_check` |
-| `context_sync._write_bytes_atomic` (`sync-context` write) | bytes and mode re-read immediately before `os.replace` | an edit between that recheck and the replace | assumption 2, detected up to the recheck (`test_concurrent_target_change_is_not_overwritten`, `test_atomic_replace_aborts_when_the_pre_replace_check_fails`); the remaining window is stated below under "Managed project context" |
-| `cache.load_cache` / `save_cache` | not a link, regular, bounded read; content digests per file | anything — the cache is user-owned state | reuse is by content SHA-256 of the current bytes, so a stale or swapped cache can only cause a miss (`tests/test_cache.py`); a same-user process is assumption 3 |
-| `cache.clear_cache` | each entry checked with non-following `is_dir`/`is_file` before `unlink`/`rmdir` | an entry swapped for a symlink after its check | `unlink` removes the link itself; `rmdir` on a link fails and the entry is reported left in place — `test_cache_file_swapped_for_a_symlink_after_the_check_loses_only_the_link`, `test_cache_entry_swapped_for_a_directory_symlink_is_left_in_place` |
-| `scanner` walk → `extraction.read_source` | link mode, resolved target inside root and not sensitive, size at walk time | a file replaced or grown between the walk and the read | assumption 1. The ledger charges the walk-time size and reclassifies exactly those bytes on a read failure (`test_walk_time_size_is_what_the_ledger_charges`); a file that grows after the walk is read whole, so the per-file 2 MB bound is a walk-time bound, not a read-time bound |
-| `scanner._read_root_manifest`, `repository_glossary` root `GLOSSARY.md` | link mode, resolved target, regular, size | as above | assumption 1; the `GLOSSARY.md` read requests `MAX_FILE_BYTES + 1` bytes and judges from what it read |
-| `installer._install_file` / Claude plugin files | symlink components rejected before and again after `mkdir`; existing bytes compared | a component swapped for a symlink between the second check and `os.replace` | assumption 3; a final-component swap is harmless as for artifacts (`test_install_refuses_symlinked_destination_components` covers the initial-path rule) |
-
-No site uses a stat-derived size as its read bound except the walk (row 7),
-which is why that row is assumption 1 rather than "detected".
-
-## Boundaries enforced in code
-
-### Repository reads
-
-- **Walked source stays inside the repository.** The bounded manual
-  `os.scandir` traversal does not descend through directory symlinks. A source
-  or documentation file symlink
-  whose real target is outside the repository is skipped and recorded under
-  `skipped.symlinks_escaping_repo`; its target is not read. Root
-  `Cargo.toml`/`package.json` workspace probes use the same escape check.
-  Regressions: `test_symlink_escaping_repo_is_not_ingested`,
-  `test_escaping_root_workspace_manifest_symlink_is_not_read`.
-- **Direct JSON paths are stricter than source paths.** Every component of
-  `glossabet.json`, `graphify-out/graph.json`, and
-  `glossabet-out/glossary.json` must be a real path, not a symlink, as
-  checked when the command starts (concurrency assumption 1). A graph
-  violation becomes a visible lexical-only warning; a configuration or
-  glossary violation is a clean user error. This prevents a hostile checkout
-  from using a direct-input symlink to read another file, including an
-  unrelated file inside the repository. Regressions:
-  `test_symlinked_config_is_rejected_without_reading_target`,
-  `test_symlinked_graph_degrades_without_reading_target`,
-  `test_glossary_symlink_is_rejected_without_reading_target`, and
-  `test_inspect_rejects_symlinked_glossary_without_reading_target`.
-- **Reads are individually size-bounded.** Walked code, documentation, and
-  inspected root manifests are capped at `MAX_FILE_BYTES` (2 MB), judged at
-  walk time (assumption 1; a file that grows after the walk is read whole).
-  Direct JSON artifacts and the user cache are capped at `MAX_JSON_BYTES`
-  (64 MB) before `json.loads`, judged from the bytes actually read
-  (assumption 2, detected); `glossabet.json` has a tighter 1 MB cap. An oversized graph
-  degrades to lexical-only, an oversized configuration or glossary is a user
-  error, an oversized cache is a miss, and an oversized root manifest is
-  skipped and reported. Regressions include
-  `test_oversized_config_is_a_user_error`,
-  `test_oversized_graph_degrades_lexical_only`,
-  `test_oversized_glossary_refused_as_user_error`, and
-  `test_oversized_root_workspace_manifest_is_skipped`.
-- **Aggregate lexical work is bounded and partial coverage is explicit.** A
-  scan includes at most 10,000 code/documentation files and 32,000,000 source
-  bytes, processes at most 100,000 directory entries, and accepts at most
-  10,000 entries from one directory. Source-file/byte exclusions retain exact
-  counts and a bounded path sample. A walk limit cannot count the unseen tree
-  without defeating itself, so it records a lower bound, reason/path sample,
-  and `exact: false`. An overfull directory is skipped whole rather than
-  selecting nondeterministically from filesystem order. Every budget stop sets
-  `skipped.corpus_budget.complete` false and emits a partial-evidence warning.
-  Regressions: `test_corpus_file_budget_is_deterministic_and_reported`,
-  `test_corpus_byte_budget_reports_skips_and_can_use_later_space`,
-  `test_walk_work_budget_marks_unknown_remainder`, and
-  `test_overfull_directory_is_skipped_whole_to_preserve_determinism`.
-
-- **Glossabet's own `GLOSSABET.md` report is never ingested.** The
-  vocabulary-health report the skill writes at the scan root is excluded
-  from lexical evidence at any depth (`SELF_REPORT_FILES`) and from the
-  freshness stamp (root only), so its proposed names and explanations cannot
-  become evidence or fake documentation support for its own next run, and
-  no command reads it as glossary state.
-
-- **A repository's own root `GLOSSARY.md` is discovered, never ingested.**
-  `glossabet/repository_glossary.py` reads at most `MAX_FILE_BYTES + 1`
-  bytes of the exact-named root entry and reports presence, safe-read
-  status, size, and SHA-256 only — never content, and its words never enter
-  lexical evidence at any depth (`SELF_FILES`). It applies both walked-file
-  symlink rules: an escaping link and a link whose in-repository target has
-  a sensitive name (`GLOSSARY.md -> .env`) are `present` but `readable:
-  false` with a named reason, so the engine never authorizes the agent to
-  read a secret. A confined symlink is readable but flagged `symlink: true`,
-  and the skill never writes through a flagged entry — a glossary edit must
-  not become an edit of whatever file the link points at. Presence is the
-  exact directory-entry name confirmed by bounded `scandir` iteration under
-  `MAX_WALK_ENTRIES` (never a materialized `listdir`), so a case-insensitive
-  filesystem cannot make one file both "the glossary" and evidence, and a
-  root with millions of entries costs no memory. When something is there
-  (`lexists`) but its exact name cannot be confirmed — the root is not
-  listable, or the cap is reached first — the record is `present: true,
-  readable: false, reason: root-listing-unconfirmed`, never absent: this
-  channel must never produce a false absence claim. Regressions:
-  `test_escaping_symlink_is_present_but_never_read`,
-  `test_symlink_to_in_repo_sensitive_file_is_never_declared_readable`,
-  `test_confined_symlink_is_flagged_so_the_skill_never_writes_through_it`,
-  `test_only_the_exactly_named_entry_is_the_repository_glossary`,
-  `test_presence_confirmation_never_materializes_the_root_listing`,
-  `test_glossary_markdown_never_enters_lexical_evidence`.
-
-### Repository writes
-
-- **Generated writes cannot be redirected through symlinks.** The
-  `glossabet-out` directory and final artifact path may contain no symlink
-  component when checked (assumption 1; a parent swapped for a symlink
-  afterwards is assumption 3). An unsafe path is a clean user error, and no
-  target is written.
-  Regressions: `test_evidence_symlink_cannot_overwrite_outside_file`,
-  `test_output_directory_symlink_cannot_redirect_writes`.
-- **JSON artifacts are replaced atomically.** Glossabet writes a complete
-  same-directory temporary file, flushes it, then commits with `os.replace`.
-  A failed commit leaves the previous artifact intact and removes the
-  temporary file. This prevents interrupted writes from leaving half a JSON
-  document; it is not a guarantee against storage-device failure after the
-  replacement. Regressions are in `tests/test_artifacts.py`.
-
-### Managed project context
-
-- **Only an explicit command selects this write path.** `sync-context` is the
-  sole product route that targets a project-owned host instruction file. Its
-  closed mapping is root `AGENTS.md` for Codex (the default) or root
-  `CLAUDE.md` for explicit `--agent claude`; no arbitrary target path is
-  accepted. `install`, `brief`, the plugin hook, the agent skill's glossary
-  finalization, and every analysis command do not call it. Regression:
-  `test_every_other_repository_command_leaves_host_file_byte_identical`.
-- **The target is bounded and cannot redirect the read, and a detected
-  change aborts the write.** Existing targets must be regular UTF-8 files no
-  larger than 2,000,000 bytes. The
-  reader uses a non-following file descriptor where the platform supplies it,
-  compares pre-open, opened, and post-open identities, and reads at most one
-  byte beyond the cap. Symlinks, directories, other non-files, invalid UTF-8,
-  and oversized files are user errors. The atomic commit preserves the prior
-  mode, rechecks the bytes and mode before `os.replace`, and cleans its
-  temporary file after failure. Regressions include
-  `test_symlink_target_is_never_followed_or_replaced`,
-  `test_unsafe_existing_targets_are_unchanged`,
-  `test_atomic_replace_failure_preserves_original_and_cleans_temporary_file`,
-  and `test_concurrent_target_change_is_not_overwritten`.
-- **Markers define ownership; ambiguity preserves the file.** A missing block
-  is appended without altering preceding bytes. One current deterministic
-  block is a no-write operation, and one integrity-valid stale block is
-  replaced inside its exact markers. A body that no longer matches its content
-  stamp, or a newer unsupported format, requires explicit `--force`. Changed,
-  missing, duplicate, nested, or malformed markers/metadata are never replaced,
-  even with force. Surrounding bytes and line-ending style are covered by
-  `test_stale_block_updates_only_the_managed_range`,
-  `test_claude_target_preserves_crlf_surrounding_bytes_and_file_mode`, and the
-  collision cases in `tests/test_context_sync.py`.
-- **Health checks do not write host files.** `drift` and `validate` inspect
-  both fixed targets read-only, never follow target symlinks, and record/print
-  `stale`, `edited`, or `uninspectable` state. Absence and current state are not
-  warnings. A structurally bounded block is removed from documentation text
-  before lexical extraction so it cannot echo glossary words into drift; the
-  hand-written surrounding file remains evidence. Cache schema 4 invalidates
-  older extracted copies. Regressions:
-  `test_drift_and_validate_flag_stale_and_edited_blocks` and
-  `test_managed_block_never_echoes_into_repository_evidence`.
-
-The pre-commit recheck catches an ordinary concurrent edit made before it
-(assumption 2), but portable `os.replace` is not a filesystem
-compare-and-swap: an edit landing between the recheck and the replace is
-overwritten. Do not run `sync-context` while another process is changing the
-same host file. This is the same limitation stated under "Threat model and
-concurrency assumptions", not a claim that concurrent mutation can be made
-atomic on every supported platform.
-
-### Agent skill installation
-
-- **Existing user content is preserved by default.** `glossabet install` is
-  idempotent when the destination already has the canonical bytes. A different
-  existing `SKILL.md` is a user error and remains untouched unless `--force`
-  is explicit. Neighboring files are never replaced. Regression:
-  `test_install_refuses_different_existing_skill_without_force`.
-- **A symlink cannot redirect installation.** Every existing destination
-  component is checked before and after directory creation (assumption 1);
-  symlinked components and non-file targets are refused. The final file is written by a
-  same-directory temporary file plus `os.replace`. Regressions:
-  `test_install_refuses_symlinked_destination_components` and
-  `test_force_replaces_only_the_skill_file_and_leaves_no_temporary_file`.
-- **A hook never persists a repository-local executable.** `install --agent
-  claude` binds its `SessionStart` hook to an absolute `glossabet` path: the
-  one that ran the installer (`sys.argv[0]`, an explicit user choice, with a
-  printed note when it lies inside the current directory or a virtual
-  environment) or the first on `PATH` by the same `PATH`-only lookup as git —
-  never a `glossabet`/`glossabet.bat` picked up from the current directory,
-  which in a hostile checkout would run in every future session of every
-  project. Regression: `test_hook_never_persists_a_repository_local_glossabet`.
-- **The Codex plugin runner starts isolated.** Its hook command is
-  `python3 -I -B …` (`py -3 -I -B` on Windows): isolated mode ignores
-  `PYTHONPATH`, the user site directory, and the script directory, so a
-  repository whose root ships `encodings.py` or `sitecustomize.py` beside a
-  shell rc that leaves an empty `PYTHONPATH` entry (= cwd) cannot execute
-  before the runner's first line. The runner inserts the integrity-checked
-  wheel after the standard library and before any site-packages, so a stale
-  or squatted `glossabet` elsewhere cannot be the one executed while the
-  digest guards another. Regression:
-  `test_hook_interpreter_is_isolated_from_a_hostile_working_directory`.
-  **Known limit (Windows, unverified):** the `commandWindows` launcher `py`
-  is a bare name; if Codex spawns it through `cmd.exe`, the current
-  directory is searched before `PATH`, so a hostile checkout shipping
-  `py.bat` at its root would run at session start — the interpreter is
-  isolated once started, but its *selection* is not yet hardened there. A
-  portable absolute-launcher form awaits the Windows plugin probe (Phase
-  33.2); until then the Codex plugin route on Windows is labelled unverified.
-- **Package data is pinned to the repository source of truth.** Hatch maps
-  `skill/SKILL.md` directly to `glossabet/_skill/SKILL.md`; focused tests and
-  the built-wheel smoke test compare the bytes rather than maintaining an
-  independent hand-copied skill.
-- **The Codex plugin carries one matched engine/skill pair.** The manifest,
-  canonical skill instructions, skill-local runner constant, nested wheel
-  metadata, imported package version, and wheel-embedded skill all identify
-  the same release. The runner accepts only one exact wheel filename and
-  requires Python 3.10 or newer before importing it directly from the plugin
-  cache. Build, unit, archive, and actual Codex lifecycle probes fail on a
-  mismatch; the plugin never installs a second package or command on `PATH`.
-- **The plugin hook has the same confined read boundary.** The manifest exposes
-  one exact `SessionStart` handler for startup, resume, clear, and compaction.
-  It runs the skill-local runner as `brief .`, disables Python bytecode writes
-  beside that runner, times out after 30 seconds, and contributes the complete
-  output only because `brief` itself has a 4,096-byte ceiling. It does not scan
-  source or add a repository-write path, and an absent glossary emits nothing.
-  Build, archive, unit, and installed-plugin smoke checks bind the exact hook
-  bytes and command. Codex still requires the user to trust the hook; the
-  authenticated harness bypasses that prompt for one invocation only after
-  checking the temporary plugin against the current artifact digest.
-- **Plugin lifecycle cleanup is narrowly owned.** The host-level smoke uses a
-  random marketplace name, records Codex's returned install path, removes the
-  plugin and marketplace in a `finally` block, and removes only the exact
-  marketplace cache parent after proving it is empty. It never recursively
-  deletes a user directory or touches another marketplace.
-- **Installed-agent evidence tests the delivered boundary.**
-  `scripts/agent_eval.py` uses a second unique temporary marketplace, proves
-  Codex read the exact installed plugin skill and version-checked its bundled
-  engine. Its fresh-session probe additionally requires the canonical term and
-  definition to arrive from the exact installed hook without a product-naming
-  user prompt or agent tool call. It then runs 10 plugin scenarios and one
-  standalone missing-CLI scenario. Command/event/output storage is capped.
-  Repository snapshots treat dotenv names as opaque and never read their
-  contents; a separate unreadable sensitive file carries a synthetic canary
-  that must not appear in raw JSONL or the agent response. Only the normal
-  `inspect` evidence refresh is allowed; every other write fails the scenario.
-  Cleanup is the same exact-path, re-queried lifecycle above. Each authorized
-  attempt is appended with explicit canary, write, post-failure-inspect, and
-  cleanup outcomes; any failed safety check fails the offline gate even when a
-  later attempt passes. Full runs use unique immutable result paths and refuse
-  overwrite; the current-result mirror is accepted only when its digest matches
-  retained raw evidence and its complete input identity matches current bytes.
-  Separately, the offline gate hashes and directly smokes the current canonical
-  skill, plugin tree, hook, skill-local runner, and checked-in wheel, and
-  rejects an ambiguous plugin-root runner.
-  Agent command-choice success is reported as reliability evidence rather than
-  substituted for those deterministic checks. The committed evidence covers
-  two 12/12 Phase 28.2 batches on Codex CLI 0.147.0/Linux, including the
-  replacement on final metadata-only rebuilt bytes. Other hosts remain
-  unverified.
-
-### Agent context and terminal output
-
-- **Invisible characters are refused as a class.** Every glossary string
-  (terms, ids, aliases, definitions, notes) rejects Unicode's
-  Default_Ignorable_Code_Point set (zero-width space, word joiner, soft
-  hyphen, BOM, Hangul fillers, Mongolian vowel separator, variation
-  selectors, the TAG block, interlinear annotation anchors) — characters that
-  render as nothing yet make two strings distinct or hide text from the human
-  reviewer whose approval is the product's trust anchor while a model still
-  reads it. ZWNJ/ZWJ stay allowed (Persian, Indic, emoji). Lone surrogates
-  and these characters are also rendered as visible escapes wherever
-  repository text reaches a terminal or a hook. Regression:
-  `test_default_ignorable_characters_are_refused_as_a_class`.
-
-- **The skill consumes CLI output, not repository artifacts.** The installed
-  skill starts with `glossabet inspect .`. The command loads the optional
-  glossary through the same confined, strict validator as `show`, builds fresh
-  evidence through the bounded scanner, refreshes the normal evidence
-  artifact atomically, and emits one versioned JSON document. The skill is
-  explicitly forbidden from opening Glossabet JSON artifacts or falling back
-  to an unrestricted recursive read when this command fails. Regressions are
-  in `tests/test_skill.py` and `tests/test_agent_context.py`.
-- **The skill persists machine state through the CLI.** After the human settles
-  terms, the skill sends the complete JSON document to `glossabet save .` on
-  standard input; it never writes or patches `glossary.json` directly. The
-  command accepts at most 64 MB (reading one detection byte beyond the limit),
-  parses one document, applies strict validation, and delegates to the confined
-  atomic writer. Invalid input leaves an existing glossary intact. Regressions
-  include
-  `test_save_command_validates_stdin_and_writes_atomically`,
-  `test_save_command_rejects_invalid_stdin_without_writing`, and
-  `test_save_command_bounds_standard_input`, and
-  `test_save_command_cannot_follow_a_glossary_symlink`.
-- **Agent output has an independent hard bound.** The context deterministically
-  caps named top-level collections and nested lists, truncates overlong strings
-  with an omission record, and refuses either more than 100 distinct omission
-  records or more than 1,000,000 UTF-8 bytes. `coverage.corpus` describes scanner
-  coverage and `coverage.context` describes projection coverage; neither can
-  silently read as complete after an omission. Regressions:
-  `test_context_sampling_is_explicit` and
-  `test_context_hard_byte_limit_fails_cleanly`.
-- **Ambient vocabulary is a narrower read-only projection.** `brief` loads only
-  the confined, strictly validated glossary and the hardened Git stamp. It does
-  not walk source files or write the repository. Its deterministic text is
-  capped at 4,096 UTF-8 bytes and reports omitted concepts and truncated
-  entries; an absent glossary emits nothing. Regressions in
-  `tests/test_brief.py` cover determinism, source/secret non-contamination,
-  symlink refusal, terminal-safe one-line prose, and the byte ceiling.
-  `tests/test_plugin.py` additionally executes the declared hook command with
-  and without a glossary and proves exact output plus zero repository changes.
-- **Persistent ambient vocabulary remains separately human-authorized.** The
-  skill states that ordinary ambient context is read-only and that glossary
-  finalization does not authorize `sync-context`. It may run that command only
-  after a separate explicit human request naming the desired host target.
-- **Terminal controls are data, not instructions.** CLI stdout/stderr pass
-  through `display.py`. Repository/user-controlled C0/C1 controls, DEL, Unicode
-  line separators, and bidirectional-format characters are rendered as visible
-  escape spellings. Glossary identity fields reject them; prose permits only
-  ordinary line feed/tab layout and the renderer escapes those when embedded
-  in a displayed value. JSON output uses JSON escaping as an additional layer.
-  Regressions: `test_repository_control_sequences_are_rendered_visibly`,
-  `test_unexpected_exception_text_is_terminal_safe`, and
-  `test_terminal_controls_and_bidi_formatting_are_rejected`.
-
-### Incremental cache
-
-- **A repository cannot supply trusted extraction results.** Cache state lives
-  under the current user's platform cache directory, keyed by a SHA-256 hash
-  of the repository's resolved path. Repository-local `.glossabet/cache.json`
-  is legacy, excluded from evidence, and never loaded. If
-  `GLOSSABET_CACHE_DIR` would place the cache inside the scanned repository,
-  caching is disabled.
-- **Reuse is content-based.** Every included file is read and SHA-256 hashed on
-  every scan. Cached identifier/import/doc extraction is reused only when its
-  recorded digest matches those current bytes and its shape is valid. A cache
-  schema or generator-version mismatch, wrong repository identity, malformed
-  JSON, wrong top-level type, invalid entry shape, symlinked cache file, or I/O
-  failure is a miss. Regressions include
-  `test_same_size_same_mtime_rewrite_invalidates_by_content`,
-  `test_ascii_tokenizer_cache_version_is_invalidated`,
-  `test_repository_supplied_legacy_cache_is_never_trusted`, and
-  `test_wrong_top_level_cache_json_is_a_miss`.
-
-The cache protects against the hostile-repository attacker defined above. It
-does not try to defend against another process already able to modify files as
-the same operating-system user (concurrency assumption 3); that process could
-also modify the installed Glossabet program or its output artifacts.
-
-### Content, execution, and malformed input
-
-- **Sensitive-path exclusion is path-based, not secret scanning.** Files and
-  directories matching `_SENSITIVE_PATTERNS`—dotenv names, key/certificate
-  extensions, credential stores, or names containing `secret`/`credential`—are
-  excluded and reported. Glossabet does not inspect source text for API keys,
-  passwords, or other secret-like values. A secret embedded in an ordinarily
-  named `.py`, `.js`, or documentation file can therefore appear as lexical
-  evidence. Do not treat the output as sanitized. Regressions for the path
-  boundary: `test_sensitive_files_never_enter_evidence`,
-  `test_sensitive_directories_pruned_and_reported`.
-- **Repository configuration is data, not code.** `glossabet.json` accepts
-  only a version, literal repository-relative ignore prefixes, and literal
-  path-role prefixes. Absolute paths, parent traversal, glob syntax, unknown
-  fields/roles, duplicate equal-path roles, excessive path lengths/counts,
-  malformed JSON, and symlinks are rejected as user errors. Matching is plain
-  string-prefix comparison; configuration never causes a filesystem path to
-  be opened directly. Regressions are in `tests/test_config.py`.
-- **Glossary data is strict and semantically bounded.** Every glossary object
-  rejects unknown fields. Optional concept scopes accept only a non-empty list
-  of non-overlapping literal repository-relative path prefixes; absolute paths,
-  parent traversal, globs, backslashes, empty lists, duplicates, and unknown
-  fields are rejected. A valid document may contain at most 10,000 concepts,
-  50,000 aliases, 50,000 bindings, and 50,000 scope prefixes; identity strings
-  are capped at 1,024 characters, prose at 16,384, aggregate scope text at
-  1,000,000 characters, inherited vocabulary/scope work at 5,000,000
-  characters, and returned diagnostics at 100. Aggregate counts are checked
-  before per-entry validation. Scope checks
-  compare paths already present in bounded evidence; they never open a glossary
-  path. NFKC-casefolded ownership uses a per-term path-prefix trie, so disjoint
-  scopes do not trigger pairwise owner comparisons. Regressions include
-  `test_unknown_glossary_fields_are_rejected_at_every_object_level`,
-  `test_validation_diagnostics_are_bounded`,
-  `test_concept_budget_is_checked_before_per_concept_validation`, and
-  `test_vocabulary_owner_validation_uses_indexed_scope_lookup`.
-- **Target Git configuration cannot name an executable.** Each
-  `git rev-parse`/`git status` call overrides `core.fsmonitor` and
-  `core.hooksPath`, and additionally clears every content-filter driver the
-  repository defines (`filter.<name>.clean/smudge/process`, enumerated from
-  the repository's *effective* config with `include.path`/`includeIf`
-  directives resolved exactly as `git status` resolves them — not just the
-  literal `.git/config` — and overridden per name), because `git status`
-  runs those commands during content conversion of a modified tracked file.
-  The `git` executable is located by walking `PATH` ourselves
-  (`runtime/executables.py`): only absolute entries, never `.`/an empty
-  entry, never a hit inside the current directory, and never a bare name —
-  because `shutil.which` on Windows searches the current directory *first*
-  and `CreateProcess` resolves a bare name the same way, so a repository
-  shipping `git.exe`/`git.bat` would otherwise be run by every command and
-  both session-start hooks (an earlier round used `shutil.which` for exactly
-  this purpose and inherited that behavior). With no git on `PATH` the stamp
-  is honestly unverified. Every call uses no shell, disables credential
-  prompts, has a timeout, and inherits no `GIT_DIR`/`GIT_WORK_TREE`/
-  `GIT_INDEX_FILE`; its output is decoded as UTF-8 with replacement.
-  Regression: `test_git_lookup_never_resolves_into_the_current_directory`.
-  The status call uses stable porcelain output, requests all
-  untracked files, disables rename detection, and excludes only the
-  top-level, Glossabet-owned `glossabet-out/` path relative to the directory
-  being scanned. This exclusion is an argument to Git, not a mutation of
-  `.gitignore`; it also works for subproject scans inside a larger worktree,
-  and moving a file across the boundary still exposes the non-output side.
-  Regressions:
-  `test_hostile_git_config_does_not_execute_code` and the freshness tests
-  in `tests/test_git_state.py`.
-- **Malformed JSON is classified, not blamed on an internal defect.** Graph
-  problems warn and fall back to lexical evidence; configuration and glossary
-  problems are user errors; cache problems are misses. This includes wrong
-  top-level types and deeply nested JSON raising `RecursionError`.
-- **Generated evidence does not feed itself.** `glossabet-out/`, legacy
-  `.glossabet/`, `graphify-out/`, and `GLOSSARY.md` are excluded from the
-  lexical walk. Graphify is consumed only through its bounded adapter.
-- **Non-production code has an explicit boundary.** Tests and fixtures are
-  inventoried and cached with a visible role but do not feed lexical
-  vocabulary or heuristic signals. Generated and vendored paths are pruned
-  before content reads and reported. The optional configuration can override
-  conservative defaults or add ignores; sensitive and self-output exclusions
-  remain non-overridable.
-
-## Data and network behavior
-
-The CLI itself makes no network requests. Its artifacts can contain repository
-paths, identifiers, import strings, aggregate documentation terms, Graphify
-labels, normalized configuration paths, and human-written glossary
-definitions. They should be handled with the same confidentiality as the
-repository.
-
-Phase 16 did not add a parsing library. The evaluated Tree-sitter language-pack
-candidate downloads native grammar binaries on first use and caches them; that
-would violate the CLI's current no-network behavior unless redesigned around
-an explicit installation/prefetch boundary. It was rejected because the new
-labels showed no remaining accuracy gain to justify that network, native-code,
-cache, and supply-chain surface. The exact package-cost snapshot is in
-`EVALUATION.md`.
-
-The developer-only `evaluation/run.py` helper is separate from the CLI. With
-an explicit `--fetch`, it asks `git` to retrieve only the public revisions
-pinned in `evaluation/corpus.json` into a temporary directory. It disables
-prompts and global/system Git configuration, uses no shell, and neither imports
-nor executes target-project code. The checked-out source is still untrusted
-input to the same scanner boundaries.
-
-The developer-only second-reviewer runner is also separate from the CLI. It
-uses an authenticated Codex session in a fresh temporary directory containing
-only a usefulness prompt, response schema, and label-blinded finding packet.
-The model sandbox is read-only; the harness rejects tool types or commands
-outside the packet, caps the JSONL trace, removes the host-written final
-response, and proves the two inputs remain byte-identical. This establishes a
-second recorded judgment, not isolation from the Codex service or an outside
-human review.
-
-The `/glossabet` skill is a separate agent-mediated interface. It receives the
-bounded JSON emitted by `glossabet inspect .` and may then read context-named
-production code. That content is handled according to
-the agent host and model provider's data policy. Glossabet cannot enforce that
-external policy, and the path-based exclusions above do not make artifacts
-safe to send to an unapproved service.
-
-`PRIVACY.md` gives the complete local and agent-mediated data flow, including
-the opt-in developer/release operations that do use the network.
-
-## Known trust decisions and limits
-
-- The production/test/fixture/generated/vendored classification is
-  path-convention based, not parser- or provenance-proven. Conservative
-  defaults are recorded in the public docs, every included file records its
-  effective role, and `glossabet.json` can override project-specific layouts.
-  A misclassified path changes analysis scope; inspect per-role totals when
-  adopting the tool in an unconventional repository.
-- Identifier extraction is NFKC-normalized and Unicode-aware but remains a
-  lexical approximation. Identifier-like words in comments and strings can
-  enter evidence, and language forms beyond the pinned representative cases
-  may split imperfectly. This is not a parser-level symbol claim.
-- Evidence freshness uses Git's tracked/untracked worktree model. Generated
-  files under the reserved top-level `glossabet-out/` namespace are the only
-  excluded paths, whether tracked or untracked. `GLOSSARY.md`, Graphify output,
-  the current `.glossabet/` cache name, pre-rename `.glossarize/` and
-  `glossarize-out/` paths, and all other paths inside the scanned root remain
-  visible to Git freshness unless Git itself ignores them. An explicitly
-  scoped subproject scan does not include changes
-  elsewhere in the enclosing worktree. Files ignored by Git are not reported
-  by `git status` and therefore cannot dirty the stamp; this is a stated limit,
-  not a claim that ignored bytes were checked.
-  Repositories without a readable `HEAD`, or whose status cannot be checked,
-  receive `{head: null, dirty: null}` and are freshness-unverified.
-- Graphify 0.9.42 exports `built_at_commit`. Glossabet reports its structural
-  evidence as `current` only when that commit matches the current repository
-  HEAD and the worktree is clean; a mismatch is `stale`. Legacy graphs without
-  the stamp, repositories without a readable HEAD, and matching commits over a
-  dirty or uncheckable worktree are `unverified`. These states and adapter
-  warnings are embedded in validation output; a present but unusable graph
-  causes structural checks to be explicitly skipped. `built_at_commit` is
-  repository-controlled metadata: the comparison detects ordinary staleness,
-  but a matching value is not proof that graph content is authentic or was
-  actually generated from that commit.
-- Normalized Graphify groups do not currently carry repository paths. When a
-  glossary contains path-scoped concepts, lexical validation remains scoped,
-  but structural validation marks coverage partial and skips unnamed-structure
-  conclusions that could not be scoped safely.
-- In-repository **source** symlinks are followed because their targets are
-  repository content. Direct artifact symlinks are rejected for the separate
-  read/write-redirection reasons above.
-- The scanner assumes the repository is not being adversarially mutated
-  concurrently between path validation and file access (concurrency
-  assumption 1; the full per-site inventory is in "Threat model and
-  concurrency assumptions"). Do not run it while an untrusted process is
-  rewriting the same checkout. An `inspect` context is generated in one
-  command, but is not an atomic filesystem snapshot.
-- Corpus ceilings make lexical processing finite, but reaching one necessarily
-  makes repository coverage partial. `walk_remainder.exact: false` means the
-  number and nature of unseen paths are unknown; consumers must not interpret
-  an absent term or finding as repository-wide evidence in that state.
-- Per-identifier token analysis is quadratic in token count, so a single
-  spelling is capped at `MAX_IDENTIFIER_TOKENS` (64); any file with a longer
-  spelling is counted in `skipped.oversized_identifiers` and its excess
-  tokens do not enter pattern/co-occurrence analysis. Owner-scope overlap in
-  drift is likewise bounded by a comparison budget charged the actual
-  path-prefix-pair work each overlap performs (not the owner count, which
-  would let one concept carrying tens of thousands of prefixes hide a
-  hundred-million-comparison overlap behind a charge of one), and reports its
-  section partial when reached. Import extraction performs no unbounded
-  forward scan: the line-oriented patterns are anchored so they cannot
-  backtrack across blank lines, the JavaScript/TypeScript patterns match the
-  module clause directly instead of scanning from a keyword for a possibly
-  absent `from`, and the Go import-block body excludes parentheses so it
-  cannot run past the next one — each is linear in file size rather than
-  quadratic in the count of `import` tokens. Real code never approaches either
-  bound; both exist to keep a hostile
-  glossary or source file from exhausting CPU/memory.
-- **Graphify input work is budgeted before it is done.** A graph under the
-  64 MB size cap could still list a few thousand communities × a few thousand
-  members; stringifying, sorting, and tokenizing every pair cost ~1.3 GB and
-  30 s before the adapter's *output* caps trimmed the result. The adapter now
-  counts nodes + edges + community member references from list lengths
-  alone (`GRAPH_WORK_BUDGET`, 1,000,000) and, over budget, reports the graph
-  present but unusable with a warning and proceeds lexical-only, without
-  materializing a member. Node labels are bounded (512 chars,
-  `label_truncated`), member-token sets are capped (2,000, with a ledger),
-  and cohesion is usable only within `MAX_USABLE_COHESION`. Each node's label
-  is tokenized once (memoized), and total label characters are budgeted
-  (`GRAPH_LABEL_CHAR_BUDGET`, 5,000,000) before any tokenizing, because a
-  graph *under* the reference budget could otherwise re-tokenize 512-char
-  labels once per community and cost minutes. What remains for a maximal
-  in-budget graph is a few seconds of per-community sorting plus
-  `json.loads` of the file itself, which the size cap governs. Regression:
-  `test_graph_input_work_is_bounded_before_any_member_is_materialized`,
-  `test_graph_label_tokenizing_is_budgeted_and_memoized`,
-  `test_astronomical_cohesion_and_giant_labels_degrade_instead_of_crashing`.
-- The managed-mode term-presence check (`repository_glossary.divergence`)
-  is bounded on both factors: at most `MAX_DIVERGENCE_TERMS` (500) folded
-  substring searches over a normalized document of at most
-  `MAX_DIVERGENCE_TEXT_CHARS` (4,000,000) characters. The length guard is
-  judged right after NFKC (which can expand a code point up to 18×) and
-  again after casefold (up to a further 3×), *before* the whitespace collapse
-  and any search — on an expanded 12 M-character document, casefold and the
-  collapse each allocate ~170 MB, so the bound must precede them; a document
-  past the bound yields `complete:
-  false` with `reason: normalized-text-exceeds-bound` and zero searches.
-  Measured worst case is ~1 s; a hostile glossary plus Markdown cannot buy
-  more. Regressions:
-  `test_divergence_guard_fires_on_nfkc_expansion_before_any_search`,
-  `test_divergence_guard_fires_before_casefold_and_collapse_allocate`,
-  `test_divergence_worst_case_is_bounded_in_time`,
-  `test_divergence_caps_its_work_and_says_so`.
-- A symlink whose own name is ordinary but whose in-repository target has a
-  sensitive name (for example `notes.py -> .env`) is classified sensitive by
-  the resolved target and excluded, so it cannot launder secret contents into
+- never import or execute analyzed repository code;
+- never let an initial repository path redirect a read or write outside the
+  selected root;
+- bound individual reads and aggregate analysis work;
+- reject or explicitly degrade malformed and unsafe inputs;
+- escape repository-controlled terminal text;
+- preserve existing files when a safe atomic update cannot be proved; and
+- record every omission so partial evidence cannot be mistaken for complete
   evidence.
-- **Brief content is untrusted repository input.** The vocabulary brief the
-  agent skill and the SessionStart hook emit renders terms and definitions a
-  repository authored in its committed `glossary.json`. Those bytes are
-  bounded, terminal-escaped, and read-only, but they are attacker-controlled
-  *text reaching a model* in a cloned hostile repository. The brief header
-  labels the content as unverified repository input rather than authoritative
-  instruction; a consumer must still weigh it as untrusted.
-- **The evaluation harness (`evaluation/run.py --fetch`) rejects non-`https://`
-  corpus URLs and disables Git's `ext::` remote helper**, because an
-  attacker-authored corpus entry could otherwise run a shell at fetch time on
-  a maintainer's machine. The manifest's `checkout_dir` and local-source
-  `path` are additionally required to be safe relative paths (no absolute
-  path, no `..`, no drive letter) and the resolved checkout is asserted to
-  stay inside its base, so a poisoned `corpus.json` cannot create or overwrite
-  files outside the temporary checkout root; each `commit` must be a 40- or
-  64-character hex object name and is passed after a `--` guard so a value
-  beginning with `-` cannot be read as a git option. The three committed
-  result artifacts are also size-capped before parsing. This is maintainer
-  tooling, not shipped code.
-- **Accepted risk — build backend is version-pinned, not hash-pinned.** The
-  release build resolves `hatchling>=1.32,<1.33` from PyPI at build time in
-  the one job that holds PyPI upload permission; a compromised hatchling patch
-  release in that range would run there. There is no clean hash-pin in the
-  PEP 517 / `uv build` flow, so this is documented rather than fixed. Every
-  other dependency is hash-locked in `uv.lock`; the shipped wheel declares
-  zero runtime dependencies.
-- Published distributions are scanned at build time for absolute local home
-  paths (`/home/<user>`, `/Users/<user>`, the superuser's home, `C:\Users\<user>`,
-  with or without a trailing separator) in every sdist member, every release-wheel
-  member, and every member of the plugin wheel nested inside the sdist, so a
-  machine trace can never leak a maintainer's username or layout onto PyPI;
-  internal planning docs are excluded from the source distribution.
-- **Accepted risk — the maintainer's home path is in public git history.**
-  Commits from 2026-08-15/16 carried committed agent transcripts and planning
-  docs containing the maintainer's absolute checkout path; later commits
-  redacted the transcripts to `<REPO>` and the distribution scanner keeps it
-  out of anything shipped, but the history itself discloses an OS username
-  and directory layout. Removing it would take a history rewrite of a
-  repository others may have cloned; it is recorded here as accepted unless
-  Kyle rules for a rewrite before publication.
-- **Workflow policy is checked with comments stripped, over every workflow
-  file.** `scripts/check_workflows.py` reads the whole `.github/workflows/`
-  directory, strips `#` comments before any check (a guard present only in
-  a comment does not count), requires the publish job's tag to reach the
-  shell through `env:` rather than an inline `${{ … }}` expression, and
-  holds every file to: SHA-pinned actions, no `pull_request_target`, no
-  event/ref/input expression interpolated into a `run:` line, no download
-  piped into a shell, and no `write-all`/stored-secret use in the publish
-  job. It is still a bounded checker over a small YAML subset, not a parser
-  — a maintainer with write access can always change the workflows; the
-  check exists to make an accidental or careless weakening fail loudly.
-  Dependabot proposes SHA bumps for actions and updates for the uv-locked
-  dev tree weekly (`.github/dependabot.yml`); every proposal runs the full
-  matrix and this policy check.
+
+The production package contains no network capability and invokes no shell.
+Its one analysis subprocess is a narrowly hardened `git` executable called by
+absolute path, argument vector, and timeout. `install` is separate from
+repository analysis and copies packaged files only to the reported personal or
+explicit destination.
+
+The detailed data-flow and model-provider boundary is in
+[`PRIVACY.md`](PRIVACY.md).
+
+## Concurrency boundary
+
+Filesystem claims use three distinct assumptions:
+
+1. A hostile repository that is not mutated while a command runs is in scope.
+2. Ordinary concurrent edits are detected where identity or byte rechecks are
+   described below. A scan is still not an atomic filesystem snapshot.
+3. An adversarial process running as the same operating-system user and racing
+   path components between check and use is out of scope. Glossabet does not
+   use descriptor-relative traversal with `openat`/`O_NOFOLLOW` on every path
+   component. Such a process could also replace the installed program, cache,
+   or artifacts. Do not scan a checkout while an untrusted process is rewriting
+   it.
+
+The important check/use behavior is:
+
+| Surface | Enforced behavior | Remaining boundary |
+| --- | --- | --- |
+| Generated JSON paths | Every component is checked for symlinks and confinement before same-directory atomic replacement. Replacing a final symlink replaces the link, not its target. | A parent swapped after the check is same-user adversarial racing and out of scope. |
+| Direct JSON reads | The file must be regular and unsymlinked; the bound is judged from bytes actually read, not a prior size. | A path-component swap after validation is out of scope. |
+| Root `AGENTS.md` / `CLAUDE.md` | `lstat`, non-following open where available, opened/pre/post device-and-inode comparison, `cap + 1` read, and byte/mode recheck before replacement. | An edit after the final recheck but before `os.replace` is not prevented. |
+| Scanner walk and source read | Initial target resolution, role, and walk-time size are checked; directory links are not descended. | A file that changes after the walk can produce a mixed-time scan; adversarial mutation is out of scope. |
+| User cache | Bounded unsymlinked read and current-content SHA-256 determine reuse; stale or changed state becomes a miss. | The cache belongs to the same user and is not an attacker-isolation boundary. |
+| Skill/plugin install | Destination symlink components are rejected before and after directory creation; differing existing files require `--force`; writes are atomic. | A parent raced after the final component check is out of scope. |
+
+[`tests/test_filesystem_races.py`](tests/test_filesystem_races.py) proves the
+ordinary-change cases and states the unprotected windows directly.
+
+## Repository reads
+
+### Path confinement and exclusions
+
+[`corpus.scanner`](glossabet/corpus/scanner.py) uses a bounded manual
+`os.scandir` traversal. It never descends directory symlinks. A source or
+documentation symlink is followed only when its resolved target remains inside
+the repository and the target itself is not excluded; otherwise the path and
+reason are recorded. This prevents an innocent-looking link from laundering a
+sensitive, vendored, generated, or Glossabet-owned target into evidence.
+
+Direct control/artifact inputs are stricter. No component of
+`glossabet.json`, `graphify-out/graph.json`, or
+`glossabet-out/glossary.json` may be a symlink. Unsafe configuration or
+glossary paths are user errors. Unsafe Graphify input degrades to visible
+lexical-only analysis.
+
+Sensitive-file filtering is name/path based. It covers dotenv variants,
+common private-key and credential-store names, and paths whose components
+signal secrets or credentials. The scanner does not open excluded files and
+does not claim to find secrets embedded inside ordinarily named source or
+documentation. Output must therefore be treated as confidential repository
+data.
+
+The root maintainer-owned `GLOSSARY.md` is excluded from lexical evidence at
+every depth. Its exact root entry may be bounded-read to report presence,
+readability, size, digest, and a validation-only lexical term-presence check.
+Its content is not copied into engine evidence or agent context. A confined
+symlink is reported as such so the skill will not write through it; escaping,
+sensitive-target, excluded-target, dangling, oversized, or unconfirmed entries
+are present-but-unreadable, never falsely absent.
+
+Glossabet's derived root `GLOSSABET.md` and every nested file with that name are
+excluded from evidence. One exact managed Glossabet block is stripped from
+`AGENTS.md` or `CLAUDE.md` before documentation tokenization. These rules stop
+generated terminology from becoming evidence for itself.
+
+### Bounds and omission accounting
+
+The primary hostile-input limits are:
+
+| Input/work | Limit |
+| --- | ---: |
+| Walked file size at classification | 2,000,000 bytes |
+| Direct JSON artifact | 64,000,000 bytes |
+| `glossabet.json` | 1,000,000 bytes, 500 path rules |
+| Included code/documentation files | 10,000 |
+| Included source bytes | 32,000,000 |
+| Walked directory entries | 100,000 |
+| Entries accepted from one directory | 10,000 |
+| Tokens in one identifier | 64 |
+| Agent context | 1,000,000 bytes |
+| Canonical brief | 4,096 bytes |
+| Existing managed host file | 2,000,000 bytes |
+| Glossary | 10,000 concepts, plus independent aggregate alias, binding, scope, identity, and prose limits |
+| Graphify input references | 1,000,000 |
+| Graphify label characters | 5,000,000 after per-label truncation to 512 characters |
+| Graphify group member tokens | 2,000 per group |
+
+Hitting a corpus limit sets `skipped.corpus_budget.complete` false and emits a
+warning. When the unseen remainder cannot be counted without defeating the
+bound, its total is explicitly a lower bound (`exact: false`). Vocabulary,
+terminology, naming, Graphify, matching, drift, validation, brief, and agent
+projection use their own ledgers and reasons. Consumers suppress absence or
+low-use conclusions when incomplete evidence cannot support them.
+
+Graphify is checked for reference work before members are materialized and for
+total label characters before tokenization. Unsupported shapes, non-finite or
+unusable cohesion, malformed values, oversize, and work-budget exhaustion are
+warnings with lexical fallback. Repository-controlled `built_at_commit`
+metadata is only a staleness signal, not proof that the graph is authentic.
+
+## Repository writes
+
+JSON artifacts use
+[`runtime.artifacts.replace_file_atomic`](glossabet/runtime/artifacts.py): a
+complete same-directory temporary file is flushed and then committed with
+`os.replace`. Commit failure preserves the prior file and removes the
+temporary file. This prevents a half-written document; it is not a guarantee
+against storage-device failure after replacement.
+
+Normal write ownership is:
+
+- `scan`, `analyze`, `inspect`, `drift`, and `validate` refresh
+  `glossabet-out/evidence.json`;
+- `save` alone writes `glossabet-out/glossary.json` from bounded validated JSON
+  on standard input;
+- `drift` writes `glossabet-out/drift.json`;
+- `validate` writes `glossabet-out/validation.json`;
+- the agent skill, after human instruction, may write the human glossary and
+  derived `GLOSSABET.md` through its host tools; and
+- `sync-context` alone targets a project-owned host instruction file.
+
+Glossabet never edits `.gitignore` and never renames application code.
+
+### Managed host context
+
+`sync-context` has a closed target mapping: root `AGENTS.md` for Codex or root
+`CLAUDE.md` for explicit `--agent claude`. It accepts no arbitrary output path.
+Existing targets must be exact-name, regular, unsymlinked, bounded UTF-8 files.
+The update preserves surrounding bytes, line-ending style, and file mode.
+
+One current deterministic block is a no-write result. One integrity-valid
+stale block is replaced inside its exact markers. An edited but structurally
+unambiguous block requires `--force`; missing, duplicate, nested, or malformed
+markers remain an error even with force. A concurrent byte or mode change
+detected before replacement aborts the write. Drift and validation only inspect
+the two targets and report `stale`, `edited`, or `uninspectable` state.
+
+## Git and executable behavior
+
+[`runtime.git_state`](glossabet/runtime/git_state.py) resolves `git` from
+`PATH` without considering the repository/current directory, then invokes the
+absolute executable with `shell=False`, a timeout, prompts disabled, and
+repository-selection environment variables removed. Command-line overrides
+disable hooks and filesystem monitors and clear configured content-filter
+drivers, including drivers introduced through Git config includes. Only HEAD
+and a dirty stamp are consumed. Any missing, timed-out, malformed, or unsafe
+result becomes an honest unverified state rather than a command failure.
+
+The dirty stamp excludes only the selected root's derived
+`glossabet-out/` namespace and root `GLOSSABET.md`. Git-ignored files retain
+Git's normal invisibility, so `dirty: false` is not a claim that every byte was
+examined. A subproject scan describes that subproject path, not unrelated
+changes elsewhere in the containing worktree.
+
+Static trust ratchets in
+[`tests/test_trust_ratchets.py`](tests/test_trust_ratchets.py) reject network
+imports, dynamic code execution, shell-enabled process calls, unauthorized
+subprocess sites, and imports of analyzed repository code. These tests are
+targeted tripwires, not formal verification.
+
+## Installation and ambient context
+
+`glossabet install` writes the wheel-bundled canonical skill to the reported
+personal or explicit directory. A different existing file is preserved unless
+`--force` is explicit. Claude installation may additionally write a manifest
+and SessionStart hook inside that same skill directory; `--skill-only` omits
+them. Nothing in the target repository is written by installation.
+
+The Codex plugin bundles the canonical skill, exact hook configuration,
+version/digest-checking runner, and one dependency-free wheel. After a user
+trusts the hook, `brief .` places bounded canonical vocabulary in developer
+context at startup, resume, clear, and compaction. The Claude skills-directory
+plugin is designed around the same read-only brief boundary. Read-only does
+not mean private: the agent host may send that context to its configured model
+provider. Review the installed hook and [`PRIVACY.md`](PRIVACY.md) before
+trusting it for confidential work.
+
+Windows plugin lifecycle and Claude ambient behavior outside the recorded
+Linux evidence remain unverified. Host/version evidence is not a blanket
+support promise; [`EVALUATION.md`](EVALUATION.md) states exactly what ran.
+
+## Developer and release surfaces
+
+The no-network claim applies to the production package, not every repository
+maintenance script:
+
+- `evaluation/run.py --fetch` may fetch only pinned public corpus revisions;
+- live reviewer and agent evaluators contact their configured model service
+  only behind their explicit run modes and authorization boundaries;
+- dependency installation may contact the selected package index;
+- plugin smoke invokes the local Codex host and may inherit host update checks;
+  and
+- the prepared release workflow can publish to PyPI only after its separate
+  manual guards and external setup.
+
+Workflow safety uses two independent mechanisms. PyYAML parses the files and
+`scripts/check_workflows.py` enforces only Glossabet-specific matrices,
+dependency chains, permissions, action pins, checkout credentials, and release
+guards. actionlint 1.7.12 checks general GitHub Actions syntax, expressions,
+inputs, and script-injection risks. Neither prevents an authorized maintainer
+from changing both policy and workflows.
+
+## Assumptions and known limits
+
+- Path roles are convention/configuration based, not parser-proven provenance.
+- Identifier extraction is Unicode-aware lexical approximation and can see
+  identifier-like words in comments and strings.
+- In-repository source symlinks are intentionally followed when their resolved
+  target is safe; direct control/artifact symlinks are rejected.
+- Normalized Graphify groups do not carry repository paths. Structural checks
+  for path-scoped concepts therefore report partial coverage where safe
+  scoping is impossible.
+- A bounded `inspect` result is fresh for that command but is not an atomic
+  snapshot and is not anonymized.
+- The agent skill's human-approval rule is an instruction. `save` validates
+  structure but cannot mechanically authenticate the human decision.
+- A same-user hostile process, compromised interpreter, compromised `git`,
+  compromised package installer, or malicious agent/model host is outside the
+  local hostile-repository boundary.
 
 ## Reporting
 
-The source repository is public, but version 0.1.0 is not yet published to
-PyPI. Do not put vulnerability details in a public issue.
+Do not put vulnerability details in a public issue.
 
-The prepared private route is GitHub's **Report a vulnerability** form at
-<https://github.com/kserrec/glossabet/security/advisories/new>. Repository
-private vulnerability reporting is currently disabled (verified
-2026-08-15), so that form is not yet available. `RELEASING.md` makes enabling
-the setting and its notifications a hard precondition for package
-publication. Until that account-level action is explicitly authorized and
-completed, this project does not claim to offer a working private reporting
-channel.
+The intended private route is GitHub's **Report a vulnerability** form at
+<https://github.com/kserrec/glossabet/security/advisories/new>. Private
+vulnerability reporting is not yet enabled, so this project does not currently
+claim a working private disclosure channel. Enabling that repository setting
+and notifications is a release prerequisite in [`RELEASING.md`](RELEASING.md).

@@ -115,6 +115,13 @@ def _tree(root: Path) -> dict[str, bytes]:
         str(path.relative_to(root)): path.read_bytes()
         for path in sorted(root.rglob("*"))
         if path.is_file()
+        and not any(
+            part == ".env"
+            or part.endswith(".env")
+            or part.startswith(".env.")
+            or ".env." in part
+            for part in path.relative_to(root).parts
+        )
     }
 
 

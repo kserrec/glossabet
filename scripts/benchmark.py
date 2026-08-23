@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Reproducible performance baseline for the engine's main builders.
 
-Standard library only. Every input is a checked-in fixture copied into a
-temporary directory, the extraction cache is confined to that directory, and
-nothing touches the network, the user's cache, or the working tree. Each case
-runs one untimed warm-up, then ``--repeat`` timed repetitions; the report
-gives the median wall time, the peak Python heap during the call
+The quick default uses checked-in fixtures. ``--scale`` adds deterministic
+generated repositories and artifacts, also entirely inside the benchmark's
+temporary directory. The extraction cache is confined there, and nothing
+touches the network, the user's cache, or the working tree. Each case runs one
+untimed warm-up, then ``--repeat`` timed repetitions; the report gives the
+median wall time, the peak Python heap during the call
 (``tracemalloc``), the artifact size the result would serialize to
 (``json.dumps(sort_keys=True, indent=2)``, the artifact writer's format), and
 the work/coverage ledger counts that explain the numbers.
@@ -29,8 +30,9 @@ import sys
 import tempfile
 import time
 import tracemalloc
+from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -68,6 +70,36 @@ class Measurement:
     ledger: dict[str, object]
 
 
+@dataclass(frozen=True)
+class ScaleSizes:
+    """Deterministic input sizes for the opt-in generated cases."""
+
+    source_files: int
+    source_directories: int
+    terminology_terms: int
+    compound_terms: int
+    graph_groups: int
+    graph_members_per_group: int
+
+
+FULL_SCALE = ScaleSizes(
+    source_files=1_000,
+    source_directories=50,
+    terminology_terms=175,
+    compound_terms=750,
+    graph_groups=60,
+    graph_members_per_group=24,
+)
+CI_SCALE = ScaleSizes(
+    source_files=40,
+    source_directories=8,
+    terminology_terms=40,
+    compound_terms=30,
+    graph_groups=8,
+    graph_members_per_group=6,
+)
+
+
 def _output_bytes(value: object) -> int:
     """Bytes of the artifact this value would be written as: already
     serialized text as-is, a document in the artifact writer's format."""
@@ -78,7 +110,12 @@ def _output_bytes(value: object) -> int:
 
 def _copy_fixture(name: str, work: Path) -> Path:
     target = work / name
-    shutil.copytree(FIXTURES[name], target, symlinks=True)
+    shutil.copytree(
+        FIXTURES[name],
+        target,
+        symlinks=True,
+        ignore=shutil.ignore_patterns(".env", "*.env", ".env.*", "*.env.*"),
+    )
     return target
 
 
@@ -283,6 +320,203 @@ def build_cases(work: Path, cache_dir: Path) -> list[Case]:
     ]
 
 
+def _scale_token(index: int) -> str:
+    """A stable alphabetic token whose lexical form does not depend on locale."""
+    letters = []
+    number = index
+    while True:
+        number, remainder = divmod(number, 26)
+        letters.append(chr(ord("a") + remainder))
+        if number == 0:
+            break
+        number -= 1
+    return "concept" + "".join(reversed(letters))
+
+
+def _generate_scale_repository(root: Path, sizes: ScaleSizes) -> list[str]:
+    """Create a many-directory source corpus and return its domain tokens."""
+    terms = [_scale_token(index) for index in range(sizes.source_files)]
+    for index, term in enumerate(terms):
+        directory = root / f"package_{index % sizes.source_directories:03d}"
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / f"module_{index:04d}.py").write_text(
+            f"def handle_{term}_record({term}_value: int) -> int:\n"
+            f"    return {term}_value + 1\n",
+            encoding="utf-8",
+        )
+    return terms
+
+
+def _generate_scale_graph(root: Path, sizes: ScaleSizes) -> dict[str, object]:
+    """Create a graph just beyond the structural-group output cap."""
+    nodes: list[dict[str, object]] = []
+    links: list[dict[str, str]] = []
+    communities: list[dict[str, object]] = []
+    for group_index in range(sizes.graph_groups):
+        members = []
+        for member_index in range(sizes.graph_members_per_group):
+            node_id = f"g{group_index:03d}-n{member_index:03d}"
+            members.append(node_id)
+            nodes.append({
+                "id": node_id,
+                "label": (
+                    f"{_scale_token(group_index)} "
+                    f"{_scale_token(member_index)} service"
+                ),
+                "source_file": (
+                    f"src/group_{group_index:03d}/module_{member_index:03d}.py"
+                ),
+            })
+            if member_index:
+                links.append({"source": members[-2], "target": node_id})
+        communities.append({
+            "id": f"group-{group_index:03d}",
+            "label": f"{_scale_token(group_index)} subsystem",
+            "cohesion": 0.75,
+            "nodes": members,
+        })
+    document: dict[str, object] = {
+        "built_at_commit": "a" * 40,
+        "nodes": nodes,
+        "links": links,
+        "communities": communities,
+    }
+    graph_path = root / "graphify-out" / "graph.json"
+    graph_path.parent.mkdir(parents=True, exist_ok=True)
+    graph_path.write_text(
+        json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    return document
+
+
+def build_scale_cases(work: Path, sizes: ScaleSizes) -> list[Case]:
+    """Generated scale evidence; callers opt in explicitly with ``--scale``."""
+    from glossabet.agent.agent_context import (
+        build_agent_context,
+        serialize_agent_context,
+    )
+    from glossabet.analysis.evidence import build_evidence
+    from glossabet.analysis.graphify import GROUP_CAP, build_structural_groups
+    from glossabet.analysis.terminology import PAIR_TOP_N, build_terminology
+    from glossabet.analysis.vocabulary import ProductionVocabulary
+    from glossabet.glossary.matching import EvidenceIndex
+
+    repository = work / "repository"
+    terms = _generate_scale_repository(repository, sizes)
+    graph_root = work / "graph"
+    graph_document = _generate_scale_graph(graph_root, sizes)
+    evidence = build_evidence(repository, cache=False)
+    compound_terms = [
+        f"handle {term} record" for term in terms[:sizes.compound_terms]
+    ]
+
+    vocabulary = ProductionVocabulary.from_files([
+        (
+            f"src/module_{index:04d}.py",
+            f"package_{index % 20:02d}",
+            "python",
+            {f"route_{_scale_token(index)}_handler": 2},
+        )
+        for index in range(sizes.terminology_terms)
+    ])
+
+    def evidence_ledger(result: object) -> dict[str, object]:
+        assert isinstance(result, dict)
+        budget = result["skipped"]["corpus_budget"]
+        return {
+            "source_files": result["totals"]["source_files"],
+            "source_directories": sizes.source_directories,
+            "source_bytes": budget["used"]["source_bytes"],
+            "source_files_complete": budget["complete"],
+            "identifier_details": len(result["vocabulary"]["identifiers"]["items"]),
+        }
+
+    def terminology_ledger(result: object) -> dict[str, object]:
+        assert isinstance(result, dict)
+        coverage = result["coverage"]["eligible_tokens"]
+        return {
+            "eligible_tokens": coverage["total_items"],
+            "considered_tokens": result["considered_tokens"],
+            "pair_top_n": PAIR_TOP_N,
+            "considered_pairs": result["synonym_candidates"]["considered_pairs"],
+            "eligible_tokens_complete": coverage["complete"],
+        }
+
+    def matching_ledger(result: object) -> dict[str, object]:
+        assert isinstance(result, EvidenceIndex)
+        positions = result.coverage["compound_match_positions"]
+        return {
+            "glossary_terms": len(compound_terms),
+            "identifier_entries": len(result.identifier_entries),
+            "match_starts": positions["total_items"],
+            "match_starts_processed": positions["included_items"],
+            "match_work_complete": positions["complete"],
+        }
+
+    def graph_ledger(result: object) -> dict[str, object]:
+        assert isinstance(result, dict)
+        coverage = result["coverage"]["groups"]
+        return {
+            "input_nodes": len(graph_document["nodes"]),
+            "input_edges": len(graph_document["links"]),
+            "input_communities": len(graph_document["communities"]),
+            "group_output_cap": GROUP_CAP,
+            "groups_included": coverage["included_items"],
+            "groups_dropped": coverage["dropped_items"],
+            "groups_complete": coverage["complete"],
+        }
+
+    def context_case() -> str:
+        return serialize_agent_context(build_agent_context(evidence, None, full=True))
+
+    def context_ledger(result: object) -> dict[str, object]:
+        assert isinstance(result, str)
+        document = json.loads(result)
+        context = document["coverage"]["context"]
+        return {
+            "source_files": evidence["totals"]["source_files"],
+            "projection": context["projection"],
+            "projection_complete": context["complete"],
+            "omissions": len(context["omissions"]),
+        }
+
+    stamp = {"head": "a" * 40, "dirty": False}
+    return [
+        Case(
+            "scale_evidence_repository",
+            f"generated repository: evidence over {sizes.source_files} source files",
+            lambda: build_evidence(repository, cache=False),
+            evidence_ledger,
+        ),
+        Case(
+            "scale_terminology_top_n",
+            f"generated vocabulary: {sizes.terminology_terms} domain terms near top-N",
+            lambda: build_terminology(vocabulary, Counter()),
+            terminology_ledger,
+        ),
+        Case(
+            "scale_compound_matching",
+            f"generated evidence: {len(compound_terms)} compound glossary terms",
+            lambda: EvidenceIndex(evidence, compound_terms),
+            matching_ledger,
+            payload=lambda index: index.coverage,
+        ),
+        Case(
+            "scale_graphify_group_cap",
+            f"generated Graphify input: {sizes.graph_groups} communities near group cap",
+            lambda: build_structural_groups(graph_root, stamp),
+            graph_ledger,
+        ),
+        Case(
+            "scale_agent_context",
+            "full agent-context projection from the generated repository evidence",
+            context_case,
+            context_ledger,
+        ),
+    ]
+
+
 def measure(case: Case, repeat: int) -> Measurement:
     case.before()
     warm = case.run()  # untimed warm-up: imports, first-touch allocations
@@ -324,10 +558,10 @@ def profile(cases: list[Case], top: int) -> str:
     return buffer.getvalue()
 
 
-def environment() -> dict[str, object]:
+def environment(scale_sizes: ScaleSizes | None = None) -> dict[str, object]:
     from glossabet import __version__
 
-    return {
+    details: dict[str, object] = {
         "glossabet": __version__,
         "python": platform.python_version(),
         "implementation": platform.python_implementation(),
@@ -335,6 +569,9 @@ def environment() -> dict[str, object]:
         "machine": platform.machine(),
         "fixtures": {name: str(path.relative_to(ROOT)) for name, path in FIXTURES.items()},
     }
+    if scale_sizes is not None:
+        details["scale"] = asdict(scale_sizes)
+    return details
 
 
 def render(measurements: list[Measurement], repeat: int) -> str:
@@ -365,9 +602,22 @@ def main(argv: list[str] | None = None) -> int:
                         help="rows per cProfile table (default 25)")
     parser.add_argument("--only", action="append", default=None,
                         help="run only the named case (repeatable)")
+    parser.add_argument(
+        "--scale",
+        action="store_true",
+        help="add deterministic generated scale cases (off by default)",
+    )
+    parser.add_argument(
+        "--scale-size",
+        choices=("full", "ci"),
+        default=None,
+        help="generated input size; full by default with --scale, ci for tests",
+    )
     args = parser.parse_args(argv)
     if args.repeat < 1:
         parser.error("--repeat must be at least 1")
+    if args.scale_size is not None and not args.scale:
+        parser.error("--scale-size requires --scale")
     for name, path in FIXTURES.items():
         if not path.is_dir():
             print(f"benchmark: fixture is missing: {name} ({path})", file=sys.stderr)
@@ -379,13 +629,17 @@ def main(argv: list[str] | None = None) -> int:
         cache_dir.mkdir()
         os.environ["GLOSSABET_CACHE_DIR"] = str(cache_dir)
         cases = build_cases(work / "fixtures", cache_dir)
+        scale_sizes = None
+        if args.scale:
+            scale_sizes = CI_SCALE if args.scale_size == "ci" else FULL_SCALE
+            cases.extend(build_scale_cases(work / "scale", scale_sizes))
         if args.only:
             unknown = sorted(set(args.only) - {case.name for case in cases})
             if unknown:
                 parser.error(f"unknown case(s): {', '.join(unknown)}")
             cases = [case for case in cases if case.name in args.only]
         measurements = [measure(case, args.repeat) for case in cases]
-        env = environment()
+        env = environment(scale_sizes)
         print(f"python {env['python']} ({env['implementation']}) on {env['platform']}")
         print(render(measurements, args.repeat))
         if args.profile:

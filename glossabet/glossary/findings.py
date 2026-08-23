@@ -19,8 +19,8 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Protocol, TypedDict, TypeGuard, Union
 
 from glossabet.agent.managed_context import ManagedContextReport
+from glossabet.analysis.evidence_facts import VocabularyName, vocabulary_truncation
 from glossabet.analysis.evidence_types import EvidenceDocument, FreshnessRecord
-from glossabet.analysis.evidence_view import EvidenceView
 from glossabet.glossary.model import GlossaryDocument, ScopeEvidence
 from glossabet.glossary.repository_glossary import RepositoryGlossarySection
 from glossabet.runtime import coverage
@@ -352,17 +352,16 @@ def mark_incomplete(section: FindingSection, reason: str) -> FindingSection:
 
 def vocabulary_omission_reasons(
     evidence: EvidenceDocument,
-    names: Iterable[str],
+    names: Iterable[VocabularyName],
     template: str = VOCABULARY_MATCHING_OMISSION,
 ) -> list[str]:
     """One reason per named evidence vocabulary table whose detail was
     truncated at scan time — the only place a findings producer learns
     that RepositoryEvidence records such a thing."""
-    view = EvidenceView(evidence)
     return [
         template.format(name=name)
         for name in names
-        if view.truncated(name) is not None
+        if vocabulary_truncation(evidence, name) is not None
     ]
 
 
@@ -452,37 +451,13 @@ def _is_finding_section(value: object) -> TypeGuard[FindingSection]:
 
 
 class FindingsDocumentView:
-    """The read side every findings document (drift, validation) shares:
-    the headline totals, the coverage ledger, the managed-context report,
-    and the finding sections by key. Each document's own view subclasses
-    this with its extra fields, so the spellings of a document's keys live
-    in the module that writes it."""
+    """Validate and narrow finding sections selected by a dynamic key."""
 
     def __init__(self, document: FindingsDocument) -> None:
-        self._d = document
         # Sections are addressed by name (the caller's titles decide which),
         # so they are read through the document's plain mapping and
         # narrowed, rather than through a fixed key.
         self._raw: Mapping[str, object] = document
-
-    def total_findings(self) -> int:
-        return self._d["total_findings"]
-
-    def total_findings_complete(self) -> bool:
-        return self._d.get("total_findings_complete", True)
-
-    def coverage(self) -> DriftCoverage | ValidationCoverage:
-        return self._d["coverage"]
-
-    def production_corpus_complete(self) -> bool:
-        return self.coverage()["production_corpus_complete"]
-
-    def collections_coverage(self) -> Mapping[str, CoverageLedger]:
-        """Per-section coverage ledgers keyed by section."""
-        return self.coverage()["collections"]
-
-    def managed_context(self) -> ManagedContextReport:
-        return self._d["managed_context"]
 
     def section(self, key: str) -> FindingSection:
         """One finding section ``{items, dropped_items, coverage[, skipped]}``."""

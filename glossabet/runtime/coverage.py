@@ -26,14 +26,6 @@ class CoverageLedger(TypedDict):
     reasons: list[str]
 
 
-class CappedSection(TypedDict):
-    """``{items, dropped_items, coverage}`` — a capped list in an artifact."""
-
-    items: list[object]
-    dropped_items: int
-    coverage: CoverageLedger
-
-
 class LocationSample(TypedDict):
     """One ``{path, count}`` record of a location sample."""
 
@@ -122,32 +114,6 @@ def location_sample(
         [{"path": path, "count": count} for path, count in kept],
         len(ranked) > len(kept),
     )
-
-
-def capped_section(
-    items: Sequence[object],
-    cap: int,
-    *,
-    cap_reason: str,
-    total_items: int | None = None,
-    total_items_exact: bool = True,
-    incomplete_reasons: Iterable[str] = (),
-) -> CappedSection:
-    """``{items, dropped_items, coverage}`` — the section shape every
-    capped list in an artifact takes — from ``capped_collection``."""
-    kept, coverage = capped_collection(
-        items,
-        cap,
-        cap_reason=cap_reason,
-        total_items=total_items,
-        total_items_exact=total_items_exact,
-        incomplete_reasons=incomplete_reasons,
-    )
-    return {
-        "items": kept,
-        "dropped_items": coverage["dropped_items"],
-        "coverage": coverage,
-    }
 
 
 def coverage_reasons(ledger: object, prefix: str = "") -> list[str]:

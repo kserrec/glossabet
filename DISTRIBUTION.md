@@ -1,128 +1,139 @@
 # Distribution ownership and lifecycle
 
-Glossabet has two deliberate distribution routes. They carry the same
-versioned engine and canonical skill, but they own different installed state.
-The Codex plugin is the preferred Codex route once a marketplace entry is
-published. The standalone Python wheel remains an atomic fallback and is the
-route for people who want a normal shell command.
+Glossabet has two distribution routes built from the same versioned engine and
+canonical skill. Neither a package nor a public plugin listing has been
+published for 0.1.0.
 
-No Glossabet package or plugin marketplace entry is public yet. The repository
-contains a locally validated plugin prototype at `plugins/glossabet/`; its
-actual Codex lifecycle and 12-scenario installed-host batch—including fresh
-session-start context, 10 plugin-skill scenarios, and the standalone
-missing-CLI boundary—were probed twice on Linux with `codex-cli 0.147.0`.
-ChatGPT, Codex on other operating systems, and Claude Code have not received an
-equivalent installed-host probe and are not called supported.
+OpenAI's current plugin architecture allows a plugin to package skills and
+optional server/UI capabilities; Glossabet uses the smallest relevant shape:
+one skill, a SessionStart hook, and a self-contained local engine. See the
+official [plugin architecture](https://developers.openai.com/plugins/concepts/plugins)
+and [packaging guide](https://developers.openai.com/plugins/build/plugins).
 
-| Installed state | Codex plugin route | Standalone wheel route |
+## Ownership at a glance
+
+| State | Codex plugin route | Standalone wheel route |
 | --- | --- | --- |
-| Engine | A pure-Python wheel inside the plugin. The skill runs it through `scripts/run_glossabet.py`; no executable is added to `PATH`. | The package manager owns an isolated environment and the `glossabet` executable on `PATH`. |
-| Skill | Codex owns the skill inside the same versioned plugin cache entry. | `glossabet install` makes a separate copy at the selected agent skill directory. |
-| Ambient context | After the user trusts the plugin hook, Codex runs the bundled `brief .` command at session startup, resume, clear, and compaction. Canonical glossary text becomes developer context; no glossary means no added text. | **Claude Code:** `glossabet install --agent claude` also writes `.claude-plugin/plugin.json` and `hooks/hooks.json` beside the skill, so Claude Code loads the folder as the plugin `glossabet@skills-dir` and runs `<installed glossabet> brief .` at session startup, resume, clear, and compaction; no glossary means no added text; nothing outside the skill folder is written. Validated offline with `claude plugin validate`; not yet probed in a live Claude Code session (PLAN Phase 33.2). **Codex standalone:** no automatic host integration. Either host: run `glossabet brief .` and deliberately supply its output, or explicitly run `glossabet sync-context .` to persist one managed block in root `AGENTS.md` (`--agent claude` selects root `CLAUDE.md`). |
-| Version coupling | Plugin manifest, skill instructions, runner constant, nested wheel metadata, and wheel-embedded skill must all match. Tests and distribution checks fail on any mismatch. | The wheel version and wheel-embedded skill are built together. The skill checks the CLI's exact version before analysis. |
-| Upgrade | Installing the same plugin identifier from a refreshed marketplace snapshot replaces the cached version. Codex 0.147.0 removed the prior version during the direct 0.1.0 → synthetic 0.1.1 probe. | Reinstall or upgrade the wheel, then run `glossabet install`. If a prior Glossabet-owned skill differs, inspect that exact file and use `--force` deliberately; the installer never assumes ownership. |
-| Removal | `codex plugin remove` removes the plugin engine and skill together. Removing the local marketplace removes its configuration entry. Codex 0.147.0 left one empty marketplace cache parent, which the smoke test removes only after proving it is empty and test-owned. | Uninstalling the Python package removes its environment and command, not the separately copied skill or a project-owned synchronized block. Inspect and remove only the reported skill directory and/or exact marked project block if no longer wanted. |
+| Engine | One pure-Python wheel inside the plugin cache. The skill-local runner imports it directly; nothing is added to `PATH`. | The package manager owns an isolated environment and the `glossabet` command on `PATH`. |
+| Skill | Lives inside the same versioned plugin cache entry. | `glossabet install` copies the wheel-bundled skill to the selected host directory. |
+| Ambient context | After the user trusts the plugin hook, the bundled `brief .` runs at startup, resume, clear, and compaction. No structured glossary means no emitted context. | Codex has no automatic standalone integration. Claude installation can make its personal skill folder a skills-directory plugin with the same brief hook; `--skill-only` omits it. Either host can use manual `brief` output or explicit `sync-context`. |
+| Upgrade | A refreshed plugin version replaces the cache entry as one unit. | Upgrade/reinstall the wheel, then rerun `glossabet install`; differing copied files require deliberate `--force`. |
+| Removal | Removing the plugin removes its engine and skill together. A separately configured marketplace remains separately owned. | Package uninstall removes the command, not the copied skill, platform cache, structured project glossary, or a synchronized project block. |
 
-Both routes leave analyzed repositories alone during package/plugin removal.
-`glossabet-out/glossary.json` is human-governed project state, derived reports
-share that output directory, root `GLOSSABET.md` is a derived vocabulary-health
-report the skill can regenerate, and the platform cache is a disposable
-performance optimization. Their ownership and cleanup rules are independent
-from software installation.
+Analyzed repository state has its own lifecycle. In particular,
+`glossabet-out/glossary.json` is human-governed machine state and may contain
+decisions that exist nowhere else. Package/plugin removal and cache clearing do
+not remove it. Root `GLOSSABET.md` and the other JSON reports are derived;
+`GLOSSARY.md` is maintainer-owned human vocabulary. See the ownership table in
+[`README.md`](README.md).
 
 ## Codex plugin bundle
 
-The plugin contains:
+[`plugins/glossabet/`](plugins/glossabet/) contains:
 
 - `.codex-plugin/plugin.json`, versioned with the Python package;
-- `hooks/hooks.json`, whose `SessionStart` handler invokes the bundled bounded
-  `brief .` command on startup, resume, clear, and compaction;
-- the byte-identical canonical `skill/SKILL.md`;
-- `scripts/run_glossabet.py`, which verifies the manifest, expected filename,
-  imported package version, and Python ≥ 3.10 before delegating to the CLI;
-  and
-- exactly one dependency-free `glossabet-<version>-py3-none-any.whl`.
+- `hooks/hooks.json`, whose `SessionStart` handler invokes the bounded
+  skill-local `brief .` command;
+- the byte-identical canonical [`skill/SKILL.md`](skill/SKILL.md);
+- `scripts/run_glossabet.py`, which checks Python, manifest version, expected
+  wheel name/digest, imported package version, and skill parity; and
+- exactly one `glossabet-<version>-py3-none-any.whl` with no runtime
+  dependencies.
 
-This layout follows OpenAI's official
-[plugin packaging](https://developers.openai.com/plugins/build/plugins) and
-[skill supporting-resource](https://developers.openai.com/plugins/build/skills#add-supporting-resources)
-contracts, plus the official [Codex hooks contract](https://learn.chatgpt.com/docs/hooks):
-the manifest exposes `./skills/` and the hook configuration, and deterministic
-executable support lives beneath that skill's `scripts/` directory. Codex
-treats plain hook stdout as additional developer context and requires the user
-to trust plugin hooks before they execute. Review the installed hook before
-granting that trust; Glossabet's hook sends the bounded canonical glossary
-digest into the same model context as the session.
+The runner adds only that verified wheel to its import path. It does not install
+the package, mutate the user's normal Python environment or `PATH`, or make a
+network request.
 
-The runner imports the wheel directly from the plugin cache. It does not
-install into the user's Python environment, mutate `PATH`, contact a service,
-or add a second package lifecycle outside Codex.
+`scripts/build_plugin.py <dist-dir>` verifies the source version, manifest,
+hook, runner, canonical skill, wheel metadata, and embedded skill before
+assembling the bundle and pinning its wheel digest. The checked-in plugin is a
+generated release artifact: ordinary development may leave it honestly
+lagging, but a release candidate must rebuild it and require a clean
+`git diff --exit-code -- plugins/glossabet`.
 
-`scripts/build_plugin.py <dist-dir>` assembles the bundle only after checking
-the source version, manifest, exact hook configuration, runner, canonical
-skill, wheel metadata, and embedded skill. `tests/test_plugin.py` protects
-those relationships in normal CI. `scripts/plugin_smoke.py <dist-dir>` is the
-host-level probe: it creates a uniquely named temporary local marketplace,
-installs the current version, executes `inspect` and the configured
-`SessionStart` command through the installed bundle, proves that command emits
-only canonical glossary state without writing the repository, then installs a
-synthetic next patch version, verifies the old cached version disappeared,
-then removes the plugin, marketplace, and any exact empty cache parent it
-created. It publishes nothing and leaves no marketplace entry installed.
+`scripts/plugin_smoke.py <dist-dir>` performs a local host lifecycle in unique
+temporary state. It installs the current plugin from a local marketplace,
+executes `inspect` and the configured SessionStart command, proves that the
+hook emits canonical rather than proposed/source-canary vocabulary without a
+repository write, installs a synthetic next patch version, verifies replacement
+of the old cache entry, and removes the exact plugin/marketplace/test-owned
+empty cache state. It does not publish or leave a marketplace installed.
 
-An explicitly authorized `scripts/agent_eval.py --run` separately observes the
-user-facing delivery boundary. It asks Codex to read the exact temporarily
-installed skill and version-check the matching bundled engine. One fresh
-ephemeral session uses a user prompt that names neither Glossabet nor the
-expected term and must reproduce the canonical term from hook context without
-running any tool. A second exercises current/stale/absent Graphify state,
-hostile glossaries, partial context, monorepo scope, resumed state, and excluded
-sensitive content. A third installs only the standalone skill in a temporary
-repository and checks that a missing `glossabet` command stops before
-inspection. The harness permits only `inspect`'s normal evidence refresh,
-rejects every other repository write, and removes/re-queries its uniquely named
-plugin and marketplace state in all outcomes. It uses Codex's one-invocation
-hook-trust bypass only for the exact digest-bound temporary plugin. Each full
-run has a unique immutable raw path; `evaluation/agent-results.json` mirrors
-only bytes whose digest is retained by the append-only attempt history.
-Outcomes are appended even when preflight aborts, so procedural agent misses
-remain visible instead of being replaced by a later green run.
+The recorded installed-agent result adds fourteen user-facing cases and binds
+their raw outcome to an append-only history. It passed on Codex CLI 0.147.0 and
+Linux, including a fresh hook-only session and an isolated missing-CLI stop.
+That is evidence for one host/version/operating system, not a support promise
+for every Codex release or platform. Details and limitations are in
+[`EVALUATION.md`](EVALUATION.md).
 
-The offline verifier separately hashes and directly smokes the current skill,
-plugin tree, runner, and wheel, and treats every recorded canary, write,
-post-failure-inspect, and cleanup outcome as a hard safety gate. The observed
-agent attempts are host/version reliability evidence, not a support claim for
-untested Codex hosts or a substitute for deterministic artifact checks.
+## Standalone wheel
 
-## Standalone wheel fallback
-
-From a source checkout, the current fallback is:
+From a source checkout:
 
 ```bash
 uv tool install . --reinstall
 glossabet install
 ```
 
-The first command owns the Python environment and `glossabet` executable. The
-second command writes only the canonical `SKILL.md` at the reported Codex
-location (or the explicit destination). The isolated wheel smoke creates a
-fresh virtual environment, installs the wheel without an index or dependency,
-uses the CLI and installed skill, exercises an idempotent `sync-context` plus
-drift inspection against a temporary repository, uninstalls the package, and
-proves the import and command are gone while the separately installed skill
-and project block remain.
+The first command installs the application in the package manager's isolated
+environment. The second writes only `SKILL.md` to the reported Codex personal
+skill directory or explicit `--destination`. It never runs `sync-context` and
+never changes the repository being analyzed.
 
-`glossabet install` never invokes `sync-context`. The latter is a separate
-human-authorized project write. It refuses target symlinks, non-files,
-oversized/non-UTF-8 files, and ambiguous markers; it preserves surrounding
-bytes and requires `--force` to replace an integrity-mismatched but
-structurally valid managed body.
+The wheel smoke creates a fresh virtual environment, installs with
+`--no-deps --no-index`, exercises version, skill install, `save`, `inspect`,
+`brief`, idempotent managed-context synchronization, drift/validation, and
+uninstall, then proves the package import and executable disappeared while the
+separately copied skill and project block remained. This makes ownership
+visible rather than silently deleting state another lifecycle owns.
 
-The Claude Code destination exposed by `glossabet install --agent claude` is
-tested offline — path selection, safe copying, exact manifest and hook bytes,
-refusal to replace a different existing file without `--force`, no writes
-outside the skill folder, and `claude plugin validate` acceptance — and the
-written hook is executed against a fixture repository in the test suite. No
-live Claude Code session has yet been exercised with the installed folder;
-that evidence is PLAN Phase 33.2, and until then the route is labelled
-unverified rather than supported.
+If a copied skill differs during upgrade, inspect that file and use `--force`
+only when replacing it is intended. The installer rejects destination symlink
+components and writes atomically.
+
+## Claude Code personal route
+
+```bash
+glossabet install --agent claude
+```
+
+The default destination is `~/.claude/skills/glossabet/`. Current Claude Code
+documentation describes personal skills under `~/.claude/skills/` and says a
+skill folder containing `.claude-plugin/plugin.json` loads automatically as a
+`<name>@skills-dir` plugin. Glossabet writes that manifest and
+`hooks/hooks.json` beside its root `SKILL.md`, all inside the one reported
+folder. Official references: [Claude skills](https://code.claude.com/docs/en/slash-commands)
+and [plugins](https://code.claude.com/docs/en/plugins).
+
+Claude Code documents `SessionStart` for startup, resume, clear, and compact,
+with command stdout added to context. Glossabet's hook runs the absolute
+installed `glossabet brief .` executable and writes no repository file. Review
+the hook and its model-disclosure consequence before use. Add `--skill-only`
+when ambient loading is not wanted.
+
+Offline tests prove path selection, exact bytes, no write outside the skill
+folder, refusal to replace different files without `--force`, hook execution,
+and `claude plugin validate` acceptance. A manual Claude Code 2.1.235/Linux
+owner session provided partial evidence that the context and skill loaded. The
+controlled automated batch stopped before SessionStart/model use on a now-fixed
+response-schema incompatibility, so the route does not yet have accepted
+controlled live-host evidence. Other versions and operating systems are
+unverified.
+
+## Ambient and persistent context
+
+Both plugin hooks call `brief`, which reads only the validated structured
+glossary and a hardened Git stamp and emits at most 4 KiB. Its first line names
+Glossabet and the SessionStart origin. The text contains repository vocabulary
+and can be sent to the configured model provider even when the user prompt does
+not mention Glossabet. No glossary emits no text.
+
+`glossabet sync-context .` is an independent fallback and explicit project
+write. It targets only root `AGENTS.md`, or root `CLAUDE.md` with
+`--agent claude`, preserves surrounding bytes, rejects unsafe/ambiguous files,
+and requires `--force` only for an edited but structurally valid owned block.
+Installation, hooks, analysis, and glossary finalization never invoke it.
+
+Uninstalling software does not remove synchronized project context. To clean
+up, inspect the target and remove only the exact marked Glossabet block while
+preserving all surrounding instructions.

@@ -1,4 +1,8 @@
-# Glossarize — Plan Archive
+# Glossabet — Historical Plan Archive Through 2026-08-22
+
+> Historical record. These completed implementation entries are preserved for
+> provenance and may use the project's former name or describe superseded
+> code. They are not current instructions.
 
 Completed phases moved verbatim from PLAN.md. This is the permanent
 implementation record; entries are never condensed or reordered.

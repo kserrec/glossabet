@@ -18,8 +18,8 @@ VocabularyStatus = Literal[
 ]
 STATUSES: frozenset[str] = frozenset(get_args(VocabularyStatus))
 
-# Bindings target stable identities only (PLAN principle 7): never graph
-# community numbers or node ids, which shift across rebuilds.
+# Bindings target stable identities only: never graph community numbers or
+# node ids, which shift across rebuilds.
 BindingKind = Literal["symbol", "file", "module"]
 BINDING_KINDS: frozenset[str] = frozenset(get_args(BindingKind))
 

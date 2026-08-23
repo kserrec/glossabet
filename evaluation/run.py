@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reproduce Glossabet's pinned Phase 15/16 evaluation.
+"""Reproduce Glossabet's pinned deterministic lexical evaluation.
 
 External source is checked out only into a caller-provided directory or a
 temporary directory. Nothing is imported or executed from a target project.
@@ -29,7 +29,7 @@ from glossabet.analysis.evidence import (  # noqa: E402
     EVIDENCE_SCHEMA_VERSION,
     build_evidence,
 )
-from glossabet.analysis.evidence_view import EvidenceView  # noqa: E402
+from glossabet.analysis.evidence_facts import vocabulary_truncation  # noqa: E402
 from glossabet.analysis.graphify import GRAPH_PATH  # noqa: E402
 from glossabet.analysis.importance import (  # noqa: E402
     NOMINATION_CANONICAL_NAME,
@@ -42,12 +42,11 @@ from glossabet.corpus.tokenize import (  # noqa: E402
 )
 from glossabet.glossary.drift import (  # noqa: E402
     DRIFT_SCHEMA_VERSION,
-    DriftView,
     build_drift,
 )
+from glossabet.glossary.findings import FindingsDocumentView  # noqa: E402
 from glossabet.glossary.reconcile import (  # noqa: E402
     VALIDATION_SCHEMA_VERSION,
-    ValidationView,
     build_validation,
 )
 from glossabet.glossary.store import validate_glossary  # noqa: E402
@@ -215,10 +214,10 @@ def _engine_metadata() -> dict:
 def _corpus_identity(root: Path, evidence: dict, *, graphify: bool = False) -> dict:
     paths = [
         item["path"]
-        for kind in ("code", "docs")
-        for item in EvidenceView(evidence).file_entries(kind)
+        for entries in (evidence["files"]["code"], evidence["files"]["docs"])
+        for item in entries
     ]
-    if EvidenceView(evidence).configuration().get("present"):
+    if evidence["configuration"].get("present"):
         paths.append(CONFIG_FILE)
     if graphify and (root / GRAPH_PATH).is_file():
         paths.append(GRAPH_PATH)
@@ -414,7 +413,7 @@ def _terminology_keys(evidence: dict) -> set[str]:
 
 
 def _terminology_items(evidence: dict) -> dict[str, tuple[str, dict]]:
-    terminology = EvidenceView(evidence).terminology()
+    terminology = evidence["terminology"]
     items: dict[str, tuple[str, dict]] = {}
     for item in terminology["synonym_candidates"]["items"]:
         key = "synonym:" + ":".join(sorted((item["a"], item["b"])))
@@ -451,10 +450,11 @@ def _drift_keys(drift: dict) -> dict[str, str]:
 
 
 def _drift_items(drift: dict) -> dict[str, tuple[str, dict]]:
+    sections = FindingsDocumentView(drift)
     return {
         key: (kind, finding)
         for section in DRIFT_SECTIONS
-        for finding in DriftView(drift).items(section)
+        for finding in sections.items(section)
         for kind, key in [_drift_key(section, finding)]
     }
 
@@ -473,10 +473,11 @@ def _structural_key(section: str, finding: dict) -> str:
 
 
 def _structural_keys(validation: dict) -> dict[str, tuple[str, dict]]:
+    sections = FindingsDocumentView(validation)
     return {
         _structural_key(section, finding): (section, finding)
         for section in STRUCTURAL_SECTIONS
-        for finding in ValidationView(validation).items(section)
+        for finding in sections.items(section)
     }
 
 
@@ -597,13 +598,12 @@ def _lexical_score(evidence: dict, expectation: object) -> dict:
     ):
         raise EvaluationError("malformed lexical token/identifier expectations")
 
-    view = EvidenceView(evidence)
     actual_tokens = {
-        item["term"] for item in view.vocabulary_table("tokens")["items"]
+        item["term"] for item in evidence["vocabulary"]["tokens"]["items"]
     }
     actual_identifiers = {
         item["name"]: item["tokens"]
-        for item in view.vocabulary_table("identifiers")["items"]
+        for item in evidence["vocabulary"]["identifiers"]["items"]
     }
     missing = sorted(set(required) - actual_tokens)
     forbidden_present = sorted(set(forbidden) & actual_tokens)
@@ -643,7 +643,7 @@ def _register_score(evidence: dict, expectation: object) -> dict:
             "register predominantly_multi_word must be boolean"
         )
 
-    register = EvidenceView(evidence).terminology_section("register")
+    register = evidence["terminology"]["register"]
     styles = register["identifier_styles_pct"]
     lengths = register["token_count_distribution_pct"]
     ranked_styles = sorted(
@@ -726,7 +726,7 @@ def _nomination_score(evidence: dict, expectation: object) -> dict:
 
     candidates = {
         item["term"]: item
-        for item in EvidenceView(evidence).naming_candidates()["terms"]
+        for item in evidence["naming_candidates"]["terms"]
     }
     checks: list[dict] = []
     for expected in required:
@@ -800,7 +800,7 @@ def _structural_contract_score(
             "passed": actual == expected,
         })
 
-    groups = EvidenceView(evidence).structural_groups().get("groups", [])
+    groups = evidence["structural_groups"].get("groups", [])
     group_by_label = {
         group.get("label"): group
         for group in groups
@@ -861,7 +861,7 @@ def _structural_contract_score(
     coverage_contract = contracts.get("group_coverage", {})
     if not isinstance(coverage_contract, dict):
         raise EvaluationError("structural group_coverage contract must be an object")
-    group_coverage = EvidenceView(evidence).structural_groups().get(
+    group_coverage = evidence["structural_groups"].get(
         "coverage", {}
     ).get("groups", {})
     for name, expected in sorted(coverage_contract.items()):
@@ -870,7 +870,7 @@ def _structural_contract_score(
     if "validation_total_findings_complete" in contracts:
         check(
             "validation:total-findings-complete",
-            ValidationView(validation).total_findings_complete(),
+            validation.get("total_findings_complete", True),
             contracts["validation_total_findings_complete"],
         )
     partial_sections = contracts.get("partial_sections", [])
@@ -881,7 +881,7 @@ def _structural_contract_score(
             raise EvaluationError(f"unknown structural partial section: {section}")
         check(
             f"validation:{section}:complete",
-            ValidationView(validation).section(section)["coverage"].get(
+            FindingsDocumentView(validation).section(section)["coverage"].get(
                 "complete"
             ),
             False,
@@ -939,33 +939,32 @@ def _structural_score(
             evidence, validation, expectation
         ),
         "coverage": {
-            "groups": EvidenceView(evidence).structural_groups()["coverage"]["groups"],
-            "validation_complete": ValidationView(validation).total_findings_complete(),
+            "groups": evidence["structural_groups"]["coverage"]["groups"],
+            "validation_complete": validation.get("total_findings_complete", True),
         },
     }, validation)
 
 
 def _truncations(evidence: dict) -> list[dict]:
     events = []
-    view = EvidenceView(evidence)
     for name in ("tokens", "identifiers", "doc_terms"):
-        marker = view.truncated(name)
+        marker = vocabulary_truncation(evidence, name)
         if marker:
             events.append({"surface": f"vocabulary.{name}", **marker})
     for name in (
         "synonym_candidates", "context_dispersion", "overload_candidates"
     ):
-        dropped = view.terminology_section(name)["dropped_items"]
+        dropped = evidence["terminology"][name]["dropped_items"]
         if dropped:
             events.append({"surface": f"terminology.{name}", "dropped_items": dropped})
     for name in ("edges_truncated", "external_truncated"):
-        dropped = view.imports()[name]
+        dropped = evidence["imports"][name]
         if dropped:
             events.append({"surface": f"imports.{name}", "dropped_items": dropped})
-    budget = view.corpus_budget()
+    budget = evidence["skipped"]["corpus_budget"]
     if budget and not budget.get("complete", True):
         events.append({"surface": "corpus_budget", **budget})
-    structural = view.structural_groups()
+    structural = evidence["structural_groups"]
     group_coverage = structural.get("coverage", {}).get("groups")
     if group_coverage and not group_coverage.get("complete", True):
         events.append({
@@ -1055,9 +1054,8 @@ def _evaluate_source(source: dict, root: Path, runs: int,
         structural_expectation,
     )
 
-    cold_view = EvidenceView(cold_evidence)
-    totals = cold_view.totals()
-    corpus_budget = cold_view.corpus_budget()
+    totals = cold_evidence["totals"]
+    corpus_budget = cold_evidence["skipped"]["corpus_budget"]
     source_files = totals["code_files"] + totals["doc_files"]
     warm_reused = sum(item["reused"] for item in warm_stats)
     warm_processed = warm_reused + sum(item["extracted"] for item in warm_stats)
@@ -1072,8 +1070,8 @@ def _evaluate_source(source: dict, root: Path, runs: int,
         "corpus": corpus,
         "files": {
             "source": source_files,
-            "production_code": cold_view.terminology_scope()["code_files"],
-            "production_docs": cold_view.terminology_scope()["doc_files"],
+            "production_code": cold_evidence["terminology"]["scope"]["code_files"],
+            "production_docs": cold_evidence["terminology"]["scope"]["doc_files"],
         },
         "bytes": {
             "code": totals["code_bytes"],

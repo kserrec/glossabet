@@ -4,7 +4,6 @@ import json
 
 from glossabet.runtime.coverage import (
     capped_collection,
-    capped_section,
     coverage_ledger,
     location_sample,
 )
@@ -23,15 +22,11 @@ def test_ledger_keys_and_values_are_the_persisted_contract():
     assert json.loads(json.dumps(ledger)) == ledger
 
 
-def test_capped_section_wraps_the_collection_without_copying_items():
+def test_capped_collection_keeps_items_without_copying_them():
     item = {"name": "x"}
     kept, ledger = capped_collection([item, {"name": "y"}], 1, cap_reason="cap 1")
     assert kept[0] is item
-    section = capped_section([item, {"name": "y"}], 1, cap_reason="cap 1")
-    assert list(section) == ["items", "dropped_items", "coverage"]
-    assert section["items"][0] is item
-    assert section["dropped_items"] == 1
-    assert section["coverage"] == ledger
+    assert ledger["dropped_items"] == 1
     assert ledger["reasons"] == ["cap 1"] and ledger["complete"] is False
 
 

@@ -1,11 +1,9 @@
-"""One command preamble: resolve the repository root and decide, in one
-place, whether this command needs a glossary and how a bad or missing one
-is reported.
+"""Open one repository command under an explicit glossary policy.
 
 Every repository command opens a run first. A user error while opening —
-not a directory, unreadable/invalid glossary, required glossary missing —
-is one ``RunError``, an ``ArtifactError`` that `cli` reports through
-``print_error`` and maps to exit 1. Command modules never re-spell that.
+not a directory, unreadable or invalid glossary, or a required glossary that
+is absent — becomes one ``RunError``. The CLI reports that error through its
+ordinary artifact boundary, so command modules do not repeat the policy.
 """
 
 from __future__ import annotations
@@ -29,18 +27,14 @@ class RunError(ArtifactError):
 
 @dataclass(frozen=True)
 class Run:
-    """An opened command run: the resolved root and the loaded glossary
-    (``None`` when the command asked for none, or for optional and none
-    exists)."""
+    """A resolved repository root and the glossary selected by its policy."""
 
     root: Path
     glossary: GlossaryDocument | None
 
     @property
     def required_glossary(self) -> GlossaryDocument:
-        """The glossary of a ``GLOSSARY_REQUIRED`` run. ``open_run`` has
-        already refused such a run without one, so this never fails for a
-        command that asked for a required glossary."""
+        """Return the glossary after a required-glossary run was opened."""
         if self.glossary is None:
             raise RunError("this command requires a glossary")
         return self.glossary
@@ -49,11 +43,11 @@ class Run:
 def open_run(
     path_arg: str, *, glossary: str = GLOSSARY_NONE, missing: str = ""
 ) -> Run:
-    """Open a run on ``path_arg`` under the given glossary policy.
+    """Resolve ``path_arg`` and apply the requested glossary policy.
 
     ``missing`` is the leading clause of the required-but-absent message,
-    e.g. "no glossary to validate"; the sentence that follows tells the user
-    how to create one.
+    such as ``"no glossary to validate"``. The rest of the message tells the
+    user how to create one.
     """
     root = Path(path_arg)
     try:

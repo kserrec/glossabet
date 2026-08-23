@@ -11,17 +11,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from glossabet.agent.managed_block import AGENT_TARGETS
 from glossabet.agent.managed_context import (
     ContextSyncError,
     analyze_managed_block,
     read_regular_target,
     render_block,
 )
+from glossabet.command_run import GLOSSARY_REQUIRED, open_run
 from glossabet.glossary.model import GlossaryDocument
+from glossabet.managed_block import AGENT_TARGETS
 from glossabet.runtime.artifacts import replace_file_atomic
 from glossabet.runtime.display import escape_terminal_text, print_error
-from glossabet.runtime.engine_run import GLOSSARY_REQUIRED, open_run
 
 SyncOutcome = Literal["created", "appended", "updated", "repaired", "current"]
 _VERBS: dict[SyncOutcome, str] = {

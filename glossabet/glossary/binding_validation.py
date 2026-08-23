@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import unicodedata
 from collections.abc import Collection
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict
+from typing import Literal, TypedDict
 
-from glossabet.analysis.evidence_view import EvidenceView
+from glossabet.analysis.evidence_facts import skipped_path_entries
+from glossabet.analysis.evidence_types import EvidenceDocument
 from glossabet.corpus.tokenize import tokenize_term
 from glossabet.glossary.findings import (
     HeuristicFinding,
@@ -34,12 +36,41 @@ from glossabet.glossary.policy import (
 from glossabet.glossary.store import concept_scope, path_in_scope, scope_evidence
 
 
-def _tokens(text: str) -> set[str]:
+def vocabulary_tokens(text: str) -> set[str]:
+    """The normalized token set used by both validation directions."""
     return set(tokenize_term(text))
 
 
-# Per canonical concept id: (term tokens, symbol-binding tokens).
-_ConceptVocab = dict[str, tuple[set[str], set[str]]]
+@dataclass(frozen=True)
+class ConceptWords:
+    """The term and stable symbol-binding vocabulary of one concept."""
+
+    term_tokens: frozenset[str]
+    binding_tokens: frozenset[str]
+
+
+ConceptVocabulary = dict[str, ConceptWords]
+
+
+def build_concept_vocabulary(
+    concepts: Collection[ConceptRecord],
+) -> ConceptVocabulary:
+    """Index canonical concept vocabulary by concept id."""
+    vocabulary: ConceptVocabulary = {}
+    for concept in concepts:
+        binding_tokens: set[str] = set()
+        for binding in concept.get("bindings", []):
+            kind, _, value = binding["ref"].partition(":")
+            if kind == "symbol":
+                binding_tokens |= vocabulary_tokens(value)
+        vocabulary[concept["id"]] = ConceptWords(
+            term_tokens=frozenset(vocabulary_tokens(concept["term"])),
+            binding_tokens=frozenset(binding_tokens),
+        )
+    return vocabulary
+
+
+BindingStatus = Literal["resolved", "out-of-scope", "uncertain", "unresolved"]
 
 
 class BindingResolution(TypedDict):
@@ -47,19 +78,8 @@ class BindingResolution(TypedDict):
     ``out-of-scope``, ``uncertain``, or ``unresolved``."""
 
     ref: str
-    status: str
+    status: BindingStatus
     scope: ScopeEvidence
-
-
-def _concept_vocab(concept: ConceptRecord) -> tuple[set[str], set[str]]:
-    term_tokens = _tokens(concept["term"])
-    binding_tokens: set[str] = set()
-    for binding in concept.get("bindings", []):
-        kind, _, value = binding["ref"].partition(":")
-        if kind == "symbol":
-            binding_tokens |= _tokens(value)
-    return term_tokens, binding_tokens
-
 
 
 # Omission ledgers whose entries are paths the scan chose not to read: a
@@ -72,10 +92,10 @@ _EXCLUDED_PATH_LEDGERS = (
 )
 
 
-def _excluded_prefixes(view: EvidenceView) -> tuple[str, ...]:
+def _excluded_prefixes(evidence: EvidenceDocument) -> tuple[str, ...]:
     prefixes = []
     for ledger in _EXCLUDED_PATH_LEDGERS:
-        for entry in view.skipped_paths(ledger):
+        for entry in skipped_path_entries(evidence, ledger):
             path = entry.get("path") if isinstance(entry, dict) else entry
             if isinstance(path, str) and path:
                 prefixes.append(unicodedata.normalize("NFC", path))
@@ -110,7 +130,7 @@ def _path_binding_status(
     value: str, known_paths: Collection[str], scope: ConceptScope,
     inventory_complete: bool, excluded: tuple[str, ...] = (),
     root: Path | None = None,
-) -> str:
+) -> BindingStatus:
     value = unicodedata.normalize("NFC", value)  # known_paths are NFC-keyed
     if value in known_paths and path_in_scope(value, scope):
         return "resolved"
@@ -133,13 +153,14 @@ def _path_binding_status(
 def _resolve_bindings(
     concept: ConceptRecord, matcher: EvidenceIndex, root: Path | None = None
 ) -> list[BindingResolution]:
-    inventory_complete = matcher.view.repository_corpus_complete()
-    excluded = _excluded_prefixes(matcher.view)
+    inventory_complete = matcher.repository_corpus_complete
+    excluded = _excluded_prefixes(matcher.evidence)
     scope = concept_scope(concept)
 
     results: list[BindingResolution] = []
     for binding in concept.get("bindings", []):
         kind, _, value = binding["ref"].partition(":")
+        status: BindingStatus
         if kind == "symbol":
             scoped = matcher.code_identifier_occurrence(value, scope)
             global_occurrence = matcher.code_identifier_occurrence(value)
@@ -196,7 +217,7 @@ def _binding_findings(
 
 
 def _orphan_finding(
-    concept: ConceptRecord, scope: ConceptScope, term_tokens: set[str],
+    concept: ConceptRecord, scope: ConceptScope, term_tokens: Collection[str],
     occurrence: TermOccurrence,
     bindings: list[BindingResolution],
     resolved: list[BindingResolution],
@@ -237,21 +258,25 @@ def _orphan_finding(
     )
 
 
-def _concept_findings(
+@dataclass(frozen=True)
+class BindingFindings:
+    """Named glossary-to-evidence findings and their omission reasons."""
+
+    orphaned_concepts: list[HeuristicFinding]
+    unresolved_bindings: list[ObservedFinding]
+    fragmentation: list[HeuristicFinding]
+    fragmentation_incompleteness_reasons: list[str]
+    binding_ledger_reasons: list[str]
+
+
+def build_binding_findings(
     canonical: list[ConceptRecord],
-    vocab: _ConceptVocab,
+    vocabulary: ConceptVocabulary,
     matcher: EvidenceIndex,
     root: Path | None = None,
     policy: ReconciliationPolicy = DEFAULT_RECONCILIATION_POLICY,
-) -> tuple[
-    list[HeuristicFinding], list[ObservedFinding], list[HeuristicFinding],
-    list[str], list[str],
-]:
-    """Direction B: glossary -> evidence.
-
-    Returns (orphaned concepts, unresolved bindings, fragmentation,
-    fragmentation incompleteness reasons, binding-ledger reasons).
-    """
+) -> BindingFindings:
+    """Build direction-B glossary-to-evidence findings."""
     orphaned: list[HeuristicFinding] = []
     unresolved: list[ObservedFinding] = []
     # (module spread, concept id, finding)
@@ -260,7 +285,7 @@ def _concept_findings(
     excluded_bindings = 0
     for concept in canonical:
         scope = concept_scope(concept)
-        term_tokens, _ = vocab[concept["id"]]
+        term_tokens = vocabulary[concept["id"]].term_tokens
         occurrence = matcher.code_term_occurrence(concept["term"], scope)
         bindings = _resolve_bindings(concept, matcher, root)
         resolved = [b for b in bindings if b["status"] == "resolved"]
@@ -268,7 +293,7 @@ def _concept_findings(
         excluded_bindings += sum(
             1 for b in uncertain
             if b["ref"].partition(":")[0] in ("file", "module")
-            and matcher.view.repository_corpus_complete()
+            and matcher.repository_corpus_complete
         )
         unresolved.extend(_binding_findings(concept, scope, bindings))
         orphan = _orphan_finding(
@@ -314,8 +339,10 @@ def _concept_findings(
         "(vendored, generated, ignored, sensitive, oversized, linked, or not "
         "a code/doc file) and were not judged"
     ]
-    return (
-        orphaned, unresolved, [row[2] for row in fragmented],
-        fragmentation_reasons, binding_reasons,
+    return BindingFindings(
+        orphaned_concepts=orphaned,
+        unresolved_bindings=unresolved,
+        fragmentation=[row[2] for row in fragmented],
+        fragmentation_incompleteness_reasons=fragmentation_reasons,
+        binding_ledger_reasons=binding_reasons,
     )
-

@@ -1,4 +1,8 @@
-# Glossabet Maintainability Refactor Specification
+# Historical Glossabet Maintainability Refactor Specification
+
+> Historical record for the code examined on 2026-08-17. Its passes are
+> complete, and its paths and recommendations may have been superseded. It is
+> not the current architecture or roadmap.
 
 ## Status
 

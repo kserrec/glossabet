@@ -13,7 +13,6 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Protocol
 
-from glossabet.agent.managed_block import strip_managed_context_for_evidence
 from glossabet.corpus.cache import (
     CodeEntry,
     DocEntry,
@@ -22,6 +21,7 @@ from glossabet.corpus.cache import (
 )
 from glossabet.corpus.imports import extract_imports
 from glossabet.corpus.tokenize import doc_words, iter_identifiers
+from glossabet.managed_block import strip_managed_context_for_evidence
 
 
 def read_source(path: Path) -> tuple[bytes, str, str] | str:

@@ -1,15 +1,15 @@
-"""Producer-level tests for every drift and validation finding kind
-(Phase 36.5). Each test hands a producer a small hand-built evidence dict
-(or `EvidenceIndex` over one) and asserts the finding *record* — so when a
-rule breaks, the failing test names the rule, not the command. The
-end-to-end pipeline over a scanned corpus is proven once per command in
-`test_drift.py` / `test_reconcile.py`."""
+"""Producer-level tests for every drift and validation finding kind.
 
-from glossabet.analysis.evidence_view import EvidenceView
+Each test hands a producer a small hand-built evidence dict (or
+``EvidenceIndex`` over one) and asserts the finding record, so a failure names
+the rule rather than only the command. The end-to-end pipeline over a scanned
+corpus is proven once per command in ``test_drift.py`` or ``test_reconcile.py``.
+"""
+
 from glossabet.glossary.binding_validation import (
-    _concept_findings,
-    _concept_vocab,
     _resolve_bindings,
+    build_binding_findings,
+    build_concept_vocabulary,
 )
 from glossabet.glossary.drift import (
     _canonical_fading,
@@ -100,7 +100,7 @@ def test_parallel_term_finding_record():
     )
     matcher = EvidenceIndex(ev, ["Run"])
 
-    findings, reasons = _parallel_terms(EvidenceView(ev), canonical, known, matcher)
+    findings, reasons = _parallel_terms(ev, canonical, known, matcher)
 
     assert reasons == []
     [record] = findings
@@ -126,7 +126,7 @@ def test_parallel_term_skips_a_term_the_glossary_already_owns():
                    "shared_contexts": ["record"]}],
     )
     findings, reasons = _parallel_terms(
-        EvidenceView(ev), canonical, known, EvidenceIndex(ev, ["Run"])
+        ev, canonical, known, EvidenceIndex(ev, ["Run"])
     )
     assert findings == [] and reasons == []
 
@@ -143,7 +143,7 @@ def test_parallel_term_sampled_zero_is_suppressed_not_silent():
                    "shared_contexts": ["record"]}],
     )
     findings, reasons = _parallel_terms(
-        EvidenceView(ev), canonical, known, EvidenceIndex(ev, ["Run"])
+        ev, canonical, known, EvidenceIndex(ev, ["Run"])
     )
     assert findings == []
     assert reasons == [
@@ -224,7 +224,7 @@ def test_canonical_overloaded_repository_wide_record():
     ev = evidence(overloads=[_overload_item("session", 0.96, {
         "auth": ["login"], "db": ["commit"], "ml": ["model"],
     })])
-    [record] = _canonical_overloaded(EvidenceView(ev), canonical)
+    [record] = _canonical_overloaded(ev, canonical)
     assert record["kind"] == "canonical-overloaded"
     assert record["signal_strength"] == "strong"  # >= 0.95
     assert record["term"] == "Session"
@@ -243,7 +243,7 @@ def test_canonical_overloaded_scoped_recomputes_dispersion_inside_scope():
         "svc/a": ["login"], "svc/b": ["commit"], "svc/c": ["model"],
         "lib/x": ["login"],  # outside the scope: ignored
     })])
-    [record] = _canonical_overloaded(EvidenceView(ev), canonical)
+    [record] = _canonical_overloaded(ev, canonical)
     assert record["scope"] == {"kind": "path-prefixes", "path_prefixes": ["svc"]}
     assert record["evidence"]["dispersion"] == 1.0  # fully disjoint in scope
     assert [m["path"] for m in record["evidence"]["modules"]] == [
@@ -260,7 +260,7 @@ def test_canonical_overloaded_ignores_non_canonical_and_thin_scoped_evidence():
         _overload_item("session", 0.99, {"svc/a": ["x"], "svc/b": ["y"],
                                           "lib/c": ["z"]}),  # 2 in scope < 3
     ])
-    assert _canonical_overloaded(EvidenceView(ev), canonical) == []
+    assert _canonical_overloaded(ev, canonical) == []
 
 
 # ---- validation producers ---------------------------------------------------
@@ -303,7 +303,7 @@ def test_concept_findings_orphan_binding_and_fragmentation_records():
             {"ref": "symbol:payment_service"}, {"ref": "symbol:GhostService"}]),
         concept("tenant", "Tenant"),                             # fragmented
     ]
-    vocab = {c["id"]: _concept_vocab(c) for c in canonical}
+    vocab = build_concept_vocabulary(canonical)
     ev = evidence(
         tokens=[token("payment", 2, {"pay/svc.py": 2}),
                 token("tenant", 5, {f"{m}/code.py": 1 for m in "abcde"})],
@@ -311,25 +311,25 @@ def test_concept_findings_orphan_binding_and_fragmentation_records():
     )
     matcher = EvidenceIndex(ev, ["Workspace", "Payment", "Tenant"])
 
-    orphaned, unresolved, fragmented, reasons, binding_reasons = _concept_findings(
+    findings = build_binding_findings(
         canonical, vocab, matcher
     )
-    assert binding_reasons == []
+    assert findings.binding_ledger_reasons == []
 
-    assert reasons == []
-    [orphan] = orphaned
+    assert findings.fragmentation_incompleteness_reasons == []
+    [orphan] = findings.orphaned_concepts
     assert orphan["kind"] == "orphaned-concept"
     assert orphan["concept_id"] == "workspace"
     assert orphan["signal_strength"] == "strong"
     assert orphan["evidence"]["token_counts"] == {"workspace": 0}
     assert orphan["evidence"]["bindings_total"] == 0
-    [ghost] = unresolved
+    [ghost] = findings.unresolved_bindings
     assert ghost["kind"] == "binding-unresolved"
     assert ghost["certainty"] == "observed"
     assert ghost["ref"] == "symbol:GhostService"
     assert ghost["binding_status"] == "unresolved"
     assert ghost["concept_id"] == "payment"
-    [spread] = fragmented
+    [spread] = findings.fragmentation
     assert spread["kind"] == "fragmentation"
     assert spread["signal_strength"] == "weak"
     assert spread["concept_id"] == "tenant"
@@ -341,20 +341,20 @@ def test_concept_findings_out_of_scope_binding_and_resolved_binding_is_no_orphan
         "payment", "Payment", scope={"path_prefixes": ["billing"]},
         bindings=[{"ref": "symbol:payment_service"}],
     )]
-    vocab = {c["id"]: _concept_vocab(c) for c in canonical}
+    vocab = build_concept_vocabulary(canonical)
     ev = evidence(
         tokens=[token("payment", 3, {"pay/svc.py": 3})],
         identifiers=[identifier("payment_service", 1, {"pay/svc.py": 1})],
     )
-    orphaned, unresolved, _f, _r, _b = _concept_findings(
+    findings = build_binding_findings(
         canonical, vocab, EvidenceIndex(ev, ["Payment"])
     )
-    [record] = unresolved
+    [record] = findings.unresolved_bindings
     assert record["kind"] == "binding-out-of-scope"
     assert record["binding_status"] == "out-of-scope"
     assert record["scope"] == {"kind": "path-prefixes", "path_prefixes": ["billing"]}
     # Zero in-scope occurrences and no resolved binding → orphaned inside scope.
-    assert [o["concept_id"] for o in orphaned] == ["payment"]
+    assert [o["concept_id"] for o in findings.orphaned_concepts] == ["payment"]
 
 
 def _group(gid, label, members, member_tokens=None):
@@ -372,7 +372,7 @@ def test_structure_findings_all_three_records():
                  concept("authorization", "Authorization"),
                  concept("payment", "Payment"), concept("tenant", "Tenant"),
                  concept("run", "Run")]
-    vocab = {c["id"]: _concept_vocab(c) for c in canonical}
+    vocab = build_concept_vocabulary(canonical)
     structural = {"groups": [
         _group("g0", "community 0", ["AuthenticationFlow", "AuthorizationPolicy"],
                ["authentication", "flow", "authorization", "policy"]),
@@ -407,7 +407,7 @@ def test_structure_findings_all_three_records():
 
 def test_structure_findings_confess_missing_member_tokens():
     canonical = [concept("payment", "Payment")]
-    vocab = {c["id"]: _concept_vocab(c) for c in canonical}
+    vocab = build_concept_vocabulary(canonical)
     structural = {"groups": [{
         "id": "g", "label": "community 0", "size": 2,
         "members_sample": ["PaymentFlow", "Ledger"],  # no member_tokens

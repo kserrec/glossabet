@@ -94,11 +94,6 @@ def first_terminal_control(text: str, *, allow_layout: bool = False) -> str | No
     return None
 
 
-def contains_terminal_control(text: str, *, allow_layout: bool = False) -> bool:
-    """Return whether ``text`` contains unsafe terminal-facing characters."""
-    return first_terminal_control(text, allow_layout=allow_layout) is not None
-
-
 def escape_terminal_text(text: str, *, preserve_line_feeds: bool = False) -> str:
     """Render unsafe characters as visible ASCII escape spellings."""
     rendered: list[str] = []

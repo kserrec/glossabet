@@ -28,7 +28,11 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="glossabet-walkthrough-") as raw:
         work = Path(raw)
         repository = work / "payment-service"
-        shutil.copytree(SAMPLE, repository)
+        shutil.copytree(
+            SAMPLE,
+            repository,
+            ignore=shutil.ignore_patterns(".env", "*.env", ".env.*", "*.env.*"),
+        )
 
         env = os.environ.copy()
         env["GLOSSABET_CACHE_DIR"] = str(work / "cache")

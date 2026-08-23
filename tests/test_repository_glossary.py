@@ -290,7 +290,7 @@ def test_exact_scan_root_owns_its_glossary(tmp_path, capsys):
     assert subproject["nested_ignored"] == []
 
 
-# --- Phase 32: deterministic managed-mode term-presence check -------------
+# --- deterministic managed-mode term-presence check -----------------------
 
 
 def _glossary_with_alias() -> dict:

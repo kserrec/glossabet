@@ -5,14 +5,14 @@ Works only on the normalized nodes and edge summary that
 attributes), member tokens memoized per node, cohesion checks, god nodes,
 every output cap with its coverage ledger, the unavailable/disabled evidence
 shapes, and the structure nominations the importance section consumes.
-Graphify's artifacts are read, never written (PLAN principle 3).
+Graphify's artifacts are read, never written.
 """
 
 from __future__ import annotations
 
 import math
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from pathlib import Path
 from typing import TypedDict, TypeGuard
 
@@ -26,12 +26,9 @@ from glossabet.analysis.evidence_types import (
 from glossabet.analysis.graphify_input import (
     GRAPH_PATH,
     MAX_NODE_LABEL_CHARS,
-    _edge_summary,
-    _first_value,
-    _freshness,
-    _load_graph,
-    _Node,
-    _normalize_nodes,
+    GraphNode,
+    first_value,
+    load_graph_input,
 )
 from glossabet.corpus.tokenize import tokenize_term
 from glossabet.runtime.coverage import (
@@ -49,13 +46,6 @@ MEMBER_TOKEN_CAP = 2_000
 # usable score (an astronomically large JSON number would overflow float
 # math and poison every derived score).
 MAX_USABLE_COHESION = 1_000_000.0
-# Label characters tokenized across all nodes. Each node's label is tokenized
-# once (memoized per node id) — a member listed in a thousand communities is
-# not tokenized a thousand times — and the total is bounded, because
-# tokenizing is ~0.3 ms per 512-char label: a million such labels under the
-# reference budget would still cost minutes. Judged after label truncation,
-# before any tokenizing.
-GRAPH_LABEL_CHAR_BUDGET = 5_000_000
 MEMBER_SAMPLE = 6
 STRUCTURE_CANDIDATE_CAP = 10
 
@@ -109,25 +99,24 @@ def _usable_cohesion(value: object) -> TypeGuard[float]:
 
 
 def _extract_groups(
-    graph: Mapping[str, object],
-    nodes: Mapping[str, _Node],
+    communities: list[object] | None,
+    nodes: Mapping[str, GraphNode],
     warnings: list[str],
 ) -> dict[str, _Group]:
-    communities = graph.get("communities")
-    if isinstance(communities, list) and communities:
+    if communities:
         return _groups_from_communities(communities, nodes)
     return _groups_from_node_attributes(nodes, warnings)
 
 
 def _groups_from_communities(
-    communities: list[object], nodes: Mapping[str, _Node]
+    communities: list[object], nodes: Mapping[str, GraphNode]
 ) -> dict[str, _Group]:
     """Explicit communities list: each entry names its own members."""
     groups: dict[str, _Group] = {}
     for index, community in enumerate(communities):
         if not isinstance(community, dict):
             continue
-        group_id_value = _first_value(community, ("id", "label", "name"))
+        group_id_value = first_value(community, ("id", "label", "name"))
         # Zero is a valid Graphify community id, so only None falls back.
         group_id = str(
             index if group_id_value is None else group_id_value
@@ -154,7 +143,7 @@ def _groups_from_communities(
             continue
         groups[group_id] = {
             "label": str(
-                _first_value(community, ("label", "name"))
+                first_value(community, ("label", "name"))
                 or f"community {group_id}"
             ),
             # json.loads accepts bare NaN/Infinity and bool passes isinstance
@@ -167,7 +156,7 @@ def _groups_from_communities(
 
 
 def _groups_from_node_attributes(
-    nodes: Mapping[str, _Node], warnings: list[str]
+    nodes: Mapping[str, GraphNode], warnings: list[str]
 ) -> dict[str, _Group]:
     """Fallback: fold per-node community attributes into groups."""
     groups: dict[str, _Group] = {}
@@ -205,7 +194,7 @@ def _groups_from_node_attributes(
     return groups
 
 
-def _node_tokens(node: _Node) -> list[str]:
+def _node_tokens(node: GraphNode) -> list[str]:
     """A node label's tokens, computed once per node however many
     communities list it."""
     tokens = node.get("tokens")
@@ -216,9 +205,9 @@ def _node_tokens(node: _Node) -> list[str]:
 
 def _group_items(
     groups: Mapping[str, _Group],
-    nodes: Mapping[str, _Node],
+    nodes: Mapping[str, GraphNode],
     degree: Counter[str],
-    glossary_nodes: set[str],
+    glossary_nodes: Collection[str],
 ) -> list[StructuralGroup]:
     items: list[StructuralGroup] = []
     for group_id, group in groups.items():
@@ -277,7 +266,9 @@ def _group_items(
 
 
 def _god_nodes(
-    nodes: Mapping[str, _Node], degree: Counter[str], glossary_nodes: set[str]
+    nodes: Mapping[str, GraphNode],
+    degree: Counter[str],
+    glossary_nodes: Collection[str],
 ) -> tuple[list[GodNode], CoverageLedger]:
     ranked: list[GodNode] = [
         {"label": nodes[node_id]["label"], "degree": count}
@@ -296,41 +287,20 @@ def _god_nodes(
 def build_structural_groups(
     root: Path, git_stamp: Mapping[str, object] | None = None
 ) -> StructuralGroups:
-    graph, present, warnings = _load_graph(root)
-    if graph is None:
-        return _unavailable(present=present, warnings=warnings)
+    graph = load_graph_input(root, git_stamp)
+    warnings = list(graph.warnings)
+    if not graph.nodes or graph.freshness is None:
+        return _unavailable(present=graph.present, warnings=warnings)
 
-    nodes = _normalize_nodes(graph)
-    if not nodes:
-        return _unavailable(
-            present=True,
-            warnings=warnings + [
-                f"{GRAPH_PATH}: nodes carry no usable ids — proceeding lexical-only"
-            ],
-        )
-    label_chars = sum(len(node["label"]) for node in nodes.values())
-    if label_chars > GRAPH_LABEL_CHAR_BUDGET:
-        return _unavailable(
-            present=True,
-            warnings=warnings + [
-                f"{GRAPH_PATH}: {label_chars} node-label characters exceed the "
-                f"adapter's tokenizing budget of {GRAPH_LABEL_CHAR_BUDGET} — "
-                "proceeding lexical-only"
-            ],
-        )
-
-    glossary_nodes = {
-        node_id for node_id, node in nodes.items()
-        if node["prov"] == "glossary"
-    }
-    degree, edge_count = _edge_summary(graph.document, nodes, glossary_nodes)
-    groups = _extract_groups(graph.document, nodes, warnings)
+    groups = _extract_groups(graph.communities, graph.nodes, warnings)
     if not groups:
         warnings.append(
             f"{GRAPH_PATH}: no community structure found — groups unavailable"
         )
 
-    group_items = _group_items(groups, nodes, degree, glossary_nodes)
+    group_items = _group_items(
+        groups, graph.nodes, graph.degree, graph.glossary_nodes
+    )
 
     if not group_items and not any("no community structure" in w for w in warnings):
         warnings.append(
@@ -343,16 +313,18 @@ def build_structural_groups(
         cap_reason=f"structural group detail cap is {GROUP_CAP} items",
     )
     dropped_groups = group_items[GROUP_CAP:]
-    god_nodes, god_coverage = _god_nodes(nodes, degree, glossary_nodes)
+    god_nodes, god_coverage = _god_nodes(
+        graph.nodes, graph.degree, graph.glossary_nodes
+    )
     return {
         "adapter_enabled": True,
         "present": True,
         "available": bool(group_items),
         "source": GRAPH_PATH,
-        "freshness": _freshness(graph.document, git_stamp),
-        "source_nodes": len(nodes),
-        "nodes": len(nodes) - len(glossary_nodes),
-        "edges": edge_count,
+        "freshness": graph.freshness,
+        "source_nodes": len(graph.nodes),
+        "nodes": len(graph.nodes) - len(graph.glossary_nodes),
+        "edges": graph.edge_count,
         "groups": retained_groups,
         "groups_dropped": group_coverage["dropped_items"],
         "groups_complete": group_coverage["complete"],
@@ -364,7 +336,7 @@ def build_structural_groups(
             "groups": group_coverage,
             "god_nodes": god_coverage,
         },
-        "discounted_glossary_nodes": len(glossary_nodes),
+        "discounted_glossary_nodes": len(graph.glossary_nodes),
         "warnings": warnings,
     }
 

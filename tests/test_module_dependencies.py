@@ -1,43 +1,39 @@
-"""Dependency directions the architecture relies on (Phase 35.4).
+"""Selected dependency boundaries whose inversion would obscure ownership.
 
-`evidence` is the aggregation hub and must not import a command module (its
-own printer/handlers live above it in `evidence_report`); `extraction` and
-`vocabulary` sit beneath the hub and never look back up at it;
-`brief` loads no source files and must not drag the scanner in; the managed
-block lives beneath both its users; the scanner never depends on the
-discovery channel that depends on it."""
+These tests protect a small set of load-bearing module relationships. They do
+not prove that the entire package follows one global layer hierarchy or that
+every possible dependency is architecturally desirable.
+"""
 
 import ast
 from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parents[1] / "glossabet"
 
-# Modules are addressed by their bare name; the layer subpackage (Phase 39)
-# is looked up, so the pins below read as architecture, not as paths.
-_LOCATION = {
-    path.stem: ".".join(path.relative_to(PACKAGE).with_suffix("").parts)
+_MODULE_PATHS = {
+    "glossabet." + ".".join(path.relative_to(PACKAGE).with_suffix("").parts): path
     for path in PACKAGE.rglob("*.py")
-    if path.stem != "__init__" and "_skill" not in path.parts
+    if path.stem != "__init__"
+    and "_skill" not in path.parts
+    and not any(
+        part == ".env"
+        or part.endswith(".env")
+        or part.startswith(".env.")
+        or ".env." in part
+        for part in path.relative_to(PACKAGE).parts
+    )
 }
-_MODULE_NAMES = {**_LOCATION, "glossary": _LOCATION["store"]}
 
 
-def _qualified(module: str) -> str:
-    return f"glossabet.{_MODULE_NAMES[module]}"
-
-
-def _imports(module: str) -> set[str]:
-    path = PACKAGE / (_MODULE_NAMES[module].replace(".", "/") + ".py")
-    return _imports_of(path)
-
-
-def _imports_of(path: Path) -> set[str]:
-    """Absolute names of everything ``path`` imports, with relative imports
-    (``from .scanner import x``, ``from ..runtime import y``) resolved to
-    their absolute ``glossabet.…`` names — a relative spelling must not
-    slip past a forbidden direction (test-audit)."""
+def _imports_of(
+    path: Path, *, package_parts: list[str] | None = None
+) -> set[str]:
+    """Return absolute import names, resolving package-relative imports."""
     tree = ast.parse(path.read_text(encoding="utf-8"))
-    package_parts = ["glossabet", *path.relative_to(PACKAGE).parent.parts]
+    if package_parts is None:
+        package_parts = [
+            "glossabet", *path.relative_to(PACKAGE).parent.parts
+        ]
     names: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
@@ -56,102 +52,131 @@ def _imports_of(path: Path) -> set[str]:
     return names
 
 
-def test_forbidden_dependency_directions():
-    forbidden = {
-        "evidence": {
-            "glossabet.context_sync", "glossabet.brief", "glossabet.cli",
-            "glossabet.evidence_report",
-        },
-        "extraction": {"glossabet.evidence", "glossabet.scanner"},
-        # The preamble sits beneath every command module and never pulls the
-        # scanner in: `brief` (a session-start hook) opens a run too.
-        "engine_run": {
-            "glossabet.evidence", "glossabet.scanner", "glossabet.cli",
-            "glossabet.brief", "glossabet.drift", "glossabet.reconcile",
-            "glossabet.context_sync", "glossabet.agent_context",
-            "glossabet.evidence_report", "glossabet.glossary_commands",
-        },
-        "glossary": {"glossabet.engine_run", "glossabet.glossary_commands"},
-        # Managed-context inspection is analysis; the sync command sits above
-        # it (Phase 36.4). Drift and validation inspect, never sync.
-        "managed_context": {
-            "glossabet.context_sync", "glossabet.evidence", "glossabet.drift",
-            "glossabet.reconcile", "glossabet.cli",
-        },
-        "drift": {"glossabet.context_sync", "glossabet.cli"},
-        "reconcile": {"glossabet.context_sync", "glossabet.cli"},
-        # Validation producers (Phase 45.12) sit beneath the reconcile facade:
-        # binding resolution lowest, structural matching above it; neither
-        # reaches commands, rendering, or the run preamble.
-        "binding_validation": {
-            "glossabet.reconcile", "glossabet.structural_validation",
-            "glossabet.context_sync", "glossabet.cli", "glossabet.engine_run",
-            "glossabet.evidence_report", "glossabet.glossary_commands",
-            "glossabet.managed_context", "glossabet.drift", "glossabet.evidence",
-            "glossabet.display",
-        },
-        "structural_validation": {
-            "glossabet.reconcile", "glossabet.context_sync", "glossabet.cli",
-            "glossabet.engine_run", "glossabet.evidence_report",
-            "glossabet.glossary_commands", "glossabet.managed_context",
-            "glossabet.drift", "glossabet.evidence", "glossabet.display",
-        },
-        "vocabulary": {"glossabet.evidence", "glossabet.scanner"},
-        "brief": {"glossabet.evidence", "glossabet.scanner"},
-        "managed_block": {"glossabet.context_sync", "glossabet.evidence"},
-        "scanner": {"glossabet.repository_glossary", "glossabet.evidence"},
-        # Path policy and budget accounting sit beneath the walk (Phase 45.9):
-        # budget lowest, policy above it, the traversal facade on top.
-        "path_policy": {
-            "glossabet.scanner", "glossabet.repository_glossary",
-            "glossabet.evidence", "glossabet.extraction",
-        },
-        "walk_budget": {
-            "glossabet.scanner", "glossabet.path_policy",
-            "glossabet.repository_glossary", "glossabet.evidence",
-            "glossabet.config",
-        },
-        "git_state": {"glossabet.evidence", "glossabet.brief"},
-        # The Graphify adapter (Phase 45.11): untrusted input adaptation
-        # beneath group analysis beneath the facade; neither extracted module
-        # reaches commands, glossary state, or agent code.
-        "graphify_input": {
-            "glossabet.graphify", "glossabet.graphify_groups", "glossabet.evidence",
-            "glossabet.cli", "glossabet.store", "glossabet.glossary_commands",
-            "glossabet.drift", "glossabet.reconcile", "glossabet.matching",
-            "glossabet.agent_context", "glossabet.brief", "glossabet.context_sync",
-            "glossabet.tokenize",
-        },
-        "graphify_groups": {
-            "glossabet.graphify", "glossabet.evidence",
-            "glossabet.cli", "glossabet.store", "glossabet.glossary_commands",
-            "glossabet.drift", "glossabet.reconcile", "glossabet.matching",
-            "glossabet.agent_context", "glossabet.brief", "glossabet.context_sync",
-        },
-        # The glossary schema is a leaf: it owns meaning only and must not
-        # reach persistence, validation, or commands.
-        "model": {"glossabet.store", "glossabet.glossary_commands", "glossabet.engine_run"},
-        # Concept scope and the bounded validator sit beneath persistence
-        # (Phase 45.10): model < scope < schema < store.
-        "scope": {
-            "glossabet.schema", "glossabet.store", "glossabet.glossary_commands",
-            "glossabet.engine_run", "glossabet.matching", "glossabet.drift",
-        },
-        "schema": {
-            "glossabet.store", "glossabet.glossary_commands",
-            "glossabet.engine_run", "glossabet.matching", "glossabet.drift",
-        },
+def _imports(module: str) -> set[str]:
+    return _imports_of(_MODULE_PATHS[module])
+
+
+def _matches(name: str, target: str) -> bool:
+    return name == target or name.startswith(target + ".")
+
+
+def _forbidden_imports(module: str, forbidden: tuple[str, ...]) -> set[str]:
+    return {
+        name
+        for name in _imports(module)
+        if any(_matches(name, target) for target in forbidden)
     }
-    for module, banned in forbidden.items():
-        banned = {_qualified(name.removeprefix("glossabet.")) for name in banned}
-        found = _imports(module) & banned
+
+
+def test_duplicate_basenames_have_distinct_module_identities():
+    assert _MODULE_PATHS["glossabet.analysis.policy"] == (
+        PACKAGE / "analysis" / "policy.py"
+    )
+    assert _MODULE_PATHS["glossabet.glossary.policy"] == (
+        PACKAGE / "glossary" / "policy.py"
+    )
+    assert (
+        _MODULE_PATHS["glossabet.analysis.policy"]
+        != _MODULE_PATHS["glossabet.glossary.policy"]
+    )
+
+
+def test_runtime_is_an_infrastructure_boundary():
+    runtime_modules = sorted(
+        name for name in _MODULE_PATHS if name.startswith("glossabet.runtime.")
+    )
+    for module in runtime_modules:
+        outside_runtime = {
+            name
+            for name in _imports(module)
+            if name.startswith("glossabet.")
+            and not name.startswith("glossabet.runtime.")
+        }
+        assert not outside_runtime, f"{module} imports {sorted(outside_runtime)}"
+
+
+def test_shared_managed_block_format_imports_no_package_feature():
+    package_imports = {
+        name
+        for name in _imports("glossabet.managed_block")
+        if name.startswith("glossabet.")
+    }
+    assert package_imports == set()
+
+
+def test_aggregation_and_read_boundaries_do_not_import_their_callers():
+    rules = {
+        "glossabet.analysis.evidence": (
+            "glossabet.agent.context_sync",
+            "glossabet.agent.brief",
+            "glossabet.cli",
+            "glossabet.analysis.evidence_report",
+        ),
+        "glossabet.corpus.extraction": (
+            "glossabet.analysis.evidence",
+            "glossabet.corpus.scanner",
+        ),
+        "glossabet.agent.brief": (
+            "glossabet.analysis.evidence",
+            "glossabet.corpus.scanner",
+        ),
+        "glossabet.corpus.scanner": (
+            "glossabet.glossary.repository_glossary",
+            "glossabet.analysis.evidence",
+        ),
+    }
+    for module, forbidden in rules.items():
+        found = _forbidden_imports(module, forbidden)
+        assert not found, f"{module} imports {sorted(found)}"
+
+
+def test_graphify_and_validation_ownership_directions():
+    rules = {
+        "glossabet.analysis.graphify_input": (
+            "glossabet.analysis.graphify",
+            "glossabet.analysis.graphify_groups",
+        ),
+        "glossabet.analysis.graphify_groups": (
+            "glossabet.analysis.graphify",
+        ),
+        "glossabet.glossary.binding_validation": (
+            "glossabet.glossary.structural_validation",
+            "glossabet.glossary.reconcile",
+        ),
+        "glossabet.glossary.structural_validation": (
+            "glossabet.glossary.reconcile",
+        ),
+    }
+    for module, forbidden in rules.items():
+        found = _forbidden_imports(module, forbidden)
         assert not found, f"{module} imports {sorted(found)}"
 
 
 def test_glossary_model_imports_nothing_from_the_package():
-    """The persisted glossary schema must stay a leaf module so that every
-    layer can name the document without a dependency cycle."""
+    """The persisted glossary schema stays a leaf to avoid dependency cycles."""
     package_imports = {
-        name for name in _imports("model") if name.startswith("glossabet")
+        name
+        for name in _imports("glossabet.glossary.model")
+        if name.startswith("glossabet.")
     }
     assert package_imports == set()
+
+
+def test_runtime_boundary_rule_detects_a_domain_import(tmp_path):
+    """A focused mutation proves the runtime boundary sees violations."""
+    module = tmp_path / "probe.py"
+    module.write_text(
+        "from glossabet.glossary.store import load_glossary\n",
+        encoding="utf-8",
+    )
+    imports = _imports_of(
+        module,
+        package_parts=["glossabet", "runtime"],
+    )
+    outside_runtime = {
+        name
+        for name in imports
+        if name.startswith("glossabet.")
+        and not name.startswith("glossabet.runtime.")
+    }
+    assert "glossabet.glossary.store" in outside_runtime

@@ -13,12 +13,17 @@ from collections import Counter
 from collections.abc import Iterable
 from typing import TypedDict
 
+from glossabet.analysis.evidence_facts import (
+    production_corpus_complete as evidence_production_corpus_complete,
+)
+from glossabet.analysis.evidence_facts import (
+    repository_corpus_complete as evidence_repository_corpus_complete,
+)
 from glossabet.analysis.evidence_types import (
     EvidenceDocument,
     IdentifierEntry,
     VocabularyEntry,
 )
-from glossabet.analysis.evidence_view import EvidenceView
 from glossabet.corpus.imports import module_of
 from glossabet.corpus.tokenize import doc_words, tokenize_identifier, tokenize_term
 from glossabet.glossary.model import ScopeEvidence
@@ -176,10 +181,10 @@ class EvidenceIndex:
     ) -> None:
         if compound_start_budget < 0:
             raise ValueError("compound match budget must be non-negative")
-        self.view = EvidenceView(evidence)
-        self.token_section = self.view.vocabulary_table("tokens")
-        self.identifier_section = self.view.vocabulary_table("identifiers")
-        self.doc_section = self.view.vocabulary_table("doc_terms")
+        self.evidence = evidence
+        self.token_section = evidence["vocabulary"]["tokens"]
+        self.identifier_section = evidence["vocabulary"]["identifiers"]
+        self.doc_section = evidence["vocabulary"]["doc_terms"]
         self.token_entries = {
             entry["term"]: entry for entry in self.token_section["items"]
         }
@@ -192,12 +197,11 @@ class EvidenceIndex:
         # NFC-keyed for the same reason path_in_scope compares in NFC.
         self.file_paths = {
             unicodedata.normalize("NFC", item["path"])
-            for kind in ("code", "docs")
-            for item in self.view.file_entries(kind)
+            for item in [*evidence["files"]["code"], *evidence["files"]["docs"]]
         }
         self.module_paths = {
             unicodedata.normalize("NFC", module["path"])
-            for module in self.view.modules()
+            for module in evidence["modules"]
         }
 
         requested: set[tuple[str, ...]] = set()
@@ -251,11 +255,21 @@ class EvidenceIndex:
         # mark every other compound term's count inexact.
         self.compound_complete = self.coverage["compound_match_positions"]["complete"]
 
+    @property
+    def repository_corpus_complete(self) -> bool:
+        """Whether the evidence proves the complete repository inventory."""
+        return evidence_repository_corpus_complete(self.evidence)
+
+    @property
+    def production_corpus_complete(self) -> bool:
+        """Whether the evidence proves the complete production corpus."""
+        return evidence_production_corpus_complete(self.evidence)
+
     def code_term_occurrence(
         self, term: str, scope: tuple[str, ...] | None = None
     ) -> TermOccurrence:
         wanted = tokenize_term(term)
-        corpus_complete = self.view.production_corpus_complete()
+        corpus_complete = self.production_corpus_complete
         empty: TermOccurrence = {
             "term_tokens": wanted,
             "match_kind": "token" if len(wanted) <= 1 else "lexical-unit",
@@ -370,7 +384,7 @@ class EvidenceIndex:
     def code_identifier_occurrence(
         self, name: str, scope: tuple[str, ...] | None = None
     ) -> IdentifierOccurrence:
-        corpus_complete = self.view.production_corpus_complete()
+        corpus_complete = self.production_corpus_complete
         entry = self.identifier_entries.get(name)
         if entry is None:
             complete = (
@@ -410,7 +424,7 @@ class EvidenceIndex:
         self, term: str, scope: tuple[str, ...] | None = None
     ) -> DocOccurrence:
         wanted = tokenize_term(term)
-        corpus_complete = self.view.production_corpus_complete()
+        corpus_complete = self.production_corpus_complete
         # The documentation index is keyed by *doc words* (letters-only,
         # apostrophes kept, at least MIN_DOC_WORD_LEN long), not identifier
         # tokens: ``O'Brien`` is one doc word but tokenizes to ``brien``, and
@@ -445,4 +459,3 @@ class EvidenceIndex:
             "count_complete": scoped["count_complete"],
             "scope": scope_evidence(scope),
         }
-

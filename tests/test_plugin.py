@@ -239,7 +239,11 @@ def test_plugin_runner_executes_bundled_brief(tmp_path):
 
 def test_plugin_runner_rejects_a_manifest_version_mismatch(tmp_path):
     copy = tmp_path / "glossabet"
-    shutil.copytree(PLUGIN, copy)
+    shutil.copytree(
+        PLUGIN,
+        copy,
+        ignore=shutil.ignore_patterns(".env", "*.env", ".env.*", "*.env.*"),
+    )
     manifest_path = copy / ".codex-plugin" / "plugin.json"
     manifest = _manifest(copy)
     manifest["version"] = "9.9.9"
@@ -266,7 +270,11 @@ def test_plugin_runner_rejects_a_tampered_wheel(tmp_path):
     import sys
 
     staged = tmp_path / "glossabet"
-    shutil.copytree(PLUGIN, staged)
+    shutil.copytree(
+        PLUGIN,
+        staged,
+        ignore=shutil.ignore_patterns(".env", "*.env", ".env.*", "*.env.*"),
+    )
     wheel = next((staged / "skills" / "glossabet" / "assets").glob("*.whl"))
     wheel.write_bytes(wheel.read_bytes() + b"\x00tampered")
     runner = staged / "skills" / "glossabet" / "scripts" / "run_glossabet.py"

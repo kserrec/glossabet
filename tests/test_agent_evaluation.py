@@ -195,7 +195,7 @@ def test_committed_installed_agent_evidence_is_genuine_safe_and_complete():
     assert verify_results(RESULTS) == []
     results = json.loads(RESULTS.read_text(encoding="utf-8"))
     history = json.loads(HISTORY.read_text(encoding="utf-8"))
-    # The sealed 2026-08-18 batch (Phase 36.7): 14 scenarios, one attempt.
+    # The sealed 2026-08-18 batch contains 14 scenarios in one attempt.
     assert results["summary"] == {
         "required": 14,
         "passed": 14,

@@ -140,3 +140,12 @@ def test_renderer_prints_every_branch_from_a_hand_built_document(capsys):
     assert capsys.readouterr().out == (
         "\n== first ==\nline\\x1b[31m one [signal strong]\n... and 2 more not shown\n"
     )
+
+
+def test_dynamic_finding_section_names_fail_clearly():
+    view = FindingsDocumentView({"headline": 3})
+
+    with pytest.raises(KeyError, match="missing"):
+        view.section("missing")
+    with pytest.raises(TypeError, match="headline.*not a findings section"):
+        view.section("headline")

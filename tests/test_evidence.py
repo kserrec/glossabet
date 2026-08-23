@@ -632,10 +632,11 @@ def test_symlink_to_in_repo_sensitive_file_is_not_laundered(tmp_path):
 
 
 def test_exclusion_ledger_owns_every_skipped_key_and_sentence(tmp_path):
-    """Phase 35.3: the scanner's ledger is the one spelling of each
-    exclusion's evidence key and report sentence — a kind that is collected
-    but not in the ledger, or in the ledger but not collected, is a silent
-    exclusion."""
+    """The scanner ledger owns each exclusion key and report sentence.
+
+    A kind collected but absent from the ledger, or present in the ledger but
+    not collected, would create a silent exclusion.
+    """
     from dataclasses import fields
 
     from glossabet.corpus.scanner import (

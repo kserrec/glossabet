@@ -1,11 +1,12 @@
-"""The trust documents (SECURITY.md threat model, README, PRIVACY.md) promise
-that the engine makes no network connections, runs nothing through a shell,
-evaluates no code, and never imports the repository it analyzes. Nothing in
-the codebase enforced those sentences: a future "update check", telemetry
-import, or `shell=True` convenience would silently break them (test-audit,
-2026-08-18). This ratchet reads every engine module's AST and refuses the
-capabilities by name, so the promise breaks the build before it breaks a
-user's trust.
+"""Source-level tripwires for direct violations of documented trust promises.
+
+These tests inspect current package syntax for selected imports, calls, path
+mutation, and ``shell=`` arguments. They catch straightforward regressions
+such as adding a network module, ``eval()``, or ``shell=True``. They do not
+prove the absence of indirect, dynamically resolved, aliased, native, or
+otherwise syntactically obscured behavior; runtime design and review remain
+part of enforcing the broader promises in SECURITY.md, README.md, and
+PRIVACY.md.
 """
 
 from __future__ import annotations
@@ -35,7 +36,16 @@ SUBPROCESS_ALLOWED = {
 
 def _engine_modules() -> list[Path]:
     return sorted(
-        path for path in PACKAGE.rglob("*.py") if "_skill" not in path.parts
+        path
+        for path in PACKAGE.rglob("*.py")
+        if "_skill" not in path.parts
+        and not any(
+            part == ".env"
+            or part.endswith(".env")
+            or part.startswith(".env.")
+            or ".env." in part
+            for part in path.relative_to(PACKAGE).parts
+        )
     )
 
 

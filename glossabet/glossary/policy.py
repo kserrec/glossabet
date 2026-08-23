@@ -11,6 +11,7 @@ drift re-derives scoped dispersion with the same calibration.
 
 from __future__ import annotations
 
+from collections.abc import Set
 from dataclasses import dataclass
 
 from glossabet.analysis.policy import DEFAULT_TERMINOLOGY_POLICY
@@ -103,10 +104,10 @@ MATCH_LABEL = 3
 
 
 def structural_match_strength(
-    label_tokens: set[str],
-    combined: set[str],
-    term_tokens: set[str],
-    binding_tokens: set[str],
+    label_tokens: Set[str],
+    combined: Set[str],
+    term_tokens: Set[str],
+    binding_tokens: Set[str],
 ) -> int:
     """How strongly one concept's vocabulary matches one structural group."""
     if term_tokens and term_tokens <= label_tokens:

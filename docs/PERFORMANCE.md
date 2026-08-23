@@ -6,21 +6,29 @@ future optimization can show a before/after on the same inputs.
 
 ## Reproduce
 
-One command, standard library only, no network, no writes outside a
-temporary directory:
+The quick smoke suite is the default. It uses checked-in fixtures, performs no
+network access, and writes its inputs and cache only under a temporary
+directory:
 
 ```bash
 uv run python scripts/benchmark.py
 ```
 
+The generated scale suite is opt-in and adds five larger deterministic cases:
+
+```bash
+uv run python scripts/benchmark.py --scale --repeat 3
+```
+
 Options: `--repeat N` (timed repetitions per case, default 5), `--json PATH`
 (machine-readable results and environment), `--profile` (a `cProfile`
 summary of one run of every case, sorted by cumulative and internal time),
-`--only CASE` (repeatable).
+`--only CASE` (repeatable), `--scale` (add the generated cases), and
+`--scale-size ci` (reduced generated inputs used only to test the harness).
 
 ### Method
 
-- **Inputs** are checked-in, git-tracked fixtures copied into a temporary
+- **Smoke inputs** are checked-in, git-tracked fixtures copied into a temporary
   directory before any measurement: `examples/payment-service` (its committed
   `glossabet-out/glossary.json` is the glossary), `evaluation/fixtures/
   language-semantics` (Python, Go, TypeScript, Rust, Ruby; its glossary is the
@@ -28,6 +36,10 @@ summary of one run of every case, sorted by cumulative and internal time),
   structural-complete`, and `evaluation/fixtures/structural-truncation` (both
   with committed `graphify-out/graph.json`). Fixture identity is therefore the
   repository commit.
+- **Scale inputs** are deterministically constructed under the same temporary
+  directory. The full sizes are 1,000 source files in 50 directories, 175
+  terminology terms, 750 compound glossary terms, and 60 Graphify communities
+  containing 1,440 nodes. No large generated fixture is committed.
 - **Cache** is confined to the temporary directory through
   `GLOSSABET_CACHE_DIR`; `evidence_cold` empties it before every repetition,
   `evidence_warm` runs against the cache the previous run left.
@@ -45,10 +57,11 @@ summary of one run of every case, sorted by cumulative and internal time),
   (corpus budget used, considered pairs, groups dropped, context omissions).
 
 There are deliberately no absolute timing assertions in CI: runners are
-heterogeneous and a threshold would only flake. The suite checks that the
-script runs and reports every case.
+heterogeneous and a threshold would only flake. The suite checks the quick
+default and a reduced, 40-file form of every scale generator, including each
+reported work/coverage ledger.
 
-### Cases
+### Smoke fixture cases
 
 - `evidence_cold` — payment-service: build_evidence(cache=True) with an empty cache
 - `evidence_warm` — payment-service: build_evidence(cache=True) with a warm cache
@@ -60,6 +73,19 @@ script runs and reports every case.
 - `graphify_truncated` — structural-truncation: build_structural_groups (groups capped)
 - `agent_context_lean` — payment-service: build_agent_context(full=False) + serialize
 - `agent_context_full` — payment-service: build_agent_context(full=True) + serialize
+
+### Generated scale cases
+
+- `scale_evidence_repository` — evidence generation over 1,000 small source
+  files distributed across 50 directories, below every corpus budget.
+- `scale_terminology_top_n` — 175 generated domain terms, enough to fill the
+  configured 150-token pairwise boundary.
+- `scale_compound_matching` — 750 compound terms against 2,000 identifier
+  entries, below the matching work budget.
+- `scale_graphify_group_cap` — 1,440 nodes, 1,380 edges, and 60 communities,
+  deliberately just beyond the 50-group output cap.
+- `scale_agent_context` — full context projection from the 1,000-file evidence
+  document.
 
 ## Baseline — Linux-6.17.0-35-generic-x86_64-with-glibc2.39, CPython 3.12.3, Glossabet 0.1.0
 
@@ -80,9 +106,44 @@ column is the same commit's reader before the change described below.
 | `agent_context_lean` | 10.4 | 100 | 100 | 17,594 | complete=False, omissions=4, projection=lean |
 | `agent_context_full` | 11.6 | 102 | 102 | 17,813 | complete=False, omissions=1, projection=full |
 
+## Generated scale observation — Linux-6.17.0-35-generic-x86_64-with-glibc2.39, CPython 3.12.3
+
+Measured 2026-08-22 on the same developer machine with `--scale --repeat 3`.
+These wall times include `tracemalloc` overhead and describe this environment,
+not other machines or future commits.
+
+| case | median ms | peak KiB | bytes | work/coverage evidence |
+|---|---:|---:|---:|---|
+| `scale_evidence_repository` | 4,209.27 | 20,849 | 1,263,767 | source_files=1,000, source_directories=50, source_bytes=89,816, source_files_complete=True, identifier_details=2,000 |
+| `scale_terminology_top_n` | 516.51 | 31 | 9,628 | eligible_tokens=177, considered_tokens=150, pair_top_n=150, considered_pairs=11,175, eligible_tokens_complete=False |
+| `scale_compound_matching` | 83.26 | 810 | 361 | glossary_terms=750, identifier_entries=2,000, match_starts=5,000, match_starts_processed=5,000, match_work_complete=True |
+| `scale_graphify_group_cap` | 201.87 | 1,600 | 80,394 | input_nodes=1,440, input_edges=1,380, input_communities=60, group_output_cap=50, groups_included=50, groups_dropped=10, groups_complete=False |
+| `scale_agent_context` | 277.30 | 3,106 | 137,867 | source_files=1,000, projection=full, projection_complete=False, omissions=4 |
+
+The two incomplete ledgers are expected and explicit: terminology received
+177 eligible terms but intentionally analyzed only its top 150, and Graphify
+retained 50 of 60 known communities. Repository traversal and compound
+matching remained complete. A profile of the same generated repository took
+1.92 seconds without traced-allocation measurement; 1.32 seconds was the
+bounded terminology analysis, chiefly its 11,175 pair comparisons. That is a
+visible cost at generated scale, but it is the intended fixed upper boundary,
+not an unbounded growth path or a material interactive defect. No production
+optimization was justified.
+
+## Self-scan observation
+
+Also measured 2026-08-22 with three repetitions over a temporary copy of the
+current Glossabet working tree. The copy explicitly excluded `.git`, the
+virtual environment, tool caches, and all dotenv filename variants; evidence
+generation used `cache=False`. The median with `tracemalloc` enabled was
+4,888.21 ms with a 21,274 KiB peak and a 4,288,581-byte serialized document.
+The ledger reported 152 source files, 2,032,272 source bytes, and a complete
+corpus. This is a changing-worktree observation, not a stable fixture or a
+performance gate.
+
 ## Findings
 
-**Time.** Every evidence build (~23 ms) is dominated by the two `git`
+**Smoke time.** Every fixture evidence build (~23 ms) is dominated by the two `git`
 subprocess calls of the freshness stamp (`repository_git_stamp`, ~6 ms of
 Python-side wait per call on this machine) and process start-up; the
 Python-side work — walk, extraction, tokenization, terminology, naming — is a

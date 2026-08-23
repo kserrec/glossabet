@@ -35,14 +35,14 @@ that could suggest affiliation. It is recorded here because a clearance
 opinion would at least consider it, and because a reader who notices the
 echo should find it already acknowledged rather than overlooked.
 
-The Phase 21 exit is **rename**: the source distribution, Python package and
+The completed decision is **rename**: the source distribution, Python package and
 import, command, agent skill, Codex plugin, configuration file, output
 directory, cache namespace, and documentation now use `glossabet`. Old
 `glossarize-out/` and `.glossarize/` directories remain ignored inputs so
 pre-rename local artifacts cannot contaminate a new scan; they are not read,
 migrated, or deleted.
 
-At the Phase 21 checkpoint, this source repository's configured Git remote was
+At the original rename checkpoint, this source repository's configured Git remote was
 still `git@github.com:kserrec/glossarize.git`, and Kyle's separate user
 installation at `~/.local/bin/glossarize` still reported version 0.0.1. Both
 were deliberately left unchanged during that phase. Later on 2026-08-15, with

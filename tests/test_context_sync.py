@@ -7,11 +7,11 @@ import stat
 import pytest
 
 import glossabet.agent.context_sync as context_sync
-from glossabet.agent.managed_block import END_MARKER, START_MARKER
 from glossabet.agent.managed_context import MAX_HOST_FILE_BYTES, inspect_managed_context
 from glossabet.analysis.evidence import build_evidence
 from glossabet.cli import main
 from glossabet.glossary.store import load_glossary, save_glossary
+from glossabet.managed_block import END_MARKER, START_MARKER
 
 GLOSSARY = {
     "schema_version": 1,
@@ -400,7 +400,7 @@ def test_managed_block_never_echoes_into_repository_evidence(tmp_path):
     assert "managedonlycanary" not in doc_terms
     assert "zanzibarquasar" not in doc_terms
 
-    from glossabet.agent.managed_block import strip_managed_context_for_evidence
+    from glossabet.managed_block import strip_managed_context_for_evidence
 
     ambiguous = synced + "\n" + synced  # two pairs: no single unambiguous region
     assert strip_managed_context_for_evidence("AGENTS.md", ambiguous) == ambiguous

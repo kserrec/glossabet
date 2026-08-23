@@ -7,8 +7,9 @@ on (never an error). This module owns the untrusted side of the adapter —
 the bounded read, the input-work budget judged before any materialization,
 node normalization with label bounds, provenance classification (nodes that
 trace to the glossary or Glossabet's own report are Glossabet's vocabulary
-echoing back, never structure), edge summary, and Git freshness. It knows
-nothing about groups, caps on output, or nominations.
+echoing back, never structure), edge summary, Git freshness, and the cohesive
+``GraphInput`` handed to group analysis. It knows nothing about group output
+caps or nominations.
 """
 
 from __future__ import annotations
@@ -43,6 +44,9 @@ MAX_NODE_LABEL_CHARS = 512
 # references, not millions; beyond this the graph is reported present but
 # unusable and the run proceeds lexical-only.
 GRAPH_WORK_BUDGET = 1_000_000
+# Label characters tokenized across all nodes. Labels are truncated before
+# this is judged, and group analysis memoizes tokenization once per node.
+GRAPH_LABEL_CHAR_BUDGET = 5_000_000
 _GLOSSARY_TYPES = frozenset({"glossary"})
 _DOCUMENT_TYPES = frozenset({"doc", "document", "paper", "markdown"})
 _DOCUMENT_SUFFIXES = frozenset({".md", ".rst", ".txt", ".pdf"})
@@ -52,7 +56,7 @@ _GLOSSARY_OUTPUT_DIRS = frozenset({"glossabet-out", "glossarize-out"})
 _GLOSSARY_FILES = frozenset({"glossary.md", REPORT_FILE.casefold()})
 
 
-def _first_value(mapping: Mapping[str, object], keys: Sequence[str]) -> object:
+def first_value(mapping: Mapping[str, object], keys: Sequence[str]) -> object:
     """The first present, *non-empty* value among ``keys``: an empty label
     falls through to the name/id — emptiness is absence for every field read
     here. ``_first_str`` / ``_first_list`` add the type requirement."""
@@ -67,7 +71,7 @@ def _first_value(mapping: Mapping[str, object], keys: Sequence[str]) -> object:
 
 
 def _first_str(mapping: Mapping[str, object], keys: Sequence[str]) -> str | None:
-    """``_first_value`` restricted to non-empty strings."""
+    """``first_value`` restricted to non-empty strings."""
     for key in keys:
         value = mapping.get(key)
         if isinstance(value, str) and value:
@@ -78,7 +82,7 @@ def _first_str(mapping: Mapping[str, object], keys: Sequence[str]) -> str | None
 def _first_list(
     mapping: Mapping[str, object], keys: Sequence[str]
 ) -> list[object] | None:
-    """``_first_value`` restricted to non-empty lists (an empty ``links``
+    """``first_value`` restricted to non-empty lists (an empty ``links``
     list falls through to a legacy ``edges`` list)."""
     for key in keys:
         value = mapping.get(key)
@@ -93,7 +97,7 @@ class _NodeCache(TypedDict, total=False):
     tokens: list[str]
 
 
-class _Node(_NodeCache):
+class GraphNode(_NodeCache):
     """One normalized graph node: a bounded label, its provenance class,
     and the raw community attributes the fallback grouping reads."""
 
@@ -111,6 +115,26 @@ class _LoadedGraph:
 
     document: dict[str, object]
     nodes: list[object]
+
+
+@dataclass(frozen=True)
+class GraphInput:
+    """One normalized, non-serialized handoff to Graphify group analysis.
+
+    Empty ``nodes`` represents absent or unusable input. ``present`` and
+    ``warnings`` preserve why it is empty. Only the community payload still
+    needed to construct groups crosses the hostile-input boundary; edges,
+    provenance, freshness, and node shape have already been normalized.
+    """
+
+    present: bool
+    nodes: dict[str, GraphNode]
+    communities: list[object] | None
+    degree: Counter[str]
+    edge_count: int
+    glossary_nodes: frozenset[str]
+    freshness: FreshnessRecord | None
+    warnings: tuple[str, ...]
 
 
 def _load_graph(root: Path) -> tuple[_LoadedGraph | None, bool, list[str]]:
@@ -278,16 +302,16 @@ def _freshness(
     }
 
 
-def _normalize_nodes(graph: _LoadedGraph) -> dict[str, _Node]:
-    nodes: dict[str, _Node] = {}
+def _normalize_nodes(graph: _LoadedGraph) -> dict[str, GraphNode]:
+    nodes: dict[str, GraphNode] = {}
     for raw in graph.nodes:
         if not isinstance(raw, dict):
             continue
-        node_id = _first_value(raw, ("id", "name"))
+        node_id = first_value(raw, ("id", "name"))
         if node_id is None:
             continue
         node_id = str(node_id)
-        label = str(_first_value(raw, ("label", "name", "id")))
+        label = str(first_value(raw, ("label", "name", "id")))
         nodes[node_id] = {
             "label": label[:MAX_NODE_LABEL_CHARS],
             "label_truncated": len(label) > MAX_NODE_LABEL_CHARS,
@@ -300,7 +324,7 @@ def _normalize_nodes(graph: _LoadedGraph) -> dict[str, _Node]:
 
 def _edge_summary(
     graph: Mapping[str, object],
-    nodes: Mapping[str, _Node],
+    nodes: Mapping[str, GraphNode],
     excluded_nodes: set[str],
 ) -> tuple[Counter[str], int]:
     degree: Counter[str] = Counter()
@@ -309,8 +333,8 @@ def _edge_summary(
     for edge in links:
         if not isinstance(edge, dict):
             continue
-        source = _first_value(edge, ("source", "from", "a"))
-        target = _first_value(edge, ("target", "to", "b"))
+        source = first_value(edge, ("source", "from", "a"))
+        target = first_value(edge, ("target", "to", "b"))
         if source is None or target is None:
             continue
         source, target = str(source), str(target)
@@ -324,3 +348,70 @@ def _edge_summary(
             degree[target] += 1
             edge_count += 1
     return degree, edge_count
+
+
+def load_graph_input(
+    root: Path, git_stamp: Mapping[str, object] | None = None
+) -> GraphInput:
+    """Boundedly load and normalize the Graphify input for group analysis."""
+    graph, present, warnings = _load_graph(root)
+    if graph is None:
+        return GraphInput(
+            present=present,
+            nodes={},
+            communities=None,
+            degree=Counter(),
+            edge_count=0,
+            glossary_nodes=frozenset(),
+            freshness=None,
+            warnings=tuple(warnings),
+        )
+
+    nodes = _normalize_nodes(graph)
+    if not nodes:
+        return GraphInput(
+            present=True,
+            nodes={},
+            communities=None,
+            degree=Counter(),
+            edge_count=0,
+            glossary_nodes=frozenset(),
+            freshness=None,
+            warnings=tuple(warnings + [
+                f"{GRAPH_PATH}: nodes carry no usable ids — proceeding lexical-only"
+            ]),
+        )
+
+    label_chars = sum(len(node["label"]) for node in nodes.values())
+    if label_chars > GRAPH_LABEL_CHAR_BUDGET:
+        return GraphInput(
+            present=True,
+            nodes={},
+            communities=None,
+            degree=Counter(),
+            edge_count=0,
+            glossary_nodes=frozenset(),
+            freshness=None,
+            warnings=tuple(warnings + [
+                f"{GRAPH_PATH}: {label_chars} node-label characters exceed the "
+                f"adapter's tokenizing budget of {GRAPH_LABEL_CHAR_BUDGET} — "
+                "proceeding lexical-only"
+            ]),
+        )
+
+    glossary_nodes = frozenset(
+        node_id for node_id, node in nodes.items() if node["prov"] == "glossary"
+    )
+    degree, edge_count = _edge_summary(graph.document, nodes, set(glossary_nodes))
+    raw_communities = graph.document.get("communities")
+    communities = raw_communities if isinstance(raw_communities, list) else None
+    return GraphInput(
+        present=True,
+        nodes=nodes,
+        communities=communities,
+        degree=degree,
+        edge_count=edge_count,
+        glossary_nodes=glossary_nodes,
+        freshness=_freshness(graph.document, git_stamp),
+        warnings=tuple(warnings),
+    )

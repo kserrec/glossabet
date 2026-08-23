@@ -19,7 +19,10 @@ from pathlib import Path
 from typing import Literal, TypedDict
 
 from glossabet.agent.brief import build_managed_brief
-from glossabet.agent.managed_block import (
+from glossabet.corpus.scanner import entry_named_exactly
+from glossabet.glossary.model import GlossaryDocument
+from glossabet.glossary.store import glossary_sha256
+from glossabet.managed_block import (
     AGENT_TARGETS,
     BLOCK_RE,
     END_MARKER,
@@ -28,9 +31,6 @@ from glossabet.agent.managed_block import (
     METADATA_RE,
     START_MARKER,
 )
-from glossabet.corpus.scanner import entry_named_exactly
-from glossabet.glossary.model import GlossaryDocument
-from glossabet.glossary.store import glossary_sha256
 from glossabet.runtime.display import escape_terminal_text
 
 MANAGED_CONTEXT_SCHEMA_VERSION = 1

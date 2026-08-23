@@ -6,182 +6,106 @@ All notable changes to Glossabet are recorded here. The format follows
 
 ## 0.1.0 - Unreleased
 
-This first alpha is prepared but has not been published to PyPI.
+Glossabet 0.1.0 is an unreleased source alpha under owner self-testing. It has
+not been published to PyPI or a public plugin directory.
 
 ### Added
 
-- `GLOSSABET.md`, the repository vocabulary-health report: the skill writes
-  Glossabet's analysis (gaps, overloads, suspected synonyms, drift,
-  glossary/code disagreement, structural findings, proposals, open
-  questions, coverage limits) at the scan root as one refreshed report,
-  separate from the canonical `GLOSSARY.md` and the structured
-  `glossabet-out/glossary.json`. The engine excludes it from lexical
-  evidence at any depth (`skipped.self_reports`) and from the freshness
-  stamp at the root; `GLOSSARY.md` stays visible to freshness.
-- `glossabet cache-clear`: removes only Glossabet's own user-cache layout,
-  never follows symlinks, and reports anything unrecognized it left in place.
-- `glossabet brief` output opens with an origin line stating it was emitted
-  by `glossabet brief .` and that an installed `SessionStart` hook injects it
-  into agent context automatically; the `sync-context` managed block carries
-  its own origin line.
-- `CONTRIBUTING.md` (Apache-2.0 inbound, Developer Certificate of Origin
-  sign-off) and a README "Provenance and affiliation" section (independent
-  project; not affiliated with OpenAI, Anthropic, GitHub, or Graphify Labs;
-  developed with AI coding assistants under human review).
-- Claude Code ambient parity: `glossabet install --agent claude` makes the
-  personal skill folder a skills-directory plugin with a `SessionStart` hook
-  that runs `brief .`, writing nothing outside that folder; `--skill-only`
-  opts out.
-- Deterministic lexical repository evidence with explicit scope, budgets,
-  Git freshness, incremental caching, and optional Graphify structure.
-- Terminology nominations, persistent human-governed glossaries, vocabulary
-  drift checks, scoped concepts, stable bindings, and reconciliation reports.
-- Unicode-aware lexical normalization and a reproducible calibration corpus
-  with documented limitations and release thresholds.
-- Labelled Graphify structural and truncation fixtures, a blinded
-  second-reviewer lane, and a 14-scenario installed-Codex boundary harness
-  with bounded traces and exact temporary-plugin cleanup.
-- Conservative source-language builtin tagging (currently Python) that retains
-  complete lexical evidence while reserving terminology and naming budgets for
-  project-domain vocabulary.
-- Self-accounting house-register statistics that separate structurally styled
-  names from corroborated flat spellings, exclude language/prose noise with
-  explicit reasons, and carry a labelled dominant-style/multi-word evaluation
-  across the pinned corpus and Glossabet itself.
-- Distinctive term nominations that require explicit domain tags, reuse the
-  existing compound-pattern and bounded context-dispersion evidence, label
-  canonical-name versus disambiguation intent, and carry an exact
-  repository-level evaluation gate without making naming decisions for the
-  human.
-- Pre-existing `GLOSSARY.md` adoption: the engine discovers a repository's
-  own root `GLOSSARY.md` as a separate metadata-only `repository_glossary`
-  context channel (presence, safe-read status with a named reason, size,
-  SHA-256, nested files reported but never consulted) while keeping it out
-  of lexical evidence at every depth; the skill distinguishes no-glossary /
-  adoption / resume / managed states, forms its own naming baseline before
-  reading the document, reconciles into named categories, promotes nothing
-  to canonical without the human, and never regenerates a maintainer-owned
-  `GLOSSARY.md` wholesale (schema-v3 agent context). With both files present,
-  `inspect` and `validate` (validation schema 8) add a bounded lexical
-  term-presence divergence check — canonical terms absent from the Markdown
-  and superseded aliases still present — never a meaning comparison.
-- A compact schema-v2 routine agent context with vocabulary module rollups,
-  file locations only on nomination/read targets, an 80 KB self-repository
-  regression target, explicit projection omissions, and `inspect --full` for
-  the former detailed diagnostic shape.
-- A deterministic `glossabet brief` command that reads only validated glossary
-  state plus the hardened Git stamp and emits at most 4 KB of read-only
-  canonical vocabulary with explicit projection coverage.
-- An explicit `glossabet sync-context` fallback that persists one
-  semantic-glossary-stamped managed block in root `AGENTS.md` (Codex default)
-  or root `CLAUDE.md` (explicit Claude target), plus read-only stale/edit checks
-  in drift and validation.
-- The canonical agent skill and `glossabet install` for current Codex and
-  Claude Code personal skill locations.
-- A version-coupled Codex plugin prototype carrying the canonical skill and a
-  matching dependency-free CLI wheel, plus real install/update/remove smoke
-  coverage on Codex CLI 0.147.0 for Linux.
-- A Codex `SessionStart` hook that runs the bundled bounded `brief .` command
-  at startup, resume, clear, and compaction, contributes nothing without a
-  glossary, and keeps all vocabulary changes behind the human-invoked skill.
-- A self-contained payment-service walkthrough, privacy/data-flow statement,
-  multi-platform CI, distribution validation, and wheel install/uninstall
-  smoke test.
+- A standard-library `glossabet` CLI with `scan`, `analyze`, `inspect`,
+  `brief`, `show`, `save`, `drift`, `validate`, `sync-context`, `cache-clear`,
+  and `install` commands.
+- Deterministic lexical repository evidence with path-role configuration,
+  Unicode-aware identifier tokenization, approximate imports, production and
+  documentation vocabulary, naming candidates, terminology signals,
+  monorepo detection, hardened Git freshness, explicit work budgets, and
+  omission ledgers.
+- A user-owned content-digest extraction cache and a conservative cleanup
+  command that removes only recognized Glossabet cache entries.
+- Optional Graphify adaptation with bounded tolerant normalization, provenance
+  discounting, freshness states, structural groups, structural naming
+  candidates, and lexical-only fallback for absent or unusable input.
+- A validated human-governed structured glossary with scoped concepts,
+  aliases, bindings, semantic hashes, atomic persistence, drift reports, and
+  glossary/evidence/structure reconciliation.
+- Safe discovery of a maintainer-owned root `GLOSSARY.md`. It remains outside
+  lexical evidence and is surfaced to the skill as metadata; validation can
+  report bounded lexical term-presence divergence without comparing meaning.
+- A derived root `GLOSSABET.md` vocabulary-health report written by the skill
+  and excluded from future evidence so its proposals cannot support
+  themselves.
+- A bounded schema-v3 agent context with lean and full projections, plus a
+  deterministic 4 KiB `brief` containing canonical vocabulary only.
+- Explicit managed-context synchronization into one marked block in root
+  `AGENTS.md` or `CLAUDE.md`, with read-only stale/edit detection in drift and
+  validation.
+- The canonical `/glossabet` / `$glossabet` skill: deterministic evidence and
+  relevant production files ground a three-ranked-name brainstorm, while the
+  human decides what becomes canonical. The engine validates saved data but
+  cannot verify that approval occurred.
+- Standalone Codex/Claude skill installation and a Claude skills-directory
+  plugin option with a SessionStart brief hook; differing existing files are
+  preserved unless `--force` is explicit.
+- A version-coupled Codex plugin containing the canonical skill, bounded
+  SessionStart hook, digest-checking runner, and one dependency-free wheel.
+- Reproducible deterministic, installed-agent, Claude-host, and blinded
+  reviewer evidence with digest-bound results and append-only live-attempt
+  histories.
+- A labelled calibration corpus, multilingual lexical fixture, complete and
+  truncating structural fixtures, generated scale benchmarks, user
+  walkthrough, supported Python 3.10–3.14 operating-system matrix, and
+  distribution/wheel/plugin smoke checks.
+- Apache-2.0 licensing, DCO contribution terms, privacy and threat-model
+  documentation, provenance disclosure, and explicit non-affiliation with
+  OpenAI, Anthropic, GitHub, and Graphify Labs.
 
 ### Changed
 
-- Documentation states honestly that "the human decides what becomes
-  canonical" is an instruction to the `/glossabet` skill, not a mechanical
-  guarantee: `glossabet save` validates structure and trusts its caller. The
-  skill's Step 6 now tells the user every time it finalizes that
-  `glossabet-out/glossary.json` must be committed. `NAME-CLEARANCE.md`
-  records the name's true derivation (Amharic *bet*, "house") as a dated
-  correction. `RELEASING.md` gains a manual claims-consistency checklist.
-- Internal restructuring with no behaviour change (every command's output on
-  the local corpus fixtures is byte-identical): the hardened Git stamp and
-  freshness pathspec live in `glossabet.git_state`; one bounded read
-  discipline (`read_bounded_json` / `read_bounded_bytes`, `cap + 1` bytes,
-  named outcomes) replaces five stat-then-read copies; the scanner owns an
-  exclusion ledger; the managed host-file block lives beneath both its
-  users; the production identifier vocabulary is one public aggregate
-  (`ProductionVocabulary`) instead of parallel dicts; drift and validation
-  share one findings-document module and renderer; the evidence hub is
-  split into assembly (`evidence`), per-file extraction with cache reuse
-  (`extraction`), and the `scan`/`analyze` handlers and printer
-  (`evidence_report`), with production doc words folded into a
-  `DocumentationVocabulary`; one command preamble (`engine_run.open_run`)
-  decides for every command whether a glossary is needed and reports a
-  missing directory or bad/absent glossary in one style, and the `show`/
-  `save` commands move out of the glossary model into `glossary_commands`;
-  the four documents keep their JSON shapes but gain read-side accessors
-  (`EvidenceView`, `FindingsDocumentView` with `DriftView` /
-  `ValidationView`) so no consumer outside the owning module spells a
-  document key; managed-context inspection (render, safe read, analysis,
-  printer) lives in `managed_context` beneath the `sync-context` command,
-  so drift and validation no longer import a command module; every
-  "cap this list and say so" ledger goes through
-  `coverage.capped_collection` / `capped_section`, and skipped or
-  scope-limited validation sections through `findings.empty_section`.
-- The pre-release working identity was renamed atomically from Glossarize to
-  Glossabet across the package, import, command, skill, artifacts,
-  configuration, cache, tests, and documentation. Pre-rename output/cache
-  directories remain excluded inputs and are never migrated or deleted.
-- The hosted repository, configured remote, package project links, and private
-  security-report URL now use `kserrec/glossabet`. The version-coupled plugin
-  wheel and installed-agent evidence were regenerated against that exact
-  metadata; executable wheel entries did not change.
-- Installed-agent plugin identity now excludes interpreter-generated
-  `__pycache__` directories. A clean GitHub Actions checkout proved that the
-  previous identity could bind ignored local bytecode; the replacement matrix
-  then proved that sorting native `Path` objects produced a different mixed-case
-  file order on Windows. Identity now sorts canonical POSIX relative-path
-  strings, with focused regressions for both clean-checkout and cross-platform
-  parity. Public-main CI for commit `2be99b6` passed all 15 Python/operating-
-  system matrix jobs plus the evidence, build, and distribution-smoke job.
-- The checked-in plugin wheel and canonical skill carry the same Phase 28.2
-  engine as the standalone source tree. Installed-agent evidence now separates
-  a deterministic current-artifact/safety gate from stochastic command-choice
-  reliability. The append-only Phase 28.1 ledger retains all six authorized
-  attempts—four procedural passes and two failures—instead of selecting a
-  green retry; future full runs use unique raw paths and record preflight
-  aborts. Result schema v4 also derives the standalone-boundary summary from
-  its scenario, correcting the unconditional legacy-v3 field without rewriting
-  the retained historical result.
-- Installed-agent evidence now archives every new authenticated raw result
-  under a unique immutable path and treats `evaluation/agent-results.json` as
-  a current-result mirror accepted only when its SHA-256 matches retained
-  history and its complete input identity matches the current artifact.
-  Phase 28.2 adds a separate fresh-session hook probe before the existing
-  plugin and isolated missing-CLI host runs. Both authorized 12/12 batches
-  passed on Codex CLI 0.147.0/Linux; the replacement result binds the final
-  metadata-only rebuilt wheel, and both removed all temporary host state.
-
-- Bounded analysis collections now share exact coverage ledgers; terminology,
-  naming, Graphify, drift, and validation propagate every known omission.
-- Graphify reconciliation matches complete member-token sets with exact
-  provenance classification, and downstream glossary checks use bounded
-  indexes, capped overload-dispersion work, and streamed boundary accounting
-  instead of unbounded cross-product scans.
-- CI and manual publication now share one full supported-platform quality gate;
-  policy mutation tests prevent matrix or dependency-chain weakening.
-- Evaluation results now identify the current engine and every corpus by
-  digest; release checks recompute local structural evidence, aggregates, and
-  thresholds and reject stale or weakened deterministic, installed-agent, or
-  second-reviewer evidence.
-- Hatchling is constrained to the reviewed 1.32.x build-only line; pytest
-  remains the sole development dependency and the wheel remains dependency-free.
+- Internal architecture now uses feature-oriented packages and an honest
+  infrastructure boundary. Command orchestration lives in
+  `glossabet.command_run`; the dependency-free managed-block format lives in
+  `glossabet.managed_block`; runtime modules import no domain features.
+- Typed evidence documents are read directly. Only compatibility-tolerant and
+  derived evidence meaning remains in `analysis.evidence_facts`, and the
+  dynamic finding-section view remains where it supplies real narrowing.
+- Graphify input normalization crosses into group construction through one
+  frozen `GraphInput` result. Reconciliation consumes named `BindingFindings`,
+  `StructuralValidation`, and `GraphStatus` results instead of long positional
+  tuples or private sibling operations.
+- Removed unused JSON/runtime wrappers, trivial document views, source-shape
+  key ratchets, obsolete type-contract tests, and construction-phase comments.
+  Persisted schemas and command behavior remain unchanged.
+- Workflow policy now uses PyYAML 6.0.3 for real YAML parsing, actionlint
+  1.7.12 for standard GitHub Actions validation, and a smaller checker for
+  Glossabet-specific matrix, dependency, permission, pin, credential, and
+  release invariants.
+- Performance coverage separates fast default smoke measurements from
+  generated opt-in scale cases. No production optimization was made without a
+  measured bottleneck.
+- Active documentation now describes the current artifact. Completed plans,
+  refactor specifications, and stale handoffs are preserved and clearly
+  labelled under `docs/history/`.
+- The pre-publication working identity was renamed from Glossarize to
+  Glossabet. Current package, command, artifact, cache, configuration, plugin,
+  repository, and documentation surfaces use Glossabet; historical records
+  may retain the former name.
 
 ### Security
 
-- Repository-controlled reads and writes are bounded and symlink-safe;
-  sensitive paths are excluded without claiming content-level secret
-  scanning; target Git configuration cannot name executable hooks or monitors.
-- Skill installation preserves a differing existing file unless `--force` is
-  explicit and refuses symlinked destination components.
-- Managed context targets are fixed, regular bounded UTF-8 files; symlinks and
-  ambiguous markers are refused, surrounding bytes/mode are preserved,
-  atomic failure and detected concurrent edits keep the prior file, and edited
-  managed content requires explicit `--force`.
-- Synchronized glossary blocks are excluded from lexical evidence, with cache
-  schema 4 invalidating pre-exclusion entries so ambient context cannot echo
-  canonical words back into drift.
+- Repository code is treated as hostile static text and is never imported or
+  executed. Production contains no network capability or shell invocation.
+- Repository-controlled reads and writes are root-confined, bounded, and
+  symlink-aware; direct control/artifact paths reject symlink components;
+  writes use same-directory atomic replacement.
+- Sensitive-path exclusions cover dotenv variants and common credential/key
+  names without claiming content-level secret scanning.
+- Corpus, vocabulary, matching, Graphify, finding, brief, and context limits
+  expose coverage ledgers, reasons, and lower-bound semantics.
+- Repository-controlled terminal text is escaped; glossary strings reject
+  terminal controls, bidirectional formatting, invisible format characters,
+  and lone surrogates.
+- Git freshness disables repository hooks, monitors, and content filters,
+  removes repository-selection environment overrides, disables prompts, and
+  uses a timeout.
+- Managed host files and installed skill/plugin files preserve differing or
+  ambiguous state, detect ordinary concurrent changes where documented, and
+  never follow an existing final-target symlink.

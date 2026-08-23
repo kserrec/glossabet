@@ -5,7 +5,7 @@ is deliberately tolerant: the adapter extracts only shapes it recognizes and
 degrades to lexical-only with a warning otherwise (never an error). Nodes
 whose provenance traces to the glossary are discounted everywhere, so the
 settled vocabulary cannot echo back through the graph as fake structural
-support (PLAN principle 3). Graphify's artifacts are read, never written.
+support. Graphify's artifacts are read, never written.
 
 This module is the stable facade: input adaptation lives in
 ``graphify_input`` and group analysis in ``graphify_groups``. Tests that
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from glossabet.analysis.graphify_groups import (
     GOD_NODE_CAP,
-    GRAPH_LABEL_CHAR_BUDGET,
     GROUP_CAP,
     MAX_USABLE_COHESION,
     MEMBER_SAMPLE,
@@ -27,6 +26,7 @@ from glossabet.analysis.graphify_groups import (
     structure_candidates,
 )
 from glossabet.analysis.graphify_input import (
+    GRAPH_LABEL_CHAR_BUDGET,
     GRAPH_PATH,
     GRAPH_WORK_BUDGET,
     MAX_NODE_LABEL_CHARS,

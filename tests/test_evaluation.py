@@ -49,9 +49,8 @@ def test_manifest_pins_licensed_varied_sources():
         "dominant_style": "snake_case",
         "predominantly_multi_word": True,
     }
-    # Re-labelled deliberately in Phase 39 (layer subpackages): `coverage`
-    # has three referents (ledger, corpus completeness, context omissions),
-    # `run` stopped being a generic-only token once `engine_run.Run` existed,
+    # `coverage` has three referents (ledger, corpus completeness, context omissions),
+    # `run` stopped being a generic-only token once `command_run.Run` existed,
     # and `structural` is an adjective whose noun is `structural_groups`.
     # `drift` keeps its truthful label and is the recorded open finding.
     assert manifest["self_nominations"] == {
@@ -110,8 +109,8 @@ def test_local_calibration_case_runs_without_network(tmp_path):
     assert result["self_register"]["actual"]["dominant_style"] == "snake_case"
     assert result["self_register"]["actual"]["predominantly_multi_word"] is True
     assert result["aggregate"]["quality"]["register_accuracy"] == 1.0
-    # Open finding (PLAN Phase 39): the dispersion heuristic reads `drift`'s
-    # call-site diversity across layer subpackages as meaning diversity and
+    # Open finding: the dispersion heuristic reads `drift`'s call-site
+    # diversity across feature packages as meaning diversity and
     # types it `deserves disambiguation`; the label stays truthful, so this
     # one check is expected to fail until a heuristic phase resolves it.
     assert result["self_nominations"]["passed"] is False

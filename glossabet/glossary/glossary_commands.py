@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 
+from glossabet.command_run import GLOSSARY_OPTIONAL, open_run
 from glossabet.glossary.model import ConceptRecord, GlossaryDocument
 from glossabet.glossary.store import (
     GLOSSARY_FILE,
@@ -19,7 +20,6 @@ from glossabet.runtime.artifacts import (
     parse_bounded_json,
 )
 from glossabet.runtime.display import escape_terminal_text, join_escaped, print_error
-from glossabet.runtime.engine_run import GLOSSARY_OPTIONAL, open_run
 
 
 def show_command(path_arg: str) -> int:

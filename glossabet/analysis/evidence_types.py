@@ -10,8 +10,9 @@ tokenization contract) rather than redeclaring its keys. Sections produced
 by this layer's analyses (vocabulary tables, terminology, naming candidates,
 structural groups) are declared here and returned by their producers.
 
-``evidence.py`` assembles an ``EvidenceDocument``; ``evidence_view.py`` is
-the read boundary every other module goes through.
+``evidence.py`` assembles an ``EvidenceDocument``. Consumers read its known
+fields directly; ``evidence_facts.py`` owns the few compatibility-tolerant or
+derived interpretations.
 """
 
 from __future__ import annotations

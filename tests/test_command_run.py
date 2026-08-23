@@ -1,20 +1,17 @@
-"""The run contract (Phase 36.2): one preamble decides, for every
-repository command, whether a glossary is needed and how a bad or missing
-one is reported. These cases replace the per-command repeats of
-``main([...]) == 1`` + a stderr substring."""
+"""One preamble decides each repository command's glossary policy."""
 
 import json
 
 import pytest
 
 from glossabet.cli import EXIT_USER_ERROR, main
-from glossabet.glossary.store import save_glossary
-from glossabet.runtime.engine_run import (
+from glossabet.command_run import (
     GLOSSARY_OPTIONAL,
     GLOSSARY_REQUIRED,
     RunError,
     open_run,
 )
+from glossabet.glossary.store import save_glossary
 
 GLOSSARY = {
     "schema_version": 1,

@@ -12,11 +12,13 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from itertools import combinations, islice
-from typing import TypedDict
 
 from glossabet.analysis.evidence_types import StructuralGroup, StructuralGroups
 from glossabet.glossary import findings
-from glossabet.glossary.binding_validation import _ConceptVocab, _tokens
+from glossabet.glossary.binding_validation import (
+    ConceptVocabulary,
+    vocabulary_tokens,
+)
 from glossabet.glossary.findings import (
     FindingSection,
     HeuristicFinding,
@@ -44,21 +46,23 @@ _match_strength_from_tokens = structural_match_strength
 
 
 def _group_match_contexts(
-    structural: StructuralGroups, canonical: list[ConceptRecord], vocab: _ConceptVocab
+    structural: StructuralGroups,
+    canonical: list[ConceptRecord],
+    vocabulary: ConceptVocabulary,
 ) -> tuple[list[tuple[StructuralGroup, set[str], set[str], list[str]]], int]:
     """Per structural group: (group, label tokens, label+member tokens,
     candidate concept ids reached through an inverted token index), sorted
     by label then id; plus how many groups lacked complete member_tokens."""
     token_index: dict[str, set[str]] = defaultdict(set)
     for concept in canonical:
-        term_tokens, binding_tokens = vocab[concept["id"]]
-        for token in term_tokens | binding_tokens:
+        words = vocabulary[concept["id"]]
+        for token in words.term_tokens | words.binding_tokens:
             token_index[token].add(concept["id"])
 
     contexts: list[tuple[StructuralGroup, set[str], set[str], list[str]]] = []
     missing_member_tokens = 0
     for group in structural["groups"]:
-        label_tokens = _tokens(group["label"])
+        label_tokens = vocabulary_tokens(group["label"])
         raw_member_tokens = group.get("member_tokens")
         if isinstance(raw_member_tokens, list):
             member_tokens = {
@@ -68,7 +72,7 @@ def _group_match_contexts(
             missing_member_tokens += 1
             member_tokens = set()
             for member in group.get("members_sample", []):
-                member_tokens |= _tokens(member)
+                member_tokens |= vocabulary_tokens(member)
         combined = label_tokens | member_tokens
         candidate_ids = sorted({
             concept_id
@@ -118,7 +122,7 @@ def _structural_incompleteness(
 def _structure_findings(
     structural: StructuralGroups,
     canonical: list[ConceptRecord],
-    vocab: _ConceptVocab,
+    vocabulary: ConceptVocabulary,
     upstream_reasons: list[str],
     policy: ReconciliationPolicy = DEFAULT_RECONCILIATION_POLICY,
 ) -> tuple[FindingSection, FindingSection, FindingSection, CoverageLedger]:
@@ -129,7 +133,7 @@ def _structure_findings(
     matching many concepts never materializes every pair.
     """
     contexts, missing_member_tokens = _group_match_contexts(
-        structural, canonical, vocab
+        structural, canonical, vocabulary
     )
 
     total_match_work = sum(len(item[3]) for item in contexts)
@@ -148,7 +152,10 @@ def _structure_findings(
         partial_group_matches |= not group_complete
         strengths = {
             concept_id: _match_strength_from_tokens(
-                label_tokens, combined, *vocab[concept_id]
+                label_tokens,
+                combined,
+                vocabulary[concept_id].term_tokens,
+                vocabulary[concept_id].binding_tokens,
             )
             for concept_id in evaluated_ids
         }
@@ -214,14 +221,8 @@ def _structure_findings(
 
 
 
-class _StructuralSections(TypedDict):
-    unnamed_structure: FindingSection
-    boundary_mismatch: FindingSection
-    overloaded_structural_region: FindingSection
-
-
 @dataclass(frozen=True)
-class _GraphStatus:
+class GraphStatus:
     """What validation needs to know about the Graphify structure once."""
     usable: bool
     groups_dropped: int
@@ -236,7 +237,7 @@ class _GraphStatus:
         return self.skip_reason
 
 
-def _graph_status(structural: StructuralGroups) -> _GraphStatus:
+def _graph_status(structural: StructuralGroups) -> GraphStatus:
     usable = bool(structural.get("available"))
     groups_dropped = int(structural.get("groups_dropped", 0))
     if usable:
@@ -245,7 +246,7 @@ def _graph_status(structural: StructuralGroups) -> _GraphStatus:
         skip_reason = "Graphify graph present but no usable structural groups loaded"
     else:
         skip_reason = "Graphify graph absent; structural checks require it"
-    return _GraphStatus(
+    return GraphStatus(
         usable=usable,
         groups_dropped=groups_dropped,
         groups_complete=(
@@ -256,17 +257,28 @@ def _graph_status(structural: StructuralGroups) -> _GraphStatus:
     )
 
 
-def _structural_sections(
+@dataclass(frozen=True)
+class StructuralValidation:
+    """Named structure-to-glossary sections, work, and graph state."""
+
+    unnamed_structure: FindingSection
+    boundary_mismatch: FindingSection
+    overloaded_structural_region: FindingSection
+    matching_coverage: CoverageLedger
+    graph: GraphStatus
+
+
+def build_structural_validation(
     structural: StructuralGroups,
-    graph: _GraphStatus,
     global_canonical: list[ConceptRecord],
     scoped_canonical: list[ConceptRecord],
-    vocab: _ConceptVocab,
+    vocabulary: ConceptVocabulary,
     policy: ReconciliationPolicy,
-) -> tuple[_StructuralSections, CoverageLedger]:
+) -> StructuralValidation:
     """The three structure -> glossary sections with their skipped/partial
     flags, plus the match-work ledger. Path-scoped concepts cannot be
     matched against normalized Graphify groups, which carry no paths."""
+    graph = _graph_status(structural)
     scoped_structure_reason = (
         "path-scoped concepts omitted because normalized Graphify groups do "
         "not carry repository paths"
@@ -280,7 +292,7 @@ def _structural_sections(
     )
     if graph.usable:
         unnamed, boundary, overloaded, structural_work = _structure_findings(
-            structural, global_canonical, vocab, structural_source_reasons,
+            structural, global_canonical, vocabulary, structural_source_reasons,
             policy,
         )
     else:
@@ -308,8 +320,8 @@ def _structural_sections(
             "partial_reason": "; ".join(ledger["reasons"]) if partial else None,
         }
 
-    sections: _StructuralSections = {
-        "unnamed_structure": with_flags(
+    return StructuralValidation(
+        unnamed_structure=with_flags(
             unnamed,
             skipped=not graph.usable or unnamed_scope_limited,
             skip_reason=(
@@ -317,12 +329,12 @@ def _structural_sections(
                 else graph.skip_reason
             ),
         ),
-        "boundary_mismatch": with_flags(
+        boundary_mismatch=with_flags(
             boundary, skipped=not graph.usable, skip_reason=graph.skip_reason
         ),
-        "overloaded_structural_region": with_flags(
+        overloaded_structural_region=with_flags(
             overloaded, skipped=not graph.usable, skip_reason=graph.skip_reason
         ),
-    }
-    return sections, structural_work
-
+        matching_coverage=structural_work,
+        graph=graph,
+    )

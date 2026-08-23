@@ -31,7 +31,7 @@ def test_failed_atomic_commit_preserves_existing_document(
     assert not list(path.parent.glob(".evidence.json.*.tmp"))
 
 
-# --- the one bounded read discipline (Phase 35.2) ---------------------------
+# --- the one bounded-read discipline --------------------------------------
 
 
 def test_read_bounded_json_outcomes_are_named_and_bound_is_judged_from_bytes(

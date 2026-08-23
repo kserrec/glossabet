@@ -1,6 +1,6 @@
 name: Supported-platform quality gate
 
-on:
+"on":
   workflow_call:
 
 permissions:
@@ -41,9 +41,15 @@ jobs:
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: "0.11.33"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.25.x"
+          cache: false
       - run: uv sync --locked --python "3.10"
       - run: uv run --locked ruff check .
       - run: uv run --locked mypy glossabet
+      - run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+      - run: actionlint
 
   package:
     name: Verify evidence, build, and smoke-test distributions
