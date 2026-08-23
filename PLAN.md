@@ -192,14 +192,49 @@ step and stops); each pass ends green with no recorded-evidence change.
   `ValidationDocument`). Formulas moved verbatim; three shadowed locals in
   `run.py` renamed. `tests/test_deterministic_lane.py` proves scoring is
   pure and sources spawn only safe-configured `git`.
-- [ ] Pass 8 — split deterministic aggregation, verification, and CLI; thin
-  wrapper.
+- [x] Pass 8 — split deterministic aggregation, verification, and CLI
+  (2026-08-22). `evaluation/deterministic/results.py` (aggregate,
+  thresholds, genuineness, currency, `verify_results`), `runner.py`
+  (per-source evaluation and run composition), `cli.py`; `evaluation/run.py`
+  is an 18-line wrapper; `review.py` and the tests import the new owners.
+  Both verifiers and the strict `--current` stale report are unchanged; no
+  recorded JSON changed. **Calibration expectation changed with Kyle's
+  authorization:** the self-nomination check is now 6/8 with
+  `forbidden:file` recorded as a second open miss — see the heuristic item
+  below. `corpus.json` is untouched; `file` stays forbidden.
 - [ ] Pass 9 — split the reviewer lane; thin wrapper; explicit narrow
   dependency on deterministic result reading.
 - [ ] Pass 10 — mypy gate for `evaluation/` and the wrappers, dependency
   tests, sdist/wheel checks, and documentation (`ARCHITECTURE.md`,
   `docs/CODE-WALKTHROUGH.md`, `EVALUATION.md`, command docs; drop the
   duplicated "Persisted documents are…" line).
+
+### Nomination heuristic open findings
+
+**Outcome:** the self-corpus nomination check returns to 8/8 because the
+ranker is better, not because the expectation was lowered.
+
+**Evidence (2026-08-22, gathered during Phase 3):**
+- `file` (forbidden generic term) is nominated "deserves a canonical name"
+  on the product package alone — probed with `evaluation/`, `scripts/`, and
+  `tests/` ignored via a temporary root `glossabet.json`. A heuristic false
+  alarm, previously masked by evaluator tooling living in the same corpus.
+- `drift` is typed "deserves disambiguation" instead of "deserves a
+  canonical name" when the tooling is present, but correctly when it is
+  ignored: its call-site diversity across evaluator modules reads as meaning
+  diversity. Sensitivity to non-product layout, not a product defect.
+- `plugin` dropped out of the bounded top-15 once the Codex evaluator was
+  split into modules; its earlier nomination had been carried by that one
+  file. Removed from `self_nominations.required` as never measuring product
+  vocabulary.
+
+**Prerequisite:** none; engine work under the usual production-change
+rules (labelled cases first, `evaluation/results.json` regenerated only with
+explicit authorization). Candidate directions: a generic-term penalty or
+stop-list for nomination, and weighting dispersion by production-role
+modules only. Not part of the modularization phase.
+
+**Current status:** not started.
 
 ## 4. Trusted alpha
 

@@ -17,19 +17,19 @@ from typing import NoReturn
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from evaluation.deterministic.contract import (  # noqa: E402
+    DEFAULT_MANIFEST,
+    DEFAULT_RESULTS,
+    EvaluationError,
+)
+from evaluation.deterministic.results import (  # noqa: E402
+    verify_results as verify_engine_results,
+)
 from evaluation.harness.identity import lane_source_identity  # noqa: E402
 from evaluation.harness.io import (  # noqa: E402
     file_sha256,
     is_sha256_hex,
     read_json_object,
-)
-from evaluation.run import (  # noqa: E402
-    DEFAULT_MANIFEST,
-    DEFAULT_RESULTS,
-    EvaluationError,
-)
-from evaluation.run import (  # noqa: E402
-    verify_results as verify_engine_results,
 )
 from glossabet.runtime.artifacts import MAX_JSON_BYTES  # noqa: E402
 

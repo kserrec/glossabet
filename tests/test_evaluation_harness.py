@@ -11,9 +11,10 @@ import pytest
 
 import evaluation.claude.results as claude_results
 import evaluation.codex.results as codex_results
+import evaluation.deterministic.contract as deterministic_contract
+import evaluation.deterministic.results as deterministic_results
 import evaluation.deterministic.sources as deterministic_sources
 import evaluation.review as review
-import evaluation.run as run
 from evaluation.harness.identity import (
     LANE_WRAPPERS,
     lane_source_identity,
@@ -186,10 +187,15 @@ def test_default_verification_never_consults_current_evaluator_source(
                 claude_results.DEFAULT_RESULTS, current=True
             )
     elif module is deterministic_sources:
-        assert run.verify_results(run.DEFAULT_RESULTS, run.DEFAULT_MANIFEST) == []
+        assert deterministic_results.verify_results(
+            deterministic_contract.DEFAULT_RESULTS,
+            deterministic_contract.DEFAULT_MANIFEST,
+        ) == []
         with pytest.raises(AssertionError):
-            run.verify_results(
-                run.DEFAULT_RESULTS, run.DEFAULT_MANIFEST, current=True
+            deterministic_results.verify_results(
+                deterministic_contract.DEFAULT_RESULTS,
+                deterministic_contract.DEFAULT_MANIFEST,
+                current=True,
             )
     else:
         args = (

@@ -21,10 +21,10 @@ import pytest
 
 from evaluation.codex.contract import AgentEvaluationError
 from evaluation.codex.results import verify_results as agent_verify
+from evaluation.deterministic.contract import EvaluationError
+from evaluation.deterministic.results import verify_results as run_verify
 from evaluation.review import DEFAULT_PACKET
 from evaluation.review import verify_results as review_verify
-from evaluation.run import EvaluationError
-from evaluation.run import verify_results as run_verify
 
 ROOT = Path(__file__).resolve().parents[1]
 SEED = 20260819  # chosen so the run family reaches the once-unguarded arithmetic within 400 cases

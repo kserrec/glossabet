@@ -8,7 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from evaluation.run import EVALUATION_SCHEMA_VERSION, verify_results
+from evaluation.deterministic.contract import EVALUATION_SCHEMA_VERSION
+from evaluation.deterministic.results import verify_results
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "evaluation" / "corpus.json"
@@ -112,13 +113,19 @@ def test_local_calibration_case_runs_without_network(tmp_path):
     # (`plugin` left the required set on 2026-08-22: its nomination was
     # carried by the Codex evaluator living in one file, not by product code,
     # and vanished when that evaluator was split into modules.)
+    # Second open finding (2026-08-22): the ranker nominates the forbidden
+    # generic term `file`. A probe with evaluation/, scripts/, and tests/
+    # ignored shows it on the product package alone, so this is a heuristic
+    # false alarm, not tooling layout; `file` stays forbidden and the miss
+    # is recorded here. See PLAN.md "Nomination heuristic open findings".
     assert result["self_nominations"]["passed"] is False
     assert result["self_nominations"]["checks"] == 8
-    assert result["self_nominations"]["passed_checks"] == 7
+    assert result["self_nominations"]["passed_checks"] == 6
     assert [f["name"] for f in result["self_nominations"]["failures"]] == [
-        "required:drift"
+        "required:drift",
+        "forbidden:file",
     ]
-    assert result["aggregate"]["quality"]["nomination_quality"] == round(7 / 8, 4)
+    assert result["aggregate"]["quality"]["nomination_quality"] == round(6 / 8, 4)
     assert result["release_thresholds"] == {
         "configured": False,
         "passed": None,
@@ -314,10 +321,10 @@ def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path, monkey
     this test also requires the committed local-corpus digests and scores to
     describe today's fixture trees: editing an evaluation fixture without
     regenerating results.json fails here, with the reasons listed."""
-    import evaluation.run as run
-    from evaluation.deterministic import scoring, sources
+    from evaluation.deterministic import results, scoring, sources
+    from evaluation.deterministic.results import release_threshold_errors
 
-    real_build = run.build_evidence
+    real_build = results.build_evidence
     memo: dict = {}
 
     def memoized_build(root, **kwargs):
@@ -326,30 +333,30 @@ def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path, monkey
             memo[key] = real_build(root, **kwargs)
         return deepcopy(memo[key])
 
-    monkeypatch.setattr(run, "build_evidence", memoized_build)
+    monkeypatch.setattr(results, "build_evidence", memoized_build)
 
     manifest, manifest_sha256 = sources.read_manifest(MANIFEST)
     current = json.loads(RESULTS.read_text(encoding="utf-8"))
     current["engine"] = sources.engine_metadata()
     current["manifest_sha256"] = manifest_sha256
-    self_evidence = run.build_evidence(ROOT, cache=False, graphify=False)
+    self_evidence = results.build_evidence(ROOT, cache=False, graphify=False)
     current["self_register"] = scoring.evaluate_self_register(
         manifest["self_register"], self_evidence
     )
     current["self_nominations"] = scoring.evaluate_self_nominations(
         manifest["self_nominations"], self_evidence
     )
-    current["aggregate"] = run._aggregate(
+    current["aggregate"] = results.aggregate(
         current["cases"], current["self_register"], current["self_nominations"]
     )
-    current["release_thresholds"] = run._thresholds(
+    current["release_thresholds"] = results.thresholds(
         current["aggregate"], manifest["release_thresholds"]
     )
     gate_message = "evaluation release thresholds are not configured and passing"
     baseline_path = tmp_path / "current.json"
     baseline_path.write_text(json.dumps(current), encoding="utf-8")
     baseline = verify_results(baseline_path, MANIFEST, current=True)
-    assert run._currency_errors(current, MANIFEST) == []
+    assert results.currency_errors(current, MANIFEST) == []
     # Whether the release gate is green is a recorded fact about the engine
     # (a threshold may legitimately be red between releases); nothing else
     # may be wrong with a document that describes today's tree.
@@ -441,18 +448,18 @@ def test_evaluation_verifier_rejects_stale_or_weakened_evidence(tmp_path, monkey
     red_path.write_text(json.dumps(red), encoding="utf-8")
     assert gate_message in verify_results(red_path, MANIFEST, current=True)
     assert gate_message not in verify_results(red_path, MANIFEST, current=False)
-    assert run._release_threshold_errors({"release_thresholds": {"passed": True}}) == []
-    assert run._release_threshold_errors(
+    assert release_threshold_errors({"release_thresholds": {"passed": True}}) == []
+    assert release_threshold_errors(
         {"release_thresholds": {"passed": False}}
     ) == [gate_message]
-    assert run._release_threshold_errors({}) == [gate_message]
+    assert release_threshold_errors({}) == [gate_message]
 
 
 def test_partial_case_runs_refuse_check_and_default_output(tmp_path, monkeypatch, capsys):
     """Run in-process against a scratch copy of the default output: if the
     guard ever regressed, the earlier subprocess form would have overwritten
     the committed evaluation/results.json while proving it (test-audit)."""
-    import evaluation.run as run
+    from evaluation.deterministic import cli as run
 
     scratch_default = tmp_path / "results.json"
     committed = RESULTS.read_bytes()
@@ -478,13 +485,13 @@ def test_partial_case_runs_refuse_check_and_default_output(tmp_path, monkeypatch
 def test_aggregate_tolerates_an_empty_corpus_reuse_rate():
     from copy import deepcopy
 
-    from evaluation.run import _aggregate
+    from evaluation.deterministic.results import aggregate
 
     results = json.loads(RESULTS.read_text(encoding="utf-8"))
     cases = deepcopy(results["cases"])
     cases[0]["cache"]["reuse_rate"] = None
 
-    aggregate = _aggregate(
+    aggregate = aggregate(
         cases, results["self_register"], results["self_nominations"]
     )
     others = [
@@ -596,8 +603,8 @@ def test_recall_where_complete_counts_only_hits_inside_the_measured_set():
     """A real-repository true positive where recall is not measured must not
     inflate the fixture-only recall figure: one incomplete case with nine
     hits plus one complete case at 1/4 is 25% recall, not 10/13."""
+    from evaluation.deterministic.results import aggregate
     from evaluation.deterministic.scoring import score_labels
-    from evaluation.run import _aggregate
 
     def block(**overrides):
         base = {"checks": 0, "passed_checks": 0, "passed": None, "failures": []}
@@ -630,7 +637,7 @@ def test_recall_where_complete_counts_only_hits_inside_the_measured_set():
             "truncations": [],
             "cache": {"reuse_rate": None, "warm_output_matches_cold": True},
         })
-    aggregate = _aggregate(cases, block(), block())
+    aggregate = aggregate(cases, block(), block())
     assert aggregate["quality"]["terminology_recall_where_complete"] == 0.25
     assert aggregate["quality"]["terminology_precision"] == 1.0
 
