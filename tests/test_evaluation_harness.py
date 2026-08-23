@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
+import evaluation.codex.results as codex_results
 import evaluation.review as review
 import evaluation.run as run
-import scripts.agent_eval as agent_eval
 import scripts.claude_eval as claude_eval
 from evaluation.harness.identity import (
     LANE_WRAPPERS,
@@ -155,7 +155,7 @@ def test_real_lanes_include_wrapper_and_harness():
 @pytest.mark.parametrize(
     "module, attribute",
     [
-        (agent_eval, "lane_source_identity"),
+        (codex_results, "lane_source_identity"),
         (claude_eval, "lane_source_identity"),
         (review, "lane_source_identity"),
         (run, "lane_source_paths"),
@@ -171,10 +171,12 @@ def test_default_verification_never_consults_current_evaluator_source(
         raise AssertionError("current evaluator identity was consulted")
 
     monkeypatch.setattr(module, attribute, forbidden)
-    if module is agent_eval:
-        assert agent_eval.verify_results(agent_eval.DEFAULT_RESULTS) == []
+    if module is codex_results:
+        assert codex_results.verify_results(codex_results.DEFAULT_RESULTS) == []
         with pytest.raises(AssertionError):
-            agent_eval.verify_results(agent_eval.DEFAULT_RESULTS, current=True)
+            codex_results.verify_results(
+                codex_results.DEFAULT_RESULTS, current=True
+            )
     elif module is claude_eval:
         errors = claude_eval.verify_results(claude_eval.DEFAULT_RESULTS)
         assert errors[-1] == "Claude evaluation scenarios did not all pass"

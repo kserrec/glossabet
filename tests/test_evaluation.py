@@ -56,10 +56,6 @@ def test_manifest_pins_licensed_varied_sources():
     assert manifest["self_nominations"] == {
         "required": [
             {
-                "term": "plugin",
-                "nomination_kind": "deserves a canonical name",
-            },
-            {
                 "term": "coverage",
                 "nomination_kind": "deserves disambiguation",
             },
@@ -113,13 +109,16 @@ def test_local_calibration_case_runs_without_network(tmp_path):
     # diversity across feature packages as meaning diversity and
     # types it `deserves disambiguation`; the label stays truthful, so this
     # one check is expected to fail until a heuristic phase resolves it.
+    # (`plugin` left the required set on 2026-08-22: its nomination was
+    # carried by the Codex evaluator living in one file, not by product code,
+    # and vanished when that evaluator was split into modules.)
     assert result["self_nominations"]["passed"] is False
-    assert result["self_nominations"]["checks"] == 9
-    assert result["self_nominations"]["passed_checks"] == 8
+    assert result["self_nominations"]["checks"] == 8
+    assert result["self_nominations"]["passed_checks"] == 7
     assert [f["name"] for f in result["self_nominations"]["failures"]] == [
         "required:drift"
     ]
-    assert result["aggregate"]["quality"]["nomination_quality"] == round(8 / 9, 4)
+    assert result["aggregate"]["quality"]["nomination_quality"] == round(7 / 8, 4)
     assert result["release_thresholds"] == {
         "configured": False,
         "passed": None,

@@ -7,35 +7,43 @@ from pathlib import Path
 
 import pytest
 
+import evaluation.codex.history as codex_history
+import evaluation.codex.results as codex_results
 import scripts.agent_eval as agent_eval
-from evaluation.harness.io import tree_sha256
-from scripts.agent_eval import (
+from evaluation.codex.contract import (
     HOOK_DEFINITION,
     HOOK_PROMPT,
     HOOK_PROPOSED_TERM,
     HOOK_SOURCE_CANARY,
     HOOK_TERM,
     AgentEvaluationError,
-    _append_attempt,
-    _attempt_from_error,
-    _attempt_from_probe_error,
+)
+from evaluation.codex.history import (
+    append_attempt,
+    attempt_from_error,
+    attempt_from_probe_error,
+    promote_current_result,
+    raw_result_record,
+    validated_run_output,
+)
+from evaluation.codex.results import (
+    history_errors,
+    history_summary,
+    result_input_errors,
+    usage_totals,
+    verify_results,
+)
+from evaluation.harness.io import tree_sha256
+from scripts.agent_eval import (
     _codex_exec_command,
     _competing_standalone_skill_paths,
     _disabled_skills_config,
     _evaluate_scenario,
     _evaluate_session_hook,
-    _history_errors,
-    _history_summary,
     _installed_version_command,
     _make_scenario,
-    _promote_current_result,
-    _raw_result_record,
-    _result_input_errors,
     _run_missing_cli_scenario,
     _snapshot,
-    _usage_totals,
-    _validated_run_output,
-    verify_results,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -181,12 +189,12 @@ def test_current_result_identity_must_match_every_bound_input(
     monkeypatch,
 ):
     current = {"plugin_sha256": "1" * 64, "engine_version": "0.1.0"}
-    monkeypatch.setattr(agent_eval, "_input_identity", lambda: current)
+    monkeypatch.setattr(codex_results, "input_identity", lambda: current)
     stale = deepcopy(current)
     stale["plugin_sha256"] = "0" * 64
 
-    assert _result_input_errors({"inputs": current}) == []
-    assert _result_input_errors({"inputs": stale}) == [
+    assert result_input_errors({"inputs": current}) == []
+    assert result_input_errors({"inputs": stale}) == [
         "agent result input identity is stale"
     ]
 
@@ -262,7 +270,7 @@ def test_committed_installed_agent_evidence_is_genuine_safe_and_complete():
 def test_attempt_history_retains_failures_without_turning_them_into_the_gate():
     history = json.loads(HISTORY.read_text(encoding="utf-8"))
 
-    assert _history_errors(result_path=RESULTS) == []
+    assert history_errors(result_path=RESULTS) == []
     assert [
         attempt["id"]
         for attempt in history["attempts"]
@@ -283,7 +291,7 @@ def test_current_result_must_match_retained_raw_bytes(tmp_path):
 
     assert any(
         "not retained by the attempt history" in error
-        for error in _history_errors(result_path=unretained_copy)
+        for error in history_errors(result_path=unretained_copy)
     )
 
 
@@ -292,9 +300,9 @@ def test_promote_current_result_preserves_exact_raw_bytes(monkeypatch, tmp_path)
     raw.write_bytes(b'{"raw": true}\n')
     current = tmp_path / "current.json"
     current.write_bytes(b'{"old": true}\n')
-    monkeypatch.setattr(agent_eval, "DEFAULT_RESULTS", current)
+    monkeypatch.setattr(codex_history, "DEFAULT_RESULTS", current)
 
-    _promote_current_result(raw)
+    promote_current_result(raw)
 
     assert current.read_bytes() == raw.read_bytes()
 
@@ -307,10 +315,10 @@ def test_attempt_history_rejects_stale_artifact_or_safety_claim(tmp_path):
     stale_path = tmp_path / "stale-artifact.json"
     stale_path.write_text(json.dumps(stale_artifact), encoding="utf-8")
     assert "current deterministic plugin artifact identity is stale" in (
-        _history_errors(stale_path, current=True)
+        history_errors(stale_path, current=True)
     )
     assert "current deterministic plugin artifact identity is stale" not in (
-        _history_errors(stale_path)
+        history_errors(stale_path)
     )
 
     malformed_artifact = deepcopy(original)
@@ -318,17 +326,17 @@ def test_attempt_history_rejects_stale_artifact_or_safety_claim(tmp_path):
     malformed_path = tmp_path / "malformed-artifact.json"
     malformed_path.write_text(json.dumps(malformed_artifact), encoding="utf-8")
     assert "recorded plugin artifact identity is malformed" in (
-        _history_errors(malformed_path)
+        history_errors(malformed_path)
     )
 
     unsafe = deepcopy(original)
     unsafe["attempts"][0]["safety_pass"] = False
-    unsafe["summary"] = _history_summary(unsafe["attempts"])
+    unsafe["summary"] = history_summary(unsafe["attempts"])
     unsafe_path = tmp_path / "unsafe.json"
     unsafe_path.write_text(json.dumps(unsafe), encoding="utf-8")
     assert any(
         "records a safety failure" in error
-        for error in _history_errors(unsafe_path)
+        for error in history_errors(unsafe_path)
     )
 
     # Coherence and safety gates over the history itself (test-audit): a
@@ -341,7 +349,7 @@ def test_attempt_history_rejects_stale_artifact_or_safety_claim(tmp_path):
         mutate(doc)
         path = tmp_path / "mutated-history.json"
         path.write_text(json.dumps(doc), encoding="utf-8")
-        return _history_errors(path)
+        return history_errors(path)
 
     from scripts.agent_eval import SENSITIVE_CANARY
 
@@ -379,7 +387,7 @@ def test_attempt_history_rejects_self_referential_raw_retention(tmp_path):
 
     assert any(
         "raw result escapes evaluation/agent-runs" in error
-        for error in _history_errors(path)
+        for error in history_errors(path)
     )
 
 
@@ -394,7 +402,7 @@ def test_attempt_history_rejects_rewritten_raw_evidence(tmp_path):
 
     assert any(
         "raw result digest is stale" in error
-        for error in _history_errors(path)
+        for error in history_errors(path)
     )
 
 
@@ -402,38 +410,38 @@ def test_append_attempt_preserves_every_prior_record(monkeypatch, tmp_path):
     history = json.loads(HISTORY.read_text(encoding="utf-8"))
     path = tmp_path / "agent-history.json"
     path.write_text(json.dumps(history), encoding="utf-8")
-    monkeypatch.setattr(agent_eval, "HISTORY_PATH", path)
+    monkeypatch.setattr(codex_history, "HISTORY_PATH", path)
     before = deepcopy(history["attempts"])
     appended = deepcopy(before[-1])
     appended["id"] = "later-distinct-attempt"
 
-    _append_attempt(appended)
+    append_attempt(appended)
 
     updated = json.loads(path.read_text(encoding="utf-8"))
     assert updated["attempts"][:-1] == before
     assert updated["attempts"][-1] == appended
-    assert updated["summary"] == _history_summary(updated["attempts"])
+    assert updated["summary"] == history_summary(updated["attempts"])
 
 
 def test_agent_run_output_is_unique_and_repository_retained(tmp_path):
     accepted = ROOT / "evaluation" / "agent-runs" / "new-run.json"
-    assert _validated_run_output(accepted) == accepted
+    assert validated_run_output(accepted) == accepted
 
     with pytest.raises(AgentEvaluationError, match="evaluation/agent-runs"):
-        _validated_run_output(tmp_path / "escaped.json")
+        validated_run_output(tmp_path / "escaped.json")
 
     outside = tmp_path / "outside.json"
     outside.write_text("{}\n", encoding="utf-8")
     with pytest.raises(AgentEvaluationError, match="outside the repository"):
-        _raw_result_record(outside)
+        raw_result_record(outside)
 
 
 def test_missing_usage_is_recorded_as_unknown_not_zero():
-    assert _usage_totals([]) is None
+    assert usage_totals([]) is None
 
 
 def test_pre_lifecycle_abort_records_no_cleanup_debt():
-    attempt = _attempt_from_error(
+    attempt = attempt_from_error(
         "pre-lifecycle-abort", AgentEvaluationError("codex is not installed")
     )
 
@@ -444,13 +452,13 @@ def test_pre_lifecycle_abort_records_no_cleanup_debt():
 
     cleanup_failure = AgentEvaluationError("plugin cleanup failed")
     cleanup_failure.cleanup_verified = False
-    unsafe = _attempt_from_error("cleanup-failure", cleanup_failure)
+    unsafe = attempt_from_error("cleanup-failure", cleanup_failure)
     assert unsafe["cleanup_verified"] is False
     assert unsafe["safety_pass"] is False
 
 
 def test_focused_probe_abort_stays_in_the_focused_reliability_series():
-    attempt = _attempt_from_probe_error(
+    attempt = attempt_from_probe_error(
         "focused-abort", AgentEvaluationError("agent response was malformed")
     )
 
@@ -881,7 +889,7 @@ def test_genuine_verification_never_reads_the_current_scenario_manifest(
     manifest["trace_limits"]["stored_output_characters"] += 1
     mutated = tmp_path / "scenarios.json"
     mutated.write_text(json.dumps(manifest), encoding="utf-8")
-    monkeypatch.setattr(agent_eval, "SCENARIOS_PATH", mutated)
+    monkeypatch.setattr(codex_results, "SCENARIOS_PATH", mutated)
 
     assert verify_results(RESULTS) == []
     assert any(
@@ -922,7 +930,7 @@ def test_aborted_attempts_record_the_stage_that_actually_failed(tmp_path):
     failure = AgentEvaluationError("codex exec exited 1")
     failure.failed_stage = "missing-cli"
     failure.cleanup_verified = True
-    attempt = _attempt_from_error("stage-probe", failure)
+    attempt = attempt_from_error("stage-probe", failure)
 
     assert attempt["checks"] == {
         "plugin_preflight": "passed",
@@ -935,19 +943,19 @@ def test_aborted_attempts_record_the_stage_that_actually_failed(tmp_path):
     history = json.loads(HISTORY.read_text(encoding="utf-8"))
     attempt["inputs"] = deepcopy(history["attempts"][-1]["inputs"])
     history["attempts"].append(attempt)
-    history["summary"] = _history_summary(history["attempts"])
+    history["summary"] = history_summary(history["attempts"])
     path = tmp_path / "staged.json"
     path.write_text(json.dumps(history), encoding="utf-8")
     assert not any(
         "aborted-full checks are inconsistent" in error
-        for error in _history_errors(path)
+        for error in history_errors(path)
     )
 
 
 def test_interrupts_still_produce_a_recordable_attempt():
     interrupt = KeyboardInterrupt()
     interrupt.failed_stage = "plugin-scenarios"
-    attempt = _attempt_from_error("interrupt-probe", interrupt)
+    attempt = attempt_from_error("interrupt-probe", interrupt)
 
     assert attempt["failures"] == ["KeyboardInterrupt"]
     assert attempt["checks"]["plugin_preflight"] == "passed"

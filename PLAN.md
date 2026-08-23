@@ -122,8 +122,22 @@ step and stops); each pass ends green with no recorded-evidence change.
   in `tests/test_evaluation_harness.py`. Note: the Claude results verifier
   exits 1 by design — it reports the retained 0/3 batch — and the
   characterization pins that, not the spec's "passes" wording.
-- [ ] Pass 2 — extract Codex offline results and history into
-  `evaluation.codex.results` (typed shapes; verifier imports no host code).
+- [x] Pass 2 — extract Codex offline results and history (2026-08-22).
+  `evaluation/codex/` holds `contract.py` (paths, constants, error type,
+  lane JSON I/O), `scenarios.py` (manifest validation), `artifact.py`
+  (release-gate plugin artifact check — the lane's only subprocess, never
+  in default mode), `results.py` (result + history verification, typed
+  summaries), `history.py` (typed attempt records, immutable retention);
+  `scripts/agent_eval.py` keeps only host/scenario code. Tests import the
+  new owners; `tests/test_codex_lane.py` proves default verification spawns
+  nothing and reads no user state. **Evaluation expectation changed with
+  Kyle's authorization:** `plugin` left `self_nominations.required` in
+  `evaluation/corpus.json` (8 checks, 7 passing; `drift` remains the open
+  miss). Its nomination was carried by the Codex evaluator living in one
+  file, not by product code, and vanished when that file was split.
+  Open heuristic observation: nomination ranking is sensitive to how
+  non-product tooling is laid out across modules. Recorded
+  `evaluation/results.json` is untouched and still verifies as genuine.
 - [ ] Pass 3 — extract Codex traces and scenarios (pure parsing, fixtures
   separated from judgments).
 - [ ] Pass 4 — extract Codex host lifecycle (explicit `PluginLifecycle`

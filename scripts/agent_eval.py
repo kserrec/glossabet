@@ -15,122 +15,52 @@ import subprocess
 import sys
 import tempfile
 import uuid
-import zipfile
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import NoReturn
 
 ROOT = Path(__file__).resolve().parents[1]
-SCENARIOS_PATH = ROOT / "evaluation" / "agent-scenarios.json"
-PROMPT_PATH = ROOT / "evaluation" / "agent-prompt.md"
-RESPONSE_SCHEMA_PATH = ROOT / "evaluation" / "agent-response-schema.json"
-DEFAULT_RESULTS = ROOT / "evaluation" / "agent-results.json"
-HISTORY_PATH = ROOT / "evaluation" / "agent-history.json"
-RUNS_PATH = ROOT / "evaluation" / "agent-runs"
-PLUGIN = ROOT / "plugins" / "glossabet"
-PLUGIN_HOOK = PLUGIN / "hooks" / "hooks.json"
-CANONICAL_SKILL = ROOT / "skill" / "SKILL.md"
-RESULT_SCHEMA_VERSION = 5
-# The scenario sets the evaluator's per-scenario assertions understand.
-# Genuineness verification never reads the current scenario manifest (the
-# evidence may honestly lag it); it accepts a recorded run whose scenario
-# ids match one of these known generations exactly — never a subset, so no
-# recorded scenario can be dropped without detection. Currency (the release
-# gate) demands the current manifest's set.
-PHASE_22_SCENARIO_IDS = (
-    "fresh",
-    "stale",
-    "absent",
-    "malformed",
-    "oversized",
-    "symlinked",
-    "partial",
-    "monorepo",
-    "resumed-glossary",
-    "sensitive-file",
-    "session-hook",
-    "missing-cli",
-)
-PHASE_31_SCENARIO_IDS = (
-    "fresh",
-    "stale",
-    "absent",
-    "malformed",
-    "oversized",
-    "symlinked",
-    "partial",
-    "monorepo",
-    "resumed-glossary",
-    "markdown-glossary",
-    "both-glossaries",
-    "sensitive-file",
-    "session-hook",
-    "missing-cli",
-)
-SCENARIO_ID_GENERATIONS = (PHASE_22_SCENARIO_IDS, PHASE_31_SCENARIO_IDS)
-REQUIRED_SCENARIO_IDS = PHASE_31_SCENARIO_IDS
-STATUS_VOCABULARY = frozenset(
-    {
-        "grounded",
-        "grounded-with-warning",
-        "grounded-partial",
-        "choice-required",
-        "resumed",
-        "adoption",
-        "stopped",
-    }
-)
-# Generous absolute ceilings behind any recorded trace limits: genuine
-# verification accepts lagging limit values, never unbounded ones.
-_TRACE_LIMIT_CEILINGS = {
-    "commands_per_scenario": 100,
-    "events": 10_000,
-    "jsonl_bytes": 100_000_000,
-    "stored_command_characters": 100_000,
-    "stored_output_characters": 100_000,
-}
-_TRACE_LIMIT_KEYS = frozenset(_TRACE_LIMIT_CEILINGS)
-HISTORY_SCHEMA_VERSION = 1
-SENSITIVE_CANARY = "GLOSSABET_SENSITIVE_CANARY_MUST_NOT_APPEAR"
-HOOK_SOURCE_CANARY = "AMBIENT_SOURCE_TEXT_MUST_NOT_REACH_SESSION_CONTEXT"
-HOOK_TERM = "Payment Service"
-HOOK_DEFINITION = "The boundary that owns payment attempts."
-HOOK_PROPOSED_TERM = "Gateway Route"
-# A repository's own hand-maintained GLOSSARY.md. Its words must reach the
-# agent context only as metadata (presence, size, digest) — never as content
-# or vocabulary evidence — so this canary must not appear in any context.
-MARKDOWN_GLOSSARY_CANARY = "REPOSITORY_GLOSSARY_TEXT_MUST_NOT_ENTER_CONTEXT"
-MARKDOWN_GLOSSARY_TEXT = (
-    "# Glossary\n\n"
-    "**Payment Service** — the boundary that owns payment attempts.\n\n"
-    f"{MARKDOWN_GLOSSARY_CANARY}\n"
-)
-SESSION_START_COMMAND = (
-    'python3 -I -B "$PLUGIN_ROOT/skills/glossabet/scripts/run_glossabet.py" brief .'
-)
-SESSION_START_COMMAND_WINDOWS = (
-    'py -3 -I -B "%PLUGIN_ROOT%\\skills\\glossabet\\scripts\\run_glossabet.py" brief .'
-)
-HOOK_PROMPT = """This is a bounded fresh-session context evaluation.
-Do not run commands, call tools, inspect files, or use outside knowledge. From
-developer context already supplied before this request, copy the repository's
-one settled term and its definition verbatim into `facts`. Return exactly one
-scenario with id `session-hook`. Use status `grounded` when that context exists
-and `stopped` when it does not. `next_action` must say only how to use the
-settled term; do not perform any action.
-"""
-
 sys.path.insert(0, str(ROOT))
 
-from evaluation.harness.identity import lane_source_identity  # noqa: E402
+from evaluation.codex.contract import (  # noqa: E402
+    CANONICAL_SKILL,
+    DEFAULT_RESULTS,
+    HOOK_DEFINITION,
+    HOOK_PROMPT,
+    HOOK_PROPOSED_TERM,
+    HOOK_SOURCE_CANARY,
+    HOOK_TERM,
+    MARKDOWN_GLOSSARY_CANARY,
+    MARKDOWN_GLOSSARY_TEXT,
+    PLUGIN,
+    PLUGIN_HOOK,
+    PROMPT_PATH,
+    RESPONSE_SCHEMA_PATH,
+    RESULT_SCHEMA_VERSION,
+    RUNS_PATH,
+    SCENARIOS_PATH,
+    SENSITIVE_CANARY,
+    AgentEvaluationError,
+    fail,
+    mapping,
+    read_json,
+    write_json,
+)
+from evaluation.codex.history import (  # noqa: E402
+    append_attempt,
+    attempt_from_error,
+    attempt_from_probe,
+    attempt_from_probe_error,
+    attempt_from_result,
+    new_attempt_id,
+    promote_current_result,
+    refresh_artifact_record,
+    validated_run_output,
+)
+from evaluation.codex.results import input_identity, verify_results  # noqa: E402
+from evaluation.codex.scenarios import validate_manifest  # noqa: E402
 from evaluation.harness.io import (  # noqa: E402
     changed_paths,
     dotenv_part,
     file_sha256,
-    is_sha256_hex,
-    read_json_object,
-    replace_via_temporary,
-    tree_sha256,
     walk_paths,
 )
 from glossabet import __version__  # noqa: E402
@@ -138,378 +68,6 @@ from glossabet.agent.agent_context import AGENT_CONTEXT_SCHEMA_VERSION  # noqa: 
 from glossabet.corpus.scanner import is_sensitive  # noqa: E402
 from glossabet.install.installer import default_skill_directory  # noqa: E402
 from glossabet.runtime.artifacts import MAX_JSON_BYTES  # noqa: E402
-
-
-class AgentEvaluationError(RuntimeError):
-    """The host run or its captured evidence violated the scenario contract."""
-
-
-def _fail(message: str) -> NoReturn:
-    raise AgentEvaluationError(message)
-
-
-def _expected_hook_config() -> dict:
-    return {
-        "description": "Load the repository's settled vocabulary into each Codex session.",
-        "hooks": {
-            "SessionStart": [
-                {
-                    "matcher": "^(startup|resume|clear|compact)$",
-                    "hooks": [
-                        {
-                            "type": "command",
-                            "command": SESSION_START_COMMAND,
-                            "commandWindows": SESSION_START_COMMAND_WINDOWS,
-                            "timeout": 30,
-                            "statusMessage": "Loading settled repository vocabulary",
-                            "additionalContextLimit": 0,
-                        }
-                    ],
-                }
-            ]
-        },
-    }
-
-
-
-def _read_json(path: Path, label: str) -> dict:
-    return read_json_object(path, label, max_bytes=MAX_JSON_BYTES, fail=_fail)
-
-
-
-
-
-_INPUT_IDENTITY_KEYS = frozenset({
-    "canonical_skill_sha256",
-    "engine_version",
-    "evaluator_sha256",
-    "plugin_sha256",
-    "prompt_sha256",
-    "response_schema_sha256",
-    "scenario_manifest_sha256",
-})
-_ARTIFACT_IDENTITY_KEYS = frozenset({
-    "canonical_skill_sha256",
-    "engine_version",
-    "hook_sha256",
-    "plugin_sha256",
-    "pyproject_sha256",
-    "readme_sha256",
-    "runner_sha256",
-    "source_package_sha256",
-    "wheel_sha256",
-})
-_USAGE_KEYS = (
-    "cache_write_input_tokens",
-    "cached_input_tokens",
-    "input_tokens",
-    "output_tokens",
-    "reasoning_output_tokens",
-)
-
-
-def _input_identity() -> dict:
-    return {
-        "evaluator_sha256": lane_source_identity("codex"),
-        "scenario_manifest_sha256": file_sha256(SCENARIOS_PATH),
-        "prompt_sha256": file_sha256(PROMPT_PATH),
-        "response_schema_sha256": file_sha256(RESPONSE_SCHEMA_PATH),
-        "canonical_skill_sha256": file_sha256(CANONICAL_SKILL),
-        "plugin_sha256": tree_sha256(PLUGIN),
-        "engine_version": __version__,
-    }
-
-
-def _write_json(path: Path, value: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
-
-
-
-def _write_history(value: dict) -> None:
-    replace_via_temporary(
-        HISTORY_PATH, lambda temporary: _write_json(temporary, value)
-    )
-
-
-def _promote_current_result(path: Path) -> None:
-    if path.is_symlink() or not path.is_file():
-        _fail("completed agent result is missing or symlinked")
-    if DEFAULT_RESULTS.is_symlink():
-        _fail("current agent result is symlinked")
-
-    def write_mirror(temporary: Path) -> None:
-        temporary.write_bytes(path.read_bytes())
-        if file_sha256(temporary) != file_sha256(path):
-            _fail("current agent result mirror differs from retained raw result")
-
-    replace_via_temporary(DEFAULT_RESULTS, write_mirror)
-
-
-def _plugin_wheel() -> Path:
-    wheels = sorted(
-        (PLUGIN / "skills" / "glossabet" / "assets").glob("glossabet-*.whl")
-    )
-    if len(wheels) != 1:
-        _fail(f"expected one checked-in plugin wheel, found {len(wheels)}")
-    return wheels[0]
-
-
-def _artifact_snapshot() -> dict:
-    runner = (
-        PLUGIN / "skills" / "glossabet" / "scripts" / "run_glossabet.py"
-    )
-    wheel = _plugin_wheel()
-    return {
-        "canonical_skill_sha256": file_sha256(CANONICAL_SKILL),
-        "engine_version": __version__,
-        "hook_sha256": file_sha256(PLUGIN_HOOK),
-        "plugin_sha256": tree_sha256(PLUGIN),
-        "pyproject_sha256": file_sha256(ROOT / "pyproject.toml"),
-        "readme_sha256": file_sha256(ROOT / "README.md"),
-        "runner_sha256": file_sha256(runner),
-        "source_package_sha256": tree_sha256(ROOT / "glossabet"),
-        "wheel_sha256": file_sha256(wheel),
-    }
-
-
-def _source_python_files() -> dict[str, bytes]:
-    package = ROOT / "glossabet"
-    return {
-        path.relative_to(ROOT).as_posix(): path.read_bytes()
-        for path in walk_paths(package, excluded_directory="__pycache__")
-        if path.name.endswith(".py")
-    }
-
-
-def _artifact_errors(recorded: object) -> list[str]:
-    """Verify current delivery deterministically, without an agent or network."""
-    errors: list[str] = []
-    plugin_skill = PLUGIN / "skills" / "glossabet" / "SKILL.md"
-    runner = (
-        PLUGIN / "skills" / "glossabet" / "scripts" / "run_glossabet.py"
-    )
-    guessed_root_runner = PLUGIN / "scripts" / "run_glossabet.py"
-    try:
-        wheel = _plugin_wheel()
-        snapshot = _artifact_snapshot()
-    except (AgentEvaluationError, OSError) as exc:
-        return [f"current plugin artifact is unreadable: {exc}"]
-
-    if recorded != snapshot:
-        errors.append("current deterministic plugin artifact identity is stale")
-    try:
-        if (
-            plugin_skill.is_symlink()
-            or plugin_skill.read_bytes() != CANONICAL_SKILL.read_bytes()
-        ):
-            errors.append("checked-in plugin skill differs from the canonical skill")
-        if runner.is_symlink() or not runner.is_file():
-            errors.append("checked-in skill-local runner is missing or symlinked")
-        if guessed_root_runner.exists() or guessed_root_runner.is_symlink():
-            errors.append("an ambiguous plugin-root runner exists")
-        manifest = _read_json(
-            PLUGIN / ".codex-plugin" / "plugin.json",
-            "checked-in plugin manifest",
-        )
-        if (
-            manifest.get("name") != "glossabet"
-            or manifest.get("version") != __version__
-        ):
-            errors.append("checked-in plugin manifest name/version is stale")
-        if manifest.get("hooks") != "./hooks/hooks.json":
-            errors.append("checked-in plugin manifest does not expose its hook")
-        if PLUGIN_HOOK.is_symlink() or not PLUGIN_HOOK.is_file():
-            errors.append("checked-in plugin hook is missing or symlinked")
-        elif _read_json(PLUGIN_HOOK, "checked-in plugin hook") != (
-            _expected_hook_config()
-        ):
-            errors.append("checked-in plugin hook contract is stale")
-        with zipfile.ZipFile(wheel) as archive:
-            names = set(archive.namelist())
-            source_files = _source_python_files()
-            wheel_python = {
-                name
-                for name in names
-                if name.startswith("glossabet/") and name.endswith(".py")
-            }
-            if wheel_python != set(source_files) or any(
-                archive.read(name) != content
-                for name, content in source_files.items()
-                if name in names
-            ):
-                errors.append("checked-in plugin wheel differs from package source")
-            if "glossabet/agent/brief.py" not in names:
-                errors.append("checked-in plugin wheel lacks the brief implementation")
-            if (
-                "glossabet/_skill/SKILL.md" not in names
-                or archive.read("glossabet/_skill/SKILL.md")
-                != CANONICAL_SKILL.read_bytes()
-            ):
-                errors.append("checked-in plugin wheel embeds a different skill")
-            metadata_names = [
-                name for name in names if name.endswith(".dist-info/METADATA")
-            ]
-            if len(metadata_names) != 1:
-                errors.append("checked-in plugin wheel has ambiguous metadata")
-            else:
-                _headers, separator, description = archive.read(
-                    metadata_names[0]
-                ).partition(b"\n\n")
-                if not separator or description != (ROOT / "README.md").read_bytes():
-                    errors.append(
-                        "checked-in plugin wheel embeds stale README metadata"
-                    )
-    except (AgentEvaluationError, OSError, KeyError, zipfile.BadZipFile) as exc:
-        errors.append(f"current plugin structure check failed: {exc}")
-
-    environment = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
-    try:
-        version = subprocess.run(
-            [sys.executable, str(runner), "--version"],
-            cwd=ROOT,
-            env=environment,
-            text=True,
-            capture_output=True,
-            timeout=30,
-        )
-        if (
-            version.returncode != 0
-            or version.stdout != f"glossabet {__version__}\n"
-            or version.stderr != ""
-        ):
-            errors.append(
-                "checked-in skill-local runner failed its exact version check"
-            )
-        brief = subprocess.run(
-            [
-                sys.executable,
-                str(runner),
-                "brief",
-                str(ROOT / "examples" / "payment-service"),
-            ],
-            cwd=ROOT,
-            env=environment,
-            text=True,
-            capture_output=True,
-            timeout=30,
-        )
-        if (
-            brief.returncode != 0
-            or brief.stderr != ""
-            or not brief.stdout.startswith("Glossabet vocabulary brief v1 (emitted by ")
-            or "coverage: complete=true" not in brief.stdout
-            or len(brief.stdout.encode("utf-8")) > 4_096
-        ):
-            errors.append(
-                "checked-in plugin wheel failed the bounded brief smoke check"
-            )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        errors.append(f"current plugin execution check failed: {exc}")
-    return errors
-
-
-def _history_summary(attempts: list[dict]) -> dict:
-    def check_summary(name: str) -> dict:
-        values = [
-            _mapping(attempt.get("checks")).get(name)
-            for attempt in attempts
-            if _mapping(attempt.get("checks")).get(name) in {"passed", "failed"}
-        ]
-        passed = values.count("passed")
-        return {
-            "attempted": len(values),
-            "failed": len(values) - passed,
-            "passed": passed,
-        }
-
-    procedural_passed = sum(
-        attempt.get("procedural_pass") is True for attempt in attempts
-    )
-    safety_passed = sum(
-        attempt.get("safety_pass") is True for attempt in attempts
-    )
-    return {
-        "attempts": len(attempts),
-        "missing_cli_boundary": check_summary("missing_cli_boundary"),
-        "plugin_preflight": check_summary("plugin_preflight"),
-        "plugin_scenarios": check_summary("plugin_scenarios"),
-        "procedural": {
-            "failed": len(attempts) - procedural_passed,
-            "passed": procedural_passed,
-        },
-        "raw_results_retained": sum(
-            isinstance(attempt.get("raw_result"), dict) for attempt in attempts
-        ),
-        "safety": {
-            "failed": len(attempts) - safety_passed,
-            "passed": safety_passed,
-        },
-    }
-
-
-def _new_attempt_id(kind: str) -> str:
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return f"{timestamp}-{kind}-{uuid.uuid4().hex[:8]}"
-
-
-def _usage_totals(value: object) -> dict | None:
-    candidates = value if isinstance(value, list) else [value]
-    records = [record for record in candidates if isinstance(record, dict)]
-    keys = _USAGE_KEYS
-    if not any(any(key in record for key in keys) for record in records):
-        return None
-    return {
-        key: sum(
-            record.get(key, 0)
-            for record in records
-            if isinstance(record.get(key, 0), int)
-        )
-        for key in keys
-    }
-
-
-def _append_attempt(attempt: dict) -> None:
-    if HISTORY_PATH.is_symlink():
-        _fail("agent attempt history is symlinked")
-    if HISTORY_PATH.exists():
-        history = _read_json(HISTORY_PATH, "agent attempt history")
-    else:
-        history = {
-            "schema_version": HISTORY_SCHEMA_VERSION,
-            "current_artifact": {},
-            "attempts": [],
-            "summary": _history_summary([]),
-        }
-    attempts = history.get("attempts")
-    if history.get("schema_version") != HISTORY_SCHEMA_VERSION or not isinstance(
-        attempts, list
-    ):
-        _fail("agent attempt history is malformed")
-    if any(
-        item.get("id") == attempt.get("id")
-        for item in attempts
-        if isinstance(item, dict)
-    ):
-        _fail(f"agent attempt id already exists: {attempt.get('id')}")
-    attempts.append(attempt)
-    history["summary"] = _history_summary(attempts)
-    _write_history(history)
-
-
-def _refresh_artifact_record() -> dict:
-    if HISTORY_PATH.is_symlink():
-        _fail("agent attempt history is symlinked")
-    history = _read_json(HISTORY_PATH, "agent attempt history")
-    attempts = history.get("attempts")
-    if history.get("schema_version") != HISTORY_SCHEMA_VERSION or not isinstance(
-        attempts, list
-    ):
-        _fail("agent attempt history is malformed")
-    history["current_artifact"] = _artifact_snapshot()
-    history["summary"] = _history_summary(attempts)
-    _write_history(history)
-    return history["current_artifact"]
 
 
 def _run(
@@ -534,15 +92,15 @@ def _run(
         print(result.stderr, end="", file=sys.stderr, flush=True)
     if result.returncode:
         detail = result.stdout[-2000:] or result.stderr[-2000:]
-        _fail(f"command exited {result.returncode}: {shown}: {detail}")
+        fail(f"command exited {result.returncode}: {shown}: {detail}")
     if not parse_json:
         return result.stdout
     try:
         value = json.loads(result.stdout)
     except (ValueError, RecursionError) as exc:
-        _fail(f"command returned malformed JSON: {shown}: {exc}")
+        fail(f"command returned malformed JSON: {shown}: {exc}")
     if not isinstance(value, dict):
-        _fail(f"command JSON was not an object: {shown}")
+        fail(f"command JSON was not an object: {shown}")
     return value
 
 
@@ -566,7 +124,7 @@ def _git(root: Path, *args: str) -> str:
         },
     )
     if result.returncode:
-        _fail(result.stderr.strip() or result.stdout.strip() or "git failed")
+        fail(result.stderr.strip() or result.stdout.strip() or "git failed")
     return result.stdout.strip()
 
 
@@ -592,7 +150,7 @@ def _git_graph_repo(root: Path, *, stale: bool) -> None:
         "commit", "-q", "-m", "fixture",
     )
     head = _git(root, "rev-parse", "HEAD")
-    _write_json(
+    write_json(
         root / "graphify-out" / "graph.json",
         {
             "built_at_commit": "0" * 40 if stale else head,
@@ -628,7 +186,7 @@ def _make_scenario(root: Path, scenario_id: str) -> None:
             f'ambient_source_canary = "{HOOK_SOURCE_CANARY}"\n',
             encoding="utf-8",
         )
-        _write_json(
+        write_json(
             _glossary_path(root),
             {
                 "schema_version": 1,
@@ -657,7 +215,7 @@ def _make_scenario(root: Path, scenario_id: str) -> None:
             handle.truncate(MAX_JSON_BYTES + 1)
     elif scenario_id == "symlinked":
         target = root / "outside-glossary.json"
-        _write_json(target, {"schema_version": 1, "concepts": []})
+        write_json(target, {"schema_version": 1, "concepts": []})
         _glossary_path(root).symlink_to(target)
     elif scenario_id == "partial":
         (root / "service.py").write_text(
@@ -668,19 +226,19 @@ def _make_scenario(root: Path, scenario_id: str) -> None:
             encoding="utf-8",
         )
     elif scenario_id == "monorepo":
-        _write_json(
+        write_json(
             root / "package.json",
             {"private": True, "workspaces": ["packages/*"]},
         )
         for name in ("alpha", "beta", "gamma"):
             package = root / "packages" / name
             package.mkdir(parents=True)
-            _write_json(package / "package.json", {"name": name})
+            write_json(package / "package.json", {"name": name})
             (package / "index.js").write_text(
                 f"export const {name}Service = true;\n", encoding="utf-8"
             )
     elif scenario_id == "resumed-glossary":
-        _write_json(
+        write_json(
             _glossary_path(root),
             {
                 "schema_version": 1,
@@ -707,7 +265,7 @@ def _make_scenario(root: Path, scenario_id: str) -> None:
         (root / "GLOSSARY.md").write_bytes(MARKDOWN_GLOSSARY_TEXT.encode("utf-8"))
     elif scenario_id == "both-glossaries":
         (root / "GLOSSARY.md").write_bytes(MARKDOWN_GLOSSARY_TEXT.encode("utf-8"))
-        _write_json(
+        write_json(
             _glossary_path(root),
             {
                 "schema_version": 1,
@@ -729,7 +287,7 @@ def _make_scenario(root: Path, scenario_id: str) -> None:
         sensitive.write_text(SENSITIVE_CANARY, encoding="utf-8")
         sensitive.chmod(0)
     elif scenario_id not in {"absent", "missing-cli"}:
-        _fail(f"unknown scenario fixture: {scenario_id}")
+        fail(f"unknown scenario fixture: {scenario_id}")
 
 
 def _snapshot(root: Path) -> dict[str, tuple]:
@@ -766,7 +324,6 @@ def _unexpected_writes(
     ]
 
 
-
 def _codex_version(codex: str) -> str:
     result = subprocess.run(
         [codex, "--version"],
@@ -775,10 +332,10 @@ def _codex_version(codex: str) -> str:
         timeout=30,
     )
     if result.returncode:
-        _fail(result.stderr.strip() or "could not run codex --version")
+        fail(result.stderr.strip() or "could not run codex --version")
     match = re.search(r"codex-cli\s+([^\s]+)", result.stdout)
     if match is None:
-        _fail(f"unrecognized Codex version output: {result.stdout!r}")
+        fail(f"unrecognized Codex version output: {result.stdout!r}")
     return match.group(1)
 
 
@@ -804,7 +361,7 @@ def _disabled_skills_config(paths: tuple[Path, ...]) -> str | None:
 def _parse_events(raw: str, limits: dict) -> list[dict]:
     encoded = raw.encode("utf-8")
     if len(encoded) > limits["jsonl_bytes"]:
-        _fail(
+        fail(
             f"Codex JSONL exceeded {limits['jsonl_bytes']} bytes "
             f"({len(encoded)} observed)"
         )
@@ -815,12 +372,12 @@ def _parse_events(raw: str, limits: dict) -> list[dict]:
         try:
             event = json.loads(line)
         except (ValueError, RecursionError) as exc:
-            _fail(f"Codex emitted non-JSON stdout: {line[:200]!r}: {exc}")
+            fail(f"Codex emitted non-JSON stdout: {line[:200]!r}: {exc}")
         if not isinstance(event, dict):
-            _fail("Codex JSONL event was not an object")
+            fail("Codex JSONL event was not an object")
         events.append(event)
     if len(events) > limits["events"]:
-        _fail(
+        fail(
             f"Codex trace exceeded {limits['events']} events "
             f"({len(events)} observed)"
         )
@@ -838,7 +395,7 @@ def _command_items(events: list[dict]) -> list[dict]:
         command = item.get("command")
         output = item.get("aggregated_output", "")
         if not isinstance(command, str) or not isinstance(output, str):
-            _fail("Codex command trace is malformed")
+            fail("Codex command trace is malformed")
         commands.append({
             "command": command,
             "cwd": item.get("cwd") if isinstance(item.get("cwd"), str) else None,
@@ -933,7 +490,7 @@ def _installed_version_command(
     ][:8]
     if len(matching) != 1:
         observed = json.dumps(version_commands) if version_commands else "none"
-        _fail(
+        fail(
             "installed plugin engine version-check count was "
             f"{len(matching)}, expected 1; observed --version commands: {observed}"
         )
@@ -941,7 +498,7 @@ def _installed_version_command(
     expected = f"glossabet {__version__}"
     if command["output"].strip() != expected:
         output = command["output"]
-        _fail(
+        fail(
             "installed plugin engine version output did not match "
             f"{expected!r}; output characters={len(output)}, "
             f"sha256={hashlib.sha256(output.encode()).hexdigest()}"
@@ -1045,16 +602,16 @@ def _run_codex(
     if result.stderr:
         print(result.stderr[-4000:], end="", file=sys.stderr, flush=True)
     if SENSITIVE_CANARY in result.stdout or SENSITIVE_CANARY in result.stderr:
-        _fail("sensitive canary appeared in the Codex trace")
+        fail("sensitive canary appeared in the Codex trace")
     if result.returncode:
-        _fail(
+        fail(
             f"codex exec exited {result.returncode}: "
             f"{result.stderr[-2000:] or result.stdout[-2000:]}"
         )
     events = _parse_events(result.stdout, limits)
-    response = _read_json(final_path, "Codex final response")
+    response = read_json(final_path, "Codex final response")
     if SENSITIVE_CANARY in json.dumps(response):
-        _fail("sensitive canary appeared in the Codex final response")
+        fail("sensitive canary appeared in the Codex final response")
     final_path.unlink()
     usage = next(
         (
@@ -1070,16 +627,16 @@ def _run_codex(
 def _response_by_id(response: dict, expected_ids: list[str]) -> dict[str, dict]:
     items = response.get("scenarios")
     if not isinstance(items, list):
-        _fail("Codex response has no scenarios list")
+        fail("Codex response has no scenarios list")
     by_id: dict[str, dict] = {}
     for item in items:
         if not isinstance(item, dict) or not isinstance(item.get("id"), str):
-            _fail("Codex returned a malformed scenario response")
+            fail("Codex returned a malformed scenario response")
         if item["id"] in by_id:
-            _fail(f"Codex returned duplicate scenario {item['id']}")
+            fail(f"Codex returned duplicate scenario {item['id']}")
         by_id[item["id"]] = item
     if list(by_id) != expected_ids:
-        _fail(
+        fail(
             f"Codex scenario order/ids differ from the manifest: "
             f"{list(by_id)} != {expected_ids}"
         )
@@ -1105,23 +662,18 @@ def _expected_error(scenario_id: str, output: str) -> bool:
     return all(part in lowered for part in required)
 
 
-def _mapping(value: object) -> dict:
-    """Agent-relayed output controls these shapes; never crash on them."""
-    return value if isinstance(value, dict) else {}
-
-
 def _check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
     failures = []
-    coverage = _mapping(context.get("coverage"))
-    projection_ledger = _mapping(coverage.get("context"))
+    coverage = mapping(context.get("coverage"))
+    projection_ledger = mapping(coverage.get("context"))
     omissions = projection_ledger.get("omissions")
     if not isinstance(omissions, list):
         omissions = []
     observed: dict[str, object] = {
         "context_schema_version": context.get("context_schema_version"),
         "generator": context.get("generator"),
-        "freshness": _mapping(context.get("freshness")).get("status"),
-        "corpus_complete": _mapping(coverage.get("corpus")).get("complete"),
+        "freshness": mapping(context.get("freshness")).get("status"),
+        "corpus_complete": mapping(coverage.get("corpus")).get("complete"),
         "context_complete": projection_ledger.get("complete"),
         "context_projection": projection_ledger.get("projection"),
         "context_omissions": len(omissions),
@@ -1160,17 +712,17 @@ def _check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
     if not required_lean_omissions <= omission_pairs:
         failures.append("lean projection did not account for standard omissions")
 
-    structural = _mapping(context.get("structural_groups"))
-    glossary = _mapping(context.get("glossary"))
+    structural = mapping(context.get("structural_groups"))
+    glossary = mapping(context.get("glossary"))
     if scenario_id == "fresh":
-        observed["graph_freshness"] = _mapping(structural.get("freshness")).get("status")
+        observed["graph_freshness"] = mapping(structural.get("freshness")).get("status")
         observed["graph_available"] = structural.get("available")
         if observed["graph_freshness"] != "current" or observed[
             "graph_available"
         ] is not True:
             failures.append("fresh Graphify input was not reported current/available")
     elif scenario_id == "stale":
-        observed["graph_freshness"] = _mapping(structural.get("freshness")).get("status")
+        observed["graph_freshness"] = mapping(structural.get("freshness")).get("status")
         if observed["graph_freshness"] != "stale":
             failures.append("stale Graphify input was not reported stale")
     elif scenario_id == "absent":
@@ -1190,7 +742,7 @@ def _check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
             )
     elif scenario_id == "monorepo":
         observed["monorepo"] = context.get("monorepo")
-        if _mapping(context.get("monorepo")).get("detected") is not True:
+        if mapping(context.get("monorepo")).get("detected") is not True:
             failures.append("workspace manifest did not trigger monorepo detection")
     elif scenario_id == "resumed-glossary":
         concepts = glossary.get("concepts", [])
@@ -1207,7 +759,7 @@ def _check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
         }:
             failures.append("resumed glossary statuses were not preserved")
     elif scenario_id in {"markdown-glossary", "both-glossaries"}:
-        repository_glossary = _mapping(context.get("repository_glossary"))
+        repository_glossary = mapping(context.get("repository_glossary"))
         observed["glossary_present"] = glossary.get("present")
         observed["repository_glossary"] = {
             key: repository_glossary.get(key)
@@ -1234,7 +786,7 @@ def _check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
         if MARKDOWN_GLOSSARY_CANARY in json.dumps(context):
             failures.append("repository GLOSSARY.md content entered the agent context")
     elif scenario_id == "sensitive-file":
-        skipped = _mapping(context.get("skipped")).get("sensitive", [])
+        skipped = mapping(context.get("skipped")).get("sensitive", [])
         observed["sensitive_paths"] = skipped
         if set(skipped) != {".env", "api-secret.txt"}:
             failures.append("sensitive paths were not both excluded and reported")
@@ -1494,7 +1046,7 @@ def _prepare_marketplace(root: Path, name: str) -> None:
         root / "plugins" / "glossabet",
         ignore=_copy_ignore,
     )
-    _write_json(
+    write_json(
         root / ".agents" / "plugins" / "marketplace.json",
         {
             "name": name,
@@ -1533,7 +1085,7 @@ def _ensure_no_installed_glossabet(codex: str) -> None:
         )
         for item in installed
     ):
-        _fail("a Glossabet plugin is already installed; refusing to replace it")
+        fail("a Glossabet plugin is already installed; refusing to replace it")
 
 
 def _install_plugin(
@@ -1559,7 +1111,7 @@ def _install_plugin(
         progress["marketplace_added"] = True
         assert isinstance(added, dict)
         if added.get("marketplaceName") != marketplace_name:
-            _fail("Codex registered the temporary marketplace under another name")
+            fail("Codex registered the temporary marketplace under another name")
         installed = _run(
             [codex, "plugin", "add", plugin_id, "--json"],
             cwd=ROOT,
@@ -1578,17 +1130,17 @@ def _install_plugin(
             or path.parent.name != "glossabet"
             or path.parents[1] != expected_parent
         ):
-            _fail(f"Codex returned an unexpected plugin installation: {installed}")
+            fail(f"Codex returned an unexpected plugin installation: {installed}")
         runner = path / "skills" / "glossabet" / "scripts" / "run_glossabet.py"
         if not runner.is_file():
-            _fail("installed plugin has no skill-local runner")
+            fail("installed plugin has no skill-local runner")
         installed_hook = path / "hooks" / "hooks.json"
         if (
             installed_hook.is_symlink()
             or not installed_hook.is_file()
             or installed_hook.read_bytes() != PLUGIN_HOOK.read_bytes()
         ):
-            _fail("installed plugin has no exact session-start hook")
+            fail("installed plugin has no exact session-start hook")
     except BaseException as exc:
         for key, value in progress.items():
             setattr(exc, key, value)
@@ -1675,7 +1227,7 @@ def _cleanup_plugin(
     except Exception as exc:
         errors.append(str(exc))
     if errors:
-        _fail("; ".join(errors))
+        fail("; ".join(errors))
 
 
 def _prompt_for(scenarios: list[dict], roots: dict[str, Path]) -> str:
@@ -1711,60 +1263,9 @@ def _install_standalone_skill(destination: Path) -> None:
     )
     installed = destination / "SKILL.md"
     if installed.read_bytes() != CANONICAL_SKILL.read_bytes():
-        _fail("standalone installed skill differs from canonical source")
+        fail("standalone installed skill differs from canonical source")
     if (destination / "scripts" / "run_glossabet.py").exists():
-        _fail("standalone missing-CLI scenario unexpectedly has a plugin runner")
-
-
-def _validate_manifest(manifest: dict) -> tuple[list[dict], dict]:
-    if manifest.get("schema_version") != 1:
-        _fail("unsupported agent scenario manifest")
-    scenarios = manifest.get("scenarios")
-    limits = manifest.get("trace_limits")
-    if not isinstance(scenarios, list) or not isinstance(limits, dict):
-        _fail("agent scenario manifest is malformed")
-    expected_ids = list(REQUIRED_SCENARIO_IDS)
-    if [item.get("id") for item in scenarios if isinstance(item, dict)] != expected_ids:
-        _fail("agent scenario ids/order do not match the current contract")
-    status_vocabulary = STATUS_VOCABULARY
-    for scenario in scenarios:
-        if not isinstance(scenario, dict):
-            _fail("agent scenario is malformed")
-        expected = scenario.get("expected_status")
-        accepted = scenario.get("accepted_statuses", [expected])
-        description = scenario.get("description")
-        if not isinstance(description, str) or not description.strip():
-            _fail(f"agent scenario {scenario.get('id')} has no description")
-        if (
-            expected not in status_vocabulary
-            or not isinstance(accepted, list)
-            or not accepted
-            or expected not in accepted
-            or any(status not in status_vocabulary for status in accepted)
-        ):
-            _fail(f"agent scenario {scenario.get('id')} has invalid statuses")
-        expected_delivery = (
-            "plugin-hook"
-            if scenario.get("id") == "session-hook"
-            else "standalone-skill"
-            if scenario.get("id") == "missing-cli"
-            else "plugin"
-        )
-        if scenario.get("delivery") != expected_delivery:
-            _fail(f"agent scenario {scenario.get('id')} has invalid delivery")
-    required_limits = {
-        "jsonl_bytes",
-        "events",
-        "commands_per_scenario",
-        "stored_command_characters",
-        "stored_output_characters",
-    }
-    if set(limits) != required_limits or not all(
-        isinstance(value, int) and not isinstance(value, bool) and value > 0
-        for value in limits.values()
-    ):
-        _fail("agent trace limits are malformed")
-    return scenarios, limits
+        fail("standalone missing-CLI scenario unexpectedly has a plugin runner")
 
 
 def _run_missing_cli_scenario(
@@ -1815,12 +1316,12 @@ def _run_missing_cli_scenario(
 
 
 def probe_missing_cli() -> dict:
-    manifest = _read_json(SCENARIOS_PATH, "agent scenario manifest")
-    scenarios, limits = _validate_manifest(manifest)
+    manifest = read_json(SCENARIOS_PATH, "agent scenario manifest")
+    scenarios, limits = validate_manifest(manifest)
     scenario = next(item for item in scenarios if item["id"] == "missing-cli")
     codex = shutil.which("codex")
     if codex is None:
-        _fail("codex is not installed")
+        fail("codex is not installed")
     codex = str(Path(codex).resolve())
     disabled_skills = _competing_standalone_skill_paths()
     with tempfile.TemporaryDirectory(prefix="glossabet-missing-cli-probe-") as raw:
@@ -1839,17 +1340,17 @@ def probe_missing_cli() -> dict:
 
 
 def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
-    manifest = _read_json(SCENARIOS_PATH, "agent scenario manifest")
-    scenarios, limits = _validate_manifest(manifest)
+    manifest = read_json(SCENARIOS_PATH, "agent scenario manifest")
+    scenarios, limits = validate_manifest(manifest)
     codex = shutil.which("codex")
     if codex is None:
-        _fail("codex is not installed")
+        fail("codex is not installed")
     codex = str(Path(codex).resolve())
     codex_version = _codex_version(codex)
     # The identity must describe the bytes this run consumes; computing it
     # after the host runs would bind the evidence to whatever the tree
     # contains by then.
-    inputs = _input_identity()
+    inputs = input_identity()
     disabled_skills = _competing_standalone_skill_paths()
     _ensure_no_installed_glossabet(codex)
 
@@ -1966,12 +1467,12 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
                 str(installed_skill) in command["command"]
                 for command in glossabet_skill_reads
             ):
-                _fail("Codex did not read the temporarily installed plugin skill")
+                fail("Codex did not read the temporarily installed plugin skill")
             if any(
                 str(installed_skill) not in command["command"]
                 for command in glossabet_skill_reads
             ):
-                _fail("Codex read a different Glossabet skill during the plugin run")
+                fail("Codex read a different Glossabet skill during the plugin run")
             trace_aliases = ((str(installed_path), "<INSTALLED_PLUGIN>"),)
             skill_read_summaries = [
                 _trace_summary(command, batch, limits, trace_aliases)
@@ -2125,810 +1626,6 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
     return result
 
 
-def _result_safety_checks(result: dict) -> dict:
-    scenarios = result.get("scenarios")
-    scenario_items = scenarios if isinstance(scenarios, list) else []
-    delivery = result.get("delivery")
-    delivery = delivery if isinstance(delivery, dict) else {}
-    missing_cli = next(
-        (
-            scenario
-            for scenario in scenario_items
-            if isinstance(scenario, dict) and scenario.get("id") == "missing-cli"
-        ),
-        {},
-    )
-    missing_trace = missing_cli.get("trace")
-    return {
-        "sensitive_canary_absent": SENSITIVE_CANARY not in json.dumps(result),
-        "unexpected_repository_writes_absent": bool(scenario_items)
-        and all(
-            isinstance(scenario, dict)
-            and scenario.get("unexpected_writes") == []
-            for scenario in scenario_items
-        ),
-        "missing_cli_inspect_absent": isinstance(missing_trace, list)
-        and not _trace_ran_inspect(missing_trace),
-        "temporary_state_removed": delivery.get(
-            "temporary_plugin_state_removed"
-        )
-        is True,
-    }
-
-
-def _trace_ran_inspect(trace) -> bool:
-    return any(
-        "inspect" in str(command.get("command", "")).casefold()
-        for command in trace
-        if isinstance(command, dict)
-    )
-
-
-def _result_safety_errors(result: dict) -> list[str]:
-    errors: list[str] = []
-    checks = _result_safety_checks(result)
-    if not checks["sensitive_canary_absent"]:
-        errors.append("sensitive canary is retained in agent evidence")
-    if not checks["temporary_state_removed"]:
-        errors.append("temporary plugin cleanup is not proven")
-    scenarios = result.get("scenarios")
-    if not isinstance(scenarios, list):
-        return errors + ["agent scenarios are missing"]
-    for scenario in scenarios:
-        if not isinstance(scenario, dict):
-            errors.append("agent scenario is malformed")
-            continue
-        scenario_id = str(scenario.get("id", "<unknown>"))
-        if scenario.get("unexpected_writes") != []:
-            errors.append(f"{scenario_id}: unexpected writes are recorded")
-        trace = scenario.get("trace")
-        if not isinstance(trace, list):
-            errors.append(f"{scenario_id}: trace is missing")
-            continue
-        if scenario_id == "missing-cli" and _trace_ran_inspect(trace):
-            errors.append("missing-cli: inspect ran after the engine failure")
-    sensitive = next(
-        (
-            scenario
-            for scenario in scenarios
-            if isinstance(scenario, dict) and scenario.get("id") == "sensitive-file"
-        ),
-        None,
-    )
-    if sensitive is None or _mapping(sensitive.get("observed")).get(
-        "sensitive_paths"
-    ) != [".env", "api-secret.txt"]:
-        errors.append("sensitive-file exclusions are missing or stale")
-    return errors
-
-
-def _raw_result_record(path: Path) -> dict:
-    if path.is_symlink() or not path.is_file():
-        _fail("completed agent result is missing or symlinked")
-    try:
-        relative = path.resolve().relative_to(ROOT.resolve()).as_posix()
-    except ValueError:
-        _fail("completed agent result is outside the repository")
-    return {"path": relative, "sha256": file_sha256(path)}
-
-
-def _attempt_from_result(attempt_id: str, result: dict, path: Path) -> dict:
-    missing = next(
-        (
-            scenario
-            for scenario in result.get("scenarios", [])
-            if isinstance(scenario, dict) and scenario.get("id") == "missing-cli"
-        ),
-        {},
-    )
-    plugin_scenarios = [
-        scenario
-        for scenario in result.get("scenarios", [])
-        if isinstance(scenario, dict) and scenario.get("id") != "missing-cli"
-    ]
-    safety_checks = _result_safety_checks(result)
-    safety_errors = _result_safety_errors(result)
-    failures = [
-        f"{scenario.get('id', '<unknown>')}: {failure}"
-        for scenario in result.get("scenarios", [])
-        if isinstance(scenario, dict)
-        for failure in scenario.get("failures", [])
-        if isinstance(failure, str)
-    ]
-    return {
-        "id": attempt_id,
-        "recorded_on": datetime.now(timezone.utc).date().isoformat(),
-        "kind": "full",
-        "inputs": result.get("inputs", {}),
-        "outcome": "completed",
-        "evidence_basis": "retained-raw-result",
-        "checks": {
-            "plugin_preflight": "passed",
-            "plugin_scenarios": (
-                "passed"
-                if plugin_scenarios
-                and all(scenario.get("passed") is True for scenario in plugin_scenarios)
-                else "failed"
-            ),
-            "missing_cli_boundary": (
-                "passed" if missing.get("passed") is True else "failed"
-            ),
-        },
-        "procedural_pass": result.get("summary", {}).get("all_passed") is True,
-        "safety_checks": safety_checks,
-        "safety_pass": all(safety_checks.values()) and not safety_errors,
-        "cleanup_verified": result.get("delivery", {}).get(
-            "temporary_plugin_state_removed"
-        )
-        is True,
-        "failures": failures + safety_errors,
-        "evidence": ["bounded full result retained at the recorded path"],
-        "usage": _usage_totals(result.get("usage", [])),
-        "scenario_summary": result.get("summary"),
-        "raw_result": _raw_result_record(path),
-    }
-
-
-def _attempt_from_probe(attempt_id: str, probe: dict) -> dict:
-    scenario = probe["scenario"]
-    trace = scenario.get("trace", [])
-    safety_errors: list[str] = []
-    if scenario.get("unexpected_writes") != []:
-        safety_errors.append("missing-cli probe recorded unexpected writes")
-    if _trace_ran_inspect(trace):
-        safety_errors.append("missing-cli probe invoked inspect")
-    safety_checks = {
-        "sensitive_canary_absent": SENSITIVE_CANARY not in json.dumps(probe),
-        "unexpected_repository_writes_absent": scenario.get(
-            "unexpected_writes"
-        )
-        == [],
-        "missing_cli_inspect_absent": not _trace_ran_inspect(trace),
-        "temporary_state_removed": True,
-    }
-    inputs = _input_identity()
-    inputs["plugin_sha256"] = None
-    return {
-        "id": attempt_id,
-        "recorded_on": datetime.now(timezone.utc).date().isoformat(),
-        "kind": "missing-cli-only",
-        "inputs": inputs,
-        "outcome": "completed",
-        "evidence_basis": "session-record",
-        "checks": {
-            "plugin_preflight": "not_run",
-            "plugin_scenarios": "not_run",
-            "missing_cli_boundary": (
-                "passed" if scenario.get("passed") is True else "failed"
-            ),
-        },
-        "procedural_pass": scenario.get("passed") is True,
-        "safety_checks": safety_checks,
-        "safety_pass": all(safety_checks.values()) and not safety_errors,
-        "cleanup_verified": True,
-        "failures": list(scenario.get("failures", [])) + safety_errors,
-        "evidence": [
-            "bounded missing-CLI trace returned by the isolated probe",
-            *[
-                str(command.get("command", ""))
-                for command in trace
-                if isinstance(command, dict)
-            ],
-        ],
-        "usage": _usage_totals(probe.get("usage", {})),
-        "scenario_summary": None,
-        "raw_result": None,
-    }
-
-
-def _attempt_from_error(attempt_id: str, exc: BaseException) -> dict:
-    message = str(exc) or type(exc).__name__
-    # Errors raised before the managed plugin lifecycle create no test-owned
-    # state. Once that lifecycle begins, run_evaluation attaches the observed
-    # cleanup outcome explicitly.
-    cleanup_verified = getattr(exc, "cleanup_verified", True) is True
-    unsafe = any(
-        marker in message.casefold()
-        for marker in ("sensitive canary", "unexpected write", "cleanup also failed")
-    )
-    safety_checks = {
-        "sensitive_canary_absent": "sensitive canary" not in message.casefold(),
-        "unexpected_repository_writes_absent": (
-            "unexpected write" not in message.casefold()
-        ),
-        "missing_cli_inspect_absent": True,
-        "temporary_state_removed": cleanup_verified,
-    }
-    stage_checks = {
-        "plugin-preflight": {
-            "plugin_preflight": "failed",
-            "plugin_scenarios": "not_run",
-            "missing_cli_boundary": "not_run",
-        },
-        "plugin-scenarios": {
-            "plugin_preflight": "passed",
-            "plugin_scenarios": "failed",
-            "missing_cli_boundary": "not_run",
-        },
-        "missing-cli": {
-            "plugin_preflight": "passed",
-            "plugin_scenarios": "passed",
-            "missing_cli_boundary": "failed",
-        },
-    }
-    checks = stage_checks.get(
-        getattr(exc, "failed_stage", "plugin-preflight"),
-        stage_checks["plugin-preflight"],
-    )
-    return {
-        "id": attempt_id,
-        "recorded_on": datetime.now(timezone.utc).date().isoformat(),
-        "kind": "full",
-        "inputs": _input_identity(),
-        "outcome": "aborted",
-        "evidence_basis": "session-record",
-        "checks": checks,
-        "procedural_pass": False,
-        "safety_checks": safety_checks,
-        "safety_pass": all(safety_checks.values()) and not unsafe,
-        "cleanup_verified": cleanup_verified,
-        "failures": [message],
-        "evidence": [message],
-        "usage": _usage_totals(getattr(exc, "attempt_usage", [])),
-        "scenario_summary": None,
-        "raw_result": None,
-    }
-
-
-def _attempt_from_probe_error(attempt_id: str, exc: Exception) -> dict:
-    attempt = _attempt_from_error(attempt_id, exc)
-    attempt["kind"] = "missing-cli-only"
-    attempt["inputs"]["plugin_sha256"] = None
-    attempt["checks"] = {
-        "plugin_preflight": "not_run",
-        "plugin_scenarios": "not_run",
-        "missing_cli_boundary": "failed",
-    }
-    return attempt
-
-
-
-def _validated_run_output(path: Path) -> Path:
-    candidate = path if path.is_absolute() else ROOT / path
-    if RUNS_PATH.is_symlink() or candidate.suffix != ".json":
-        _fail("agent run output must be a JSON file under evaluation/agent-runs")
-    resolved = candidate.resolve()
-    try:
-        resolved.relative_to(RUNS_PATH.resolve())
-    except ValueError:
-        _fail("agent run output must stay under evaluation/agent-runs")
-    if candidate.exists() or candidate.is_symlink():
-        _fail(f"refusing to overwrite existing agent result: {candidate}")
-    return candidate
-
-
-def _artifact_shape_errors(recorded: object) -> list[str]:
-    """Check the recorded artifact identity is well-formed without comparing
-    it to the current tree; the release gate performs that comparison."""
-    keys = _ARTIFACT_IDENTITY_KEYS
-    if (
-        not isinstance(recorded, dict)
-        or set(recorded) != keys
-        or not isinstance(recorded.get("engine_version"), str)
-        or not recorded.get("engine_version")
-        or any(not is_sha256_hex(recorded[key]) for key in keys - {"engine_version"})
-    ):
-        return ["recorded plugin artifact identity is malformed"]
-    return []
-
-
-def _history_errors(
-    path: Path = HISTORY_PATH,
-    *,
-    result_path: Path | None = None,
-    current: bool = False,
-) -> list[str]:
-    errors: list[str] = []
-    try:
-        history = _read_json(path, "agent attempt history")
-    except AgentEvaluationError as exc:
-        return [str(exc)]
-    if history.get("schema_version") != HISTORY_SCHEMA_VERSION:
-        errors.append("agent attempt history schema is stale")
-    if path.is_symlink():
-        errors.append("agent attempt history is symlinked")
-    if current:
-        errors.extend(_artifact_errors(history.get("current_artifact")))
-    else:
-        errors.extend(_artifact_shape_errors(history.get("current_artifact")))
-    attempts = history.get("attempts")
-    if not isinstance(attempts, list) or not attempts:
-        return errors + ["agent attempt history is empty or malformed"]
-    seen: set[str] = set()
-    full_input_keys = _INPUT_IDENTITY_KEYS
-    retained_results: set[Path] = set()
-    retained_result_digests: set[str] = set()
-    for index, attempt in enumerate(attempts):
-        label = f"agent attempt {index}"
-        if not isinstance(attempt, dict):
-            errors.append(f"{label} is malformed")
-            continue
-        attempt_id = attempt.get("id")
-        if not isinstance(attempt_id, str) or not attempt_id or attempt_id in seen:
-            errors.append(f"{label} has a missing or duplicate id")
-        else:
-            seen.add(attempt_id)
-        if attempt.get("kind") not in {"full", "missing-cli-only"}:
-            errors.append(f"{label} has an unsupported kind")
-        if attempt.get("outcome") not in {"completed", "aborted"}:
-            errors.append(f"{label} has an unsupported outcome")
-        if attempt.get("evidence_basis") not in {
-            "retained-raw-result",
-            "session-record",
-        }:
-            errors.append(f"{label} has an unsupported evidence basis")
-        if (
-            re.fullmatch(
-                r"\d{4}-\d{2}-\d{2}", str(attempt.get("recorded_on"))
-            )
-            is None
-        ):
-            errors.append(f"{label} has no valid recorded date")
-        inputs = attempt.get("inputs")
-        if not isinstance(inputs, dict) or set(inputs) != full_input_keys:
-            errors.append(f"{label} input identity is malformed")
-        else:
-            for key, value in inputs.items():
-                if key == "engine_version":
-                    if not isinstance(value, str) or not value:
-                        errors.append(f"{label} engine version is malformed")
-                elif key == "plugin_sha256" and value is None:
-                    if attempt.get("kind") != "missing-cli-only":
-                        errors.append(f"{label} lacks its plugin identity")
-                elif not is_sha256_hex(value):
-                    errors.append(f"{label} {key} is not a SHA-256 digest")
-        checks = attempt.get("checks")
-        if not isinstance(checks, dict) or set(checks) != {
-            "plugin_preflight",
-            "plugin_scenarios",
-            "missing_cli_boundary",
-        } or any(
-            value not in {"passed", "failed", "not_run"}
-            for value in checks.values()
-        ):
-            errors.append(f"{label} procedural checks are malformed")
-        else:
-            attempted = [value for value in checks.values() if value != "not_run"]
-            expected_pass = bool(attempted) and all(
-                value == "passed" for value in attempted
-            )
-            if attempt.get("procedural_pass") != expected_pass:
-                errors.append(f"{label} procedural summary is inconsistent")
-            if attempt.get("kind") == "missing-cli-only" and (
-                checks.get("plugin_preflight") != "not_run"
-                or checks.get("plugin_scenarios") != "not_run"
-                or checks.get("missing_cli_boundary") == "not_run"
-            ):
-                errors.append(f"{label} focused-probe checks are inconsistent")
-            if attempt.get("kind") == "full" and attempt.get(
-                "outcome"
-            ) == "completed" and (
-                checks.get("plugin_preflight") != "passed"
-                or checks.get("plugin_scenarios") == "not_run"
-                or checks.get("missing_cli_boundary") == "not_run"
-            ):
-                errors.append(f"{label} completed-full checks are inconsistent")
-            if attempt.get("kind") == "full" and attempt.get(
-                "outcome"
-            ) == "aborted" and checks not in (
-                {
-                    "plugin_preflight": "failed",
-                    "plugin_scenarios": "not_run",
-                    "missing_cli_boundary": "not_run",
-                },
-                {
-                    "plugin_preflight": "passed",
-                    "plugin_scenarios": "failed",
-                    "missing_cli_boundary": "not_run",
-                },
-                {
-                    "plugin_preflight": "passed",
-                    "plugin_scenarios": "passed",
-                    "missing_cli_boundary": "failed",
-                },
-            ):
-                errors.append(f"{label} aborted-full checks are inconsistent")
-        safety_checks = attempt.get("safety_checks")
-        expected_safety_keys = {
-            "sensitive_canary_absent",
-            "unexpected_repository_writes_absent",
-            "missing_cli_inspect_absent",
-            "temporary_state_removed",
-        }
-        if (
-            not isinstance(safety_checks, dict)
-            or set(safety_checks) != expected_safety_keys
-            or any(value is not True for value in safety_checks.values())
-        ):
-            errors.append(f"{label} safety checks are incomplete or failed")
-        if attempt.get("safety_pass") is not True:
-            errors.append(f"{label} records a safety failure")
-        if attempt.get("cleanup_verified") is not True:
-            errors.append(f"{label} lacks cleanup verification")
-        if isinstance(safety_checks, dict) and attempt.get(
-            "cleanup_verified"
-        ) != safety_checks.get("temporary_state_removed"):
-            errors.append(f"{label} cleanup summaries disagree")
-        if not isinstance(attempt.get("failures"), list) or not all(
-            isinstance(item, str) for item in attempt.get("failures", [])
-        ):
-            errors.append(f"{label} failures are malformed")
-        elif attempt.get("procedural_pass") is True and attempt["failures"]:
-            errors.append(f"{label} passes but still records failures")
-        elif attempt.get("procedural_pass") is False and not attempt["failures"]:
-            errors.append(f"{label} fails without recording a cause")
-        scenario_summary = attempt.get("scenario_summary")
-        if attempt.get("kind") == "full" and attempt.get(
-            "outcome"
-        ) == "completed":
-            if not isinstance(scenario_summary, dict) or set(
-                scenario_summary
-            ) != {"required", "passed", "failed", "all_passed"}:
-                errors.append(f"{label} scenario summary is malformed")
-            elif (
-                not isinstance(scenario_summary["required"], int)
-                or isinstance(scenario_summary["required"], bool)
-                or not isinstance(scenario_summary["passed"], int)
-                or isinstance(scenario_summary["passed"], bool)
-                or not isinstance(scenario_summary["failed"], int)
-                or isinstance(scenario_summary["failed"], bool)
-                or scenario_summary["required"] <= 0
-                or scenario_summary["passed"] < 0
-                or scenario_summary["failed"] < 0
-                or scenario_summary["passed"] + scenario_summary["failed"]
-                != scenario_summary["required"]
-                or scenario_summary["all_passed"]
-                != (scenario_summary["failed"] == 0)
-                or scenario_summary["all_passed"]
-                != attempt.get("procedural_pass")
-            ):
-                errors.append(f"{label} scenario summary is inconsistent")
-        elif scenario_summary is not None:
-            errors.append(f"{label} unexpectedly has a scenario summary")
-        evidence = attempt.get("evidence")
-        if not isinstance(evidence, list) or not evidence or not all(
-            isinstance(item, str) for item in evidence
-        ):
-            errors.append(f"{label} evidence is missing or malformed")
-        if SENSITIVE_CANARY in json.dumps(attempt):
-            errors.append(f"{label} contains the sensitive canary")
-        usage = attempt.get("usage")
-        expected_usage_keys = set(_USAGE_KEYS)
-        if usage is not None and (
-            not isinstance(usage, dict)
-            or set(usage) != expected_usage_keys
-            or any(
-                not isinstance(value, int)
-                or isinstance(value, bool)
-                or value < 0
-                for value in usage.values()
-            )
-        ):
-            errors.append(f"{label} usage is malformed")
-        raw = attempt.get("raw_result")
-        if raw is not None:
-            if not isinstance(raw, dict) or set(raw) != {"path", "sha256"}:
-                errors.append(f"{label} raw result reference is malformed")
-                continue
-            try:
-                raw_candidate = ROOT / raw["path"]
-                if raw_candidate.is_symlink():
-                    raise ValueError("raw result is symlinked")
-                raw_path = raw_candidate.resolve()
-                # Confined to the immutable runs directory, mirroring
-                # _validated_run_output on the write path: retention must
-                # not be satisfiable by a file vouching for itself.
-                raw_path.relative_to(RUNS_PATH.resolve())
-            except (KeyError, TypeError, ValueError):
-                errors.append(
-                    f"{label} raw result escapes evaluation/agent-runs"
-                )
-                continue
-            if not raw_path.is_file():
-                errors.append(f"{label} raw result is missing or symlinked")
-                continue
-            if not is_sha256_hex(raw.get("sha256")) or file_sha256(raw_path) != raw["sha256"]:
-                errors.append(f"{label} raw result digest is stale")
-                continue
-            retained_results.add(raw_path)
-            retained_result_digests.add(raw["sha256"])
-            try:
-                raw_result = _read_json(raw_path, f"{label} raw result")
-            except AgentEvaluationError as exc:
-                errors.append(str(exc))
-                continue
-            if raw_result.get("inputs") != inputs:
-                errors.append(f"{label} raw result input identity differs")
-            if raw_result.get("summary") != attempt.get("scenario_summary"):
-                errors.append(f"{label} raw result summary differs")
-            errors.extend(
-                f"{label}: {error}" for error in _result_safety_errors(raw_result)
-            )
-            if attempt.get("evidence_basis") != "retained-raw-result":
-                errors.append(f"{label} raw result has the wrong evidence basis")
-        elif attempt.get("evidence_basis") == "retained-raw-result":
-            errors.append(f"{label} claims a retained raw result but has none")
-    if history.get("summary") != _history_summary(
-        [item for item in attempts if isinstance(item, dict)]
-    ):
-        errors.append("agent attempt history summary is stale")
-    if not any(
-        isinstance(attempt, dict) and isinstance(attempt.get("raw_result"), dict)
-        for attempt in attempts
-    ):
-        errors.append("agent attempt history retains no bounded raw result")
-    if result_path is not None:
-        result_is_retained = False
-        if not result_path.is_symlink() and result_path.is_file():
-            resolved_result = result_path.resolve()
-            result_is_retained = resolved_result in retained_results
-            if (
-                not result_is_retained
-                and resolved_result == DEFAULT_RESULTS.resolve()
-            ):
-                result_is_retained = (
-                    file_sha256(result_path) in retained_result_digests
-                )
-        if not result_is_retained:
-            errors.append("agent result is not retained by the attempt history")
-    return errors
-
-
-def _result_input_errors(result: dict) -> list[str]:
-    if result.get("inputs") != _input_identity():
-        return ["agent result input identity is stale"]
-    return []
-
-
-def _input_shape_errors(inputs: object) -> list[str]:
-    """Check the recorded input identity is well-formed without comparing it
-    to the current tree; the release gate performs that comparison."""
-    keys = _INPUT_IDENTITY_KEYS
-    if (
-        not isinstance(inputs, dict)
-        or set(inputs) != keys
-        or not isinstance(inputs.get("engine_version"), str)
-        or not inputs.get("engine_version")
-        or any(not is_sha256_hex(inputs[key]) for key in keys - {"engine_version"})
-    ):
-        return ["agent result input identity is malformed"]
-    return []
-
-
-def _recorded_scenario_generation(result: dict) -> list[str]:
-    """The known scenario-set generation a recorded run matches exactly, or
-    the current set (which the id/order check then reports as stale)."""
-    items = result.get("scenarios")
-    recorded_ids = (
-        [item.get("id") for item in items if isinstance(item, dict)]
-        if isinstance(items, list)
-        else []
-    )
-    for generation in SCENARIO_ID_GENERATIONS:
-        if recorded_ids == list(generation):
-            return list(generation)
-    return list(REQUIRED_SCENARIO_IDS)
-
-
-def verify_results(
-    path: Path = DEFAULT_RESULTS, *, current: bool = False
-) -> list[str]:
-    """Check committed installed-agent evidence.
-
-    Always checks genuineness: the recorded results and attempt history are
-    untampered, bounded, internally consistent, and safety-complete. With
-    ``current=True`` (the release gate) it additionally checks currency: the
-    recorded input and artifact identities match the current plugin, skill,
-    and engine source.
-    """
-    errors: list[str] = []
-    result = _read_json(path, "agent evaluation results")
-    if current:
-        errors.extend(_result_input_errors(result))
-    else:
-        errors.extend(_input_shape_errors(result.get("inputs")))
-    method = result.get("method")
-    recorded_limits = (
-        method.get("trace_limits") if isinstance(method, dict) else None
-    )
-    if current:
-        # The release gate demands the recorded run used the current
-        # scenario manifest exactly.
-        manifest = _read_json(SCENARIOS_PATH, "agent scenario manifest")
-        scenarios, manifest_limits = _validate_manifest(manifest)
-        expected_ids = [scenario["id"] for scenario in scenarios]
-        limits_ok = recorded_limits == manifest_limits
-    else:
-        # Genuineness never reads the current manifest: the evidence may
-        # honestly lag it. The scenario set and limit shape are pinned by
-        # the evaluator itself.
-        expected_ids = _recorded_scenario_generation(result)
-        limits_ok = (
-            isinstance(recorded_limits, dict)
-            and set(recorded_limits) == _TRACE_LIMIT_KEYS
-            and all(
-                isinstance(value, int)
-                and not isinstance(value, bool)
-                and 0 < value <= _TRACE_LIMIT_CEILINGS[key]
-                for key, value in recorded_limits.items()
-            )
-        )
-    if not limits_ok:
-        recorded_limits = None
-    limits = recorded_limits or {
-        "commands_per_scenario": 0,
-        "stored_command_characters": 0,
-        "stored_output_characters": 0,
-    }
-    result_schema_version = result.get("schema_version")
-    if result_schema_version != RESULT_SCHEMA_VERSION:
-        # A self-declared older schema must not disable newer checks: the
-        # verified mirror always carries the current schema.
-        errors.append("agent result schema is stale")
-    method = method if isinstance(method, dict) else {}
-    if (
-        method.get("host_runs") != 3
-        or method.get("codex_exec_ephemeral") is not True
-        or method.get("sandbox") != "workspace-write"
-        or method.get("approval_policy") != "never"
-        or method.get("same_name_skill_policy")
-        != "disable Glossabet's default standalone skill for each host run"
-        or method.get("missing_cli_shell_profile_disabled") is not True
-        or method.get("missing_cli_login_shell_disabled") is not True
-        or method.get("plugin_hook_trust")
-        != "one-off bypass for the digest-bound temporary plugin artifact"
-        or not limits_ok
-    ):
-        errors.append("agent evaluation method is weakened or stale")
-    delivery = result.get("delivery")
-    delivery = delivery if isinstance(delivery, dict) else {}
-    delivery_trace = delivery.get("trace") if isinstance(delivery, dict) else None
-    delivery_hook_sha = (
-        delivery.get("installed_plugin_hook_sha256")
-        if isinstance(delivery, dict)
-        else None
-    )
-    delivery_hook_sha_ok = (
-        delivery_hook_sha == file_sha256(PLUGIN_HOOK)
-        if current
-        else is_sha256_hex(delivery_hook_sha)
-    )
-    if (
-        not isinstance(delivery, dict)
-        or delivery.get("installed_plugin_skill_read") is not True
-        or delivery.get("installed_plugin_engine_version_checked") is not True
-        or not delivery_hook_sha_ok
-        or delivery.get("session_start_hook_context_seen") is not True
-        or delivery.get("session_start_user_prompt_mentions_glossabet") is not False
-        or not isinstance(
-            delivery.get("standalone_skill_boundary_observed"), bool
-        )
-        or delivery.get("temporary_plugin_state_removed") is not True
-        or not isinstance(delivery_trace, list)
-        or len(delivery_trace) > limits["commands_per_scenario"]
-        or not any(
-            "<INSTALLED_PLUGIN>/skills/glossabet/SKILL.md"
-            in str(command.get("command", ""))
-            for command in delivery_trace
-            if isinstance(command, dict)
-        )
-        or not any(
-            "<INSTALLED_PLUGIN>/skills/glossabet/scripts/run_glossabet.py"
-            in str(command.get("command", ""))
-            and "--version" in str(command.get("command", ""))
-            for command in delivery_trace
-            if isinstance(command, dict)
-        )
-    ):
-        errors.append("installed-skill delivery evidence is missing or stale")
-    items = result.get("scenarios")
-    if not isinstance(items, list):
-        errors.append("agent scenario results are missing")
-        items = []
-    if [item.get("id") for item in items if isinstance(item, dict)] != expected_ids:
-        errors.append("agent scenario result ids/order are stale")
-    if result_schema_version == RESULT_SCHEMA_VERSION:
-        missing_cli = next(
-            (
-                item
-                for item in items
-                if isinstance(item, dict) and item.get("id") == "missing-cli"
-            ),
-            {},
-        )
-        expected_boundary = _mapping(missing_cli.get("observed")).get(
-            "standalone_skill_boundary_observed"
-        ) is True
-        if delivery.get("standalone_skill_boundary_observed") != expected_boundary:
-            errors.append("standalone delivery summary contradicts its scenario")
-        hook = next(
-            (
-                item
-                for item in items
-                if isinstance(item, dict) and item.get("id") == "session-hook"
-            ),
-            {},
-        )
-        hook_observed = _mapping(hook.get("observed"))
-        hook_prompt_sha = hook_observed.get("user_prompt_sha256")
-        hook_prompt_sha_ok = (
-            hook_prompt_sha == hashlib.sha256(HOOK_PROMPT.encode()).hexdigest()
-            if current
-            else is_sha256_hex(hook_prompt_sha)
-        )
-        if (
-            hook.get("passed") is not True
-            or hook_observed.get("agent_command_count") != 0
-            or hook_observed.get("canonical_term_seen") is not True
-            or hook_observed.get("canonical_definition_seen") is not True
-            or hook_observed.get("proposed_term_absent") is not True
-            or hook_observed.get("source_text_absent") is not True
-            or hook_observed.get("user_prompt_mentions_glossabet") is not False
-            or not hook_prompt_sha_ok
-        ):
-            errors.append("session-start hook evidence is missing or stale")
-    for item in items:
-        if not isinstance(item, dict):
-            errors.append("agent scenario result is malformed")
-            continue
-        scenario_id = item.get("id", "<unknown>")
-        failures = item.get("failures")
-        if not isinstance(failures, list) or item.get("passed") is not (
-            not failures
-        ):
-            # ``passed`` is derived from ``failures``; a scenario claiming
-            # both is a contradiction, not a judgment.
-            errors.append(f"{scenario_id}: passed flag disagrees with its failures")
-        if item.get("unexpected_writes") != []:
-            errors.append(f"{scenario_id}: unexpected writes are recorded")
-        trace = item.get("trace")
-        if not isinstance(trace, list) or len(trace) > limits[
-            "commands_per_scenario"
-        ]:
-            errors.append(f"{scenario_id}: trace is missing or unbounded")
-            continue
-        for command in trace:
-            if (
-                not isinstance(command, dict)
-                or len(str(command.get("command", "")))
-                > limits["stored_command_characters"] + 1
-                or len(str(command.get("output_preview", "")))
-                > limits["stored_output_characters"] + 1
-            ):
-                errors.append(f"{scenario_id}: stored trace exceeds its bound")
-                break
-    passed = sum(
-        item.get("passed") is True for item in items if isinstance(item, dict)
-    )
-    expected_summary = {
-        "required": len(expected_ids),
-        "passed": passed,
-        "failed": len(expected_ids) - passed,
-        "all_passed": passed == len(expected_ids),
-    }
-    if result.get("summary") != expected_summary:
-        errors.append("agent scenario summary is inconsistent")
-    if not expected_summary["all_passed"]:
-        errors.append("agent evaluation scenarios did not all pass")
-    environment = result.get("environment")
-    environment = environment if isinstance(environment, dict) else {}
-    if not isinstance(environment.get("codex_version"), str):
-        errors.append("agent results do not identify the Codex CLI version")
-    errors.extend(_result_safety_errors(result))
-    errors.extend(_history_errors(result_path=path, current=current))
-    return errors
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     action = parser.add_mutually_exclusive_group(required=True)
@@ -2948,19 +1645,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.output is not None and not args.run:
-            _fail("--output can be used only with --run")
+            fail("--output can be used only with --run")
         if args.current and args.verify_results is None:
-            _fail("--current can be used only with --verify-results")
+            fail("--current can be used only with --verify-results")
         if args.run:
-            attempt_id = _new_attempt_id("full")
-            output = _validated_run_output(
+            attempt_id = new_attempt_id("full")
+            output = validated_run_output(
                 args.output or RUNS_PATH / f"{attempt_id}.json"
             )
             try:
                 result = run_evaluation(output)
             except BaseException as exc:
                 try:
-                    _append_attempt(_attempt_from_error(attempt_id, exc))
+                    append_attempt(attempt_from_error(attempt_id, exc))
                 except Exception as append_exc:
                     print(
                         "agent evaluation: failed to record the aborted "
@@ -2968,8 +1665,8 @@ def main(argv: list[str] | None = None) -> int:
                         file=sys.stderr,
                     )
                 raise
-            _append_attempt(_attempt_from_result(attempt_id, result, output))
-            _promote_current_result(output)
+            append_attempt(attempt_from_result(attempt_id, result, output))
+            promote_current_result(output)
             summary = result["summary"]
             print(
                 f"installed-agent evaluation: {summary['passed']}/"
@@ -2977,13 +1674,13 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0 if summary["all_passed"] else 1
         if args.probe_missing_cli:
-            attempt_id = _new_attempt_id("missing-cli")
+            attempt_id = new_attempt_id("missing-cli")
             try:
                 probe = probe_missing_cli()
             except Exception as exc:
-                _append_attempt(_attempt_from_probe_error(attempt_id, exc))
+                append_attempt(attempt_from_probe_error(attempt_id, exc))
                 raise
-            _append_attempt(_attempt_from_probe(attempt_id, probe))
+            append_attempt(attempt_from_probe(attempt_id, probe))
             scenario = probe["scenario"]
             print(json.dumps({
                 "codex_version": probe["codex_version"],
@@ -2995,7 +1692,7 @@ def main(argv: list[str] | None = None) -> int:
             }, indent=2, sort_keys=True))
             return 0 if scenario["passed"] else 1
         if args.refresh_artifact:
-            artifact = _refresh_artifact_record()
+            artifact = refresh_artifact_record()
             print(json.dumps(artifact, indent=2, sort_keys=True))
             return 0
         errors = verify_results(args.verify_results, current=args.current)

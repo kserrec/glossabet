@@ -24,10 +24,6 @@
   "self_nominations": {
     "required": [
       {
-        "term": "plugin",
-        "nomination_kind": "deserves a canonical name"
-      },
-      {
         "term": "coverage",
         "nomination_kind": "deserves disambiguation"
       },
