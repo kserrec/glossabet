@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
+import evaluation.claude.results as claude_results
 import evaluation.codex.results as codex_results
 import evaluation.review as review
 import evaluation.run as run
-import scripts.claude_eval as claude_eval
 from evaluation.harness.identity import (
     LANE_WRAPPERS,
     lane_source_identity,
@@ -156,7 +156,7 @@ def test_real_lanes_include_wrapper_and_harness():
     "module, attribute",
     [
         (codex_results, "lane_source_identity"),
-        (claude_eval, "lane_source_identity"),
+        (claude_results, "lane_source_identity"),
         (review, "lane_source_identity"),
         (run, "lane_source_paths"),
     ],
@@ -177,11 +177,13 @@ def test_default_verification_never_consults_current_evaluator_source(
             codex_results.verify_results(
                 codex_results.DEFAULT_RESULTS, current=True
             )
-    elif module is claude_eval:
-        errors = claude_eval.verify_results(claude_eval.DEFAULT_RESULTS)
+    elif module is claude_results:
+        errors = claude_results.verify_results(claude_results.DEFAULT_RESULTS)
         assert errors[-1] == "Claude evaluation scenarios did not all pass"
         with pytest.raises(AssertionError):
-            claude_eval.verify_results(claude_eval.DEFAULT_RESULTS, current=True)
+            claude_results.verify_results(
+                claude_results.DEFAULT_RESULTS, current=True
+            )
     elif module is run:
         assert run.verify_results(run.DEFAULT_RESULTS, run.DEFAULT_MANIFEST) == []
         with pytest.raises(AssertionError):

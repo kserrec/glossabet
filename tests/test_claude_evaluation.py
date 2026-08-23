@@ -10,34 +10,42 @@ from pathlib import Path
 import pytest
 
 import scripts.claude_eval as claude_eval
-from evaluation.harness.io import dotenv_part
-from glossabet import __version__
-from glossabet.install.claude_plugin import claude_hooks, claude_plugin_manifest
-from scripts.claude_eval import (
+from evaluation.claude import history as claude_history
+from evaluation.claude import results as claude_results
+from evaluation.claude.contract import (
     CANONICAL_DEFINITION,
+    CANONICAL_SKILL,
     CANONICAL_TERM,
     LIVE_CONFIRMATION,
     PROPOSED_TERM,
     SCENARIO_IDS,
     SOURCE_CANARY,
     ClaudeEvaluationError,
-    _append_attempt,
-    _attempt_from_error,
-    _attempt_from_result,
+    ScratchCleanupFailed,
+    load_manifest,
+    load_response_schema,
+    tree_sha256,
+)
+from evaluation.claude.history import (
+    AbortedRun,
+    append_attempt,
+    attempt_from_error,
+    attempt_from_result,
+    history_summary,
+    promote_current_result,
+    validated_output,
+)
+from evaluation.claude.results import verify_history, verify_results
+from evaluation.harness.io import dotenv_part
+from glossabet import __version__
+from glossabet.install.claude_plugin import claude_hooks, claude_plugin_manifest
+from scripts.claude_eval import (
     _claude_command,
-    _history_summary,
-    _manifest,
     _normal_profile_environment,
-    _promote_current_result,
     _remove_owned_scratch,
-    _response_schema,
-    _tree_sha256,
-    _validated_output,
     main,
     preflight,
     run_evaluation,
-    verify_history,
-    verify_results,
 )
 
 
@@ -74,7 +82,7 @@ raise SystemExit(2)
     plugin = tmp_path / "installed-glossabet"
     (plugin / ".claude-plugin").mkdir(parents=True)
     (plugin / "hooks").mkdir()
-    (plugin / "SKILL.md").write_bytes(claude_eval.CANONICAL_SKILL.read_bytes())
+    (plugin / "SKILL.md").write_bytes(CANONICAL_SKILL.read_bytes())
     (plugin / ".claude-plugin" / "plugin.json").write_text(
         json.dumps(claude_plugin_manifest(), indent=2) + "\n",
         encoding="utf-8",
@@ -241,17 +249,18 @@ def evidence_area(monkeypatch, tmp_path):
             {
                 "schema_version": 1,
                 "attempts": [],
-                "summary": _history_summary([]),
+                "summary": history_summary([]),
             },
             indent=2,
         )
         + "\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(claude_eval, "ROOT", root)
-    monkeypatch.setattr(claude_eval, "RUNS_PATH", runs)
-    monkeypatch.setattr(claude_eval, "HISTORY_PATH", history)
-    monkeypatch.setattr(claude_eval, "DEFAULT_RESULTS", results)
+    for module in (claude_eval, claude_history, claude_results):
+        monkeypatch.setattr(module, "ROOT", root, raising=False)
+        monkeypatch.setattr(module, "RUNS_PATH", runs, raising=False)
+        monkeypatch.setattr(module, "HISTORY_PATH", history, raising=False)
+        monkeypatch.setattr(module, "DEFAULT_RESULTS", results, raising=False)
     monkeypatch.setattr(claude_eval.platform, "system", lambda: "Linux")
     return {"root": root, "runs": runs, "history": history, "results": results}
 
@@ -281,7 +290,7 @@ def _run_fake(
 
 
 def test_manifest_has_exact_bounded_calls_and_unprimed_prompts():
-    manifest = _manifest()
+    manifest = load_manifest()
     scenarios = manifest["scenarios"]
 
     assert tuple(item["id"] for item in scenarios) == SCENARIO_IDS
@@ -303,18 +312,18 @@ def test_manifest_has_exact_bounded_calls_and_unprimed_prompts():
         assert scenario["disable_skills"] is True
     assert scenarios[2]["prompt"] == "/glossabet"
     assert scenarios[2]["disable_skills"] is False
-    assert _response_schema()["required"] == [
+    assert load_response_schema()["required"] == [
         "status",
         "term",
         "definition",
         "protocol",
     ]
-    assert "$schema" not in _response_schema()
+    assert "$schema" not in load_response_schema()
 
 
 def test_claude_command_disables_tools_mcp_persistence_and_retries():
-    manifest = _manifest()
-    schema = _response_schema()
+    manifest = load_manifest()
+    schema = load_response_schema()
 
     for scenario in manifest["scenarios"]:
         command = _claude_command(Path("/usr/bin/claude"), scenario, manifest, schema)
@@ -374,9 +383,9 @@ def test_tree_identity_never_reads_dotenv_contents(monkeypatch, tmp_path):
         return original(path)
 
     monkeypatch.setattr(Path, "read_bytes", guarded_read)
-    first = _tree_sha256(tmp_path)
+    first = tree_sha256(tmp_path)
     (tmp_path / "ordinary.txt").write_text("changed", encoding="utf-8")
-    second = _tree_sha256(tmp_path)
+    second = tree_sha256(tmp_path)
 
     assert first != second
 
@@ -548,8 +557,11 @@ def test_cleanup_failure_is_never_reported_as_safe(
             environment=environment,
         )
 
-    assert caught.value.cleanup_verified is False
-    attempt = _attempt_from_error("synthetic-cleanup-failure", caught.value)
+    assert isinstance(caught.value, ScratchCleanupFailed)
+    attempt = attempt_from_error(
+        "synthetic-cleanup-failure",
+        AbortedRun(caught.value, cleanup_verified=False),
+    )
     assert attempt["cleanup_verified"] is False
     assert attempt["safety_checks"]["temporary_state_removed"] is False
     assert attempt["safety_pass"] is False
@@ -561,14 +573,14 @@ def test_history_result_mirror_and_current_verification_are_digest_bound(
     evidence_area,
 ):
     result, output, plugin, _, _ = _run_fake(tmp_path, evidence_area)
-    attempt = _attempt_from_result(
+    attempt = attempt_from_result(
         "20260818T120000Z-claude-full-deadbeef",
         result,
         output,
     )
 
-    _append_attempt(attempt)
-    _promote_current_result(output)
+    append_attempt(attempt)
+    promote_current_result(output)
 
     assert verify_history() == []
     assert verify_results(evidence_area["results"]) == []
@@ -603,10 +615,10 @@ def test_history_verifier_reports_the_retained_attempt_count(
         "Claude attempt history is genuine and empty"
     )
 
-    _append_attempt(
-        _attempt_from_error(
+    append_attempt(
+        attempt_from_error(
             "20260818T120000Z-claude-full-deadbeef",
-            ClaudeEvaluationError("synthetic preflight refusal"),
+            AbortedRun(ClaudeEvaluationError("synthetic preflight refusal")),
         )
     )
 
@@ -639,17 +651,17 @@ def test_result_verifier_rejects_weakened_method_and_claimed_success(
 
 def test_output_and_cleanup_are_confined(evidence_area, tmp_path):
     good = evidence_area["runs"] / "20260818T120000Z-claude-full-deadbeef.json"
-    assert _validated_output(good) == good
+    assert validated_output(good) == good
 
     for bad in (
         evidence_area["root"] / "outside.json",
         evidence_area["runs"] / "arbitrary.json",
     ):
         with pytest.raises(ClaudeEvaluationError):
-            _validated_output(bad)
+            validated_output(bad)
     good.write_text("reserved", encoding="utf-8")
     with pytest.raises(ClaudeEvaluationError, match="overwrite"):
-        _validated_output(good)
+        validated_output(good)
 
     parent = tmp_path / "scratch-parent"
     parent.mkdir()

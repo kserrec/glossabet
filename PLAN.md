@@ -158,7 +158,18 @@ step and stops); each pass ends green with no recorded-evidence change.
   every stage (before marketplace, after marketplace, after plugin
   install, during interrupt, cleanup-failure-after-failure) and that
   importing the results verifier never loads the host module.
-- [ ] Pass 5 — extract Claude offline results and history.
+- [x] Pass 5 — extract Claude offline results and history (2026-08-22).
+  `evaluation/claude/contract.py` (paths, pinned host/budget/limit
+  expectations, canaries, `ClaudeEvaluationError` and the typed
+  `ScratchCleanupFailed`, the lane's `ensure_ascii=False` JSON encoding,
+  strict symlink-rejecting tree digest, manifest/schema loaders),
+  `events.py` (pure JSONL event readers shared by live judgment and
+  offline verification), `history.py` (typed attempt records, `AbortedRun`,
+  write-once raw results, mirror promotion), `results.py`
+  (`verify_history`, `verify_results`). The lane's last exception-attached
+  attribute is gone: a cleanup failure is a distinct exception type.
+  `tests/test_claude_lane.py` proves offline modules import no host and
+  default verification spawns nothing and never touches the home directory.
 - [ ] Pass 6 — extract Claude host, scenarios, and runner; thin wrapper.
 - [ ] Pass 7 — split deterministic sources and scoring (formulas intact, typed
   production documents).
