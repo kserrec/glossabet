@@ -18,6 +18,7 @@ import uuid
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import NoReturn
 
 ROOT = Path(__file__).resolve().parents[1]
 SCENARIOS_PATH = ROOT / "evaluation" / "agent-scenarios.json"
@@ -121,6 +122,17 @@ settled term; do not perform any action.
 
 sys.path.insert(0, str(ROOT))
 
+from evaluation.harness.identity import lane_source_identity  # noqa: E402
+from evaluation.harness.io import (  # noqa: E402
+    changed_paths,
+    dotenv_part,
+    file_sha256,
+    is_sha256_hex,
+    read_json_object,
+    replace_via_temporary,
+    tree_sha256,
+    walk_paths,
+)
 from glossabet import __version__  # noqa: E402
 from glossabet.agent.agent_context import AGENT_CONTEXT_SCHEMA_VERSION  # noqa: E402
 from glossabet.corpus.scanner import is_sensitive  # noqa: E402
@@ -132,7 +144,7 @@ class AgentEvaluationError(RuntimeError):
     """The host run or its captured evidence violated the scenario contract."""
 
 
-def _fail(message: str) -> None:
+def _fail(message: str) -> NoReturn:
     raise AgentEvaluationError(message)
 
 
@@ -159,64 +171,12 @@ def _expected_hook_config() -> dict:
     }
 
 
-def _dotenv_part(name: str) -> bool:
-    return (
-        name == ".env"
-        or name.endswith(".env")
-        or name.startswith(".env.")
-        or ".env." in name
-    )
-
 
 def _read_json(path: Path, label: str) -> dict:
-    try:
-        if path.stat().st_size > MAX_JSON_BYTES:
-            _fail(f"{label} exceeds {MAX_JSON_BYTES} bytes — refusing to load")
-        value = json.loads(path.read_bytes())
-    except (OSError, ValueError, RecursionError) as exc:
-        _fail(f"{label} is unreadable: {exc}")
-    if not isinstance(value, dict):
-        _fail(f"{label} must be a JSON object")
-    return value
+    return read_json_object(path, label, max_bytes=MAX_JSON_BYTES, fail=_fail)
 
 
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
-
-def _walk_paths(
-    root: Path, *, excluded_directory: str, skip_dotenv: bool = True
-) -> list[Path]:
-    """Deterministic file walk skipping one directory name.
-
-    Dotenv names are skipped by default so identity digests never touch
-    them; the write-diff snapshot opts back in, tracking sensitive files
-    by stat only.
-    """
-    files: list[Path] = []
-    for current, directories, names in os.walk(root, followlinks=False):
-        directories[:] = sorted(
-            name
-            for name in directories
-            if name != excluded_directory and not _dotenv_part(name)
-        )
-        for name in sorted(names):
-            if not skip_dotenv or not _dotenv_part(name):
-                files.append(Path(current) / name)
-    return files
-
-
-def _tree_sha256(root: Path) -> str:
-    digest = hashlib.sha256()
-    files = _walk_paths(root, excluded_directory="__pycache__")
-    for path in sorted(files, key=lambda item: item.relative_to(root).as_posix()):
-        relative = path.relative_to(root).as_posix().encode()
-        content = path.read_bytes()
-        digest.update(len(relative).to_bytes(8, "big"))
-        digest.update(relative)
-        digest.update(len(content).to_bytes(8, "big"))
-        digest.update(content)
-    return digest.hexdigest()
 
 
 _INPUT_IDENTITY_KEYS = frozenset({
@@ -250,12 +210,12 @@ _USAGE_KEYS = (
 
 def _input_identity() -> dict:
     return {
-        "evaluator_sha256": _sha256(Path(__file__).resolve()),
-        "scenario_manifest_sha256": _sha256(SCENARIOS_PATH),
-        "prompt_sha256": _sha256(PROMPT_PATH),
-        "response_schema_sha256": _sha256(RESPONSE_SCHEMA_PATH),
-        "canonical_skill_sha256": _sha256(CANONICAL_SKILL),
-        "plugin_sha256": _tree_sha256(PLUGIN),
+        "evaluator_sha256": lane_source_identity("codex"),
+        "scenario_manifest_sha256": file_sha256(SCENARIOS_PATH),
+        "prompt_sha256": file_sha256(PROMPT_PATH),
+        "response_schema_sha256": file_sha256(RESPONSE_SCHEMA_PATH),
+        "canonical_skill_sha256": file_sha256(CANONICAL_SKILL),
+        "plugin_sha256": tree_sha256(PLUGIN),
         "engine_version": __version__,
     }
 
@@ -265,20 +225,9 @@ def _write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
-def _replace_via_temporary(target: Path, write_payload) -> None:
-    """Populate a unique same-directory temporary, then replace ``target``."""
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
-    try:
-        write_payload(temporary)
-        os.replace(temporary, target)
-    finally:
-        if temporary.exists():
-            temporary.unlink()
-
 
 def _write_history(value: dict) -> None:
-    _replace_via_temporary(
+    replace_via_temporary(
         HISTORY_PATH, lambda temporary: _write_json(temporary, value)
     )
 
@@ -291,10 +240,10 @@ def _promote_current_result(path: Path) -> None:
 
     def write_mirror(temporary: Path) -> None:
         temporary.write_bytes(path.read_bytes())
-        if _sha256(temporary) != _sha256(path):
+        if file_sha256(temporary) != file_sha256(path):
             _fail("current agent result mirror differs from retained raw result")
 
-    _replace_via_temporary(DEFAULT_RESULTS, write_mirror)
+    replace_via_temporary(DEFAULT_RESULTS, write_mirror)
 
 
 def _plugin_wheel() -> Path:
@@ -312,15 +261,15 @@ def _artifact_snapshot() -> dict:
     )
     wheel = _plugin_wheel()
     return {
-        "canonical_skill_sha256": _sha256(CANONICAL_SKILL),
+        "canonical_skill_sha256": file_sha256(CANONICAL_SKILL),
         "engine_version": __version__,
-        "hook_sha256": _sha256(PLUGIN_HOOK),
-        "plugin_sha256": _tree_sha256(PLUGIN),
-        "pyproject_sha256": _sha256(ROOT / "pyproject.toml"),
-        "readme_sha256": _sha256(ROOT / "README.md"),
-        "runner_sha256": _sha256(runner),
-        "source_package_sha256": _tree_sha256(ROOT / "glossabet"),
-        "wheel_sha256": _sha256(wheel),
+        "hook_sha256": file_sha256(PLUGIN_HOOK),
+        "plugin_sha256": tree_sha256(PLUGIN),
+        "pyproject_sha256": file_sha256(ROOT / "pyproject.toml"),
+        "readme_sha256": file_sha256(ROOT / "README.md"),
+        "runner_sha256": file_sha256(runner),
+        "source_package_sha256": tree_sha256(ROOT / "glossabet"),
+        "wheel_sha256": file_sha256(wheel),
     }
 
 
@@ -328,7 +277,7 @@ def _source_python_files() -> dict[str, bytes]:
     package = ROOT / "glossabet"
     return {
         path.relative_to(ROOT).as_posix(): path.read_bytes()
-        for path in _walk_paths(package, excluded_directory="__pycache__")
+        for path in walk_paths(package, excluded_directory="__pycache__")
         if path.name.endswith(".py")
     }
 
@@ -785,7 +734,7 @@ def _make_scenario(root: Path, scenario_id: str) -> None:
 
 def _snapshot(root: Path) -> dict[str, tuple]:
     snapshot: dict[str, tuple] = {}
-    for path in _walk_paths(
+    for path in walk_paths(
         root, excluded_directory=".git", skip_dotenv=False
     ):
         relative = path.relative_to(root).as_posix()
@@ -811,20 +760,11 @@ def _snapshot(root: Path) -> dict[str, tuple]:
 def _unexpected_writes(
     before: dict[str, tuple], after: dict[str, tuple]
 ) -> list[str]:
-    changed = _changed_paths(before, after)
+    changed = changed_paths(before, after)
     return [
         path for path in changed if path != "glossabet-out/evidence.json"
     ]
 
-
-def _changed_paths(
-    before: dict[str, tuple], after: dict[str, tuple]
-) -> list[str]:
-    return sorted(
-        path
-        for path in set(before) | set(after)
-        if before.get(path) != after.get(path)
-    )
 
 
 def _codex_version(codex: str) -> str:
@@ -1512,7 +1452,7 @@ def _evaluate_session_hook(
         failures.append("session-hook agent returned no next action")
 
     after = _snapshot(root)
-    writes = _changed_paths(before, after)
+    writes = changed_paths(before, after)
     if writes:
         failures.append(f"session-hook wrote repository paths: {writes}")
 
@@ -1544,7 +1484,7 @@ def _copy_ignore(_directory: str, names: list[str]) -> set[str]:
     # Mirror _tree_sha256's exclusions so the installed bytes never exceed
     # what the digest-bound artifact claim covered.
     return {
-        name for name in names if _dotenv_part(name) or name == "__pycache__"
+        name for name in names if dotenv_part(name) or name == "__pycache__"
     }
 
 
@@ -2149,7 +2089,7 @@ def run_evaluation(output: Path = DEFAULT_RESULTS) -> dict:
         "delivery": {
             "installed_plugin_skill_read": True,
             "installed_plugin_engine_version_checked": True,
-            "installed_plugin_hook_sha256": _sha256(PLUGIN_HOOK),
+            "installed_plugin_hook_sha256": file_sha256(PLUGIN_HOOK),
             "session_start_hook_context_seen": (
                 hook_result is not None
                 and hook_result.get("observed", {}).get("canonical_term_seen")
@@ -2269,7 +2209,7 @@ def _raw_result_record(path: Path) -> dict:
         relative = path.resolve().relative_to(ROOT.resolve()).as_posix()
     except ValueError:
         _fail("completed agent result is outside the repository")
-    return {"path": relative, "sha256": _sha256(path)}
+    return {"path": relative, "sha256": file_sha256(path)}
 
 
 def _attempt_from_result(attempt_id: str, result: dict, path: Path) -> dict:
@@ -2452,9 +2392,6 @@ def _attempt_from_probe_error(attempt_id: str, exc: Exception) -> dict:
     return attempt
 
 
-def _digest(value: object) -> bool:
-    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
-
 
 def _validated_run_output(path: Path) -> Path:
     candidate = path if path.is_absolute() else ROOT / path
@@ -2479,7 +2416,7 @@ def _artifact_shape_errors(recorded: object) -> list[str]:
         or set(recorded) != keys
         or not isinstance(recorded.get("engine_version"), str)
         or not recorded.get("engine_version")
-        or any(not _digest(recorded[key]) for key in keys - {"engine_version"})
+        or any(not is_sha256_hex(recorded[key]) for key in keys - {"engine_version"})
     ):
         return ["recorded plugin artifact identity is malformed"]
     return []
@@ -2548,7 +2485,7 @@ def _history_errors(
                 elif key == "plugin_sha256" and value is None:
                     if attempt.get("kind") != "missing-cli-only":
                         errors.append(f"{label} lacks its plugin identity")
-                elif not _digest(value):
+                elif not is_sha256_hex(value):
                     errors.append(f"{label} {key} is not a SHA-256 digest")
         checks = attempt.get("checks")
         if not isinstance(checks, dict) or set(checks) != {
@@ -2700,7 +2637,7 @@ def _history_errors(
             if not raw_path.is_file():
                 errors.append(f"{label} raw result is missing or symlinked")
                 continue
-            if not _digest(raw.get("sha256")) or _sha256(raw_path) != raw["sha256"]:
+            if not is_sha256_hex(raw.get("sha256")) or file_sha256(raw_path) != raw["sha256"]:
                 errors.append(f"{label} raw result digest is stale")
                 continue
             retained_results.add(raw_path)
@@ -2740,7 +2677,7 @@ def _history_errors(
                 and resolved_result == DEFAULT_RESULTS.resolve()
             ):
                 result_is_retained = (
-                    _sha256(result_path) in retained_result_digests
+                    file_sha256(result_path) in retained_result_digests
                 )
         if not result_is_retained:
             errors.append("agent result is not retained by the attempt history")
@@ -2762,7 +2699,7 @@ def _input_shape_errors(inputs: object) -> list[str]:
         or set(inputs) != keys
         or not isinstance(inputs.get("engine_version"), str)
         or not inputs.get("engine_version")
-        or any(not _digest(inputs[key]) for key in keys - {"engine_version"})
+        or any(not is_sha256_hex(inputs[key]) for key in keys - {"engine_version"})
     ):
         return ["agent result input identity is malformed"]
     return []
@@ -2862,9 +2799,9 @@ def verify_results(
         else None
     )
     delivery_hook_sha_ok = (
-        delivery_hook_sha == _sha256(PLUGIN_HOOK)
+        delivery_hook_sha == file_sha256(PLUGIN_HOOK)
         if current
-        else _digest(delivery_hook_sha)
+        else is_sha256_hex(delivery_hook_sha)
     )
     if (
         not isinstance(delivery, dict)
@@ -2927,7 +2864,7 @@ def verify_results(
         hook_prompt_sha_ok = (
             hook_prompt_sha == hashlib.sha256(HOOK_PROMPT.encode()).hexdigest()
             if current
-            else _digest(hook_prompt_sha)
+            else is_sha256_hex(hook_prompt_sha)
         )
         if (
             hook.get("passed") is not True

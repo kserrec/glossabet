@@ -23,7 +23,7 @@ import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, NoReturn
 
 ROOT = Path(__file__).resolve().parents[1]
 SCENARIOS_PATH = ROOT / "evaluation" / "claude-scenarios.json"
@@ -48,7 +48,6 @@ PROPOSED_TERM = "Silver Heron"
 SOURCE_CANARY = "SOURCE_ONLY_MARIGOLD_71C2"
 
 MAX_JSON_BYTES = 16_000_000
-_DIGEST = re.compile(r"[0-9a-f]{64}")
 _RUN_NAME = re.compile(
     r"\d{8}T\d{6}Z-claude-[a-z0-9-]+-[0-9a-f]{8}\.json"
 )
@@ -78,6 +77,15 @@ _USAGE_KEYS = (
 
 sys.path.insert(0, str(ROOT))
 
+from evaluation.harness.identity import lane_source_identity  # noqa: E402
+from evaluation.harness.io import (  # noqa: E402
+    changed_paths,
+    dotenv_part,
+    file_sha256,
+    framed_digest,
+    is_sha256_hex,
+    read_json_object,
+)
 from glossabet import __version__  # noqa: E402
 from glossabet.install.claude_plugin import (  # noqa: E402
     CLAUDE_HOOKS_RELATIVE,
@@ -91,35 +99,21 @@ class ClaudeEvaluationError(RuntimeError):
     """The bounded host run or its retained evidence broke its contract."""
 
 
-def _fail(message: str) -> None:
+def _fail(message: str) -> NoReturn:
     raise ClaudeEvaluationError(message)
 
 
-def _dotenv_part(name: str) -> bool:
-    return (
-        name == ".env"
-        or name.endswith(".env")
-        or name.startswith(".env.")
-        or ".env." in name
-    )
-
 
 def _read_json(path: Path, label: str) -> dict:
-    try:
-        if path.is_symlink():
-            _fail(f"{label} is symlinked")
-        if path.stat().st_size > MAX_JSON_BYTES:
-            _fail(f"{label} exceeds {MAX_JSON_BYTES} bytes")
-        value = json.loads(path.read_bytes())
-    except (OSError, ValueError, RecursionError) as exc:
-        _fail(f"{label} is unreadable: {exc}")
-    if not isinstance(value, dict):
-        _fail(f"{label} must be a JSON object")
-    return value
+    return read_json_object(
+        path,
+        label,
+        max_bytes=MAX_JSON_BYTES,
+        fail=_fail,
+        reject_symlink=True,
+        overflow_suffix="",
+    )
 
-
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _sha256_text(value: str) -> str:
@@ -172,28 +166,23 @@ def _tree_sha256(root: Path) -> str:
         kept = []
         for name in sorted(directories):
             path = Path(current) / name
-            if _dotenv_part(name) or name == "__pycache__":
+            if dotenv_part(name) or name == "__pycache__":
                 continue
             if path.is_symlink():
                 _fail(f"tree contains a symlinked directory: {path}")
             kept.append(name)
         directories[:] = kept
         for name in sorted(names):
-            if _dotenv_part(name) or name.endswith(".pyc"):
+            if dotenv_part(name) or name.endswith(".pyc"):
                 continue
             path = Path(current) / name
             if path.is_symlink():
                 _fail(f"tree contains a symlinked file: {path}")
             files.append(path)
-    digest = hashlib.sha256()
-    for path in sorted(files, key=lambda item: item.relative_to(root).as_posix()):
-        relative = path.relative_to(root).as_posix().encode()
-        content = path.read_bytes()
-        digest.update(len(relative).to_bytes(8, "big"))
-        digest.update(relative)
-        digest.update(len(content).to_bytes(8, "big"))
-        digest.update(content)
-    return digest.hexdigest()
+    ordered = sorted(files, key=lambda item: item.relative_to(root).as_posix())
+    return framed_digest(
+        (path.relative_to(root).as_posix(), path.read_bytes()) for path in ordered
+    )
 
 
 def _snapshot(root: Path) -> dict[str, tuple]:
@@ -203,10 +192,10 @@ def _snapshot(root: Path) -> dict[str, tuple]:
         directories[:] = sorted(
             name
             for name in directories
-            if name not in {".git", "__pycache__"} and not _dotenv_part(name)
+            if name not in {".git", "__pycache__"} and not dotenv_part(name)
         )
         for name in sorted(names):
-            if _dotenv_part(name) or name.endswith(".pyc"):
+            if dotenv_part(name) or name.endswith(".pyc"):
                 continue
             path = Path(current) / name
             relative = path.relative_to(root).as_posix()
@@ -222,13 +211,6 @@ def _snapshot(root: Path) -> dict[str, tuple]:
                 )
     return snapshot
 
-
-def _changed_paths(before: dict[str, tuple], after: dict[str, tuple]) -> list[str]:
-    return sorted(
-        path
-        for path in set(before) | set(after)
-        if before.get(path) != after.get(path)
-    )
 
 
 def _manifest() -> dict:
@@ -466,9 +448,9 @@ def _installed_plugin(
         {
             "path": "<HOME>/.claude/skills/glossabet",
             "tree_sha256": _tree_sha256(plugin),
-            "skill_sha256": _sha256(skill),
-            "manifest_sha256": _sha256(manifest_path),
-            "hook_sha256": _sha256(hook_path),
+            "skill_sha256": file_sha256(skill),
+            "manifest_sha256": file_sha256(manifest_path),
+            "hook_sha256": file_sha256(hook_path),
             "hook_executable": "<HOME>/.local/bin/glossabet",
         },
         executable,
@@ -665,10 +647,10 @@ def _create_fixture(root: Path, kind: str) -> None:
 
 def _input_identity(installed_plugin: Path) -> dict:
     return {
-        "evaluator_sha256": _sha256(Path(__file__).resolve()),
-        "scenario_manifest_sha256": _sha256(SCENARIOS_PATH),
-        "response_schema_sha256": _sha256(RESPONSE_SCHEMA_PATH),
-        "canonical_skill_sha256": _sha256(CANONICAL_SKILL),
+        "evaluator_sha256": lane_source_identity("claude"),
+        "scenario_manifest_sha256": file_sha256(SCENARIOS_PATH),
+        "response_schema_sha256": file_sha256(RESPONSE_SCHEMA_PATH),
+        "canonical_skill_sha256": file_sha256(CANONICAL_SKILL),
         "installed_plugin_sha256": _tree_sha256(installed_plugin),
         "engine_version": __version__,
     }
@@ -963,7 +945,7 @@ def _run_scenario(
     before = _snapshot(root)
     direct_brief = _direct_brief(hook_executable, root, environment=environment)
     after_brief = _snapshot(root)
-    brief_writes = _changed_paths(before, after_brief)
+    brief_writes = changed_paths(before, after_brief)
     command = _claude_command(claude, scenario, manifest, schema)
     result = _command(
         command,
@@ -972,7 +954,7 @@ def _run_scenario(
         timeout=600,
     )
     after = _snapshot(root)
-    unexpected_writes = sorted(set(brief_writes + _changed_paths(after_brief, after)))
+    unexpected_writes = sorted(set(brief_writes + changed_paths(after_brief, after)))
     parse_failure: str | None = None
     try:
         events = _parse_events(result.stdout, limits)
@@ -1207,7 +1189,7 @@ def _raw_result_record(path: Path) -> dict:
         relative = path.resolve().relative_to(ROOT.resolve()).as_posix()
     except ValueError:
         _fail("Claude raw result is outside the repository")
-    return {"path": relative, "sha256": _sha256(path)}
+    return {"path": relative, "sha256": file_sha256(path)}
 
 
 def _attempt_from_result(attempt_id: str, result: dict, path: Path) -> dict:
@@ -1292,16 +1274,13 @@ def _promote_current_result(path: Path) -> None:
     )
     try:
         temporary.write_bytes(path.read_bytes())
-        if _sha256(temporary) != _sha256(path):
+        if file_sha256(temporary) != file_sha256(path):
             _fail("Claude current-result mirror differs from the raw result")
         os.replace(temporary, DEFAULT_RESULTS)
     finally:
         if temporary.exists():
             temporary.unlink()
 
-
-def _digest(value: object) -> bool:
-    return isinstance(value, str) and _DIGEST.fullmatch(value) is not None
 
 
 def _input_shape_errors(value: object) -> list[str]:
@@ -1318,7 +1297,7 @@ def _input_shape_errors(value: object) -> list[str]:
         or set(value) != keys
         or not isinstance(value.get("engine_version"), str)
         or not value.get("engine_version")
-        or any(not _digest(value[key]) for key in keys - {"engine_version"})
+        or any(not is_sha256_hex(value[key]) for key in keys - {"engine_version"})
     ):
         return ["Claude result input identity is malformed"]
     return []
@@ -1360,8 +1339,8 @@ def verify_history(path: Path | None = None) -> list[str]:
             if (
                 raw_path.is_symlink()
                 or not raw_path.is_file()
-                or not _digest(raw.get("sha256"))
-                or _sha256(raw_path) != raw.get("sha256")
+                or not is_sha256_hex(raw.get("sha256"))
+                or file_sha256(raw_path) != raw.get("sha256")
             ):
                 errors.append(f"Claude attempt {attempt.get('id')} raw digest is stale")
                 continue
@@ -1493,7 +1472,7 @@ def _result_scenario_errors(item: object, scenario: dict, limits: dict) -> list[
             errors.append(f"{expected_id}: proposed vocabulary leaked")
         if observed.get("source_canary_absent") is not True:
             errors.append(f"{expected_id}: source canary leaked")
-        if not _digest(observed.get("direct_brief_sha256")):
+        if not is_sha256_hex(observed.get("direct_brief_sha256")):
             errors.append(f"{expected_id}: direct brief digest is malformed")
         if (
             expected_id == "ambient-absent"
@@ -1509,7 +1488,7 @@ def _result_scenario_errors(item: object, scenario: dict, limits: dict) -> list[
         or item.get("stderr_sanitized_sha256") != _sha256_text(stderr)
     ):
         errors.append(f"{expected_id}: sanitized stderr or its digest is stale")
-    if not _digest(item.get("stdout_sha256")) or not _digest(item.get("stderr_sha256")):
+    if not is_sha256_hex(item.get("stdout_sha256")) or not is_sha256_hex(item.get("stderr_sha256")):
         errors.append(f"{expected_id}: stream digests are malformed")
     return errors
 
@@ -1572,10 +1551,10 @@ def verify_results(
     if (
         not isinstance(plugin, dict)
         or plugin.get("path") != "<HOME>/.claude/skills/glossabet"
-        or not _digest(plugin.get("tree_sha256"))
-        or not _digest(plugin.get("skill_sha256"))
-        or not _digest(plugin.get("manifest_sha256"))
-        or not _digest(plugin.get("hook_sha256"))
+        or not is_sha256_hex(plugin.get("tree_sha256"))
+        or not is_sha256_hex(plugin.get("skill_sha256"))
+        or not is_sha256_hex(plugin.get("manifest_sha256"))
+        or not is_sha256_hex(plugin.get("hook_sha256"))
         or not isinstance(plugin.get("enabled_plugins"), list)
     ):
         errors.append("Claude installed-plugin evidence is missing or malformed")
@@ -1607,7 +1586,7 @@ def verify_results(
         errors.append("Claude evaluator scratch cleanup is not verified")
     errors.extend(verify_history())
     try:
-        result_digest = _sha256(path)
+        result_digest = file_sha256(path)
         history = _read_json(HISTORY_PATH, "Claude attempt history")
         retained = [
             item.get("raw_result", {}).get("sha256")

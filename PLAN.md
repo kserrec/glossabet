@@ -88,7 +88,61 @@ turns and their token/cost ceiling.
 **Current status:** not started. Existing installed-agent evidence covers the
 Step 0 boundary, not these post-approval behaviors.
 
-## 3. Trusted alpha
+## 3. Modularize and type the evaluation harnesses
+
+**Outcome:** the four evaluation entry points (`scripts/agent_eval.py`,
+`scripts/claude_eval.py`, `evaluation/run.py`, `evaluation/review.py`) are
+thin wrappers over lane-oriented packages under `evaluation/` (`harness`,
+`codex`, `claude`, `deterministic`, `reviewer`); offline verification never
+imports live-host modules; lifecycle state is explicit dataclasses rather than
+attributes attached to exceptions; evaluation code passes mypy; every recorded
+result binds to an aggregate evaluator-code identity covering all governing
+source. Behavior, thresholds, schemas, and every committed result, history,
+scenario, and packet JSON stay byte-for-byte unchanged.
+
+**Full specification:** [`docs/plans/evaluation-modularization.md`](docs/plans/evaluation-modularization.md)
+— binding for scope, non-goals, import direction, type strategy, compatibility
+contracts, and per-pass acceptance.
+
+**Prerequisite:** none; this is engineering work independent of the owner
+pause. No live evaluator run, `--probe-missing-cli`, `--fetch`,
+`--run-reviewer`, or plugin lifecycle smoke is ever part of it.
+
+**Current status:** in progress. One pass per session (`/next` executes one
+step and stops); each pass ends green with no recorded-evidence change.
+
+- [x] Pass 1 — characterize behavior and establish shared identity
+  (2026-08-22). `evaluation` and `evaluation.harness` are packages;
+  `harness/io.py` holds the shared bounded-JSON, framed-hash, tree-walk, and
+  atomic-replace primitives; `harness/identity.py` computes each lane's
+  aggregate source identity (wrapper + lane package + transitively imported
+  harness modules), now written into every lane's `evaluator_sha256` /
+  `source_sha256`. Characterization tests pin all four CLIs
+  (`tests/test_evaluation_cli.py`); identity mutation and boundary tests live
+  in `tests/test_evaluation_harness.py`. Note: the Claude results verifier
+  exits 1 by design — it reports the retained 0/3 batch — and the
+  characterization pins that, not the spec's "passes" wording.
+- [ ] Pass 2 — extract Codex offline results and history into
+  `evaluation.codex.results` (typed shapes; verifier imports no host code).
+- [ ] Pass 3 — extract Codex traces and scenarios (pure parsing, fixtures
+  separated from judgments).
+- [ ] Pass 4 — extract Codex host lifecycle (explicit `PluginLifecycle`
+  dataclass, cleanup tests at every stage); `scripts/agent_eval.py` becomes a
+  thin wrapper.
+- [ ] Pass 5 — extract Claude offline results and history.
+- [ ] Pass 6 — extract Claude host, scenarios, and runner; thin wrapper.
+- [ ] Pass 7 — split deterministic sources and scoring (formulas intact, typed
+  production documents).
+- [ ] Pass 8 — split deterministic aggregation, verification, and CLI; thin
+  wrapper.
+- [ ] Pass 9 — split the reviewer lane; thin wrapper; explicit narrow
+  dependency on deterministic result reading.
+- [ ] Pass 10 — mypy gate for `evaluation/` and the wrappers, dependency
+  tests, sdist/wheel checks, and documentation (`ARCHITECTURE.md`,
+  `docs/CODE-WALKTHROUGH.md`, `EVALUATION.md`, command docs; drop the
+  duplicated "Persisted documents are…" line).
+
+## 4. Trusted alpha
 
 **Outcome:** at least two consenting maintainers have used the exact installed
 build, and the measured set totals at least five varied repositories. The
@@ -102,7 +156,7 @@ owner walkthrough is complete.
 **Current status:** blocked by the intentional owner pause; no invitations are
 to be sent yet.
 
-## 4. Exact-artifact release candidate
+## 5. Exact-artifact release candidate
 
 **Outcome:** one immutable source state and its wheel, source distribution, and
 plugin are tied to the same hashes and pass deterministic evaluation, current
@@ -116,7 +170,7 @@ separates proven behavior, measured alpha evidence, and remaining limitations.
 evidence for integrity; the `--current` evidence gates and plugin rebuild are
 release-candidate work.
 
-## 5. External publication
+## 6. External publication
 
 **Outcome:** only after a successful release candidate, separately authorized
 actions may enable GitHub private vulnerability reporting or dependency

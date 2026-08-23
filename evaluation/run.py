@@ -24,6 +24,12 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from evaluation.harness.identity import lane_source_paths  # noqa: E402
+from evaluation.harness.io import (  # noqa: E402
+    dotenv_part,
+    framed_digest,
+    is_sha256_hex,
+)
 from glossabet import __version__  # noqa: E402
 from glossabet.analysis.evidence import (  # noqa: E402
     EVIDENCE_SCHEMA_VERSION,
@@ -114,17 +120,6 @@ class EvaluationError(ValueError):
     """The corpus, checkout, or labels cannot support a valid evaluation."""
 
 
-def _dotenv_part(name: str) -> bool:
-    return (
-        name == ".env"
-        or name.endswith(".env")
-        or name.startswith(".env.")
-        or ".env." in name
-    )
-
-
-def _hex_digest(value: object) -> bool:
-    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
 
 
 def _is_safe_relative(value: object) -> bool:
@@ -163,13 +158,13 @@ def _is_commit_sha(value: object) -> bool:
 def _digest_paths(root: Path, relative_paths: list[str]) -> str:
     """Hash path names and bytes with unambiguous framing."""
     base = root.resolve()
-    digest = hashlib.sha256()
+    records: list[tuple[str, bytes]] = []
     for relative in sorted(set(relative_paths)):
         rel = Path(relative)
         if (
             rel.is_absolute()
             or ".." in rel.parts
-            or any(_dotenv_part(part) for part in rel.parts)
+            or any(dotenv_part(part) for part in rel.parts)
         ):
             raise EvaluationError(f"unsafe corpus digest path: {relative}")
         path = (base / rel).resolve()
@@ -185,21 +180,17 @@ def _digest_paths(root: Path, relative_paths: list[str]) -> str:
             raise EvaluationError(
                 f"could not hash evaluation input {relative}: {exc}"
             ) from exc
-        name = rel.as_posix().encode("utf-8")
-        digest.update(len(name).to_bytes(8, "big"))
-        digest.update(name)
-        digest.update(len(content).to_bytes(8, "big"))
-        digest.update(content)
-    return digest.hexdigest()
+        records.append((rel.as_posix(), content))
+    return framed_digest(records)
 
 
 def _engine_metadata() -> dict:
     source_paths = [
         path.relative_to(PROJECT_ROOT).as_posix()
         for path in (PROJECT_ROOT / "glossabet").glob("**/*.py")
-        if not any(_dotenv_part(part) for part in path.parts)
+        if not any(dotenv_part(part) for part in path.parts)
     ]
-    source_paths.append("evaluation/run.py")
+    source_paths.extend(lane_source_paths("deterministic"))
     return {
         "name": "glossabet",
         "version": __version__,
@@ -249,7 +240,7 @@ def _read_manifest(path: Path) -> tuple[dict, str]:
         files = source.get("corpus_files")
         if (
             not isinstance(digest, str)
-            or not _hex_digest(digest)
+            or not is_sha256_hex(digest)
             or not isinstance(files, int)
             or isinstance(files, bool)
             or files < 0
@@ -1374,10 +1365,10 @@ def _genuineness_errors(results: dict) -> list[str]:
         or engine.get("name") != "glossabet"
         or not isinstance(engine.get("version"), str)
         or not engine.get("version")
-        or not _hex_digest(engine.get("source_sha256"))
+        or not is_sha256_hex(engine.get("source_sha256"))
     ):
         errors.append("engine identity metadata is malformed")
-    if not _hex_digest(results.get("manifest_sha256")):
+    if not is_sha256_hex(results.get("manifest_sha256")):
         errors.append("evaluation manifest digest is malformed")
 
     cases = results.get("cases")
@@ -1398,7 +1389,7 @@ def _genuineness_errors(results: dict) -> list[str]:
         corpus = case.get("corpus")
         if (
             not isinstance(corpus, dict)
-            or not _hex_digest(corpus.get("sha256"))
+            or not is_sha256_hex(corpus.get("sha256"))
             or not isinstance(corpus.get("files_hashed"), int)
             or isinstance(corpus.get("files_hashed"), bool)
             or corpus["files_hashed"] < 0
@@ -1547,7 +1538,7 @@ def _currency_errors(results: dict, manifest_path: Path) -> list[str]:
         corpus = case.get("corpus")
         if (
             not isinstance(corpus, dict)
-            or not _hex_digest(corpus.get("sha256"))
+            or not is_sha256_hex(corpus.get("sha256"))
             or not isinstance(corpus.get("files_hashed"), int)
             or corpus["files_hashed"] < 0
         ):

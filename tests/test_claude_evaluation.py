@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 import scripts.claude_eval as claude_eval
+from evaluation.harness.io import dotenv_part
 from glossabet import __version__
 from glossabet.install.claude_plugin import claude_hooks, claude_plugin_manifest
 from scripts.claude_eval import (
@@ -368,8 +369,8 @@ def test_tree_identity_never_reads_dotenv_contents(monkeypatch, tmp_path):
     original = Path.read_bytes
 
     def guarded_read(path):
-        assert not claude_eval._dotenv_part(path.name)
-        assert not any(claude_eval._dotenv_part(part) for part in path.parts)
+        assert not dotenv_part(path.name)
+        assert not any(dotenv_part(part) for part in path.parts)
         return original(path)
 
     monkeypatch.setattr(Path, "read_bytes", guarded_read)

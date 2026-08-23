@@ -12,10 +12,17 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import NoReturn
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from evaluation.harness.identity import lane_source_identity  # noqa: E402
+from evaluation.harness.io import (  # noqa: E402
+    file_sha256,
+    is_sha256_hex,
+    read_json_object,
+)
 from evaluation.run import (  # noqa: E402
     DEFAULT_MANIFEST,
     DEFAULT_RESULTS,
@@ -56,22 +63,13 @@ TRACE_LIMITS = {
 }
 
 
+def _fail(message: str) -> NoReturn:
+    raise EvaluationError(message)
+
+
 def _read_json(path: Path, label: str) -> dict:
-    try:
-        if path.stat().st_size > MAX_JSON_BYTES:
-            raise EvaluationError(
-                f"{label} exceeds {MAX_JSON_BYTES} bytes — refusing to load"
-            )
-        value = json.loads(path.read_bytes())
-    except (OSError, ValueError, RecursionError) as exc:
-        raise EvaluationError(f"{label} is unreadable: {exc}") from exc
-    if not isinstance(value, dict):
-        raise EvaluationError(f"{label} must be a JSON object")
-    return value
+    return read_json_object(path, label, max_bytes=MAX_JSON_BYTES, fail=_fail)
 
-
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _json_sha256(value: dict) -> str:
@@ -79,15 +77,12 @@ def _json_sha256(value: dict) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _hex_digest(value: object) -> bool:
-    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
-
 
 def _reviewer_input_identity() -> dict:
     return {
-        "evaluator_sha256": _sha256(Path(__file__).resolve()),
-        "prompt_sha256": _sha256(PROMPT_PATH),
-        "response_schema_sha256": _sha256(RESPONSE_SCHEMA_PATH),
+        "evaluator_sha256": lane_source_identity("reviewer"),
+        "prompt_sha256": file_sha256(PROMPT_PATH),
+        "response_schema_sha256": file_sha256(RESPONSE_SCHEMA_PATH),
     }
 
 
@@ -276,7 +271,7 @@ def expected_packet(
     evaluation_results = _read_json(evaluation_path, "evaluation results")
     return build_packet(
         evaluation_results,
-        manifest_sha256=_sha256(manifest_path),
+        manifest_sha256=file_sha256(manifest_path),
     )
 
 
@@ -441,8 +436,8 @@ def run_reviewer(
         shutil.copy2(packet_path, isolated_packet)
         shutil.copy2(RESPONSE_SCHEMA_PATH, isolated_schema)
         expected_files = {
-            isolated_packet.name: _sha256(isolated_packet),
-            isolated_schema.name: _sha256(isolated_schema),
+            isolated_packet.name: file_sha256(isolated_packet),
+            isolated_schema.name: file_sha256(isolated_schema),
         }
         command = [
             codex,
@@ -484,7 +479,7 @@ def run_reviewer(
         response = _read_json(final_path, "second-reviewer response")
         final_path.unlink()
         observed_files = {
-            path.name: _sha256(path)
+            path.name: file_sha256(path)
             for path in workspace.iterdir()
             if path.is_file()
         }
@@ -496,7 +491,7 @@ def run_reviewer(
         packet,
         response,
         manifest,
-        evaluation_results_sha256=_sha256(evaluation_path),
+        evaluation_results_sha256=file_sha256(evaluation_path),
         reviewer={
             "kind": "codex-exec",
             "codex_version": codex_version,
@@ -531,7 +526,7 @@ def _packet_genuineness_errors(packet: dict) -> list[str]:
     errors: list[str] = []
     if packet.get("schema_version") != PACKET_SCHEMA_VERSION:
         errors.append("reviewer packet schema is stale")
-    if not _hex_digest(packet.get("evaluation_manifest_sha256")):
+    if not is_sha256_hex(packet.get("evaluation_manifest_sha256")):
         errors.append("reviewer packet manifest digest is malformed")
     findings = packet.get("findings")
     well_formed = isinstance(findings, list) and bool(findings)
@@ -609,7 +604,7 @@ def verify_results(
             isinstance(identity, dict)
             and set(identity)
             == {"evaluator_sha256", "prompt_sha256", "response_schema_sha256"}
-            and all(_hex_digest(value) for value in identity.values())
+            and all(is_sha256_hex(value) for value in identity.values())
         )
     recorded_limits = (
         execution.get("trace_limits") if isinstance(execution, dict) else None
@@ -679,7 +674,7 @@ def verify_results(
             ):
                 errors.append("second-reviewer trace is missing or unbounded")
                 break
-    if not _hex_digest(results.get("evaluation_results_sha256")):
+    if not is_sha256_hex(results.get("evaluation_results_sha256")):
         errors.append("reviewer evidence digests are malformed")
     response = {"judgments": results.get("judgments")}
     try:
@@ -715,7 +710,7 @@ def verify_results(
                     expected,
                     response,
                     manifest,
-                    evaluation_results_sha256=_sha256(evaluation_path),
+                    evaluation_results_sha256=file_sha256(evaluation_path),
                     reviewer=reviewer if isinstance(reviewer, dict) else {},
                 )
             except EvaluationError as exc:

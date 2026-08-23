@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 import scripts.agent_eval as agent_eval
+from evaluation.harness.io import tree_sha256
 from scripts.agent_eval import (
     HOOK_DEFINITION,
     HOOK_PROMPT,
@@ -32,7 +33,6 @@ from scripts.agent_eval import (
     _result_input_errors,
     _run_missing_cli_scenario,
     _snapshot,
-    _tree_sha256,
     _usage_totals,
     _validated_run_output,
     verify_results,
@@ -469,13 +469,13 @@ def test_plugin_identity_ignores_interpreter_bytecode_cache(tmp_path):
     source = plugin / "skills" / "glossabet" / "scripts" / "run_glossabet.py"
     source.parent.mkdir(parents=True)
     source.write_text("print('glossabet')\n", encoding="utf-8")
-    clean_identity = _tree_sha256(plugin)
+    clean_identity = tree_sha256(plugin)
 
     cache = source.parent / "__pycache__" / "run_glossabet.cpython-312.pyc"
     cache.parent.mkdir()
     cache.write_bytes(b"generated interpreter cache")
 
-    assert _tree_sha256(plugin) == clean_identity
+    assert tree_sha256(plugin) == clean_identity
 
 
 def test_plugin_identity_uses_platform_independent_path_order(tmp_path):
@@ -498,7 +498,7 @@ def test_plugin_identity_uses_platform_independent_path_order(tmp_path):
         expected.update(len(content).to_bytes(8, "big"))
         expected.update(content)
 
-    assert _tree_sha256(plugin) == expected.hexdigest()
+    assert tree_sha256(plugin) == expected.hexdigest()
 
 
 def test_agent_prompt_requires_complete_untransformed_inspect_stdout():
