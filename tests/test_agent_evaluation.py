@@ -9,7 +9,7 @@ import pytest
 
 import evaluation.codex.history as codex_history
 import evaluation.codex.results as codex_results
-import scripts.agent_eval as agent_eval
+from evaluation.codex import host, runner
 from evaluation.codex.contract import (
     HOOK_DEFINITION,
     HOOK_PROMPT,
@@ -20,12 +20,18 @@ from evaluation.codex.contract import (
 )
 from evaluation.codex.fixtures import make_scenario, snapshot
 from evaluation.codex.history import (
+    AbortedRun,
     append_attempt,
     attempt_from_error,
     attempt_from_probe_error,
     promote_current_result,
     raw_result_record,
     validated_run_output,
+)
+from evaluation.codex.host import (
+    codex_exec_command,
+    competing_standalone_skill_paths,
+    disabled_skills_config,
 )
 from evaluation.codex.results import (
     history_errors,
@@ -34,15 +40,10 @@ from evaluation.codex.results import (
     usage_totals,
     verify_results,
 )
+from evaluation.codex.runner import run_missing_cli_scenario
 from evaluation.codex.scenarios import evaluate_scenario, evaluate_session_hook
 from evaluation.codex.trace import installed_version_command
 from evaluation.harness.io import tree_sha256
-from scripts.agent_eval import (
-    _codex_exec_command,
-    _competing_standalone_skill_paths,
-    _disabled_skills_config,
-    _run_missing_cli_scenario,
-)
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "evaluation" / "agent-scenarios.json"
@@ -440,7 +441,8 @@ def test_missing_usage_is_recorded_as_unknown_not_zero():
 
 def test_pre_lifecycle_abort_records_no_cleanup_debt():
     attempt = attempt_from_error(
-        "pre-lifecycle-abort", AgentEvaluationError("codex is not installed")
+        "pre-lifecycle-abort",
+        AbortedRun(AgentEvaluationError("codex is not installed")),
     )
 
     assert attempt["cleanup_verified"] is True
@@ -448,8 +450,9 @@ def test_pre_lifecycle_abort_records_no_cleanup_debt():
     assert attempt["safety_pass"] is True
     assert attempt["usage"] is None
 
-    cleanup_failure = AgentEvaluationError("plugin cleanup failed")
-    cleanup_failure.cleanup_verified = False
+    cleanup_failure = AbortedRun(
+        AgentEvaluationError("plugin cleanup failed"), cleanup_verified=False
+    )
     unsafe = attempt_from_error("cleanup-failure", cleanup_failure)
     assert unsafe["cleanup_verified"] is False
     assert unsafe["safety_pass"] is False
@@ -457,7 +460,8 @@ def test_pre_lifecycle_abort_records_no_cleanup_debt():
 
 def test_focused_probe_abort_stays_in_the_focused_reliability_series():
     attempt = attempt_from_probe_error(
-        "focused-abort", AgentEvaluationError("agent response was malformed")
+        "focused-abort",
+        AbortedRun(AgentEvaluationError("agent response was malformed")),
     )
 
     assert attempt["kind"] == "missing-cli-only"
@@ -530,10 +534,10 @@ def test_agent_eval_disables_default_standalone_skill_without_modifying_it(
     skill.parent.mkdir(parents=True)
     skill.write_text("stale user-owned skill\n", encoding="utf-8")
 
-    paths = _competing_standalone_skill_paths(home=tmp_path)
+    paths = competing_standalone_skill_paths(home=tmp_path)
 
     assert paths == (skill,)
-    assert _disabled_skills_config(paths) == (
+    assert disabled_skills_config(paths) == (
         f"skills.config=[{{path={json.dumps(str(skill))},enabled=false}}]"
     )
     assert skill.read_text(encoding="utf-8") == "stale user-owned skill\n"
@@ -542,16 +546,16 @@ def test_agent_eval_disables_default_standalone_skill_without_modifying_it(
 def test_agent_eval_adds_no_skill_override_when_standalone_skill_is_absent(
     tmp_path,
 ):
-    paths = _competing_standalone_skill_paths(home=tmp_path)
+    paths = competing_standalone_skill_paths(home=tmp_path)
 
     assert paths == ()
-    assert _disabled_skills_config(paths) is None
+    assert disabled_skills_config(paths) is None
 
 
 def test_agent_eval_passes_the_skill_override_to_codex_exec(tmp_path):
     skill = tmp_path / ".agents" / "skills" / "glossabet" / "SKILL.md"
 
-    command = _codex_exec_command(
+    command = codex_exec_command(
         "/usr/bin/codex",
         workspace=tmp_path,
         prompt="$glossabet",
@@ -559,7 +563,7 @@ def test_agent_eval_passes_the_skill_override_to_codex_exec(tmp_path):
         disabled_skills=(skill,),
     )
 
-    override = _disabled_skills_config((skill,))
+    override = disabled_skills_config((skill,))
     assert override is not None
     assert command[command.index(override) - 1] == "-c"
     assert not any("experimental_use_profile" in item for item in command)
@@ -569,7 +573,7 @@ def test_agent_eval_passes_the_skill_override_to_codex_exec(tmp_path):
 
 
 def test_agent_eval_can_bypass_hook_trust_for_digest_bound_plugin_probe(tmp_path):
-    command = _codex_exec_command(
+    command = codex_exec_command(
         "/usr/bin/codex",
         workspace=tmp_path,
         prompt=HOOK_PROMPT,
@@ -584,7 +588,7 @@ def test_agent_eval_can_bypass_hook_trust_for_digest_bound_plugin_probe(tmp_path
 def test_agent_eval_can_disable_profile_and_login_shell_for_one_codex_exec(
     tmp_path,
 ):
-    command = _codex_exec_command(
+    command = codex_exec_command(
         "/usr/bin/codex",
         workspace=tmp_path,
         prompt="$glossabet",
@@ -614,15 +618,15 @@ def test_missing_cli_host_run_disables_profile_and_login_shell(
         observed.update(kwargs)
         return {"scenarios": [{"id": "missing-cli"}]}, [], {"input_tokens": 0}
 
-    monkeypatch.setattr(agent_eval, "_install_standalone_skill", install_skill)
-    monkeypatch.setattr(agent_eval, "_run_codex", run_codex)
+    monkeypatch.setattr(runner, "install_standalone_skill", install_skill)
+    monkeypatch.setattr(runner, "run_codex", run_codex)
     monkeypatch.setattr(
-        agent_eval,
+        runner,
         "evaluate_scenario",
         lambda *args, **kwargs: {"id": "missing-cli", "passed": True},
     )
 
-    result, usage = _run_missing_cli_scenario(
+    result, usage = run_missing_cli_scenario(
         "/usr/bin/codex",
         {
             "id": "missing-cli",
@@ -925,9 +929,11 @@ def test_agent_verifier_checks_input_currency_only_at_the_release_gate(
 
 
 def test_aborted_attempts_record_the_stage_that_actually_failed(tmp_path):
-    failure = AgentEvaluationError("codex exec exited 1")
-    failure.failed_stage = "missing-cli"
-    failure.cleanup_verified = True
+    failure = AbortedRun(
+        AgentEvaluationError("codex exec exited 1"),
+        failed_stage="missing-cli",
+        cleanup_verified=True,
+    )
     attempt = attempt_from_error("stage-probe", failure)
 
     assert attempt["checks"] == {
@@ -951,8 +957,7 @@ def test_aborted_attempts_record_the_stage_that_actually_failed(tmp_path):
 
 
 def test_interrupts_still_produce_a_recordable_attempt():
-    interrupt = KeyboardInterrupt()
-    interrupt.failed_stage = "plugin-scenarios"
+    interrupt = AbortedRun(KeyboardInterrupt(), failed_stage="plugin-scenarios")
     attempt = attempt_from_error("interrupt-probe", interrupt)
 
     assert attempt["failures"] == ["KeyboardInterrupt"]
@@ -967,15 +972,8 @@ def test_cleanup_only_removes_state_that_was_created(monkeypatch):
         issued.append(tuple(command))
         return {"installed": [], "marketplaces": []}
 
-    monkeypatch.setattr(agent_eval, "_run", fake_run)
-    agent_eval._cleanup_plugin(
-        "codex",
-        "glossabet@probe",
-        "probe",
-        None,
-        plugin_added=False,
-        marketplace_added=False,
-    )
+    monkeypatch.setattr(host, "run_command", fake_run)
+    host.cleanup_plugin("codex", "glossabet@probe", "probe", host.PluginLifecycle())
 
     assert len(issued) == 2
     assert all(

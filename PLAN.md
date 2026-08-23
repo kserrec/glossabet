@@ -147,9 +147,17 @@ step and stops); each pass ends green with no recorded-evidence change.
   missing-CLI judgment, pure). `scripts/agent_eval.py` is 932 lines of host
   lifecycle and orchestration. `tests/test_codex_lane.py` proves judgment
   modules import no process machinery and fixtures spawn only `git`.
-- [ ] Pass 4 — extract Codex host lifecycle (explicit `PluginLifecycle`
-  dataclass, cleanup tests at every stage); `scripts/agent_eval.py` becomes a
-  thin wrapper.
+- [x] Pass 4 — extract Codex host lifecycle (2026-08-22).
+  `evaluation/codex/host.py` (command execution, version probe, temporary
+  marketplace, `PluginLifecycle` dataclass advanced by `install_plugin` and
+  consumed by `cleanup_plugin`, standalone-skill shadow), `runner.py`
+  (hook/plugin/missing-CLI sessions, result assembly, typed `AbortedRun`
+  built after cleanup, original exception re-raised unmodified), `cli.py`.
+  `scripts/agent_eval.py` is an 18-line wrapper. No exception in the lane
+  carries attached state. `tests/test_codex_lane.py` proves cleanup at
+  every stage (before marketplace, after marketplace, after plugin
+  install, during interrupt, cleanup-failure-after-failure) and that
+  importing the results verifier never loads the host module.
 - [ ] Pass 5 — extract Claude offline results and history.
 - [ ] Pass 6 — extract Claude host, scenarios, and runner; thin wrapper.
 - [ ] Pass 7 — split deterministic sources and scoring (formulas intact, typed

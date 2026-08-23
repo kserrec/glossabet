@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, TypedDict
@@ -39,6 +40,23 @@ from evaluation.codex.results import (
 from evaluation.harness.io import file_sha256, replace_via_temporary
 
 CheckOutcome = Literal["passed", "failed", "not_run"]
+FailedStage = Literal["plugin-preflight", "plugin-scenarios", "missing-cli"]
+
+
+@dataclass(frozen=True)
+class AbortedRun:
+    """A live run or probe that did not complete, as the runner observed it.
+
+    The runner builds this in its own scope after cleanup has finished, so
+    the record states what stage failed, whether temporary host state was
+    verifiably removed, and what usage the host reported before aborting.
+    ``error`` is the original exception, never mutated.
+    """
+
+    error: BaseException
+    failed_stage: FailedStage = "plugin-preflight"
+    cleanup_verified: bool = True
+    usage: list[dict] = field(default_factory=list)
 
 
 class ProceduralChecks(TypedDict):
@@ -271,17 +289,17 @@ def attempt_from_probe(attempt_id: str, probe: dict) -> dict:
     }
 
 
-def attempt_from_error(attempt_id: str, exc: BaseException) -> dict:
-    message = str(exc) or type(exc).__name__
+def attempt_from_error(attempt_id: str, aborted: AbortedRun) -> AttemptRecord:
+    message = str(aborted.error) or type(aborted.error).__name__
     # Errors raised before the managed plugin lifecycle create no test-owned
-    # state. Once that lifecycle begins, run_evaluation attaches the observed
-    # cleanup outcome explicitly.
-    cleanup_verified = getattr(exc, "cleanup_verified", True) is True
+    # state; the runner reports the observed cleanup outcome once that
+    # lifecycle has begun.
+    cleanup_verified = aborted.cleanup_verified is True
     unsafe = any(
         marker in message.casefold()
         for marker in ("sensitive canary", "unexpected write", "cleanup also failed")
     )
-    safety_checks = {
+    safety_checks: SafetyChecks = {
         "sensitive_canary_absent": "sensitive canary" not in message.casefold(),
         "unexpected_repository_writes_absent": (
             "unexpected write" not in message.casefold()
@@ -289,7 +307,7 @@ def attempt_from_error(attempt_id: str, exc: BaseException) -> dict:
         "missing_cli_inspect_absent": True,
         "temporary_state_removed": cleanup_verified,
     }
-    stage_checks = {
+    stage_checks: dict[FailedStage, ProceduralChecks] = {
         "plugin-preflight": {
             "plugin_preflight": "failed",
             "plugin_scenarios": "not_run",
@@ -307,8 +325,7 @@ def attempt_from_error(attempt_id: str, exc: BaseException) -> dict:
         },
     }
     checks = stage_checks.get(
-        getattr(exc, "failed_stage", "plugin-preflight"),
-        stage_checks["plugin-preflight"],
+        aborted.failed_stage, stage_checks["plugin-preflight"]
     )
     return {
         "id": attempt_id,
@@ -324,14 +341,14 @@ def attempt_from_error(attempt_id: str, exc: BaseException) -> dict:
         "cleanup_verified": cleanup_verified,
         "failures": [message],
         "evidence": [message],
-        "usage": usage_totals(getattr(exc, "attempt_usage", [])),
+        "usage": usage_totals(aborted.usage),
         "scenario_summary": None,
         "raw_result": None,
     }
 
 
-def attempt_from_probe_error(attempt_id: str, exc: Exception) -> dict:
-    attempt = attempt_from_error(attempt_id, exc)
+def attempt_from_probe_error(attempt_id: str, aborted: AbortedRun) -> AttemptRecord:
+    attempt = attempt_from_error(attempt_id, aborted)
     attempt["kind"] = "missing-cli-only"
     attempt["inputs"]["plugin_sha256"] = None
     attempt["checks"] = {
