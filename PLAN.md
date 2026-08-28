@@ -1,6 +1,6 @@
 # Glossabet — Current Roadmap
 
-Last updated: 2026-08-22.
+Last updated: 2026-08-27.
 
 Glossabet 0.1.0 is an unreleased source alpha. The implementation and local
 release machinery exist, but Kyle is still testing the product as its owner.
@@ -31,6 +31,186 @@ Every future change must preserve these constraints:
   need justifies a reviewed exception.
 - External account use, paid/live evaluation, publication, tags, releases, and
   repository-setting changes require separate explicit authorization.
+
+## 0. Targeted hardening and cleanup (active)
+
+**Outcome:** the reviewed 0.1.0 alpha keeps its existing architecture while
+its declared platform support, analytical completeness contracts, boundary
+behavior, finding bounds, compatibility policy, and inheritance surface become
+internally consistent. The binding starting point is
+`db5e76aca747892611b06114100c59b4d7a4e676`; newer deliberate decisions win
+when later work has already resolved a finding.
+
+This is an oversized plan. Its Phases correspond to the specification's
+numbered passes; each Step is one complete single-pass change. Every production
+Step begins with a failing scenario and a named invariant, changes tests with
+production code, runs focused tests before the full suite, runs Ruff and mypy,
+preserves deterministic ordering, updates every affected persisted schema in
+the same commit, and ends in one focused commit. No Step may add a runtime
+dependency, service layer, provider framework, generic measurement algebra, or
+unrequested module split. The existing CLI-to-artifact flow, Graphify adapter
+boundary, distribution duplication, bounded imperative builders, and trust
+protections remain protected.
+
+### Phase 0 — exact baseline
+
+- [x] **Step 0.1 — record the before-state and executable plan**
+  (2026-08-27). `HEAD` and `origin/main` both equal the reviewed commit and the
+  worktree began clean. The declared matrix is CPython 3.10–3.14 on Ubuntu,
+  macOS, and Windows; package metadata also says `OS Independent`. The public
+  commands are `scan`, `analyze`, `inspect`, `brief`, `sync-context`, `show`,
+  `save`, `drift`, `validate`, `cache-clear`, and `install`.
+
+  Product formats are evidence 15, agent context 3, glossary 1, drift 6,
+  validation 8, config 1, managed context 1, managed block 1, brief 1, and
+  cache 5. Evaluation formats are deterministic results 7, Codex results 5
+  and history 1, Claude results 1 and history 1, reviewer packet 1, and
+  reviewer results 2. Persisted analytical compatibility vocabulary currently
+  includes `count_complete`, `files_complete`, `locations_truncated`,
+  `total_findings_complete`, and validation's convenience `graph_available`
+  beside its richer `graph` state. Tolerant readers also retain older or
+  hand-built evidence ledgers, Graphify's legacy top-level `edges` fallback,
+  and the pre-rename `glossarize-out` exclusion.
+
+  On local CPython 3.12/Linux: `uv sync --locked` passed; 798 tests passed;
+  Ruff, mypy (55 product files), workflow policy, deterministic/Codex/reviewer
+  evidence verification, isolated wheel build, distribution parity, and wheel
+  smoke all passed. `actionlint` is not installed locally, but the matching CI
+  static job passed actionlint 1.7.12.
+
+  The current GitHub run for this exact commit failed seven of fifteen matrix
+  lanes: every Windows lane failed the same seven base tests (Claude scratch cleanup on
+  read-only Git objects masks both a synthetic failure and `KeyboardInterrupt`;
+  four evaluation-CLI cases require POSIX missing-file wording/path spelling;
+  one race test requires POSIX symlink state), and all three Python 3.14 lanes
+  additionally failed the allocator-sensitive `tracemalloc` threshold. These
+  are two evaluation-infrastructure defects plus platform/interpreter-sensitive
+  tests. No product defect or unsupported-environment mismatch was observed.
+  Static
+  checks passed; the distribution job was skipped because it needs the failed
+  matrix, while the same distribution checks passed locally.
+
+### Phase 1 — trustworthy CI and release gate
+
+- [ ] **Step 1.1 — portable owned-scratch cleanup and failure precedence.**
+  Reproduce the Windows read-only-object failure and the masking lifecycle;
+  implement one small confined cleanup owner where lifecycle behavior is truly
+  shared; prove ownership, parent confinement, symlink/junction non-traversal,
+  permission correction and retry of only the failed delete, explicit cleanup
+  results, original exception/`KeyboardInterrupt` precedence, secondary cleanup
+  diagnostics, and cleanup-primary behavior after an otherwise successful run.
+- [ ] **Step 1.2 — platform-semantic CLI and race contracts.** Replace raw
+  operating-system prose and absolute-path expectations with Glossabet-owned
+  prefixes, exit/channel behavior, canary preservation, non-traversal, and safe
+  outcomes. Keep exact POSIX symlink-state assertions only in POSIX tests; do
+  not weaken the underlying race protections.
+- [ ] **Step 1.3 — deterministic bounded-read verification.** Replace the
+  interpreter-allocation threshold with an instrumented stream/open seam that
+  proves bounded requests, no cap-sized allocation request, minimum evidence
+  read before oversize rejection, and exact-boundary behavior.
+- [ ] **Step 1.4 — close the support and distribution gates.** Run every
+  declared lane, Ruff, mypy, actionlint, workflow policy, recorded-evidence
+  verification, build/plugin/distribution/wheel smoke, and confirm that the
+  package job actually executes. Change support metadata only if a remaining
+  limitation is deliberate and documented, never to hide a portable defect.
+
+### Phase 2 — canonical scope and boundary behavior
+
+- [ ] **Step 2.1 — one NFC scope identity.** Add one scope-domain NFC
+  canonicalizer and make validation, duplicate/overlap/ownership checks,
+  lookup, comparison, save, and load consume it. Prove composed/decomposed
+  identity and ancestry, canonically distinct paths, deterministic persistence,
+  and rejection of equivalent competing owners; bump the glossary schema if
+  the persisted semantic change requires it.
+- [ ] **Step 2.2 — deliberate command/filesystem boundaries.** Give parsed
+  JSON `null` a schema diagnostic distinct from input failure; treat an
+  uncertain exact-name lookup as uninspectable for writes; and recognize a
+  genuine `glossabet-out` subtree without rejecting an unrelated repository
+  beneath a similarly named ancestor. Prove each positive, negative, and
+  uncertainty case without creating a general directory classifier.
+
+### Phase 3 — exactness, completeness, sampling, and skipped checks
+
+- [ ] **Step 3.1 — occurrence exactness contract.** Migrate numeric occurrence
+  facts from ambiguous “complete” names to `count_exact`, `files_exact`, and
+  `modules_exact`; retain collection `complete` and display
+  `locations_truncated`; persist exact global identifier module counts; and
+  distinguish upstream clipping from final display sampling for scoped,
+  single-token, and compound occurrences. Update affected schema versions,
+  fixtures, serializers, consumers, and documentation together with no parallel
+  legacy fields unless the compatibility policy explicitly requires them.
+- [ ] **Step 3.2 — epistemically sound analytical decisions.** Apply identical
+  fragmentation rules to simple and compound terms: emit a lower-bound count
+  already above threshold, suppress an inexact below-threshold negative, and
+  record the incomplete reason. Add one “unproven zero” helper and use it for
+  parallel/watched/fading/binding and related checks when tables, locations,
+  work, term limits, or production corpus coverage make absence unknowable.
+- [ ] **Step 3.3 — projection semantics.** Separate selected projection,
+  `projection_complete`, `source_complete`, intentional protocol exclusions,
+  limit-driven truncations, and the applied limits. Prove that a designed lean
+  exclusion does not read as projection failure and that serialization remains
+  bounded and deterministic.
+- [ ] **Step 3.4 — validation execution and graph state.** Separate all-checks
+  execution/skips from the exact total produced by evaluated checks; rationalize
+  externally visible graph state around `present`, `usable`, `freshness`, and
+  `warnings`; apply the compatibility policy to `graph_available`; and migrate
+  validation schema, evaluation scoring, fixtures, docs, and distribution
+  copies in one coherent change.
+
+### Phase 4 — bounded findings and clear ownership
+
+- [ ] **Step 4.1 — bound large finding details.** Store exact structural
+  `concept_count` with a bounded sample and explicit sample truncation, then
+  audit only other per-finding collections proportional to accepted glossary
+  size. Prove exact totals, payload bounds, intended serialized size, and
+  deterministic order.
+- [ ] **Step 4.2 — expose conceptual module owners.** Move clear internal scope
+  imports from persistence re-export façades to `glossary.scope`, preserve only
+  policy-backed public compatibility re-exports, audit a few similarly clear
+  cases, and prove no dependency cycle. Do not perform a repository-wide import
+  rewrite.
+- [ ] **Step 4.3 — conditional cohesion improvements.** Reassess
+  `agent_context.py` after its schema change and split protocol model from
+  projection code into exactly two modules only if local reasoning materially
+  improves and output stays byte-identical. Likewise add mypy coverage only for
+  the critical evaluator cleanup/lifecycle modules if that gives a narrow,
+  maintainable gate. Record a no-change decision when either move is churn.
+
+### Phase 5 — comments, compatibility, and repository coherence
+
+- [ ] **Step 5.1 — repository and evaluation authority map.** Make the existing
+  top-level architecture surface identify canonical product/test/evaluation/
+  script/skill/plugin/history/generated ownership; make `evaluation/README.md`
+  distinguish scenarios, schemas, accepted baselines, raw runs, provider code,
+  archives, and files not edited manually; archive rather than delete useful
+  evidence; and keep irrelevant history out of source distributions.
+- [ ] **Step 5.2 — explicit compatibility policy.** Document accepted persisted
+  versions, Python import-path status, field deprecation horizons, legacy output
+  exclusions, and removal criteria. Apply it narrowly to graph/evidence
+  fallbacks, re-exports, tolerant hand-built artifacts, and pre-rename output
+  names; keep every retained path tied to a purpose or lifetime.
+- [ ] **Step 5.3 — current-invariant comments and authoritative history.** Audit
+  the named large modules for test-directed, development-history,
+  conversational, rhetorical, and narrating comments; retain or add only
+  security, ordering, bound, exactness, projection, failure-precedence, and
+  compatibility invariants. Classify plans/history, leave one apparent current
+  roadmap, preserve reproducibility evidence, and verify packaging/distribution
+  parity after movement.
+
+### Phase 6 — cold review and stopping decision
+
+- [ ] **Step 6.1 — complete regression and deterministic-artifact surface.** Run
+  the full local gates, all declared CI lanes, distribution/plugin builds and
+  smoke tests, representative public workflows, repeated cold/warm fixture and
+  repository runs, and semantic before/after artifact comparisons for ordering,
+  omissions, exactness, skipped state, and size. Investigate unrelated drift.
+- [ ] **Step 6.2 — fresh inheritance review, residue audit, and stop.** A fresh
+  reviewer uses only current source and top-level docs to identify subsystem,
+  I/O, validation, matching, partial-evidence, canonical/derived,
+  compatibility, and safe-change ownership. Remove only proven residue from
+  this work, confirm no category-one defect or worthwhile category-two
+  simplification remains, record disproportionate rejections, and declare the
+  clean local optimum without beginning another speculative refactor cycle.
 
 ## 1. Complete the owner walkthrough
 
