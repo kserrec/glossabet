@@ -143,11 +143,35 @@ protections remain protected.
   junction test skipped on Linux. Ruff, product mypy, and workflow policy
   passed. Python 3.14 is not installed locally; its actual execution remains
   part of Step 1.4.
-- [ ] **Step 1.4 — close the support and distribution gates.** Run every
-  declared lane, Ruff, mypy, actionlint, workflow policy, recorded-evidence
-  verification, build/plugin/distribution/wheel smoke, and confirm that the
-  package job actually executes. Change support metadata only if a remaining
-  limitation is deliberate and documented, never to hide a portable defect.
+- [x] **Step 1.4 — close the support and distribution gates** (2026-08-27).
+  The first hosted run passed static analysis and fourteen of fifteen matrix
+  lanes, then failed macOS/Python 3.11 twice unchanged because Git's transient
+  `maintenance.lock` vanished between `shutil.rmtree` discovery and unlink.
+  Confined disappearance during the exact delete operation is now accepted as
+  already cleaned; ownership, identity, marker, symlink/junction, and
+  permission-retry protections remain intact. The next run passed all matrix
+  lanes but exposed the previously skipped package job's bare-interpreter
+  `PyYAML` import failure. Quality and manual-release workflow checks now run
+  through the locked development environment, with policy tests rejecting a
+  regression to the bare interpreter.
+
+  On implementation commit `d55bc48`, local verification passed
+  `uv sync --locked`; 807 tests with one Windows-junction skip on Linux; Ruff;
+  mypy over 55 product files; the checksum-verified actionlint 1.7.12 binary;
+  workflow policy; all three offline evidence verifiers; isolated wheel,
+  sdist, and plugin builds; distribution parity; wheel smoke; and the Codex
+  plugin install,
+  update, invocation, and removal smoke. The product wheel remained byte
+  identical at SHA-256
+  `332629479a79e4787106514d3293109b34ebf98e31cfb0f3608fd7150e99a4f7`.
+
+  GitHub run [33133049644](https://github.com/kserrec/glossabet/actions/runs/33133049644)
+  passed all fifteen CPython 3.10–3.14 × Ubuntu/macOS/Windows lanes, Ruff,
+  mypy, actionlint, and the dependent package job. That package job executed
+  and passed workflow policy, all retained-evidence verifiers, build, plugin
+  reconstruction, distribution parity, and wheel smoke. No supported
+  environment, package metadata, schema, runtime dependency, or architecture
+  changed to close the gates.
 
 ### Phase 2 — canonical scope and boundary behavior
 
