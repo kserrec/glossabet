@@ -5,6 +5,8 @@ corruption) must read as a miss, never as stale data."""
 import hashlib
 import json
 import os
+import subprocess
+import sys
 
 import pytest
 
@@ -199,7 +201,7 @@ def test_cache_is_disabled_if_configured_inside_scanned_repo(
     assert not unsafe.exists()
 
 
-def test_cache_clear_removes_only_glossabet_layout(tmp_path, capsys):
+def test_cache_clear_leaves_a_mixed_root_untouched(tmp_path, capsys):
     from glossabet.cli import main
 
     (tmp_path / "repo").mkdir()
@@ -221,9 +223,9 @@ def test_cache_clear_removes_only_glossabet_layout(tmp_path, capsys):
 
     assert main(["cache-clear"]) == 0
     out = capsys.readouterr().out
-    assert "removed 1 repository entry" in out
-    assert not path.exists()
-    assert not path.parent.exists()
+    assert "removed 0 repository entries" in out
+    assert path.exists()
+    assert path.parent.exists()
     assert (root / "notes.txt").read_text() == "mine"
     assert (root / "other-tool" / "data").read_text() == "x"
     assert (victim / "keep").read_text() == "keep"
@@ -248,9 +250,107 @@ def test_cache_clear_removes_empty_root_and_reports_absence(tmp_path, capsys):
     assert "nothing to remove" in capsys.readouterr().out
 
 
+def test_cache_clear_refuses_an_existing_non_directory_truthfully(
+    tmp_path, monkeypatch, capsys
+):
+    from glossabet.cli import main
+
+    cache_root = tmp_path / "cache-as-file"
+    cache_root.write_text("user data", encoding="utf-8")
+    monkeypatch.setenv("GLOSSABET_CACHE_DIR", str(cache_root))
+
+    assert main(["cache-clear"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "cache path is not a directory" in captured.err
+    assert "does not exist" not in captured.err
+    assert cache_root.read_text(encoding="utf-8") == "user data"
+
+
+def test_cache_clear_refuses_a_symlinked_root_without_touching_its_target(
+    tmp_path, monkeypatch, capsys
+):
+    from glossabet.cli import main
+
+    target = tmp_path / "external-cache"
+    entry = target / ("a" * 64)
+    entry.mkdir(parents=True)
+    canary = entry / "cache.json"
+    canary.write_text("KEEP", encoding="utf-8")
+    cache_root = tmp_path / "cache-link"
+    try:
+        cache_root.symlink_to(target, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"directory symlinks unavailable: {exc}")
+    monkeypatch.setenv("GLOSSABET_CACHE_DIR", str(cache_root))
+
+    assert main(["cache-clear"]) == 1
+    assert "symlinked or junctioned" in capsys.readouterr().err
+    assert canary.read_text(encoding="utf-8") == "KEEP"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows junction contract")
+def test_cache_clear_refuses_a_junctioned_root(tmp_path, monkeypatch):
+    external = tmp_path / "external-cache"
+    entry = external / ("c" * 64)
+    entry.mkdir(parents=True)
+    canary = entry / "cache.json"
+    canary.write_text("KEEP", encoding="utf-8")
+    junction = tmp_path / "cache-junction"
+    created = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(junction), str(external)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if created.returncode:
+        pytest.skip(f"directory junctions unavailable: {created.stderr}")
+    monkeypatch.setenv("GLOSSABET_CACHE_DIR", str(junction))
+
+    try:
+        report = clear_cache()
+        assert report["root_refusal"] == (
+            "the cache path is symlinked or junctioned"
+        )
+        assert canary.read_text(encoding="utf-8") == "KEEP"
+    finally:
+        if os.path.lexists(junction):
+            junction.rmdir()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows junction contract")
+def test_cache_clear_does_not_follow_a_repository_entry_junction(
+    tmp_path, monkeypatch
+):
+    root = tmp_path / "cache"
+    root.mkdir()
+    external = tmp_path / "external-cache"
+    external.mkdir()
+    canary = external / "cache.json"
+    canary.write_text("KEEP", encoding="utf-8")
+    junction = root / ("b" * 64)
+    created = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(junction), str(external)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if created.returncode:
+        pytest.skip(f"directory junctions unavailable: {created.stderr}")
+    monkeypatch.setenv("GLOSSABET_CACHE_DIR", str(root))
+
+    try:
+        report = clear_cache()
+        assert canary.read_text(encoding="utf-8") == "KEEP"
+        assert report["removed_entries"] == 0
+        assert report["unrecognized_left_in_place"] == [junction.name]
+    finally:
+        if os.path.lexists(junction):
+            junction.rmdir()
+
+
 def test_cache_clear_reports_an_unlistable_entry_instead_of_crashing(tmp_path, monkeypatch):
-    """An entry directory that cannot be listed is left in place and named in
-    the report, after the removable entries were still removed."""
+    """An unreadable entry leaves the mixed root untouched and is reported."""
     root = tmp_path / "cache"
     good = root / ("a" * 64)
     good.mkdir(parents=True)
@@ -266,9 +366,49 @@ def test_cache_clear_reports_an_unlistable_entry_instead_of_crashing(tmp_path, m
         report = clear_cache()
     finally:
         locked.chmod(0o755)
-    assert report["removed_entries"] == 1
+    assert report["removed_entries"] == 0
     assert report["unrecognized_left_in_place"] == ["c" * 64]
     assert report["root_removed"] is False
+    assert (good / "cache.json").is_file()
+
+
+def test_cache_clear_reports_work_completed_before_a_removal_failure(
+    tmp_path, monkeypatch, capsys
+):
+    from glossabet import corpus as corpus_package
+    from glossabet.cli import main
+
+    cache_module = corpus_package.cache
+    root = tmp_path / "cache"
+    first = root / ("a" * 64)
+    second = root / ("b" * 64)
+    first.mkdir(parents=True)
+    second.mkdir()
+    (first / cache_module.CACHE_FILE).write_text("{}", encoding="utf-8")
+    (second / cache_module.CACHE_FILE).write_text("{}", encoding="utf-8")
+    monkeypatch.setenv(cache_module.CACHE_ROOT_ENV, str(root))
+    real_unlink = cache_module.os.unlink
+    cache_unlinks = 0
+
+    def fail_second_cache_unlink(path, *args, **kwargs):
+        nonlocal cache_unlinks
+        if os.path.basename(os.fspath(path)) == cache_module.CACHE_FILE:
+            cache_unlinks += 1
+            if cache_unlinks == 2:
+                raise OSError("synthetic cache removal failure")
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(cache_module.os, "unlink", fail_second_cache_unlink)
+
+    assert main(["cache-clear"]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "removed 1 repository entry" in captured.err
+    assert "before refusal" in captured.err
+    assert "a captured cache entry could not be removed safely" in captured.err
+    assert not first.exists()
+    assert (second / cache_module.CACHE_FILE).is_file()
 
 
 def test_malformed_cache_entries_are_misses_never_crashes_or_stale_evidence(tmp_path):

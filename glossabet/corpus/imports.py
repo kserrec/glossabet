@@ -193,7 +193,11 @@ class Resolver:
         parts = spec.split("::")
         while parts and parts[0] in ("self", "super"):
             if parts[0] == "super":
-                segments = segments[:-1]
+                # The first segment is the crate root, not a parent that
+                # ``super`` may traverse beyond.
+                if len(segments) <= 1:
+                    return "internal", None
+                segments.pop()
             parts = parts[1:]
         # ``super::error::Kind`` names an item inside module ``error``: like
         # the ``crate::`` branch, retry with trailing item segments dropped.
@@ -216,7 +220,13 @@ class Resolver:
         if language == "python":
             level = len(spec) - len(spec.lstrip("."))
             for _ in range(max(0, level - 1)):
-                segments = segments[:-1]
+                # Keep the top-level package segment: another dot would be
+                # Python's "beyond top-level package" ImportError. A
+                # single-dot import from a package at scan root stays at
+                # that root and therefore needs no segment to pop.
+                if len(segments) <= 1:
+                    return "internal", None
+                segments.pop()
             remainder = spec[level:]
             if remainder:
                 segments.extend(remainder.split("."))
@@ -226,7 +236,9 @@ class Resolver:
                 if part in ("", "."):
                     continue
                 if part == "..":
-                    segments = segments[:-1]
+                    if not segments:
+                        return "internal", None
+                    segments.pop()
                 else:
                     segments.append(part)
         return self._resolve_segments(segments)

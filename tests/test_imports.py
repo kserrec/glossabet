@@ -326,6 +326,42 @@ def test_python_parent_relative_import_resolves_to_parent_package(tmp_path):
     }
 
 
+def test_python_relative_import_resolves_from_package_at_scan_root(tmp_path):
+    helpers = tmp_path / "helpers"
+    helpers.mkdir()
+    (tmp_path / "__init__.py").write_text(
+        "from .helpers import value\nroot_value = value\n"
+    )
+    (helpers / "__init__.py").write_text("value = 1\n")
+
+    imports = build_evidence(tmp_path)["imports"]
+
+    assert (".", "helpers") in {
+        (edge["from"], edge["to"]) for edge in imports["internal_edges"]
+    }
+
+
+def test_relative_imports_cannot_climb_above_the_repository_root():
+    from glossabet.corpus.imports import build_imports_section
+
+    cases = (
+        ("src/consumer.js", "javascript", "../../target"),
+        ("src/consumer.rb", "ruby", "../../target"),
+        ("pkg/sub/consumer.py", "python", "...target"),
+        (
+            "src/net/client.rs",
+            "rust",
+            "super::super::super::target",
+        ),
+    )
+    for importer, language, spec in cases:
+        section = build_imports_section(
+            [(importer, language, [spec])],
+            [(importer, language), ("target/index.py", "python")],
+        )
+        assert section["internal_edges"] == [], (language, section)
+
+
 def test_same_repo_include_resolves_internal(tmp_path):
     # #include "helpers.h" used to be misfiled as an external dep "helpers"
     # even with include/helpers.h present in the repo.

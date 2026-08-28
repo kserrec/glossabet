@@ -455,6 +455,165 @@ def _entry_exists(path: Path) -> bool:
     return True
 
 
+def _supports_anchored_scratch_creation() -> bool:
+    return (
+        bool(getattr(os, "O_DIRECTORY", 0))
+        and bool(getattr(os, "O_NOFOLLOW", 0))
+        and os.open in os.supports_dir_fd
+        and os.mkdir in os.supports_dir_fd
+        and os.stat in os.supports_dir_fd
+        and os.unlink in os.supports_dir_fd
+        and os.rmdir in os.supports_dir_fd
+    )
+
+
+def _owned_scratch_anchored(
+    parent: Path,
+    parent_info: os.stat_result,
+) -> OwnedScratch:
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    try:
+        parent_fd = os.open(parent, flags)
+    except OSError:
+        fail(f"scratch parent changed while being inspected: {parent}")
+    root_fd: int | None = None
+    created_name: str | None = None
+    created_info: os.stat_result | None = None
+    created_entry_owned = False
+    marker_created = False
+    try:
+        opened_parent_info = os.fstat(parent_fd)
+        if (
+            not stat.S_ISDIR(opened_parent_info.st_mode)
+            or _entry_identity(opened_parent_info) != _entry_identity(parent_info)
+        ):
+            fail(f"scratch parent changed while being inspected: {parent}")
+        for _attempt in range(100):
+            candidate = f"{_SCRATCH_PREFIX}{secrets.token_hex(8)}"
+            try:
+                os.mkdir(candidate, mode=0o700, dir_fd=parent_fd)
+            except FileExistsError:
+                continue
+            except OSError:
+                fail(f"scratch parent changed while being inspected: {parent}")
+            created_name = candidate
+            break
+        if created_name is None:
+            fail(f"could not allocate evaluator scratch under: {parent}")
+        created_info = os.stat(
+            created_name,
+            dir_fd=parent_fd,
+            follow_symlinks=False,
+        )
+        if (
+            _is_link_or_junction(created_info)
+            or not stat.S_ISDIR(created_info.st_mode)
+        ):
+            fail(f"scratch directory changed while being created: {parent}")
+        root_fd = os.open(created_name, flags, dir_fd=parent_fd)
+        root_info = os.fstat(root_fd)
+        if _entry_identity(root_info) != _entry_identity(created_info):
+            fail(f"scratch directory changed while being created: {parent}")
+        created_entry_owned = True
+        token = secrets.token_hex(32)
+        marker_fd = os.open(
+            _SCRATCH_MARKER,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+            dir_fd=root_fd,
+        )
+        marker_created = True
+        with os.fdopen(marker_fd, "w", encoding="utf-8") as marker:
+            marker.write(token)
+        try:
+            latest_parent_info = parent.lstat()
+        except OSError:
+            fail(f"scratch parent changed while being inspected: {parent}")
+        if (
+            _is_link_or_junction(latest_parent_info)
+            or not stat.S_ISDIR(latest_parent_info.st_mode)
+            or _entry_identity(latest_parent_info)
+            != _entry_identity(opened_parent_info)
+        ):
+            fail(f"scratch parent changed while being inspected: {parent}")
+        return OwnedScratch(
+            path=parent / created_name,
+            parent=parent,
+            identity=_entry_identity(root_info),
+            parent_identity=_entry_identity(opened_parent_info),
+            token=token,
+        )
+    except BaseException:
+        if root_fd is not None and marker_created:
+            try:
+                os.unlink(_SCRATCH_MARKER, dir_fd=root_fd)
+            except OSError:
+                pass
+        if root_fd is not None:
+            try:
+                os.close(root_fd)
+            except OSError:
+                pass
+            root_fd = None
+        if created_name is not None and created_entry_owned:
+            try:
+                latest_root_info = os.stat(
+                    created_name,
+                    dir_fd=parent_fd,
+                    follow_symlinks=False,
+                )
+                if (
+                    created_info is not None
+                    and not _is_link_or_junction(latest_root_info)
+                    and _entry_identity(latest_root_info)
+                    == _entry_identity(created_info)
+                ):
+                    os.rmdir(created_name, dir_fd=parent_fd)
+            except OSError:
+                pass
+        raise
+    finally:
+        if root_fd is not None:
+            os.close(root_fd)
+        os.close(parent_fd)
+
+
+def _owned_scratch_by_path(
+    parent: Path,
+    parent_info: os.stat_result,
+) -> OwnedScratch:
+    root = Path(tempfile.mkdtemp(prefix=_SCRATCH_PREFIX, dir=parent))
+    try:
+        latest_parent_info = parent.lstat()
+    except OSError:
+        latest_parent_info = None
+    if (
+        latest_parent_info is None
+        or _is_link_or_junction(latest_parent_info)
+        or not stat.S_ISDIR(latest_parent_info.st_mode)
+        or _entry_identity(latest_parent_info) != _entry_identity(parent_info)
+    ):
+        try:
+            root.rmdir()
+        except OSError:
+            fail(
+                "scratch parent changed and the empty scratch could not be "
+                f"removed: {parent}"
+            )
+        fail(f"scratch parent changed while being inspected: {parent}")
+    token = secrets.token_hex(32)
+    with (root / _SCRATCH_MARKER).open("x", encoding="utf-8") as marker:
+        marker.write(token)
+    root_info = root.lstat()
+    return OwnedScratch(
+        path=root,
+        parent=parent,
+        identity=_entry_identity(root_info),
+        parent_identity=_entry_identity(parent_info),
+        token=token,
+    )
+
+
 def owned_scratch(parent: Path) -> OwnedScratch:
     try:
         requested_info = parent.lstat()
@@ -464,22 +623,20 @@ def owned_scratch(parent: Path) -> OwnedScratch:
         requested_info.st_mode
     ):
         fail(f"scratch parent is missing, symlinked, or junctioned: {parent}")
-    resolved_parent = parent.resolve()
-    parent_info = resolved_parent.lstat()
-    root = Path(
-        tempfile.mkdtemp(prefix=_SCRATCH_PREFIX, dir=resolved_parent)
-    )
-    token = secrets.token_hex(32)
-    with (root / _SCRATCH_MARKER).open("x", encoding="utf-8") as marker:
-        marker.write(token)
-    root_info = root.lstat()
-    return OwnedScratch(
-        path=root,
-        parent=resolved_parent,
-        identity=_entry_identity(root_info),
-        parent_identity=_entry_identity(parent_info),
-        token=token,
-    )
+    try:
+        resolved_parent = parent.resolve()
+        parent_info = resolved_parent.lstat()
+    except OSError:
+        fail(f"scratch parent changed while being inspected: {parent}")
+    if (
+        _is_link_or_junction(parent_info)
+        or not stat.S_ISDIR(parent_info.st_mode)
+        or _entry_identity(parent_info) != _entry_identity(requested_info)
+    ):
+        fail(f"scratch parent changed while being inspected: {parent}")
+    if _supports_anchored_scratch_creation():
+        return _owned_scratch_anchored(resolved_parent, parent_info)
+    return _owned_scratch_by_path(resolved_parent, parent_info)
 
 
 def remove_owned_scratch(scratch: OwnedScratch) -> bool:

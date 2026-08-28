@@ -173,6 +173,37 @@ protections remain protected.
   environment, package metadata, schema, runtime dependency, or architecture
   changed to close the gates.
 
+#### Post-Phase 1 bughunt — complete
+
+- [x] **Whole-project correctness sweep and targeted fixes** (2026-08-27).
+  After the declared matrix and distribution gate were green, a separate
+  bughunt close-read the product, evaluation, packaging, workflow, and test
+  surfaces while leaving the already planned Phase 2–6 findings for their
+  coordinated schema and cleanup work.
+
+  The sweep confined `cache-clear` across links, junctions, path replacement,
+  and partial operating-system failure; prevented relative imports from
+  climbing above Python/Rust/JavaScript/Ruby roots without losing a valid
+  Python single-dot import at scan root; bound evaluator scratch creation to
+  stable parent/child identities; preserved Codex primary failures through
+  cleanup interruption; and made blinded reviewer evidence bind to the exact
+  command, workspace, completed status, output, immutable packet bytes, and
+  failure-atomic content-addressed retention. Tests and current-invariant docs
+  changed with the implementations, and the checked-in plugin wheel was
+  rebuilt from the final source.
+
+  Final local verification passed 826 tests with three platform-specific
+  skips, Ruff, mypy over 55 product files, workflow policy, deterministic,
+  installed-agent, reviewer, and Claude-history integrity verification,
+  distribution parity, isolated wheel smoke, and the plugin
+  install/update/remove smoke. A fresh final cold review found no further
+  in-scope defect. No live model host was invoked. The release-only
+  `--current` deterministic, installed-agent, and reviewer checks are now
+  intentionally stale because governing source identities changed; refreshing
+  authenticated evidence still requires separate authorization at the exact
+  release-candidate gate. The next targeted-hardening work remains Phase 2,
+  Step 2.1.
+
 ### Phase 2 — canonical scope and boundary behavior
 
 - [ ] **Step 2.1 — one NFC scope identity.** Add one scope-domain NFC

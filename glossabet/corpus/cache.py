@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import hashlib
 import os
+import secrets
+import stat
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -243,49 +245,102 @@ class CacheClearReport(TypedDict):
 
     cache_root: str
     existed: bool
+    root_refusal: str | None
     removed_entries: int
     unrecognized_left_in_place: list[str]
     root_removed: bool
 
 
+def _is_link_or_junction(info: os.stat_result) -> bool:
+    """Whether an entry can redirect traversal to another directory tree."""
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    file_attributes = getattr(info, "st_file_attributes", 0)
+    return stat.S_ISLNK(info.st_mode) or bool(
+        reparse_flag and file_attributes & reparse_flag
+    )
+
+
+def _cache_file_owned(name: str, info: os.stat_result) -> bool:
+    return (
+        not _is_link_or_junction(info)
+        and stat.S_ISREG(info.st_mode)
+        and (name == CACHE_FILE or name.startswith(CACHE_FILE + "."))
+    )
+
+
+def _capture_sibling(parent: Path) -> Path:
+    for _attempt in range(100):
+        candidate = parent / f".glossabet-clear-{secrets.token_hex(16)}"
+        if not os.path.lexists(candidate):
+            return candidate
+    raise OSError("could not allocate a cache-clear capture path")
+
+
+def _restore_capture(captured: Path, original: Path) -> bool:
+    if os.path.lexists(original):
+        return False
+    try:
+        os.rename(captured, original)
+    except OSError:
+        return False
+    return True
+
+
 def clear_cache() -> CacheClearReport:
     """Remove Glossabet's own incremental-extraction cache and report it.
 
-    Only the layout Glossabet writes is removed: ``<root>/<64-hex>/cache.json``
-    entries (plus any ``cache.json.*`` temporaries left by an interrupted
-    atomic write) and the per-repository directories once empty, then the
-    cache root itself once empty. Directory symlinks are never followed and
-    nothing else under the root is deleted; anything unrecognized is left in
-    place and reported so a misconfigured ``GLOSSABET_CACHE_DIR`` (say, a home
-    directory) can never be wiped by this command.
+    Only a root containing exactly the layout Glossabet writes is removed:
+    ``<root>/<64-hex>/cache.json`` entries plus ``cache.json.*`` temporaries.
+    A fully recognized root and each expected child are atomically captured
+    and identity-checked before only the known regular files are unlinked.
+    Directory links are never followed; any foreign or unreadable entry leaves
+    the whole root in place and is reported, so a misconfigured
+    ``GLOSSABET_CACHE_DIR`` (say, a home directory) can never be partly cleared.
     """
-    root = _platform_cache_root()
+    root = _platform_cache_root().absolute()
     report: CacheClearReport = {
         "cache_root": str(root),
         "existed": False,
+        "root_refusal": None,
         "removed_entries": 0,
         "unrecognized_left_in_place": [],
         "root_removed": False,
     }
-    if root.is_symlink() or not root.is_dir():
+    try:
+        root_info = root.lstat()
+    except FileNotFoundError:
+        return report
+    except OSError:
+        report["root_refusal"] = "the cache path is uninspectable"
         return report
     report["existed"] = True
+    if _is_link_or_junction(root_info):
+        report["root_refusal"] = "the cache path is symlinked or junctioned"
+        return report
+    if not stat.S_ISDIR(root_info.st_mode):
+        report["root_refusal"] = "the cache path is not a directory"
+        return report
     try:
         children = sorted(os.scandir(root), key=lambda entry: entry.name)
     except OSError:
+        report["root_refusal"] = "the cache directory could not be listed"
         return report
+    recognized_entries: dict[str, tuple[int, int]] = {}
     for child in children:
+        try:
+            child_info = child.stat(follow_symlinks=False)
+        except OSError:
+            report["unrecognized_left_in_place"].append(child.name)
+            continue
         if (
-            child.is_symlink()
-            or not child.is_dir(follow_symlinks=False)
+            _is_link_or_junction(child_info)
+            or not stat.S_ISDIR(child_info.st_mode)
             or len(child.name) != 64
             or any(c not in "0123456789abcdef" for c in child.name)
         ):
             report["unrecognized_left_in_place"].append(child.name)
             continue
         entry_dir = Path(child.path)
-        removed_here = False
-        leftovers = False
         try:
             items = list(os.scandir(entry_dir))
         except OSError:
@@ -293,35 +348,135 @@ def clear_cache() -> CacheClearReport:
             # this command does not understand.
             report["unrecognized_left_in_place"].append(child.name)
             continue
+        recognized = True
         for item in items:
-            is_cache_file = (
-                not item.is_symlink()
-                and item.is_file(follow_symlinks=False)
-                and (item.name == CACHE_FILE or item.name.startswith(CACHE_FILE + "."))
-            )
-            if is_cache_file:
-                try:
-                    os.unlink(item.path)
-                    removed_here = True
-                except OSError:
-                    leftovers = True
-            else:
-                leftovers = True
-        if removed_here:
-            report["removed_entries"] += 1
-        if leftovers:
+            try:
+                item_info = item.stat(follow_symlinks=False)
+            except OSError:
+                recognized = False
+                continue
+            if not _cache_file_owned(item.name, item_info):
+                recognized = False
+        if not recognized:
             report["unrecognized_left_in_place"].append(child.name)
             continue
+        recognized_entries[child.name] = (child_info.st_dev, child_info.st_ino)
+    if report["unrecognized_left_in_place"]:
+        # Mixed or unreadable roots stay wholly untouched.
+        return report
+    try:
+        captured_root = _capture_sibling(root.parent)
+    except OSError:
+        report["root_refusal"] = "a cache capture path could not be allocated"
+        return report
+    root_captured = False
+    try:
+        os.rename(root, captured_root)
+        root_captured = True
+        captured_root_info = captured_root.lstat()
+    except OSError:
+        if root_captured:
+            _restore_capture(captured_root, root)
+        report["root_refusal"] = "the cache path changed while being captured"
+        return report
+    if (
+        _is_link_or_junction(captured_root_info)
+        or not stat.S_ISDIR(captured_root_info.st_mode)
+        or not os.path.samestat(root_info, captured_root_info)
+    ):
+        restored = _restore_capture(captured_root, root)
+        report["root_refusal"] = (
+            "the cache path changed while being captured"
+            if restored
+            else "the changed cache entry was preserved beside its original path"
+        )
+        return report
+
+    def refuse_captured_root(reason: str) -> CacheClearReport:
+        restored = _restore_capture(captured_root, root)
+        report["root_refusal"] = (
+            reason
+            if restored
+            else f"{reason}; preserved the captured cache beside its original path"
+        )
+        return report
+
+    for name, expected_identity in sorted(recognized_entries.items()):
+        entry = captured_root / name
         try:
-            entry_dir.rmdir()
+            captured_entry = _capture_sibling(captured_root)
         except OSError:
-            report["unrecognized_left_in_place"].append(child.name)
-    if not report["unrecognized_left_in_place"]:
+            report["unrecognized_left_in_place"].append(name)
+            return refuse_captured_root(
+                "a cache-entry capture path could not be allocated"
+            )
+        entry_captured = False
         try:
-            root.rmdir()
-            report["root_removed"] = True
+            os.rename(entry, captured_entry)
+            entry_captured = True
+            captured_info = captured_entry.lstat()
         except OSError:
-            pass
+            if entry_captured:
+                _restore_capture(captured_entry, entry)
+            report["unrecognized_left_in_place"].append(name)
+            return refuse_captured_root(
+                "a cache entry changed while being captured"
+            )
+        if (
+            _is_link_or_junction(captured_info)
+            or not stat.S_ISDIR(captured_info.st_mode)
+            or (captured_info.st_dev, captured_info.st_ino) != expected_identity
+        ):
+            _restore_capture(captured_entry, entry)
+            report["unrecognized_left_in_place"].append(name)
+            return refuse_captured_root(
+                "a cache entry changed while being captured"
+            )
+        try:
+            items = sorted(os.scandir(captured_entry), key=lambda item: item.name)
+        except OSError:
+            _restore_capture(captured_entry, entry)
+            report["unrecognized_left_in_place"].append(name)
+            return refuse_captured_root(
+                "a captured cache entry could not be listed"
+            )
+        try:
+            captured_layout_valid = all(
+                _cache_file_owned(
+                    item.name,
+                    item.stat(follow_symlinks=False),
+                )
+                for item in items
+            )
+        except OSError:
+            captured_layout_valid = False
+        if not captured_layout_valid:
+            _restore_capture(captured_entry, entry)
+            report["unrecognized_left_in_place"].append(name)
+            return refuse_captured_root(
+                "a captured cache entry no longer matched Glossabet's layout"
+            )
+        try:
+            for item in items:
+                latest_info = item.stat(follow_symlinks=False)
+                if not _cache_file_owned(item.name, latest_info):
+                    raise OSError("cache entry changed before deletion")
+                os.unlink(item.path)
+            captured_entry.rmdir()
+        except OSError:
+            _restore_capture(captured_entry, entry)
+            report["unrecognized_left_in_place"].append(name)
+            return refuse_captured_root(
+                "a captured cache entry could not be removed safely"
+            )
+        report["removed_entries"] += 1
+    try:
+        captured_root.rmdir()
+    except OSError:
+        return refuse_captured_root(
+            "the captured cache directory could not be removed safely"
+        )
+    report["root_removed"] = not os.path.lexists(root)
     return report
 
 
@@ -331,6 +486,22 @@ def cache_clear_command() -> int:
 
     report = clear_cache()
     root = escape_terminal_text(report["cache_root"])
+    if report["root_refusal"] is not None:
+        entries = report["removed_entries"]
+        if entries:
+            noun = "repository entry" if entries == 1 else "repository entries"
+            # Deletions cannot be rolled back after an operating-system error;
+            # keep the failure report truthful about any completed work.
+            print(
+                f"glossabet cache: removed {entries} {noun} under {root} "
+                "before refusal",
+                file=sys.stderr,
+            )
+        print(
+            f"glossabet cache: refusing {root}: {report['root_refusal']}",
+            file=sys.stderr,
+        )
+        return 1
     if not report["existed"]:
         print(f"glossabet cache: nothing to remove ({root} does not exist)")
         return 0

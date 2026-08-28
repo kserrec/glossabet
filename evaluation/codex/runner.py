@@ -353,7 +353,7 @@ def _run_plugin_batch(
         try:
             cleanup_plugin(codex, plugin_id, marketplace_name, lifecycle)
             cleanup_verified = True
-        except Exception as cleanup_exc:
+        except BaseException as cleanup_exc:
             if primary_error is None:
                 primary_error = cleanup_exc
             else:

@@ -38,16 +38,16 @@ from glossabet.install.installer import default_skill_directory
 
 @dataclass
 class PluginLifecycle:
-    """What the temporary plugin installation has created so far.
+    """Temporary plugin state that cleanup must assume may exist.
 
-    Mutated in place as ``install_plugin`` progresses so that a failure at
-    any point — including an operator interrupt — leaves the caller holding
-    an exact record of what ``cleanup_plugin`` must remove. Exceptions are
-    never annotated with this state.
+    Each flag advances immediately before its mutating command. If the host
+    changes state and then returns malformed output or is interrupted, the
+    caller still holds a conservative record of what ``cleanup_plugin`` must
+    remove. Exceptions are never annotated with this state.
     """
 
-    marketplace_added: bool = False
-    plugin_added: bool = False
+    marketplace_may_exist: bool = False
+    plugin_may_exist: bool = False
     cache_parent: Path | None = None
 
 
@@ -317,24 +317,24 @@ def install_plugin(
     behind once ``plugin add`` has run.
     """
     plugin_id = f"glossabet@{marketplace_name}"
+    lifecycle.marketplace_may_exist = True
     added = run_command(
         [codex, "plugin", "marketplace", "add", str(marketplace), "--json"],
         cwd=ROOT,
         parse_json=True,
     )
-    lifecycle.marketplace_added = True
     assert isinstance(added, dict)
     if added.get("marketplaceName") != marketplace_name:
         fail("Codex registered the temporary marketplace under another name")
+    expected_cache = Path.home() / ".codex" / "plugins" / "cache"
+    expected_parent = expected_cache / marketplace_name
+    lifecycle.plugin_may_exist = True
+    lifecycle.cache_parent = expected_parent
     installed = run_command(
         [codex, "plugin", "add", plugin_id, "--json"],
         cwd=ROOT,
         parse_json=True,
     )
-    lifecycle.plugin_added = True
-    expected_cache = Path.home() / ".codex" / "plugins" / "cache"
-    expected_parent = expected_cache / marketplace_name
-    lifecycle.cache_parent = expected_parent
     assert isinstance(installed, dict)
     path = Path(str(installed.get("installedPath", "")))
     if (
@@ -368,7 +368,7 @@ def cleanup_plugin(
     and marketplace are gone. Every narrowly scoped failure is kept and
     reported together."""
     errors = []
-    if lifecycle.plugin_added:
+    if lifecycle.plugin_may_exist:
         try:
             run_command(
                 [codex, "plugin", "remove", plugin_id, "--json"],
@@ -377,7 +377,7 @@ def cleanup_plugin(
             )
         except Exception as exc:  # preserve all narrowly scoped cleanup failures
             errors.append(str(exc))
-    if lifecycle.marketplace_added:
+    if lifecycle.marketplace_may_exist:
         try:
             run_command(
                 [

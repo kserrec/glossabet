@@ -293,6 +293,147 @@ def test_owned_scratch_rejects_an_outside_path(tmp_path):
     assert host.remove_owned_scratch(scratch) is True
 
 
+def test_owned_scratch_rejects_a_parent_swapped_during_resolution(
+    monkeypatch, tmp_path
+):
+    requested = tmp_path / "requested"
+    requested.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    real_resolve = Path.resolve
+    swapped = False
+
+    def swap_then_resolve(self, *args, **kwargs):
+        nonlocal swapped
+        if self == requested and not swapped:
+            requested.rmdir()
+            requested.symlink_to(outside, target_is_directory=True)
+            swapped = True
+        return real_resolve(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", swap_then_resolve)
+
+    with pytest.raises(
+        ClaudeEvaluationError, match="changed while being inspected"
+    ):
+        host.owned_scratch(requested)
+
+    assert swapped is True
+    assert _scratch_dirs(outside) == []
+
+
+def test_owned_scratch_anchors_creation_before_a_parent_swap(
+    monkeypatch,
+    tmp_path,
+):
+    if not host._supports_anchored_scratch_creation():
+        pytest.skip("directory-relative scratch creation is unavailable")
+    requested = tmp_path / "requested"
+    requested.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    real_mkdir = host.os.mkdir
+    swapped = False
+
+    def swap_then_mkdir(path, mode=0o777, *, dir_fd=None):
+        nonlocal swapped
+        if (
+            not swapped
+            and dir_fd is not None
+            and str(path).startswith(host._SCRATCH_PREFIX)
+        ):
+            requested.rmdir()
+            requested.symlink_to(outside, target_is_directory=True)
+            swapped = True
+        return real_mkdir(path, mode=mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(host, "_supports_anchored_scratch_creation", lambda: True)
+    monkeypatch.setattr(host.os, "mkdir", swap_then_mkdir)
+
+    with pytest.raises(
+        ClaudeEvaluationError, match="changed while being inspected"
+    ):
+        host.owned_scratch(requested)
+
+    assert swapped is True
+    assert _scratch_dirs(outside) == []
+
+
+def test_owned_scratch_path_fallback_removes_a_redirected_empty_scratch(
+    monkeypatch,
+    tmp_path,
+):
+    requested = tmp_path / "requested"
+    requested.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    symlink_probe = tmp_path / "symlink-probe"
+    try:
+        symlink_probe.symlink_to(outside, target_is_directory=True)
+        symlink_probe.unlink()
+    except OSError as exc:
+        pytest.skip(f"directory symlinks unavailable: {exc}")
+    real_mkdtemp = host.tempfile.mkdtemp
+    swapped = False
+
+    def swap_then_create(*, prefix, dir):
+        nonlocal swapped
+        requested.rmdir()
+        requested.symlink_to(outside, target_is_directory=True)
+        swapped = True
+        return real_mkdtemp(prefix=prefix, dir=dir)
+
+    monkeypatch.setattr(host, "_supports_anchored_scratch_creation", lambda: False)
+    monkeypatch.setattr(host.tempfile, "mkdtemp", swap_then_create)
+
+    with pytest.raises(
+        ClaudeEvaluationError, match="changed while being inspected"
+    ):
+        host.owned_scratch(requested)
+
+    assert swapped is True
+    assert _scratch_dirs(outside) == []
+
+
+def test_owned_scratch_rejects_a_child_replaced_before_open(
+    monkeypatch,
+    tmp_path,
+):
+    if not host._supports_anchored_scratch_creation():
+        pytest.skip("directory-relative scratch creation is unavailable")
+    requested = tmp_path / "requested"
+    requested.mkdir()
+    replacement_source = tmp_path / "replacement"
+    replacement_source.mkdir()
+    (replacement_source / "KEEP.txt").write_text("KEEP", encoding="utf-8")
+    real_open = host.os.open
+    replacement: Path | None = None
+
+    def replace_then_open(path, flags, mode=0o777, *, dir_fd=None):
+        nonlocal replacement
+        if (
+            replacement is None
+            and dir_fd is not None
+            and str(path).startswith(host._SCRATCH_PREFIX)
+        ):
+            replacement = requested / str(path)
+            replacement.rmdir()
+            replacement_source.rename(replacement)
+        return real_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(host, "_supports_anchored_scratch_creation", lambda: True)
+    monkeypatch.setattr(host.os, "open", replace_then_open)
+
+    with pytest.raises(
+        ClaudeEvaluationError, match="changed while being created"
+    ):
+        host.owned_scratch(requested)
+
+    assert replacement is not None
+    assert (replacement / "KEEP.txt").read_text(encoding="utf-8") == "KEEP"
+    assert not (replacement / host._SCRATCH_MARKER).exists()
+
+
 def test_owned_scratch_rejects_a_replaced_root(tmp_path):
     scratch = host.owned_scratch(tmp_path)
     host.shutil.rmtree(scratch.path)

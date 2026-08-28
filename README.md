@@ -126,7 +126,7 @@ no longer wanted; preserve any surrounding project instructions.
 | `drift` | Compare current vocabulary with the accepted glossary. |
 | `validate` | Check the glossary against repository evidence and optional structural data. |
 | `sync-context` | Explicitly copy accepted vocabulary into a root `AGENTS.md` or `CLAUDE.md` block. |
-| `cache-clear` | Remove Glossabet's user cache, never the repository. |
+| `cache-clear` | Remove a fully recognized Glossabet user cache; leave mixed or unreadable roots untouched. |
 | `install` | Install the canonical agent skill. |
 
 Run `glossabet COMMAND --help` for a command's arguments.

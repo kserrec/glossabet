@@ -124,6 +124,14 @@ record identifies Codex CLI 0.147.0; the CLI did not report its configured
 model identifier. This is a second model judgment, not an outside maintainer or
 user study.
 
+[`evaluation/reviewer-reviewed-packets/`](evaluation/reviewer-reviewed-packets/)
+retains the exact blinded packet bytes read by accepted reviewer runs, named by
+their SHA-256 digest. The verifier permits judgment reuse after evaluator-
+metadata changes only when the current packet's question, sources, and blinded
+findings still exactly match the referenced retained packet. New runs add an
+immutable packet before atomically committing their result, so a failed run
+cannot overwrite the packet needed to verify a previously accepted result.
+
 Default verification checks blinding, packet/result integrity, comparison
 arithmetic, and the recorded usefulness threshold. `--current` additionally
 requires packet and input identities to match the current deterministic

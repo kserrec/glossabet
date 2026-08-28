@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+import shutil
 
 import pytest
 
@@ -197,13 +198,16 @@ def test_cache_file_swapped_for_a_symlink_after_the_check_loses_only_the_link(
     canary = tmp_path / "precious.json"
     canary.write_text("CANARY", encoding="utf-8")
     monkeypatch.setenv(cache_module.CACHE_ROOT_ENV, str(root))
-    real_unlink = os.unlink
+    real_unlink = cache_module.os.unlink
+    swapped = False
 
     def swap_then_unlink(path, *args, **kwargs):
+        nonlocal swapped
         target = pathlib.Path(path)
-        if target.name == cache_module.CACHE_FILE and not target.is_symlink():
-            real_unlink(target)
-            os.symlink(canary, target)
+        if not swapped and target.name == cache_module.CACHE_FILE:
+            swapped = True
+            real_unlink(path, *args, **kwargs)
+            os.symlink(canary, path)
         return real_unlink(path, *args, **kwargs)
 
     monkeypatch.setattr(cache_module.os, "unlink", swap_then_unlink)
@@ -211,43 +215,134 @@ def test_cache_file_swapped_for_a_symlink_after_the_check_loses_only_the_link(
     report = clear_cache()
 
     assert canary.read_text(encoding="utf-8") == "CANARY"
+    assert swapped is True
     assert not (entry / cache_module.CACHE_FILE).exists()
     assert report["removed_entries"] == 1
 
 
-def test_cache_entry_swapped_for_a_directory_symlink_is_not_followed(
+def test_cache_entry_replaced_by_a_real_directory_is_preserved(
     tmp_path, monkeypatch
 ):
-    """The directory link itself may remain or be removed depending on the
-    platform's ``rmdir`` behavior; its external target is never traversed,
-    and the report must describe whichever safe outcome occurred."""
     root = tmp_path / "cache"
     entry = _entry(root, "b")
-    canary_dir = tmp_path / "precious"
-    canary_dir.mkdir()
-    (canary_dir / "keep.txt").write_text("KEEP", encoding="utf-8")
+    replacement = tmp_path / "replacement"
+    replacement.mkdir()
+    (replacement / "KEEP.txt").write_text("KEEP", encoding="utf-8")
+    saved_original = tmp_path / "saved-original"
     monkeypatch.setenv(cache_module.CACHE_ROOT_ENV, str(root))
-    real_rmdir = pathlib.Path.rmdir
+    real_rename = cache_module.os.rename
+    swapped = False
 
-    def swap_then_rmdir(self):
-        if self == entry and not self.is_symlink():
-            (self / cache_module.CACHE_FILE).unlink(missing_ok=True)
-            real_rmdir(self)
-            os.symlink(canary_dir, self, target_is_directory=True)
-        return real_rmdir(self)
+    def swap_then_capture(source, destination):
+        nonlocal swapped
+        source_path = pathlib.Path(source)
+        if not swapped and source_path.name == entry.name:
+            swapped = True
+            real_rename(source, saved_original)
+            real_rename(replacement, source)
+        return real_rename(source, destination)
 
-    monkeypatch.setattr(pathlib.Path, "rmdir", swap_then_rmdir)
+    monkeypatch.setattr(cache_module.os, "rename", swap_then_capture)
 
     report = clear_cache()
 
-    assert (canary_dir / "keep.txt").read_text(encoding="utf-8") == "KEEP"
-    assert canary_dir.is_dir()
-    assert report["removed_entries"] == 1
-    entry_remains = os.path.lexists(entry)
-    assert report["unrecognized_left_in_place"] == (
-        [entry.name] if entry_remains else []
-    )
-    assert report["root_removed"] is not entry_remains
+    assert swapped is True
+    assert (entry / "KEEP.txt").read_text(encoding="utf-8") == "KEEP"
+    assert report["removed_entries"] == 0
+    assert report["unrecognized_left_in_place"] == [entry.name]
+    assert report["root_refusal"] == "a cache entry changed while being captured"
+
+
+def test_cache_entry_swapped_before_listing_is_not_followed(tmp_path, monkeypatch):
+    root = tmp_path / "cache"
+    entry = _entry(root, "c")
+    canary_dir = tmp_path / "precious"
+    canary_dir.mkdir()
+    canary = canary_dir / cache_module.CACHE_FILE
+    canary.write_text("KEEP", encoding="utf-8")
+    monkeypatch.setenv(cache_module.CACHE_ROOT_ENV, str(root))
+    real_scandir = cache_module.os.scandir
+    swapped = False
+
+    def swap_then_list(path):
+        nonlocal swapped
+        if not swapped and not isinstance(path, int) and pathlib.Path(path) == entry:
+            swapped = True
+            shutil.rmtree(entry)
+            os.symlink(canary_dir, entry, target_is_directory=True)
+        return real_scandir(path)
+
+    monkeypatch.setattr(cache_module.os, "scandir", swap_then_list)
+
+    report = clear_cache()
+
+    assert swapped is True
+    assert canary.read_text(encoding="utf-8") == "KEEP"
+    assert report["removed_entries"] == 0
+    assert report["root_refusal"] == "a cache entry changed while being captured"
+
+
+def test_cache_root_swapped_before_listing_is_refused(tmp_path, monkeypatch):
+    root = tmp_path / "cache"
+    _entry(root, "d")
+    canary_root = tmp_path / "precious"
+    canary_entry = canary_root / ("d" * 64)
+    canary_entry.mkdir(parents=True)
+    canary = canary_entry / cache_module.CACHE_FILE
+    canary.write_text("KEEP", encoding="utf-8")
+    monkeypatch.setenv(cache_module.CACHE_ROOT_ENV, str(root))
+    real_scandir = cache_module.os.scandir
+    swapped = False
+
+    def swap_then_list(path):
+        nonlocal swapped
+        if not swapped and not isinstance(path, int) and pathlib.Path(path) == root:
+            swapped = True
+            shutil.rmtree(root)
+            os.symlink(canary_root, root, target_is_directory=True)
+        return real_scandir(path)
+
+    monkeypatch.setattr(cache_module.os, "scandir", swap_then_list)
+
+    report = clear_cache()
+
+    assert swapped is True
+    assert canary.read_text(encoding="utf-8") == "KEEP"
+    assert report["root_refusal"] == "the cache path changed while being captured"
+    assert report["removed_entries"] == 0
+
+
+def test_cache_root_replaced_by_a_real_directory_is_preserved(
+    tmp_path,
+    monkeypatch,
+):
+    root = tmp_path / "cache"
+    _entry(root, "e")
+    replacement = tmp_path / "replacement-root"
+    replacement.mkdir()
+    canary = replacement / "KEEP.txt"
+    canary.write_text("KEEP", encoding="utf-8")
+    saved_original = tmp_path / "saved-root"
+    monkeypatch.setenv(cache_module.CACHE_ROOT_ENV, str(root))
+    real_rename = cache_module.os.rename
+    swapped = False
+
+    def swap_then_capture(source, destination):
+        nonlocal swapped
+        if not swapped and pathlib.Path(source) == root:
+            swapped = True
+            real_rename(root, saved_original)
+            real_rename(replacement, root)
+        return real_rename(source, destination)
+
+    monkeypatch.setattr(cache_module.os, "rename", swap_then_capture)
+
+    report = clear_cache()
+
+    assert swapped is True
+    assert (root / "KEEP.txt").read_text(encoding="utf-8") == "KEEP"
+    assert report["removed_entries"] == 0
+    assert report["root_refusal"] == "the cache path changed while being captured"
 
 
 # --- source reads: the walk-time size is the charged size -----------------

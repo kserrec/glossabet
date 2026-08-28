@@ -93,6 +93,35 @@ def test_fixtures_only_ever_run_git():
 # --- lifecycle: cleanup removes exactly what was created, at every stage ---
 
 
+@pytest.mark.parametrize("failed_call", [1, 2])
+def test_install_records_cleanup_ownership_before_parsing_mutating_responses(
+    monkeypatch, tmp_path, failed_call
+):
+    calls = 0
+    mutations: list[list[str]] = []
+
+    def mutate_then_respond(command, **_kwargs):
+        nonlocal calls
+        calls += 1
+        mutations.append(command)
+        if calls == failed_call:
+            raise AgentEvaluationError("mutated state followed by malformed JSON")
+        return {"marketplaceName": "temporary"}
+
+    monkeypatch.setattr(host, "run_command", mutate_then_respond)
+    lifecycle = host.PluginLifecycle()
+
+    with pytest.raises(AgentEvaluationError, match="malformed JSON"):
+        host.install_plugin(
+            "codex", tmp_path / "marketplace", "temporary", lifecycle
+        )
+
+    assert len(mutations) == failed_call
+    assert lifecycle.marketplace_may_exist is True
+    assert lifecycle.plugin_may_exist is (failed_call == 2)
+    assert (lifecycle.cache_parent is not None) is (failed_call == 2)
+
+
 def _fake_host(monkeypatch, install_behavior, run_codex_behavior=None):
     """Stub every host effect of ``runner.run_evaluation``; return the
     lifecycles handed to cleanup and the attempt records retained."""
@@ -135,7 +164,7 @@ def test_failure_before_marketplace_creation_cleans_nothing(monkeypatch, tmp_pat
     assert recorded[0]["failures"] == ["marketplace add refused"]
     assert not any(hasattr(error, name) for name in (
         "cleanup_verified", "failed_stage", "attempt_usage",
-        "marketplace_added", "plugin_added", "cache_parent",
+        "marketplace_may_exist", "plugin_may_exist", "cache_parent",
     ))
 
 
@@ -143,13 +172,13 @@ def test_failure_after_marketplace_creation_removes_only_the_marketplace(
     monkeypatch, tmp_path
 ):
     def install(codex, marketplace, name, lifecycle):
-        lifecycle.marketplace_added = True
+        lifecycle.marketplace_may_exist = True
         raise AgentEvaluationError("plugin add refused")
 
     cleanups, recorded = _fake_host(monkeypatch, install)
     _run_and_expect(tmp_path, AgentEvaluationError)
 
-    assert cleanups == [host.PluginLifecycle(marketplace_added=True)]
+    assert cleanups == [host.PluginLifecycle(marketplace_may_exist=True)]
     assert recorded[0]["checks"]["plugin_preflight"] == "failed"
 
 
@@ -159,8 +188,8 @@ def test_failure_after_plugin_installation_removes_plugin_marketplace_and_cache(
     cache = tmp_path / "cache" / "market"
 
     def install(codex, marketplace, name, lifecycle):
-        lifecycle.marketplace_added = True
-        lifecycle.plugin_added = True
+        lifecycle.marketplace_may_exist = True
+        lifecycle.plugin_may_exist = True
         lifecycle.cache_parent = cache
         raise AgentEvaluationError("installed plugin has no skill-local runner")
 
@@ -168,7 +197,11 @@ def test_failure_after_plugin_installation_removes_plugin_marketplace_and_cache(
     _run_and_expect(tmp_path, AgentEvaluationError)
 
     assert cleanups == [
-        host.PluginLifecycle(marketplace_added=True, plugin_added=True, cache_parent=cache)
+        host.PluginLifecycle(
+            marketplace_may_exist=True,
+            plugin_may_exist=True,
+            cache_parent=cache,
+        )
     ]
     assert recorded[0]["checks"] == {
         "plugin_preflight": "failed",
@@ -179,8 +212,8 @@ def test_failure_after_plugin_installation_removes_plugin_marketplace_and_cache(
 
 def test_interrupt_during_host_run_still_cleans_up_and_records(monkeypatch, tmp_path):
     def install(codex, marketplace, name, lifecycle):
-        lifecycle.marketplace_added = True
-        lifecycle.plugin_added = True
+        lifecycle.marketplace_may_exist = True
+        lifecycle.plugin_may_exist = True
         lifecycle.cache_parent = tmp_path / "cache"
         return "glossabet@market", tmp_path / "installed"
 
@@ -190,7 +223,7 @@ def test_interrupt_during_host_run_still_cleans_up_and_records(monkeypatch, tmp_
     cleanups, recorded = _fake_host(monkeypatch, install, run_codex)
     error = _run_and_expect(tmp_path, KeyboardInterrupt)
 
-    assert len(cleanups) == 1 and cleanups[0].plugin_added is True
+    assert len(cleanups) == 1 and cleanups[0].plugin_may_exist is True
     assert recorded[0]["checks"]["plugin_scenarios"] == "failed"
     assert recorded[0]["cleanup_verified"] is True
     assert recorded[0]["failures"] == ["KeyboardInterrupt"]
@@ -203,7 +236,7 @@ def test_cleanup_failure_after_an_ordinary_failure_is_reported_together(
     original = AgentEvaluationError("plugin add refused")
 
     def install(codex, marketplace, name, lifecycle):
-        lifecycle.marketplace_added = True
+        lifecycle.marketplace_may_exist = True
         raise original
 
     cleanups, recorded = _fake_host(monkeypatch, install)
@@ -233,8 +266,8 @@ def test_cleanup_failure_does_not_replace_interrupt(monkeypatch, tmp_path, capsy
     original = KeyboardInterrupt()
 
     def install(codex, marketplace, name, lifecycle):
-        lifecycle.marketplace_added = True
-        lifecycle.plugin_added = True
+        lifecycle.marketplace_may_exist = True
+        lifecycle.plugin_may_exist = True
         return "glossabet@market", tmp_path / "installed"
 
     def run_codex(*args, **kwargs):
@@ -256,6 +289,34 @@ def test_cleanup_failure_does_not_replace_interrupt(monkeypatch, tmp_path, capsy
         "marketplace remove refused",
     ]
     assert "secondary cleanup failure" in capsys.readouterr().err
+
+
+def test_cleanup_interrupt_does_not_replace_an_ordinary_failure(
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    original = AgentEvaluationError("plugin add refused")
+
+    def install(codex, marketplace, name, lifecycle):
+        lifecycle.marketplace_may_exist = True
+        raise original
+
+    _cleanups, recorded = _fake_host(monkeypatch, install)
+
+    def interrupted_cleanup(codex, plugin_id, name, lifecycle):
+        raise KeyboardInterrupt()
+
+    monkeypatch.setattr(runner, "cleanup_plugin", interrupted_cleanup)
+    error = _run_and_expect(tmp_path, AgentEvaluationError)
+
+    assert error is original
+    assert recorded[0]["cleanup_verified"] is False
+    assert recorded[0]["failures"] == [
+        "plugin add refused",
+        "secondary cleanup failure: KeyboardInterrupt: no detail",
+    ]
+    assert "secondary cleanup failure: KeyboardInterrupt" in capsys.readouterr().err
 
 
 def test_results_verifier_never_loads_the_host_module():

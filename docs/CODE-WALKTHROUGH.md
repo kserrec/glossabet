@@ -513,7 +513,7 @@ and release publication may use a network when explicitly invoked.
 | `save` | Validate stdin and write human-governed `glossabet-out/glossary.json`. |
 | `sync-context` | Explicitly create or update one managed range in root `AGENTS.md` or `CLAUDE.md`. |
 | `show` / `brief` | No repository write. |
-| `cache-clear` | No repository write; removes only recognized entries in Glossabet's user cache. |
+| `cache-clear` | No repository write; removes a fully recognized Glossabet cache and leaves mixed or unreadable roots untouched. |
 | `install` | No analyzed-repository write by default; writes the reported personal or explicit skill destination. |
 | Agent finalization | The skill may edit/create root `GLOSSARY.md`, refresh root `GLOSSABET.md`, and pipe approved structured state through `save`. These are agent actions under human direction, not automatic scan behavior. |
 

@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -30,16 +31,15 @@ from evaluation.harness.io import (  # noqa: E402
     file_sha256,
     is_sha256_hex,
     read_json_object,
+    replace_via_temporary,
 )
 from glossabet.runtime.artifacts import MAX_JSON_BYTES  # noqa: E402
 
 PACKET_SCHEMA_VERSION = 1
 REVIEW_SCHEMA_VERSION = 2
 DEFAULT_PACKET = PROJECT_ROOT / "evaluation" / "reviewer-packet.json"
-# A parent-directory path segment (``..``, ``../x``, ``"..\\x"``), not any two
-# dots: an ellipsis inside a quoted string is not path traversal.
-_PARENT_SEGMENT_RE = re.compile(
-    r"""(?:^|[\s'"=/\\;&|(])\.\.(?:[/\\]|$|[\s'"=;&|)])"""
+DEFAULT_REVIEWED_PACKETS = (
+    PROJECT_ROOT / "evaluation" / "reviewer-reviewed-packets"
 )
 DEFAULT_REVIEW_RESULTS = PROJECT_ROOT / "evaluation" / "reviewer-results.json"
 PROMPT_PATH = PROJECT_ROOT / "evaluation" / "reviewer-prompt.md"
@@ -54,6 +54,12 @@ TRACE_LIMIT_CEILINGS = {
     "stored_command_characters": 100_000,
     "stored_output_characters": 100_000,
 }
+_PACKET_READERS = frozenset({"cat", "/bin/cat", "/usr/bin/cat"})
+_PACKET_SHELLS = frozenset({
+    "sh", "bash", "zsh",
+    "/bin/sh", "/bin/bash", "/bin/zsh",
+    "/usr/bin/sh", "/usr/bin/bash", "/usr/bin/zsh",
+})
 TRACE_LIMITS = {
     "jsonl_bytes": 4_000_000,
     "events": 100,
@@ -72,9 +78,12 @@ def _read_json(path: Path, label: str) -> dict:
 
 
 
+def _json_bytes(value: dict) -> bytes:
+    return (json.dumps(value, indent=2, sort_keys=True) + "\n").encode()
+
+
 def _json_sha256(value: dict) -> str:
-    encoded = (json.dumps(value, indent=2, sort_keys=True) + "\n").encode()
-    return hashlib.sha256(encoded).hexdigest()
+    return hashlib.sha256(_json_bytes(value)).hexdigest()
 
 
 
@@ -115,6 +124,114 @@ def _bounded_text(text: str, workspace: Path, limit: int) -> str:
     return normalized[:limit] + "…"
 
 
+def _is_packet_only_command(command: str) -> bool:
+    """Accept only the exact blinded-packet read used by the reviewer lane."""
+    try:
+        arguments = shlex.split(command)
+    except ValueError:
+        return False
+    if (
+        len(arguments) == 2
+        and arguments[0] in _PACKET_READERS
+        and arguments[1] == "reviewer-packet.json"
+    ):
+        return True
+    if (
+        len(arguments) != 3
+        or arguments[0] not in _PACKET_SHELLS
+        or arguments[1] not in {"-c", "-lc"}
+    ):
+        return False
+    try:
+        inner = shlex.split(arguments[2])
+    except ValueError:
+        return False
+    return (
+        len(inner) == 2
+        and inner[0] in _PACKET_READERS
+        and inner[1] == "reviewer-packet.json"
+    )
+
+
+def _packet_output_identity(output: str) -> tuple[int, str]:
+    return len(output), hashlib.sha256(output.encode()).hexdigest()
+
+
+def _same_review_payload(left: dict, right: dict) -> bool:
+    """Compare the packet fields that the retained judgments evaluate."""
+    keys = ("question", "sources", "findings")
+    return all(
+        key in left and key in right and left[key] == right[key]
+        for key in keys
+    )
+
+
+def _trace_output_matches_packet(
+    packet: dict,
+    packet_output: str,
+    output_characters: object,
+    output_sha256: object,
+    reviewed_packets: Path,
+) -> bool:
+    """Bind one trace to the current or its exact retained blinded packet."""
+    identity = (output_characters, output_sha256)
+    if identity == _packet_output_identity(packet_output):
+        return True
+    if (
+        not isinstance(output_characters, int)
+        or isinstance(output_characters, bool)
+        or not is_sha256_hex(output_sha256)
+    ):
+        return False
+    reviewed_packet_path = reviewed_packets / f"{output_sha256}.json"
+    try:
+        reviewed_packet = _read_json(
+            reviewed_packet_path,
+            "retained reviewed packet",
+        )
+        reviewed_output = reviewed_packet_path.read_text(encoding="utf-8")
+    except (EvaluationError, OSError, UnicodeError):
+        return False
+    return (
+        _packet_output_identity(reviewed_output) == identity
+        and not _packet_genuineness_errors(reviewed_packet)
+        and _same_review_payload(packet, reviewed_packet)
+    )
+
+
+def _publish_review_artifacts(
+    result: dict,
+    output_path: Path,
+    reviewed_packet: bytes,
+    reviewed_packets: Path,
+) -> None:
+    """Retain immutable input before atomically committing its result."""
+    serialized = json.dumps(result, indent=2, sort_keys=True) + "\n"
+    packet_sha256 = hashlib.sha256(reviewed_packet).hexdigest()
+    reviewed_packet_path = reviewed_packets / f"{packet_sha256}.json"
+
+    if reviewed_packet_path.exists():
+        if (
+            reviewed_packet_path.is_symlink()
+            or reviewed_packet_path.read_bytes() != reviewed_packet
+        ):
+            raise EvaluationError(
+                "retained reviewed packet conflicts with its content digest"
+            )
+    else:
+        def write_packet_copy(temporary: Path) -> None:
+            temporary.write_bytes(reviewed_packet)
+
+        replace_via_temporary(reviewed_packet_path, write_packet_copy)
+
+    def write_result(temporary: Path) -> None:
+        temporary.write_text(serialized, encoding="utf-8")
+
+    # The result is the commit marker: a retained-packet failure must leave the
+    # previously accepted result untouched.
+    replace_via_temporary(output_path, write_result)
+
+
 def _parse_reviewer_trace(raw: str, workspace: Path) -> tuple[list[dict], dict]:
     if len(raw.encode("utf-8")) > TRACE_LIMITS["jsonl_bytes"]:
         raise EvaluationError("second-reviewer JSONL exceeded its byte bound")
@@ -133,6 +250,15 @@ def _parse_reviewer_trace(raw: str, workspace: Path) -> tuple[list[dict], dict]:
         events.append(event)
     if len(events) > TRACE_LIMITS["events"]:
         raise EvaluationError("second-reviewer JSONL exceeded its event bound")
+    try:
+        resolved_workspace = workspace.resolve()
+        packet_output = (workspace / "reviewer-packet.json").read_text(
+            encoding="utf-8"
+        )
+    except (OSError, UnicodeError) as exc:
+        raise EvaluationError(
+            "second-reviewer blinded packet could not be verified"
+        ) from exc
 
     commands = []
     disallowed_items = []
@@ -151,24 +277,26 @@ def _parse_reviewer_trace(raw: str, workspace: Path) -> tuple[list[dict], dict]:
         output = item.get("aggregated_output", "")
         if not isinstance(command, str) or not isinstance(output, str):
             raise EvaluationError("second-reviewer command trace is malformed")
-        lowered = command.casefold()
-        if (
-            "reviewer-packet.json" not in lowered
-            or _PARENT_SEGMENT_RE.search(command) is not None
-            or any(
-                token in lowered
-                for token in (
-                    "evaluation/results",
-                    "evaluation/corpus",
-                    "reviewer-results",
-                    "internet",
-                    "curl ",
-                    "wget ",
-                )
-            )
-        ):
+        if not _is_packet_only_command(command):
             raise EvaluationError(
                 "second reviewer issued a command outside the blinded packet"
+            )
+        cwd = item.get("cwd")
+        try:
+            cwd_matches = (
+                cwd is None
+                or isinstance(cwd, str)
+                and Path(cwd).resolve() == resolved_workspace
+            )
+        except (OSError, RuntimeError):
+            cwd_matches = False
+        if not cwd_matches:
+            raise EvaluationError(
+                "second reviewer issued a command outside the isolated workspace"
+            )
+        if output != packet_output:
+            raise EvaluationError(
+                "second-reviewer command output did not match the blinded packet"
             )
         commands.append({
             "command": _bounded_text(
@@ -176,11 +304,11 @@ def _parse_reviewer_trace(raw: str, workspace: Path) -> tuple[list[dict], dict]:
             ),
             "cwd": (
                 _bounded_text(
-                    item["cwd"],
+                    cwd,
                     workspace,
                     TRACE_LIMITS["stored_command_characters"],
                 )
-                if isinstance(item.get("cwd"), str) else None
+                if isinstance(cwd, str) else None
             ),
             "exit_code": item.get("exit_code"),
             "status": item.get("status"),
@@ -196,8 +324,12 @@ def _parse_reviewer_trace(raw: str, workspace: Path) -> tuple[list[dict], dict]:
         )
     if not commands or len(commands) > TRACE_LIMITS["commands"]:
         raise EvaluationError("second reviewer did not use a bounded packet-only trace")
-    if any(command.get("exit_code") != 0 for command in commands):
-        raise EvaluationError("second-reviewer packet read failed")
+    if any(
+        command.get("status") != "completed"
+        or command.get("exit_code") != 0
+        for command in commands
+    ):
+        raise EvaluationError("second-reviewer packet read did not complete")
 
     usage = next(
         (
@@ -282,10 +414,7 @@ def write_packet(
 ) -> dict:
     packet = expected_packet(manifest_path, evaluation_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(packet, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    path.write_bytes(_json_bytes(packet))
     return packet
 
 
@@ -420,8 +549,12 @@ def run_reviewer(
     packet_path: Path = DEFAULT_PACKET,
     manifest_path: Path = DEFAULT_MANIFEST,
     evaluation_path: Path = DEFAULT_RESULTS,
+    reviewed_packets: Path = DEFAULT_REVIEWED_PACKETS,
 ) -> dict:
     packet = write_packet(packet_path, manifest_path, evaluation_path)
+    # Bind the run to the deterministic packet object, not to a path another
+    # process could replace while the model host is running.
+    packet_bytes = _json_bytes(packet)
     codex = shutil.which("codex")
     if codex is None:
         raise EvaluationError("codex is not installed")
@@ -433,7 +566,7 @@ def run_reviewer(
         isolated_packet = workspace / "reviewer-packet.json"
         isolated_schema = workspace / "reviewer-response-schema.json"
         final_path = workspace / "reviewer-response.json"
-        shutil.copy2(packet_path, isolated_packet)
+        isolated_packet.write_bytes(packet_bytes)
         shutil.copy2(RESPONSE_SCHEMA_PATH, isolated_schema)
         expected_files = {
             isolated_packet.name: file_sha256(isolated_packet),
@@ -514,10 +647,11 @@ def run_reviewer(
             "usage": usage,
         },
     )
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        json.dumps(result, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
+    _publish_review_artifacts(
+        result,
+        output_path,
+        packet_bytes,
+        reviewed_packets,
     )
     return result
 
@@ -576,6 +710,7 @@ def verify_results(
     evaluation_path: Path = DEFAULT_RESULTS,
     *,
     current: bool = False,
+    reviewed_packets: Path = DEFAULT_REVIEWED_PACKETS,
 ) -> list[str]:
     """Check committed second-reviewer evidence.
 
@@ -587,6 +722,7 @@ def verify_results(
     """
     errors: list[str] = []
     packet = _read_json(packet_path, "reviewer packet")
+    packet_output = packet_path.read_text(encoding="utf-8")
     errors.extend(_packet_genuineness_errors(packet))
     results = _read_json(review_path, "reviewer results")
     if results.get("schema_version") != REVIEW_SCHEMA_VERSION:
@@ -661,16 +797,25 @@ def verify_results(
         errors.append("second-reviewer trace is missing or unbounded")
     else:
         for command in trace:
+            command_text = command.get("command") if isinstance(command, dict) else None
             if (
                 not isinstance(command, dict)
-                or "reviewer-packet.json" not in str(
-                    command.get("command", "")
-                ).casefold()
-                or len(str(command.get("command", "")))
+                or not isinstance(command_text, str)
+                or not _is_packet_only_command(command_text)
+                or command.get("cwd") not in (None, "<REVIEW_WORKSPACE>")
+                or len(command_text)
                 > bounds["stored_command_characters"] + 1
                 or len(str(command.get("output_preview", "")))
                 > bounds["stored_output_characters"] + 1
+                or command.get("status") != "completed"
                 or command.get("exit_code") != 0
+                or not _trace_output_matches_packet(
+                    packet,
+                    packet_output,
+                    command.get("output_characters"),
+                    command.get("output_sha256"),
+                    reviewed_packets,
+                )
             ):
                 errors.append("second-reviewer trace is missing or unbounded")
                 break
@@ -728,6 +873,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--evaluation", type=Path, default=DEFAULT_RESULTS)
     parser.add_argument("--packet", type=Path, default=DEFAULT_PACKET)
+    parser.add_argument(
+        "--reviewed-packets",
+        type=Path,
+        default=DEFAULT_REVIEWED_PACKETS,
+        help="directory of exact blinded packets retained by content digest",
+    )
     parser.add_argument("--output", type=Path, default=DEFAULT_REVIEW_RESULTS)
     action = parser.add_mutually_exclusive_group(required=True)
     action.add_argument("--build-packet", action="store_true")
@@ -761,6 +912,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.manifest,
                 args.evaluation,
                 current=args.current,
+                reviewed_packets=args.reviewed_packets,
             )
             if errors:
                 for error in errors:
@@ -779,6 +931,7 @@ def main(argv: list[str] | None = None) -> int:
             args.packet,
             args.manifest,
             args.evaluation,
+            args.reviewed_packets,
         )
         print(
             f"recorded {result['comparison']['findings_reviewed']} second-reviewer "
