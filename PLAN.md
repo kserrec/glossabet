@@ -128,10 +128,21 @@ protections remain protected.
   changed. Focused tests passed; the complete local suite is 805 passed and one
   Windows-only junction test skipped on Linux. Ruff, product mypy, and workflow
   policy passed. Actual Windows execution remains for Step 1.4.
-- [ ] **Step 1.3 — deterministic bounded-read verification.** Replace the
-  interpreter-allocation threshold with an instrumented stream/open seam that
-  proves bounded requests, no cap-sized allocation request, minimum evidence
-  read before oversize rejection, and exact-boundary behavior.
+- [x] **Step 1.3 — deterministic bounded-read verification**
+  (2026-08-27). Verified that the production reader already grows requests
+  from 64 KiB to a 1 MiB ceiling and judges the limit from returned bytes. The
+  interpreter-sensitive `tracemalloc` peak assertion is replaced by a reader
+  wrapper that records every requested size and returned byte count.
+
+  The tests now prove that a two-byte file under a 64 MB cap never receives a
+  cap-sized or unbounded request; every request is positive and no larger than
+  1 MiB; an exact-boundary file succeeds after reading its content and proving
+  EOF; and an oversized file returns exactly `cap + 1` bytes before rejection.
+  No production behavior, schema, dependency, or artifact changed. Focused
+  tests passed; the complete local suite is 805 passed and one Windows-only
+  junction test skipped on Linux. Ruff, product mypy, and workflow policy
+  passed. Python 3.14 is not installed locally; its actual execution remains
+  part of Step 1.4.
 - [ ] **Step 1.4 — close the support and distribution gates.** Run every
   declared lane, Ruff, mypy, actionlint, workflow policy, recorded-evidence
   verification, build/plugin/distribution/wheel smoke, and confirm that the
