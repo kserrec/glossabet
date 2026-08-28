@@ -106,17 +106,23 @@ def test_reviewer_offline_verification_succeeds(capsys):
             "Claude evaluation verification: Claude evaluation result is "
             "unreadable: ",
         ),
-        (run.main, "evaluation verification: /nonexistent.json: unreadable "),
+        (run.main, "evaluation verification: "),
         (review.main, "review evaluation: reviewer results is unreadable: "),
     ],
 )
-def test_unreadable_results_fail_with_lane_wording(main, prefix, capsys):
-    status = main(["--verify-results", "/nonexistent.json"])
+def test_missing_results_fail_with_lane_wording(
+    main, prefix, capsys, tmp_path
+):
+    missing = tmp_path / "missing-results.json"
+    assert not missing.exists()
+
+    status = main(["--verify-results", str(missing)])
     out = capsys.readouterr()
+
     assert status == 1
     assert out.out == ""
     assert out.err.startswith(prefix)
-    assert "No such file or directory" in out.err
+    assert out.err[len(prefix) :].strip()
 
 
 def test_current_requires_verify_results_in_every_lane(capsys):

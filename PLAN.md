@@ -113,11 +113,21 @@ protections remain protected.
   mypy, workflow policy, and all three offline evidence verifiers passed.
   `actionlint` remains unavailable locally and no workflow changed. Actual
   Windows and full declared-matrix execution remains for Step 1.4.
-- [ ] **Step 1.2 — platform-semantic CLI and race contracts.** Replace raw
-  operating-system prose and absolute-path expectations with Glossabet-owned
-  prefixes, exit/channel behavior, canary preservation, non-traversal, and safe
-  outcomes. Keep exact POSIX symlink-state assertions only in POSIX tests; do
-  not weaken the underlying race protections.
+- [x] **Step 1.2 — platform-semantic CLI and race contracts**
+  (2026-08-27). Verified that all four evaluation lanes already return status
+  1, leave stdout empty, and lead with a lane-owned diagnostic when a results
+  path is missing. The cross-platform contract now creates that missing path
+  beneath `tmp_path` and asserts those stable semantics without requiring a
+  POSIX absolute-path spelling or the operating system's `OSError` prose.
+
+  Cache and evaluator scratch race tests now require the external canary to
+  remain untouched, the swapped entry not to be followed, and the reported
+  cleanup result to match whether the owned entry remains. They no longer
+  require Windows and POSIX to leave the same final symlink directory entry.
+  No production behavior, security boundary, schema, dependency, or artifact
+  changed. Focused tests passed; the complete local suite is 805 passed and one
+  Windows-only junction test skipped on Linux. Ruff, product mypy, and workflow
+  policy passed. Actual Windows execution remains for Step 1.4.
 - [ ] **Step 1.3 — deterministic bounded-read verification.** Replace the
   interpreter-allocation threshold with an instrumented stream/open seam that
   proves bounded requests, no cap-sized allocation request, minimum evidence

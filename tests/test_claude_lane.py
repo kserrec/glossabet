@@ -4,6 +4,7 @@ retained evidence only — no host, no process, no login state."""
 from __future__ import annotations
 
 import ast
+import os
 import stat
 import subprocess
 import sys
@@ -312,11 +313,14 @@ def test_owned_scratch_root_swap_does_not_follow_symlink(
         return real_rmtree(path, onerror=onerror)
 
     monkeypatch.setattr(host.shutil, "rmtree", swap_before_remove)
-    with pytest.raises(OSError):
-        host.remove_owned_scratch(scratch)
+    try:
+        completed = host.remove_owned_scratch(scratch)
+    except OSError:
+        completed = False
 
     assert keep.read_text(encoding="utf-8") == "KEEP"
-    assert scratch.path.is_symlink()
+    assert canary.is_dir()
+    assert completed == (not os.path.lexists(scratch.path))
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows junction contract")

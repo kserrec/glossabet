@@ -215,11 +215,12 @@ def test_cache_file_swapped_for_a_symlink_after_the_check_loses_only_the_link(
     assert report["removed_entries"] == 1
 
 
-def test_cache_entry_swapped_for_a_directory_symlink_is_left_in_place(
+def test_cache_entry_swapped_for_a_directory_symlink_is_not_followed(
     tmp_path, monkeypatch
 ):
-    """``rmdir`` on a symlink fails rather than removing the directory it
-    points at; the entry is reported as left in place."""
+    """The directory link itself may remain or be removed depending on the
+    platform's ``rmdir`` behavior; its external target is never traversed,
+    and the report must describe whichever safe outcome occurred."""
     root = tmp_path / "cache"
     entry = _entry(root, "b")
     canary_dir = tmp_path / "precious"
@@ -240,9 +241,13 @@ def test_cache_entry_swapped_for_a_directory_symlink_is_left_in_place(
     report = clear_cache()
 
     assert (canary_dir / "keep.txt").read_text(encoding="utf-8") == "KEEP"
-    assert entry.is_symlink()
-    assert report["unrecognized_left_in_place"] == ["b" * 64]
-    assert report["root_removed"] is False
+    assert canary_dir.is_dir()
+    assert report["removed_entries"] == 1
+    entry_remains = os.path.lexists(entry)
+    assert report["unrecognized_left_in_place"] == (
+        [entry.name] if entry_remains else []
+    )
+    assert report["root_removed"] is not entry_remains
 
 
 # --- source reads: the walk-time size is the charged size -----------------
@@ -262,4 +267,3 @@ def test_walk_time_size_is_what_the_ledger_charges(tmp_path):
     assert budget.source_files == 0 and budget.source_bytes == 0
     assert budget.skipped_source_files == 1 and budget.skipped_source_bytes == 10
     assert budget.skipped_sample[0]["reason"] == "unreadable"
-
