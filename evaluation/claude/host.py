@@ -485,10 +485,11 @@ def owned_scratch(parent: Path) -> OwnedScratch:
 def remove_owned_scratch(scratch: OwnedScratch) -> bool:
     """Remove only the same immediate child created by ``owned_scratch``.
 
-    Python 3.10's cross-version ``onerror`` hook is used solely to retry a
-    failed unlink/rmdir after clearing a Windows read-only bit. Symlinks and
-    junctions are never permission-corrected, so a swapped entry cannot turn
-    that retry into an operation on its target.
+    Python 3.10's cross-version ``onerror`` hook accepts a confined entry that
+    vanished during deletion and retries a failed unlink/rmdir after clearing
+    a Windows read-only bit. Symlinks and junctions are never
+    permission-corrected, so a swapped entry cannot turn that retry into an
+    operation on its target.
     """
     root = scratch.path
     parent = scratch.parent
@@ -538,7 +539,7 @@ def remove_owned_scratch(scratch: OwnedScratch) -> bool:
         exc_info: tuple[type[BaseException], BaseException, object],
     ) -> None:
         error = exc_info[1]
-        if not isinstance(error, PermissionError) or function not in {
+        if function not in {
             os.remove,
             os.rmdir,
             os.unlink,
@@ -549,6 +550,10 @@ def remove_owned_scratch(scratch: OwnedScratch) -> bool:
             candidate.relative_to(root)
         except ValueError:
             raise error from None
+        if isinstance(error, FileNotFoundError):
+            return
+        if not isinstance(error, PermissionError):
+            raise error
         try:
             candidate_info = candidate.lstat()
         except OSError:

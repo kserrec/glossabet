@@ -249,6 +249,34 @@ def test_owned_scratch_removes_windows_readonly_git_objects(
     assert retry_was_writable is True
 
 
+def test_owned_scratch_accepts_a_confined_entry_vanishing_during_delete(
+    monkeypatch, tmp_path
+):
+    scratch = host.owned_scratch(tmp_path)
+    maintenance_lock = scratch.path / "fixture" / ".git" / "maintenance.lock"
+    maintenance_lock.parent.mkdir(parents=True)
+    maintenance_lock.touch()
+    real_rmtree = host.shutil.rmtree
+    simulated_race = False
+
+    def vanish_during_remove(path, *, onerror=None):
+        nonlocal simulated_race
+        maintenance_lock.unlink()
+        try:
+            maintenance_lock.unlink()
+        except FileNotFoundError:
+            assert onerror is not None
+            simulated_race = True
+            onerror(host.os.unlink, str(maintenance_lock), sys.exc_info())
+        real_rmtree(path)
+
+    monkeypatch.setattr(host.shutil, "rmtree", vanish_during_remove)
+
+    assert host.remove_owned_scratch(scratch) is True
+    assert simulated_race is True
+    assert not scratch.path.exists()
+
+
 def test_owned_scratch_rejects_an_outside_path(tmp_path):
     scratch = host.owned_scratch(tmp_path)
     outside_parent = tmp_path / "outside"
