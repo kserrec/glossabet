@@ -43,7 +43,7 @@ STATIC_RUNS = [
     "actionlint",
 ]
 PACKAGE_RUNS = [
-    "python scripts/check_workflows.py",
+    "uv run --locked python scripts/check_workflows.py",
     "python evaluation/run.py --verify-results evaluation/results.json",
     "python scripts/agent_eval.py --verify-results evaluation/agent-results.json",
     "python evaluation/review.py --verify-results evaluation/reviewer-results.json",
@@ -53,7 +53,7 @@ PACKAGE_RUNS = [
     "python scripts/wheel_smoke.py dist",
 ]
 PUBLISH_RUNS = [
-    "python scripts/check_workflows.py",
+    "uv run --locked python scripts/check_workflows.py",
     "python evaluation/run.py --verify-results evaluation/results.json --current",
     "python scripts/agent_eval.py --verify-results evaluation/agent-results.json --current",
     "python evaluation/review.py --verify-results evaluation/reviewer-results.json --current",

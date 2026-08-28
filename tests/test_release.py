@@ -95,7 +95,11 @@ WEAKENINGS = [
         "uv run --locked mypy glossabet/cli.py",
     ),
     ("quality.yml", "needs: [test, static]", "needs: [static]"),
-    ("quality.yml", "python scripts/check_workflows.py", "python -c pass"),
+    (
+        "quality.yml",
+        "uv run --locked python scripts/check_workflows.py",
+        "python scripts/check_workflows.py",
+    ),
     (
         "quality.yml",
         "python evaluation/run.py --verify-results evaluation/results.json",
@@ -158,6 +162,11 @@ WEAKENINGS = [
         "release.yml",
         "persist-credentials: false",
         "persist-credentials: true",
+    ),
+    (
+        "release.yml",
+        "uv run --locked python scripts/check_workflows.py",
+        "python scripts/check_workflows.py",
     ),
     (
         "release.yml",
