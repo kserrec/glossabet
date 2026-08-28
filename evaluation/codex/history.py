@@ -57,6 +57,7 @@ class AbortedRun:
     failed_stage: FailedStage = "plugin-preflight"
     cleanup_verified: bool = True
     usage: list[dict] = field(default_factory=list)
+    cleanup_error: str | None = None
 
 
 class ProceduralChecks(TypedDict):
@@ -291,6 +292,9 @@ def attempt_from_probe(attempt_id: str, probe: dict) -> dict:
 
 def attempt_from_error(attempt_id: str, aborted: AbortedRun) -> AttemptRecord:
     message = str(aborted.error) or type(aborted.error).__name__
+    failures = [message]
+    if aborted.cleanup_error is not None:
+        failures.append(aborted.cleanup_error)
     # Errors raised before the managed plugin lifecycle create no test-owned
     # state; the runner reports the observed cleanup outcome once that
     # lifecycle has begun.
@@ -339,8 +343,8 @@ def attempt_from_error(attempt_id: str, aborted: AbortedRun) -> AttemptRecord:
         "safety_checks": safety_checks,
         "safety_pass": all(safety_checks.values()) and not unsafe,
         "cleanup_verified": cleanup_verified,
-        "failures": [message],
-        "evidence": [message],
+        "failures": failures,
+        "evidence": failures.copy(),
         "usage": usage_totals(aborted.usage),
         "scenario_summary": None,
         "raw_result": None,

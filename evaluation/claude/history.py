@@ -68,6 +68,7 @@ class AbortedRun:
 
     error: BaseException
     cleanup_verified: bool = True
+    cleanup_error: str | None = None
 
 def usage_totals(records: list[dict]) -> dict:
     totals = {
@@ -181,6 +182,9 @@ def attempt_from_result(attempt_id: str, result: dict, path: Path) -> AttemptRec
 def attempt_from_error(attempt_id: str, aborted: AbortedRun) -> AttemptRecord:
     message = str(aborted.error) or type(aborted.error).__name__
     cleanup = aborted.cleanup_verified is True
+    failures = [message]
+    if aborted.cleanup_error is not None:
+        failures.append(aborted.cleanup_error)
     return {
         "id": attempt_id,
         "recorded_on": datetime.now(timezone.utc).date().isoformat(),
@@ -196,7 +200,7 @@ def attempt_from_error(attempt_id: str, aborted: AbortedRun) -> AttemptRecord:
         },
         "safety_pass": cleanup and "source canary" not in message.casefold(),
         "cleanup_verified": cleanup,
-        "failures": [message],
+        "failures": failures,
         "usage": None,
         "scenario_summary": None,
         "raw_result": None,

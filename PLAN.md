@@ -79,26 +79,40 @@ protections remain protected.
   static job passed actionlint 1.7.12.
 
   The current GitHub run for this exact commit failed seven of fifteen matrix
-  lanes: every Windows lane failed the same seven base tests (Claude scratch cleanup on
-  read-only Git objects masks both a synthetic failure and `KeyboardInterrupt`;
-  four evaluation-CLI cases require POSIX missing-file wording/path spelling;
-  one race test requires POSIX symlink state), and all three Python 3.14 lanes
-  additionally failed the allocator-sensitive `tracemalloc` threshold. These
-  are two evaluation-infrastructure defects plus platform/interpreter-sensitive
-  tests. No product defect or unsupported-environment mismatch was observed.
-  Static
-  checks passed; the distribution job was skipped because it needs the failed
-  matrix, while the same distribution checks passed locally.
+  lanes: every Windows lane failed the same seven base tests (Claude scratch
+  cleanup on read-only Git objects masks both a synthetic failure and
+  `KeyboardInterrupt`; four evaluation-CLI cases require POSIX missing-file
+  wording/path spelling; one race test requires POSIX symlink state), and all
+  three Python 3.14 lanes additionally failed the allocator-sensitive
+  `tracemalloc` threshold. These are two evaluation-infrastructure defects plus
+  platform/interpreter-sensitive tests. No product defect or
+  unsupported-environment mismatch was observed. Static checks passed; the
+  distribution job was skipped because it needs the failed matrix, while the
+  same distribution checks passed locally.
 
 ### Phase 1 — trustworthy CI and release gate
 
-- [ ] **Step 1.1 — portable owned-scratch cleanup and failure precedence.**
-  Reproduce the Windows read-only-object failure and the masking lifecycle;
-  implement one small confined cleanup owner where lifecycle behavior is truly
-  shared; prove ownership, parent confinement, symlink/junction non-traversal,
-  permission correction and retry of only the failed delete, explicit cleanup
-  results, original exception/`KeyboardInterrupt` precedence, secondary cleanup
-  diagnostics, and cleanup-primary behavior after an otherwise successful run.
+- [x] **Step 1.1 — portable owned-scratch cleanup and failure precedence**
+  (2026-08-27). Reproduced the bare `shutil.rmtree` failure on read-only Git
+  object layouts and the lifecycle paths that replaced a scenario failure or
+  `KeyboardInterrupt`. The invariant is now: cleanup may remove only the exact
+  evaluator-created child beneath the unchanged configured parent, and a
+  secondary cleanup failure may never replace the first evaluation failure.
+
+  Claude scratch ownership binds the resolved parent and root identities to a
+  random on-disk marker, rejects replaced roots and parent changes, refuses to
+  permission-correct symlinks or junctions, and retries only the failed
+  unlink/rmdir after clearing a Windows read-only bit. Cleanup reports an
+  explicit boolean result. Claude and Codex runners preserve the exact original
+  exception object—including `KeyboardInterrupt`—while recording and reporting
+  a stable secondary cleanup diagnostic; cleanup remains primary when no
+  evaluation error came first. Attempt schemas did not change shape.
+
+  Focused lifecycle and confinement tests passed. The complete local suite is
+  805 passed and one Windows-only junction test skipped on Linux; Ruff, product
+  mypy, workflow policy, and all three offline evidence verifiers passed.
+  `actionlint` remains unavailable locally and no workflow changed. Actual
+  Windows and full declared-matrix execution remains for Step 1.4.
 - [ ] **Step 1.2 — platform-semantic CLI and race contracts.** Replace raw
   operating-system prose and absolute-path expectations with Glossabet-owned
   prefixes, exit/channel behavior, canary preservation, non-traversal, and safe

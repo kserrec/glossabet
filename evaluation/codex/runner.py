@@ -26,7 +26,6 @@ from evaluation.codex.contract import (
     PROMPT_PATH,
     RESULT_SCHEMA_VERSION,
     SCENARIOS_PATH,
-    AgentEvaluationError,
     fail,
     read_json,
 )
@@ -308,10 +307,11 @@ def _run_plugin_batch(
     work: Path,
     limits: dict,
     disabled_skills: tuple[Path, ...],
-) -> tuple[_PluginBatch, BaseException | None, FailedStage, bool]:
+) -> tuple[_PluginBatch, BaseException | None, FailedStage, bool, str | None]:
     """Install the temporary plugin, run the hook and plugin sessions, and
     always clean up. Returns the batch, the primary error if any, the stage
-    it failed at, and whether cleanup was verified."""
+    it failed at, whether cleanup was verified, and any secondary cleanup
+    diagnostic that must not replace the primary failure."""
     plugin_scenarios = [
         scenario for scenario in scenarios if scenario["delivery"] == "plugin"
     ]
@@ -326,6 +326,7 @@ def _run_plugin_batch(
     batch = _PluginBatch()
     primary_error: BaseException | None = None
     cleanup_verified = False
+    cleanup_error: str | None = None
     stage: FailedStage = "plugin-preflight"
     try:
         plugin_id, installed_path = install_plugin(
@@ -355,20 +356,13 @@ def _run_plugin_batch(
         except Exception as cleanup_exc:
             if primary_error is None:
                 primary_error = cleanup_exc
-            elif isinstance(primary_error, Exception):
-                primary_error = AgentEvaluationError(
-                    f"{primary_error}; cleanup also failed: {cleanup_exc}"
-                )
             else:
-                # Never replace an interrupt with the cleanup failure;
-                # report it alongside instead.
-                print(
-                    "agent evaluation: cleanup failed during interrupt: "
-                    f"{cleanup_exc}",
-                    file=sys.stderr,
-                    flush=True,
+                cleanup_error = (
+                    "secondary cleanup failure: "
+                    f"{type(cleanup_exc).__name__}: "
+                    f"{str(cleanup_exc) or 'no detail'}"
                 )
-    return batch, primary_error, stage, cleanup_verified
+    return batch, primary_error, stage, cleanup_verified, cleanup_error
 
 
 def _assemble_result(
@@ -442,12 +436,7 @@ def _assemble_result(
     }
 
 
-def run_evaluation(output: Path) -> dict:
-    """Run the full installed-plugin evaluation and write ``output``.
-
-    Raises the first failure after the temporary plugin state has been
-    removed; use ``run_recorded_evaluation`` to also retain the attempt.
-    """
+def _execute_evaluation(output: Path) -> dict:
     manifest = read_json(SCENARIOS_PATH, "agent scenario manifest")
     scenarios, limits = validate_manifest(manifest)
     codex = _locate_codex()
@@ -464,12 +453,22 @@ def run_evaluation(output: Path) -> dict:
 
     with tempfile.TemporaryDirectory(prefix="glossabet-agent-eval-") as raw:
         work = Path(raw)
-        batch, primary_error, stage, cleanup_verified = _run_plugin_batch(
-            codex, scenarios, work, limits, disabled_skills
-        )
+        (
+            batch,
+            primary_error,
+            stage,
+            cleanup_verified,
+            cleanup_error,
+        ) = _run_plugin_batch(codex, scenarios, work, limits, disabled_skills)
         if primary_error is not None:
             raise _Aborted(
-                AbortedRun(primary_error, stage, cleanup_verified, batch.usages)
+                AbortedRun(
+                    primary_error,
+                    failed_stage=stage,
+                    cleanup_verified=cleanup_verified,
+                    usage=batch.usages,
+                    cleanup_error=cleanup_error,
+                )
             )
         try:
             missing_result, missing_usage = run_missing_cli_scenario(
@@ -506,13 +505,32 @@ class _Aborted(BaseException):
     """Internal carrier from the run scope to the recording scope.
 
     A ``BaseException`` so an interrupt's record is not swallowed by an
-    ``except Exception``; it never escapes ``run_recorded_evaluation``,
-    which re-raises the original error.
+    ``except Exception``; the public runner boundaries re-raise the original
+    error.
     """
 
     def __init__(self, aborted: AbortedRun) -> None:
         super().__init__(str(aborted.error))
         self.aborted = aborted
+
+
+def _report_secondary_cleanup(aborted: AbortedRun) -> None:
+    if aborted.cleanup_error is not None:
+        print(f"agent evaluation: {aborted.cleanup_error}", file=sys.stderr)
+
+
+def run_evaluation(output: Path) -> dict:
+    """Run the full installed-plugin evaluation and write ``output``.
+
+    Raises the original first failure after the temporary plugin state has
+    been removed; use ``run_recorded_evaluation`` to also retain the attempt.
+    """
+    try:
+        return _execute_evaluation(output)
+    except _Aborted as carrier:
+        aborted = carrier.aborted
+        _report_secondary_cleanup(aborted)
+        raise aborted.error from None
 
 
 def run_recorded_evaluation(output: Path, attempt_id: str) -> dict:
@@ -523,11 +541,12 @@ def run_recorded_evaluation(output: Path, attempt_id: str) -> dict:
     begins are recorded with the same defaults as before.
     """
     try:
-        return run_evaluation(output)
+        return _execute_evaluation(output)
     except _Aborted as carrier:
         aborted = carrier.aborted
     except BaseException as exc:
         aborted = AbortedRun(exc)
+    _report_secondary_cleanup(aborted)
     try:
         append_attempt(attempt_from_error(attempt_id, aborted))
     except Exception as append_exc:
@@ -536,4 +555,4 @@ def run_recorded_evaluation(output: Path, attempt_id: str) -> dict:
             f"attempt: {append_exc}",
             file=sys.stderr,
         )
-    raise aborted.error
+    raise aborted.error from None

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -546,7 +547,7 @@ def test_cleanup_failure_is_never_reported_as_safe(
         / "20260818T120000Z-claude-full-deadbeef.json"
     )
 
-    def fail_cleanup(_root, _parent):
+    def fail_cleanup(_scratch):
         raise OSError("synthetic cleanup refusal")
 
     monkeypatch.setattr(claude_runner, "remove_owned_scratch", fail_cleanup)
@@ -667,13 +668,12 @@ def test_output_and_cleanup_are_confined(evidence_area, tmp_path):
 
     parent = tmp_path / "scratch-parent"
     parent.mkdir()
-    owned = parent / "glossabet-claude-eval-owned"
-    owned.mkdir()
-    assert remove_owned_scratch(owned, parent) is True
+    owned = claude_host.owned_scratch(parent)
+    assert remove_owned_scratch(owned) is True
     foreign = parent / "foreign"
     foreign.mkdir()
-    with pytest.raises(ClaudeEvaluationError, match="unowned"):
-        remove_owned_scratch(foreign, parent)
+    with pytest.raises(ClaudeEvaluationError, match="owned parent"):
+        remove_owned_scratch(replace(owned, path=foreign))
     assert foreign.is_dir()
 
 

@@ -13,9 +13,13 @@ import json
 import os
 import platform
 import re
+import secrets
 import shutil
+import stat
 import subprocess
 import tempfile
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from evaluation.claude.contract import (
@@ -416,21 +420,143 @@ def direct_brief(
     )
 
 
-def owned_scratch(parent: Path) -> Path:
-    parent = parent.resolve()
-    if parent.is_symlink() or not parent.is_dir():
-        fail(f"scratch parent is missing or symlinked: {parent}")
-    return Path(tempfile.mkdtemp(prefix="glossabet-claude-eval-", dir=parent))
+_SCRATCH_PREFIX = "glossabet-claude-eval-"
+_SCRATCH_MARKER = ".glossabet-evaluator-owned"
 
 
-def remove_owned_scratch(root: Path, parent: Path) -> bool:
-    resolved_parent = parent.resolve()
-    resolved_root = root.resolve()
-    if (
-        root.is_symlink()
-        or resolved_root.parent != resolved_parent
-        or not resolved_root.name.startswith("glossabet-claude-eval-")
+@dataclass(frozen=True)
+class OwnedScratch:
+    """One exact evaluator-created directory beneath one exact parent."""
+
+    path: Path
+    parent: Path
+    identity: tuple[int, int]
+    parent_identity: tuple[int, int]
+    token: str
+
+
+def _entry_identity(info: os.stat_result) -> tuple[int, int]:
+    return info.st_dev, info.st_ino
+
+
+def _is_link_or_junction(info: os.stat_result) -> bool:
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    file_attributes = getattr(info, "st_file_attributes", 0)
+    return stat.S_ISLNK(info.st_mode) or bool(
+        reparse_flag and file_attributes & reparse_flag
+    )
+
+
+def _entry_exists(path: Path) -> bool:
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def owned_scratch(parent: Path) -> OwnedScratch:
+    try:
+        requested_info = parent.lstat()
+    except OSError:
+        fail(f"scratch parent is missing or uninspectable: {parent}")
+    if _is_link_or_junction(requested_info) or not stat.S_ISDIR(
+        requested_info.st_mode
     ):
-        fail(f"refusing to remove unowned scratch path: {root}")
-    shutil.rmtree(resolved_root)
-    return not resolved_root.exists()
+        fail(f"scratch parent is missing, symlinked, or junctioned: {parent}")
+    resolved_parent = parent.resolve()
+    parent_info = resolved_parent.lstat()
+    root = Path(
+        tempfile.mkdtemp(prefix=_SCRATCH_PREFIX, dir=resolved_parent)
+    )
+    token = secrets.token_hex(32)
+    with (root / _SCRATCH_MARKER).open("x", encoding="utf-8") as marker:
+        marker.write(token)
+    root_info = root.lstat()
+    return OwnedScratch(
+        path=root,
+        parent=resolved_parent,
+        identity=_entry_identity(root_info),
+        parent_identity=_entry_identity(parent_info),
+        token=token,
+    )
+
+
+def remove_owned_scratch(scratch: OwnedScratch) -> bool:
+    """Remove only the same immediate child created by ``owned_scratch``.
+
+    Python 3.10's cross-version ``onerror`` hook is used solely to retry a
+    failed unlink/rmdir after clearing a Windows read-only bit. Symlinks and
+    junctions are never permission-corrected, so a swapped entry cannot turn
+    that retry into an operation on its target.
+    """
+    root = scratch.path
+    parent = scratch.parent
+    if root.parent != parent or not root.name.startswith(_SCRATCH_PREFIX):
+        fail(f"refusing to remove scratch outside its owned parent: {root}")
+    try:
+        parent_info = parent.lstat()
+    except OSError:
+        fail(f"refusing cleanup after scratch parent changed: {parent}")
+    if (
+        _is_link_or_junction(parent_info)
+        or not stat.S_ISDIR(parent_info.st_mode)
+        or _entry_identity(parent_info) != scratch.parent_identity
+    ):
+        fail(f"refusing cleanup after scratch parent changed: {parent}")
+    try:
+        root_info = root.lstat()
+    except FileNotFoundError:
+        return True
+    if (
+        _is_link_or_junction(root_info)
+        or not stat.S_ISDIR(root_info.st_mode)
+        or _entry_identity(root_info) != scratch.identity
+    ):
+        fail(f"refusing to remove replaced evaluator scratch: {root}")
+    marker = root / _SCRATCH_MARKER
+    try:
+        marker_info = marker.lstat()
+    except OSError:
+        fail(f"refusing to remove replaced evaluator scratch: {root}")
+    if (
+        _is_link_or_junction(marker_info)
+        or not stat.S_ISREG(marker_info.st_mode)
+        or marker_info.st_size != len(scratch.token)
+    ):
+        fail(f"refusing to remove replaced evaluator scratch: {root}")
+    try:
+        marker_value = marker.read_text(encoding="utf-8")
+    except OSError:
+        fail(f"refusing to remove replaced evaluator scratch: {root}")
+    if marker_value != scratch.token:
+        fail(f"refusing to remove replaced evaluator scratch: {root}")
+
+    def retry_readonly_delete(
+        function: Callable[..., object],
+        path: str,
+        exc_info: tuple[type[BaseException], BaseException, object],
+    ) -> None:
+        error = exc_info[1]
+        if not isinstance(error, PermissionError) or function not in {
+            os.remove,
+            os.rmdir,
+            os.unlink,
+        }:
+            raise error
+        candidate = Path(path)
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            raise error from None
+        try:
+            candidate_info = candidate.lstat()
+        except OSError:
+            raise error from None
+        if _is_link_or_junction(candidate_info):
+            raise error
+        os.chmod(candidate, candidate_info.st_mode | stat.S_IWRITE)
+        function(path)
+
+    shutil.rmtree(root, onerror=retry_readonly_delete)
+    return not _entry_exists(root)

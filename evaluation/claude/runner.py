@@ -122,7 +122,27 @@ def run_scenario(
     return record, usage
 
 
-def run_evaluation(
+class _Aborted(BaseException):
+    """Carry explicit lifecycle state without altering the primary error."""
+
+    def __init__(self, aborted: AbortedRun) -> None:
+        super().__init__(str(aborted.error))
+        self.aborted = aborted
+
+
+def _cleanup_failure(exc: BaseException) -> ScratchCleanupFailed:
+    return ScratchCleanupFailed(
+        "evaluator scratch cleanup failed: "
+        f"{type(exc).__name__}: {str(exc) or 'no detail'}"
+    )
+
+
+def _report_secondary_cleanup(aborted: AbortedRun) -> None:
+    if aborted.cleanup_error is not None:
+        print(f"Claude evaluation: {aborted.cleanup_error}", file=sys.stderr)
+
+
+def _execute_evaluation(
     output: Path,
     *,
     claude: Path,
@@ -138,10 +158,13 @@ def run_evaluation(
         installed_plugin,
         environment=environment,
     )
-    work = owned_scratch(scratch_parent)
+    scratch = owned_scratch(scratch_parent)
+    work = scratch.path
     results: list[dict] = []
     usages: list[dict] = []
     cleanup_verified = False
+    primary_error: BaseException | None = None
+    cleanup_error: str | None = None
     try:
         for scenario in manifest["scenarios"]:
             root = work / scenario["id"]
@@ -161,14 +184,33 @@ def run_evaluation(
             )
             results.append(result)
             usages.append(usage)
-    finally:
-        try:
-            cleanup_verified = remove_owned_scratch(work, scratch_parent)
-        except BaseException as exc:
-            raise ScratchCleanupFailed(
-                "evaluator scratch cleanup failed: "
+    except BaseException as exc:
+        primary_error = exc
+    try:
+        cleanup_verified = remove_owned_scratch(scratch)
+        if not cleanup_verified:
+            raise OSError("owned evaluator scratch path remains")
+    except BaseException as exc:
+        cleanup_verified = False
+        if primary_error is None:
+            primary_error = (
+                exc
+                if isinstance(exc, KeyboardInterrupt)
+                else _cleanup_failure(exc)
+            )
+        else:
+            cleanup_error = (
+                "secondary cleanup failure: "
                 f"{type(exc).__name__}: {str(exc) or 'no detail'}"
-            ) from exc
+            )
+    if primary_error is not None:
+        raise _Aborted(
+            AbortedRun(
+                primary_error,
+                cleanup_verified=cleanup_verified,
+                cleanup_error=cleanup_error,
+            )
+        )
     passed = sum(item["passed"] is True for item in results)
     summary = {
         "required": len(SCENARIO_IDS),
@@ -214,6 +256,28 @@ def run_evaluation(
     return result
 
 
+def run_evaluation(
+    output: Path,
+    *,
+    claude: Path,
+    installed_plugin: Path = DEFAULT_INSTALLED_PLUGIN,
+    scratch_parent: Path = Path("/tmp"),
+    environment: dict[str, str] | None = None,
+) -> dict:
+    try:
+        return _execute_evaluation(
+            output,
+            claude=claude,
+            installed_plugin=installed_plugin,
+            scratch_parent=scratch_parent,
+            environment=environment,
+        )
+    except _Aborted as carrier:
+        aborted = carrier.aborted
+        _report_secondary_cleanup(aborted)
+        raise aborted.error from None
+
+
 def run_recorded_evaluation(
     output: Path,
     attempt_id: str,
@@ -228,22 +292,23 @@ def run_recorded_evaluation(
     then re-raised unmodified.
     """
     try:
-        return run_evaluation(
+        return _execute_evaluation(
             output,
             claude=claude,
             installed_plugin=installed_plugin,
             scratch_parent=scratch_parent,
         )
+    except _Aborted as carrier:
+        aborted = carrier.aborted
     except BaseException as exc:
-        aborted = AbortedRun(
-            exc, cleanup_verified=not isinstance(exc, ScratchCleanupFailed)
+        aborted = AbortedRun(exc)
+    _report_secondary_cleanup(aborted)
+    try:
+        append_attempt(attempt_from_error(attempt_id, aborted))
+    except Exception as append_exc:
+        print(
+            "Claude evaluation: failed to retain aborted attempt: "
+            f"{append_exc}",
+            file=sys.stderr,
         )
-        try:
-            append_attempt(attempt_from_error(attempt_id, aborted))
-        except Exception as append_exc:
-            print(
-                "Claude evaluation: failed to retain aborted attempt: "
-                f"{append_exc}",
-                file=sys.stderr,
-            )
-        raise
+    raise aborted.error from None

@@ -4,17 +4,18 @@ retained evidence only — no host, no process, no login state."""
 from __future__ import annotations
 
 import ast
+import stat
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from evaluation.claude import results, runner
+from evaluation.claude import host, results, runner
 from evaluation.claude.contract import (
     DEFAULT_RESULTS,
     ClaudeEvaluationError,
-    ScratchCleanupFailed,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -99,10 +100,11 @@ def test_ordinary_failure_removes_owned_scratch_and_records_cleanup(
     monkeypatch, tmp_path
 ):
     seen: list[Path] = []
+    original = ClaudeEvaluationError("synthetic host refusal")
 
     def failing_scenario(claude, hook, root, *args, **kwargs):
         seen.append(root.parent)
-        raise ClaudeEvaluationError("synthetic host refusal")
+        raise original
 
     recorded = _stub_live_host(monkeypatch, tmp_path, failing_scenario)
     with pytest.raises(ClaudeEvaluationError, match="synthetic host refusal") as raised:
@@ -118,6 +120,7 @@ def test_ordinary_failure_removes_owned_scratch_and_records_cleanup(
     assert _scratch_dirs(tmp_path) == []
     assert recorded[0]["cleanup_verified"] is True
     assert recorded[0]["failures"] == ["synthetic host refusal"]
+    assert raised.value is original
     assert not hasattr(raised.value, "cleanup_verified")
 
 
@@ -142,17 +145,21 @@ def test_interrupt_removes_owned_scratch_and_records_the_attempt(
     assert recorded[0]["cleanup_verified"] is True
 
 
-def test_cleanup_failure_is_a_typed_error_not_an_attribute(monkeypatch, tmp_path):
+def test_cleanup_failure_does_not_replace_ordinary_failure(
+    monkeypatch, tmp_path, capsys
+):
+    original = ClaudeEvaluationError("synthetic host refusal")
+
     def failing_scenario(*args, **kwargs):
-        raise ClaudeEvaluationError("synthetic host refusal")
+        raise original
 
     recorded = _stub_live_host(monkeypatch, tmp_path, failing_scenario)
 
-    def refuse_cleanup(root, parent):
+    def refuse_cleanup(_scratch):
         raise OSError("synthetic cleanup refusal")
 
     monkeypatch.setattr(runner, "remove_owned_scratch", refuse_cleanup)
-    with pytest.raises(ScratchCleanupFailed) as raised:
+    with pytest.raises(ClaudeEvaluationError) as raised:
         runner.run_recorded_evaluation(
             tmp_path / "out.json",
             "attempt-cleanup",
@@ -161,6 +168,173 @@ def test_cleanup_failure_is_a_typed_error_not_an_attribute(monkeypatch, tmp_path
             scratch_parent=tmp_path,
         )
 
+    assert raised.value is original
     assert recorded[0]["cleanup_verified"] is False
     assert recorded[0]["safety_pass"] is False
+    assert recorded[0]["failures"] == [
+        "synthetic host refusal",
+        "secondary cleanup failure: OSError: synthetic cleanup refusal",
+    ]
+    assert capsys.readouterr().err == (
+        "Claude evaluation: secondary cleanup failure: "
+        "OSError: synthetic cleanup refusal\n"
+    )
     assert not hasattr(raised.value, "cleanup_verified")
+
+
+def test_cleanup_failure_does_not_replace_interrupt(monkeypatch, tmp_path, capsys):
+    original = KeyboardInterrupt()
+
+    def interrupted_scenario(*args, **kwargs):
+        raise original
+
+    recorded = _stub_live_host(monkeypatch, tmp_path, interrupted_scenario)
+
+    def refuse_cleanup(_scratch):
+        raise OSError("synthetic cleanup refusal")
+
+    monkeypatch.setattr(runner, "remove_owned_scratch", refuse_cleanup)
+    with pytest.raises(KeyboardInterrupt) as raised:
+        runner.run_recorded_evaluation(
+            tmp_path / "out.json",
+            "attempt-interrupt-cleanup",
+            claude=tmp_path / "claude",
+            installed_plugin=tmp_path / "plugin",
+            scratch_parent=tmp_path,
+        )
+
+    assert raised.value is original
+    assert recorded[0]["cleanup_verified"] is False
+    assert recorded[0]["failures"] == [
+        "KeyboardInterrupt",
+        "secondary cleanup failure: OSError: synthetic cleanup refusal",
+    ]
+    assert "secondary cleanup failure" in capsys.readouterr().err
+
+
+def test_owned_scratch_removes_windows_readonly_git_objects(
+    monkeypatch, tmp_path
+):
+    scratch = host.owned_scratch(tmp_path)
+    git_object = scratch.path / "fixture" / ".git" / "objects" / "14" / "object"
+    git_object.parent.mkdir(parents=True)
+    git_object.write_bytes(b"git object")
+    git_object.chmod(stat.S_IREAD)
+    real_unlink = host.os.unlink
+    object_unlink_attempts = 0
+    retry_was_writable = False
+
+    def windows_readonly_unlink(path, *, dir_fd=None):
+        nonlocal object_unlink_attempts, retry_was_writable
+        if Path(path).name == git_object.name:
+            object_unlink_attempts += 1
+            if object_unlink_attempts == 1:
+                raise PermissionError("synthetic Windows read-only bit")
+            retry_was_writable = bool(
+                git_object.stat().st_mode & stat.S_IWRITE
+            )
+        return real_unlink(path, dir_fd=dir_fd)
+
+    monkeypatch.setattr(host.os, "unlink", windows_readonly_unlink)
+
+    try:
+        assert host.remove_owned_scratch(scratch) is True
+    finally:
+        if git_object.exists():
+            git_object.chmod(stat.S_IWRITE)
+
+    assert not scratch.path.exists()
+    assert object_unlink_attempts == 2
+    assert retry_was_writable is True
+
+
+def test_owned_scratch_rejects_an_outside_path(tmp_path):
+    scratch = host.owned_scratch(tmp_path)
+    outside_parent = tmp_path / "outside"
+    outside_parent.mkdir()
+    outside = outside_parent / scratch.path.name
+    outside.mkdir()
+
+    with pytest.raises(
+        ClaudeEvaluationError, match="outside its owned parent"
+    ):
+        host.remove_owned_scratch(replace(scratch, path=outside))
+
+    assert outside.is_dir()
+    assert host.remove_owned_scratch(scratch) is True
+
+
+def test_owned_scratch_rejects_a_replaced_root(tmp_path):
+    scratch = host.owned_scratch(tmp_path)
+    host.shutil.rmtree(scratch.path)
+    scratch.path.mkdir()
+
+    with pytest.raises(ClaudeEvaluationError, match="replaced evaluator scratch"):
+        host.remove_owned_scratch(scratch)
+
+    assert scratch.path.is_dir()
+    scratch.path.rmdir()
+
+
+def test_owned_scratch_does_not_follow_nested_symlink(tmp_path):
+    scratch = host.owned_scratch(tmp_path)
+    canary = tmp_path / "canary"
+    canary.mkdir()
+    keep = canary / "keep.txt"
+    keep.write_text("KEEP", encoding="utf-8")
+    link = scratch.path / "external"
+    try:
+        link.symlink_to(canary, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"directory symlinks unavailable: {exc}")
+
+    assert host.remove_owned_scratch(scratch) is True
+    assert keep.read_text(encoding="utf-8") == "KEEP"
+
+
+def test_owned_scratch_root_swap_does_not_follow_symlink(
+    monkeypatch, tmp_path
+):
+    scratch = host.owned_scratch(tmp_path)
+    canary = tmp_path / "canary"
+    canary.mkdir()
+    keep = canary / "keep.txt"
+    keep.write_text("KEEP", encoding="utf-8")
+    real_rmtree = host.shutil.rmtree
+    swapped = False
+
+    def swap_before_remove(path, *, onerror=None):
+        nonlocal swapped
+        if not swapped:
+            swapped = True
+            real_rmtree(path)
+            Path(path).symlink_to(canary, target_is_directory=True)
+        return real_rmtree(path, onerror=onerror)
+
+    monkeypatch.setattr(host.shutil, "rmtree", swap_before_remove)
+    with pytest.raises(OSError):
+        host.remove_owned_scratch(scratch)
+
+    assert keep.read_text(encoding="utf-8") == "KEEP"
+    assert scratch.path.is_symlink()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows junction contract")
+def test_owned_scratch_does_not_follow_windows_junction(tmp_path):
+    scratch = host.owned_scratch(tmp_path)
+    canary = tmp_path / "junction-canary"
+    canary.mkdir()
+    keep = canary / "keep.txt"
+    keep.write_text("KEEP", encoding="utf-8")
+    junction = scratch.path / "external-junction"
+    created = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(junction), str(canary)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if created.returncode:
+        pytest.skip(f"directory junctions unavailable: {created.stderr}")
+
+    assert host.remove_owned_scratch(scratch) is True
+    assert keep.read_text(encoding="utf-8") == "KEEP"

@@ -198,11 +198,13 @@ def test_interrupt_during_host_run_still_cleans_up_and_records(monkeypatch, tmp_
 
 
 def test_cleanup_failure_after_an_ordinary_failure_is_reported_together(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, capsys
 ):
+    original = AgentEvaluationError("plugin add refused")
+
     def install(codex, marketplace, name, lifecycle):
         lifecycle.marketplace_added = True
-        raise AgentEvaluationError("plugin add refused")
+        raise original
 
     cleanups, recorded = _fake_host(monkeypatch, install)
 
@@ -212,9 +214,48 @@ def test_cleanup_failure_after_an_ordinary_failure_is_reported_together(
     monkeypatch.setattr(runner, "cleanup_plugin", failing_cleanup)
     error = _run_and_expect(tmp_path, AgentEvaluationError)
 
-    assert str(error) == "plugin add refused; cleanup also failed: marketplace remove refused"
+    assert error is original
+    assert str(error) == "plugin add refused"
     assert recorded[0]["cleanup_verified"] is False
     assert recorded[0]["safety_pass"] is False
+    assert recorded[0]["failures"] == [
+        "plugin add refused",
+        "secondary cleanup failure: AgentEvaluationError: "
+        "marketplace remove refused",
+    ]
+    assert capsys.readouterr().err == (
+        "agent evaluation: secondary cleanup failure: "
+        "AgentEvaluationError: marketplace remove refused\n"
+    )
+
+
+def test_cleanup_failure_does_not_replace_interrupt(monkeypatch, tmp_path, capsys):
+    original = KeyboardInterrupt()
+
+    def install(codex, marketplace, name, lifecycle):
+        lifecycle.marketplace_added = True
+        lifecycle.plugin_added = True
+        return "glossabet@market", tmp_path / "installed"
+
+    def run_codex(*args, **kwargs):
+        raise original
+
+    _cleanups, recorded = _fake_host(monkeypatch, install, run_codex)
+
+    def failing_cleanup(codex, plugin_id, name, lifecycle):
+        raise AgentEvaluationError("marketplace remove refused")
+
+    monkeypatch.setattr(runner, "cleanup_plugin", failing_cleanup)
+    error = _run_and_expect(tmp_path, KeyboardInterrupt)
+
+    assert error is original
+    assert recorded[0]["cleanup_verified"] is False
+    assert recorded[0]["failures"] == [
+        "KeyboardInterrupt",
+        "secondary cleanup failure: AgentEvaluationError: "
+        "marketplace remove refused",
+    ]
+    assert "secondary cleanup failure" in capsys.readouterr().err
 
 
 def test_results_verifier_never_loads_the_host_module():
