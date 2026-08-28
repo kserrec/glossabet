@@ -192,7 +192,13 @@ protections remain protected.
   changed with the implementations, and the checked-in plugin wheel was
   rebuilt from the final source.
 
-  Final local verification passed 826 tests with three platform-specific
+  The first hosted post-bughunt run exposed one Windows-only portability
+  defect: cached `DirEntry.stat()` identity was compared with a post-rename
+  `Path.lstat()` identity, so an unchanged cache entry looked replaced on all
+  five Windows versions. Both sides now use path-based stat identity, with a
+  deterministic divergent-enumeration regression test.
+
+  Final local verification passed 827 tests with three platform-specific
   skips, Ruff, mypy over 55 product files, workflow policy, deterministic,
   installed-agent, reviewer, and Claude-history integrity verification,
   distribution parity, isolated wheel smoke, and the plugin

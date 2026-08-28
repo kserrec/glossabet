@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import pathlib
 import shutil
+from types import SimpleNamespace
 
 import pytest
 
@@ -218,6 +219,43 @@ def test_cache_file_swapped_for_a_symlink_after_the_check_loses_only_the_link(
     assert swapped is True
     assert not (entry / cache_module.CACHE_FILE).exists()
     assert report["removed_entries"] == 1
+
+
+def test_cache_capture_uses_portable_path_identity(tmp_path, monkeypatch):
+    """Windows may expose different identity fields through directory
+    enumeration and a path stat for the same unchanged directory."""
+    root = tmp_path / "cache"
+    _entry(root, "f")
+    monkeypatch.setenv(cache_module.CACHE_ROOT_ENV, str(root))
+    real_scandir = cache_module.os.scandir
+
+    class DivergentEnumerationEntry:
+        def __init__(self, entry):
+            self._entry = entry
+            self.name = entry.name
+            self.path = entry.path
+
+        def stat(self, *, follow_symlinks=True):
+            info = self._entry.stat(follow_symlinks=follow_symlinks)
+            return SimpleNamespace(
+                st_mode=info.st_mode,
+                st_dev=info.st_dev,
+                st_ino=info.st_ino + 1,
+            )
+
+    def divergent_root_scandir(path):
+        if pathlib.Path(path) == root:
+            with real_scandir(path) as entries:
+                return [DivergentEnumerationEntry(entry) for entry in entries]
+        return real_scandir(path)
+
+    monkeypatch.setattr(cache_module.os, "scandir", divergent_root_scandir)
+
+    report = clear_cache()
+
+    assert report["removed_entries"] == 1
+    assert report["root_removed"] is True
+    assert not root.exists()
 
 
 def test_cache_entry_replaced_by_a_real_directory_is_preserved(

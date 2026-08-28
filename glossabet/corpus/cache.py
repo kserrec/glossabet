@@ -325,10 +325,14 @@ def clear_cache() -> CacheClearReport:
     except OSError:
         report["root_refusal"] = "the cache directory could not be listed"
         return report
-    recognized_entries: dict[str, tuple[int, int]] = {}
+    recognized_entries: dict[str, os.stat_result] = {}
     for child in children:
+        entry_dir = Path(child.path)
         try:
-            child_info = child.stat(follow_symlinks=False)
+            # Use the same path-based stat API before and after capture.
+            # Windows directory-enumeration metadata may not carry the same
+            # identity values as a later path stat for the unchanged entry.
+            child_info = entry_dir.lstat()
         except OSError:
             report["unrecognized_left_in_place"].append(child.name)
             continue
@@ -340,7 +344,6 @@ def clear_cache() -> CacheClearReport:
         ):
             report["unrecognized_left_in_place"].append(child.name)
             continue
-        entry_dir = Path(child.path)
         try:
             items = list(os.scandir(entry_dir))
         except OSError:
@@ -360,7 +363,7 @@ def clear_cache() -> CacheClearReport:
         if not recognized:
             report["unrecognized_left_in_place"].append(child.name)
             continue
-        recognized_entries[child.name] = (child_info.st_dev, child_info.st_ino)
+        recognized_entries[child.name] = child_info
     if report["unrecognized_left_in_place"]:
         # Mixed or unreadable roots stay wholly untouched.
         return report
@@ -425,7 +428,7 @@ def clear_cache() -> CacheClearReport:
         if (
             _is_link_or_junction(captured_info)
             or not stat.S_ISDIR(captured_info.st_mode)
-            or (captured_info.st_dev, captured_info.st_ino) != expected_identity
+            or not os.path.samestat(captured_info, expected_identity)
         ):
             _restore_capture(captured_entry, entry)
             report["unrecognized_left_in_place"].append(name)
