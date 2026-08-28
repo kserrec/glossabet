@@ -66,8 +66,8 @@ class GlossaryDocument(TypedDict):
     concepts: list[ConceptRecord]
 
 
-# A validated concept's scope in its internal form: the sorted, unique
-# prefixes, or ``None`` for repository-wide.
+# A validated concept's scope in its internal form: the NFC-normalized,
+# sorted, unique prefixes, or ``None`` for repository-wide.
 ConceptScope = Union[tuple[str, ...], None]
 
 

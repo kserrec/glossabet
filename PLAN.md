@@ -1,6 +1,6 @@
 # Glossabet — Current Roadmap
 
-Last updated: 2026-08-27.
+Last updated: 2026-08-28.
 
 Glossabet 0.1.0 is an unreleased source alpha. The implementation and local
 release machinery exist, but Kyle is still testing the product as its owner.
@@ -46,11 +46,14 @@ numbered passes; each Step is one complete single-pass change. Every production
 Step begins with a failing scenario and a named invariant, changes tests with
 production code, runs focused tests before the full suite, runs Ruff and mypy,
 preserves deterministic ordering, updates every affected persisted schema in
-the same commit, and ends in one focused commit. No Step may add a runtime
-dependency, service layer, provider framework, generic measurement algebra, or
-unrequested module split. The existing CLI-to-artifact flow, Graphify adapter
-boundary, distribution duplication, bounded imperative builders, and trust
-protections remain protected.
+the same change, and ends at one focused verified diff boundary. The Phase 2–6
+rewrite remains unreviewed and uncommitted until all of those phases are done;
+Kyle begins code review then, and only reviewed commits receive his DCO
+sign-off. No Step may add a runtime dependency, service layer, provider
+framework, generic measurement algebra, or unrequested module split. The
+existing CLI-to-artifact flow, Graphify adapter boundary, distribution
+duplication, bounded imperative builders, and trust protections remain
+protected.
 
 ### Phase 0 — exact baseline
 
@@ -212,18 +215,204 @@ protections remain protected.
 
 ### Phase 2 — canonical scope and boundary behavior
 
-- [ ] **Step 2.1 — one NFC scope identity.** Add one scope-domain NFC
-  canonicalizer and make validation, duplicate/overlap/ownership checks,
-  lookup, comparison, save, and load consume it. Prove composed/decomposed
-  identity and ancestry, canonically distinct paths, deterministic persistence,
-  and rejection of equivalent competing owners; bump the glossary schema if
-  the persisted semantic change requires it.
-- [ ] **Step 2.2 — deliberate command/filesystem boundaries.** Give parsed
-  JSON `null` a schema diagnostic distinct from input failure; treat an
-  uncertain exact-name lookup as uninspectable for writes; and recognize a
-  genuine `glossabet-out` subtree without rejecting an unrelated repository
-  beneath a similarly named ancestor. Prove each positive, negative, and
-  uncertainty case without creating a general directory classifier.
+- [x] **Step 2.1 — one NFC scope identity** (2026-08-28).
+  The verified before-state normalized a repository path only during scope
+  membership lookup. Duplicate and ancestry validation, direct overlap,
+  ownership indexing, semantic hashing, save, and load still used the original
+  Unicode spelling, so canonically equivalent paths could become competing
+  owners and persist as different state.
+
+  `canonical_scope_path` now defines the scope domain's one NFC identity.
+  Validation, duplicate/ancestry detection, the ownership trie, direct
+  comparison, concept lookup, scope evidence, semantic hashing, load, and save
+  all consume it. Load returns an NFC in-memory document without rewriting the
+  file; save writes NFC prefixes in deterministic order. Canonically distinct
+  paths remain distinct, and equivalent ancestor/descendant owners are refused
+  in either declaration order.
+
+  Glossary schema 1 remains correct: scope membership already defined the two
+  Unicode spellings as one path, and existing schema-1 documents are accepted
+  and normalized in memory rather than requiring a migration. The canonical
+  skill, bundled plugin skill, plugin wheel, architecture, maintainer
+  walkthrough, coding-agent rules, and changelog describe the resulting
+  contract.
+
+  Four focused NFC scenarios passed; 195 glossary/drift/reconciliation/context
+  tests and 48 skill/plugin/install/artifact tests passed. The complete suite
+  passed with 831 tests and three platform-specific skips; Ruff, mypy over 55
+  product files, workflow policy, all retained offline evidence verifiers,
+  source/wheel distribution parity, isolated wheel smoke, and diff checks
+  passed. This remains part of the unreviewed Phase 2–6 rewrite; human review
+  and DCO-signed commits begin after those phases, not as a per-Step gate.
+- [x] **Step 2.2 — deliberate command/filesystem boundaries** (2026-08-28).
+  The verified before-state collapsed successfully parsed JSON `null` into the
+  same `None` used for stdin failure, so `save` exited 1 without a diagnostic;
+  `read_regular_target` refused only a definite exact-name mismatch and let an
+  indeterminate bounded lookup authorize a host-file write; and `open_run`
+  refused every absolute path containing a component named `glossabet-out`
+  without proving tool ownership.
+
+  The stdin reader now returns the input-channel outcome separately from its
+  parsed value, so `null` reaches schema validation and reports that the top
+  level must be an object. Managed-context reads and writes require a confirmed
+  exact target name: a different spelling has its existing collision
+  diagnostic, while lookup uncertainty is explicitly uninspectable and leaves
+  the bytes untouched. `open_run` recognizes a genuine output ancestor only
+  when it contains an exact regular current `evidence.json`, `glossary.json`,
+  `drift.json`, or `validation.json` file. An exact lowercase
+  `glossabet-out` component already names the path the command addresses; a
+  differently cased, case-preserved component additionally needs available
+  matching non-symlink directory identity with the lowercase lookup. That
+  accepts case-preserved physical names on a case-insensitive filesystem
+  without conflating two case-distinct directories or following a lowercase
+  symlink alias that the artifact writer itself rejects. An uncertain
+  exact-name/file-kind check or required identity fails closed, while an
+  unrelated same-named ancestor and artifact-shaped directory/special entry
+  remain ordinary paths. This is a narrow four-name ownership check, not a
+  directory classifier.
+
+  The first required cold review found that comparing the preserved component
+  spelling alone missed a differently cased physical output name on a
+  case-insensitive filesystem. A failing filesystem-identity emulation proved
+  the command then scanned its own artifact and wrote nested output. Binding
+  the lowercase lookup and preserved ancestor by `samestat` closes that gap
+  without conflating two case-distinct directories.
+
+  The second required cold review found that an exact artifact-shaped entry
+  still needed a regular-file check and that `samestat` treats two unavailable
+  zero identities as equal. Both states now have direct regressions: non-files
+  prove no ownership, and unavailable identity becomes uncertainty.
+
+  A final root pass then found that checking identity before artifact proof
+  made an unrelated same-named ancestor fail closed when its identity was
+  unavailable even though it held no Glossabet artifact. Artifact proof now
+  comes first, and identity is consulted only for a differently cased,
+  artifact-bearing ancestor. A direct regression keeps the no-artifact state
+  ordinary when identity is unavailable.
+
+  The first closure review found that both uncertainty causes shared a message
+  that blamed an uninspectable artifact name even when the artifact was
+  confirmed and only directory identity was unavailable. The refusal behavior
+  was already safe; its diagnostic now says that output-directory ownership
+  could not be proved from the required artifact and filesystem-identity
+  checks. Both uncertainty paths assert the corrected message directly.
+
+  The replacement closure review found that the lowercase identity lookup
+  still used `stat`, so a sibling `glossabet-out` symlink could bind an
+  ordinary `Glossabet-Out` directory to the tool-owned name even though every
+  artifact write rejects symlink path components. Identity comparison now uses
+  `lstat` and requires real directories on both spellings; a direct symlink
+  regression proves the unrelated repository remains usable.
+
+  The next closure review found that the shared exact-name helper's `lexists`
+  fast path swallowed every `lstat` error and returned false, so an
+  uninspectable exact artifact could masquerade as absence before the output
+  classifier saw it. The helper now uses `lstat` directly: only
+  `FileNotFoundError` proves absence, while other lookup failures return its
+  documented uncertainty state. A direct regression proves no nested output
+  write occurs when a genuine artifact lookup fails.
+
+  Thirteen focused positive, negative, and uncertainty scenarios passed; the 199
+  surrounding glossary/context/CLI/run/repository-glossary/artifact tests and
+  43 module-dependency/skill/install/artifact tests passed. The complete suite
+  passed with 843 tests and three platform-specific skips; Ruff, mypy over 55
+  product files, workflow policy, all retained offline evidence verifiers,
+  Claude-history integrity, source/wheel distribution parity, isolated wheel
+  smoke, and the Codex plugin install/update/invocation/removal smoke passed.
+  The rebuilt wheel SHA-256 is
+  `1d8b1bccf330c5117c7f9fc20c052f1e5137f69c032e8b6e16e496ca09c696a9`.
+  No schema version, runtime dependency, live host, or external account changed.
+
+#### Post-Phase 2 bughunt — fixes verified; fresh cold review clean
+
+The requested delta-plus-interactions sweep close-read every Phase 2 executable
+change and traced glossary validation/persistence/matching, command dispatch,
+managed-context synchronization, artifact I/O, and the existing race tests. It
+found two proved defects; no Likely finding remained unsettled.
+
+First, the shared exact-entry helper treated a successful path lookup followed
+by a listing with no matching entry as definite absence or alternate spelling.
+An ordinary concurrent disappearance could therefore falsely report a host
+filename collision, and the same sibling race could let a disappearing output
+artifact authorize a nested `glossabet-out/` write. The helper now requires two
+consistent bounded directory-name observations with a requested-path lookup
+between them. Exact spelling must appear in both observations; an alternate
+spelling must appear in both and bind to the corresponding requested-path
+identity. All three callers preserve disagreement or unavailable identity as
+uncertainty; stable absence, exact spelling, and alternate spelling retain
+their deliberate behavior.
+
+Second, the managed host reader treated three `(device, inode)` pairs containing
+inode zero as proof that one file stayed in place. On a filesystem where zero
+means portable identity is unavailable, a replacement could therefore be read
+as unchanged. Existing targets now fail closed before any bytes are read when
+any of the pre-open, opened, or post-open observations lacks identity. This
+closes an incomplete sibling of the older Phase 45.14 concurrency proof.
+
+The first required cold review broke the initial repair with the missing
+composition: exact `evidence.json` and a differently cased sibling coexisted,
+then the exact entry vanished between lookup and listing. Merely seeing the
+sibling still returned definite mismatch. The three-observation identity bind
+above closes that whole sibling class, and unavailable identity remains
+uncertainty. The same review also ran the stronger current-distribution gate
+and found that the source archive had been built before the checked-in plugin
+was refreshed, so it still bundled the pre-bughunt wheel. The final build now
+runs to a fixed point: build the current engine, refresh the plugin, rebuild
+the source archive from that refreshed tree, and require
+`check_distribution.py dist --current` to pass.
+
+The replacement cold review found that the three-observation identity repair
+still confused file identity with directory-entry identity: case-distinct
+hardlinks share one inode. It removed the exact link before listing, restored
+it afterward, and proved the helper returned alternate spelling even though
+the exact entry was current again; `scan` wrote nested output. A second probe
+showed that a `DirEntry` can retain an exact name after the entry is renamed.
+The two-listing agreement above closes both cases: a restored hardlink changes
+the observed name state, and a stale exact `DirEntry` must still resolve by
+that spelling before it can count. Both hunters are permanent regressions.
+
+The next cold review found one caller-specific gap after the shared helper was
+correct: the managed host reader could observe `AGENTS.md`, lose it before the
+helper's first lookup, and interpret the helper's truthful fresh-absence
+`False` as a stable alternate spelling. The write already failed closed, but
+the diagnostic told the user to rename a nonexistent file. A first `False` is
+now provisional for this caller. The reader binds the result to its earlier
+file identity, repeats the bounded exact-name decision, and rechecks identity;
+only a repeated alternate-spelling result bound to the same known file gets
+the collision diagnostic. Disappearance, restoration under the exact name,
+replacement, or observation disagreement is a detected change or explicit
+uncertainty. Direct regressions cover both continued absence and restoration
+of the same inode, so an identity-only repair cannot satisfy the class.
+
+Twelve direct filesystem regression cases cover host disappearance alone and
+beside a casefold-equivalent sibling, output-artifact disappearance alone and
+beside distinct and hardlinked siblings, stale directory-entry spelling,
+stable alternate spelling with available and unavailable identity, and
+unavailable host identity with both an unchanged and replaced target, plus the
+managed caller's pre-helper disappearance and same-inode restoration windows.
+The current-distribution gate is the executable regression for the
+source-archive finding. The complete suite passed with 855 tests and three
+platform-specific skips; Ruff, mypy over 55 product files, workflow policy,
+all retained offline evidence verifiers, Claude-history integrity, current
+source/wheel/plugin distribution parity, isolated wheel smoke, and the Codex
+plugin install/update/invocation/removal smoke passed. The current wheel SHA-256
+is `137233ab11e2df09c6c857d8db4bda5d4745e34370259bb129acb4548ff9fc38`;
+the source-distribution SHA-256 is
+`4e9968656d17988e2e50c2d89bd474127d406d0819c350d7b66495824102b94c`.
+These supersede the pre-bughunt Step 2.2 artifact above. No schema version,
+runtime dependency, live model host, external account, or Phase 3 code
+changed. This is still part of the unreviewed and uncommitted Phase 2–6
+rewrite; human code review begins only after all those phases are complete.
+
+The required final fresh-agent cold review close-read the exact-entry state
+machine, all three callers, managed-context synchronization, output ownership,
+NFC scope/persistence, stdin boundaries, regressions, documentation claims, and
+distribution copies. Its 197 focused Phase 2 tests, diff check, parity check,
+and recorded hash checks passed; it found no further in-scope defect. Native
+case-insensitive behavior was deterministically emulated on Linux rather than
+run on Windows, and mutation after the final relevant filesystem observation
+remains the documented unavoidable concurrency limit. The bughunt pass is
+clean and complete.
 
 ### Phase 3 — exactness, completeness, sampling, and skipped checks
 

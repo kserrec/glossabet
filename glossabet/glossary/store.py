@@ -26,6 +26,7 @@ from glossabet.glossary.model import (
 )
 from glossabet.glossary.schema import checked_glossary, validate_glossary
 from glossabet.glossary.scope import (
+    canonical_scope_path,
     concept_scope,
     path_in_scope,
     scope_evidence,
@@ -59,10 +60,34 @@ class GlossaryError(ValueError):
     """The glossary file exists but is not usable as written."""
 
 
+def _canonicalize_scope_paths(
+    glossary: GlossaryDocument, *, sort_concepts: bool,
+) -> GlossaryDocument:
+    """Copy persisted scope paths into their deterministic NFC form."""
+    concepts: list[ConceptRecord] = []
+    for original in glossary["concepts"]:
+        concept = original.copy()
+        scope = concept.get("scope")
+        if scope is not None:
+            concept["scope"] = {
+                SCOPE_PATHS_KEY: sorted(
+                    canonical_scope_path(prefix)
+                    for prefix in scope[SCOPE_PATHS_KEY]
+                )
+            }
+        concepts.append(concept)
+    if sort_concepts:
+        concepts.sort(key=lambda concept: concept["id"])
+    return {
+        "schema_version": glossary["schema_version"],
+        "concepts": concepts,
+    }
+
+
 def glossary_sha256(glossary: GlossaryDocument) -> str:
     """Return the semantic digest used to bind every vocabulary projection."""
     canonical = json.dumps(
-        glossary,
+        _canonicalize_scope_paths(glossary, sort_concepts=False),
         ensure_ascii=False,
         separators=(",", ":"),
         sort_keys=True,
@@ -88,7 +113,7 @@ def load_glossary(root: Path) -> GlossaryDocument | None:
     glossary, errors = checked_glossary(read.value)
     if glossary is None:
         raise GlossaryError(f"{path}: " + "; ".join(errors))
-    return glossary
+    return _canonicalize_scope_paths(glossary, sort_concepts=False)
 
 
 def save_glossary(root: Path, document: object) -> Path:
@@ -97,15 +122,5 @@ def save_glossary(root: Path, document: object) -> Path:
     if glossary is None:
         raise GlossaryError("refusing to save invalid glossary: "
                             + "; ".join(errors))
-    concepts: list[ConceptRecord] = []
-    for original in glossary["concepts"]:
-        concept = original.copy()
-        scope = concept.get("scope")
-        if scope is not None:
-            concept["scope"] = {SCOPE_PATHS_KEY: sorted(scope[SCOPE_PATHS_KEY])}
-        concepts.append(concept)
-    normalized: GlossaryDocument = {
-        "schema_version": glossary["schema_version"],
-        "concepts": sorted(concepts, key=lambda c: c["id"]),
-    }
+    normalized = _canonicalize_scope_paths(glossary, sort_concepts=True)
     return write_artifact(root, GLOSSARY_FILE, normalized)

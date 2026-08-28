@@ -166,8 +166,9 @@ def discover_repository_glossary(root: Path) -> RepositoryGlossarySection:
       reason`` (+ ``bytes`` when known); never reported as absent, so a
       partial or refused read can never support an absence claim.
 
-    Presence is judged from the directory entry itself (``lexists``), so a
-    dangling or escaping symlink is still *present*. Symlinks follow the
+    Presence is judged from the directory entry itself (``lstat``), so a
+    dangling or escaping symlink is still *present* and lookup uncertainty is
+    not collapsed into absence. Symlinks follow the
     scanner's glossary-link rule: confined inside the root they are followed
     (a link into ``docs/GLOSSARY.md`` is fine); escaping ones, links to a
     sensitive path, and links to Glossabet's own output (``glossabet-out/``,

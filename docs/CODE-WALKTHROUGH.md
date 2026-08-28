@@ -172,7 +172,11 @@ Repository commands normally begin at
 [`command_run.open_run`](../glossabet/command_run.py). It:
 
 1. stats and resolves the requested root;
-2. rejects a non-directory and any root inside `glossabet-out/`;
+2. rejects a non-directory and a proven Glossabet output subtree—an exact
+   regular current artifact proves an exact lowercase `glossabet-out/`
+   component, while a differently cased preserved spelling additionally needs
+   matching non-symlink directory identity; spelling alone, a lowercase
+   symlink, or a directory/special entry with an artifact-shaped name does not;
 3. applies `GLOSSARY_NONE`, `GLOSSARY_OPTIONAL`, or `GLOSSARY_REQUIRED`; and
 4. turns malformed or missing-required glossary state into one `RunError`
    policy rather than duplicating it in each command.
@@ -353,10 +357,20 @@ checks the entire untrusted object before
 [`checked_glossary`](../glossabet/glossary/schema.py) narrows it to
 `GlossaryDocument`. It rejects unknown fields, invalid strings, ambiguous
 overlapping vocabulary ownership, unstable binding kinds, and semantic work
-above its limits.
+above its limits. Scope prefixes are canonicalized to NFC before duplicate,
+ancestry, and ownership checks, while canonically distinct paths remain
+distinct.
 
-[`save_glossary`](../glossabet/glossary/store.py) sorts scopes and concepts,
-then uses shared confined atomic artifact I/O.
+[`load_glossary`](../glossabet/glossary/store.py) returns scope paths in NFC.
+[`save_glossary`](../glossabet/glossary/store.py) writes that form and sorts
+scopes and concepts, then uses shared confined atomic artifact I/O. This stays
+glossary schema 1: path membership already gave canonically equivalent Unicode
+spellings one meaning, and existing schema-1 files are accepted and normalized
+in memory rather than requiring a migration.
+The `save` command carries the stdin-read outcome separately from the parsed
+value, so JSON `null` reaches this schema validator and reports “top level must
+be an object”; only an actual read, size, or parse failure uses an input
+diagnostic.
 [`glossary_sha256`](../glossabet/glossary/store.py) hashes canonical
 sort-key JSON, so semantically identical state has one digest independent of
 pretty-print layout.
@@ -445,9 +459,14 @@ validation include its report.
 [`sync_context`](../glossabet/agent/context_sync.py) is the only engine feature
 that writes a host instruction file. It targets exactly root `AGENTS.md` or
 `CLAUDE.md`, preserves surrounding bytes/newline style/mode, refuses symlinks
-and ambiguous markers, rechecks bytes and mode immediately before atomic
-replacement, and requires `--force` for an edited but structurally bounded
-block.
+and ambiguous markers, requires a confirmed exact directory-entry name and
+available portable identity for an existing target, rechecks bytes and mode
+immediately before atomic replacement, and requires `--force` for an edited
+but structurally bounded block. A different spelling, an indeterminate bounded
+exact-name lookup, or unavailable identity is reported as uninspectable and
+leaves the target unchanged. If the reader first observes a target and the
+exact-name check then observes absence or a restored exact entry, it reports a
+concurrent change instead of misdiagnosing a stable alternate spelling.
 
 [`strip_managed_context_for_evidence`](../glossabet/managed_block.py) removes
 one unambiguous marked range before host instructions become documentation

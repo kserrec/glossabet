@@ -202,12 +202,343 @@ def test_root_inside_glossabet_out_is_refused(tmp_path, capsys):
     out = tmp_path / "glossabet-out"
     nested = out / "deeper" / "repo"
     nested.mkdir(parents=True)
+    (out / "evidence.json").write_text("{}\n", encoding="utf-8")
     (nested / "a.py").write_text("payment_service = 1\n")
     for root in (out, nested):
         assert main(["scan", str(root)]) == 1
         err = capsys.readouterr().err
         assert "inside a glossabet-out/ output directory" in err
         assert not (root / "glossabet-out").exists()
+
+
+def test_output_ancestor_name_uses_filesystem_identity(
+    tmp_path, capsys, monkeypatch
+):
+    """Case-insensitive filesystems preserve a directory's original case.
+
+    Emulate their lowercase path lookup on this host: a physical
+    ``Glossabet-Out`` that is also reached by the tool's ``glossabet-out``
+    spelling is the same output directory and must be refused.
+    """
+    from pathlib import Path
+
+    output = tmp_path / "Glossabet-Out"
+    root = output / "repository"
+    root.mkdir(parents=True)
+    (output / "evidence.json").write_text("{}\n", encoding="utf-8")
+    (root / "a.py").write_text("payment_service = 1\n", encoding="utf-8")
+    lowercase_lookup = tmp_path / "glossabet-out"
+    real_lstat = Path.lstat
+
+    def case_insensitive_lstat(path, *args, **kwargs):
+        if path == lowercase_lookup:
+            return real_lstat(output, *args, **kwargs)
+        return real_lstat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", case_insensitive_lstat)
+
+    assert main(["scan", str(root)]) == 1
+
+    assert "inside a glossabet-out/ output directory" in capsys.readouterr().err
+    assert not (root / "glossabet-out").exists()
+
+
+def test_lowercase_symlink_does_not_claim_differently_cased_directory(
+    tmp_path, capsys
+):
+    """Glossabet refuses symlinked artifact paths, so a lowercase symlink
+    cannot turn an ordinary differently cased directory into owned output."""
+    output = tmp_path / "Glossabet-Out"
+    root = output / "ordinary-repository"
+    root.mkdir(parents=True)
+    (output / "evidence.json").write_text("{}\n", encoding="utf-8")
+    (root / "a.py").write_text("payment_service = 1\n", encoding="utf-8")
+    lowercase_lookup = tmp_path / "glossabet-out"
+    lowercase_lookup.symlink_to(output, target_is_directory=True)
+
+    assert main(["scan", str(root)]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert lowercase_lookup.is_symlink()
+    assert (root / "glossabet-out" / "evidence.json").is_file()
+
+
+def test_non_file_artifact_name_does_not_claim_output_ownership(
+    tmp_path, capsys
+):
+    """Glossabet creates regular JSON artifact files; a directory with the
+    same exact name is ordinary user state, not evidence of tool ownership."""
+    output_name = tmp_path / "glossabet-out"
+    (output_name / "evidence.json").mkdir(parents=True)
+    root = output_name / "ordinary-repository"
+    root.mkdir()
+    (root / "a.py").write_text("payment_service = 1\n", encoding="utf-8")
+
+    assert main(["scan", str(root)]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert (output_name / "evidence.json").is_dir()
+    assert (root / "glossabet-out" / "evidence.json").is_file()
+
+
+def test_unavailable_output_directory_identity_is_uncertain(
+    tmp_path, capsys, monkeypatch
+):
+    """A platform stat result with no file identity cannot prove two path
+    spellings name the same directory, even when ``samestat`` says they do."""
+    import stat
+    from pathlib import Path
+
+    output = tmp_path / "Glossabet-Out"
+    root = output / "repository"
+    root.mkdir(parents=True)
+    (output / "evidence.json").write_text("{}\n", encoding="utf-8")
+    (root / "a.py").write_text("payment_service = 1\n", encoding="utf-8")
+    lowercase_lookup = tmp_path / "glossabet-out"
+    real_lstat = Path.lstat
+    identity_unavailable = os.stat_result(
+        (stat.S_IFDIR | 0o755, 0, 0, 1, 1, 1, 0, 0, 0, 0)
+    )
+
+    def unavailable_identity(path, *args, **kwargs):
+        if path in {output, lowercase_lookup}:
+            return identity_unavailable
+        return real_lstat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", unavailable_identity)
+
+    assert main(["scan", str(root)]) == 1
+
+    error = capsys.readouterr().err
+    assert "output-directory ownership could not be proved" in error
+    assert "artifact name could not be inspected" not in error
+    assert "run glossabet on the repository root instead" not in error
+    assert not (root / "glossabet-out").exists()
+
+
+def test_unavailable_identity_without_artifact_does_not_claim_output(
+    tmp_path, capsys, monkeypatch
+):
+    """Identity uncertainty matters only after a regular current artifact
+    provides a reason to ask whether a case variant is the output directory."""
+    import stat
+    from pathlib import Path
+
+    output_name = tmp_path / "glossabet-out"
+    root = output_name / "ordinary-repository"
+    root.mkdir(parents=True)
+    (root / "a.py").write_text("payment_service = 1\n", encoding="utf-8")
+    real_lstat = Path.lstat
+    identity_unavailable = os.stat_result(
+        (stat.S_IFDIR | 0o755, 0, 0, 1, 1, 1, 0, 0, 0, 0)
+    )
+
+    def unavailable_identity(path, *args, **kwargs):
+        if path == output_name:
+            return identity_unavailable
+        return real_lstat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", unavailable_identity)
+
+    assert main(["scan", str(root)]) == 0
+
+    assert capsys.readouterr().err == ""
+    assert (root / "glossabet-out" / "evidence.json").is_file()
+
+
+def test_unrelated_glossabet_out_ancestor_does_not_claim_the_repository(
+    tmp_path, capsys
+):
+    """A directory name alone is not proof of tool ownership: an ordinary
+    repository may live beneath an unrelated ancestor named glossabet-out."""
+    root = tmp_path / "glossabet-out" / "ordinary-repository"
+    root.mkdir(parents=True)
+    # A similarly spelled ordinary file is not a current Glossabet artifact,
+    # including on case-insensitive filesystems.
+    (root.parent / "Evidence.json").write_text("ordinary\n", encoding="utf-8")
+    (root / "a.py").write_text("payment_service = 1\n", encoding="utf-8")
+
+    assert main(["scan", str(root)]) == 0
+
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert (root / "glossabet-out" / "evidence.json").is_file()
+
+
+def test_unconfirmable_output_ancestor_is_not_assumed_safe(
+    tmp_path, capsys, monkeypatch
+):
+    """If an apparent artifact cannot be confirmed by exact entry name, the
+    command reports uncertainty and makes no nested output write."""
+    root = tmp_path / "glossabet-out" / "uncertain-repository"
+    root.mkdir(parents=True)
+    (root / "a.py").write_text("payment_service = 1\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "glossabet.command_run.entry_named_exactly", lambda *_args: None
+    )
+
+    assert main(["scan", str(root)]) == 1
+
+    assert (
+        "output-directory ownership could not be proved"
+        in capsys.readouterr().err
+    )
+    assert not (root / "glossabet-out").exists()
+
+
+def test_output_artifact_lookup_error_is_uncertain(tmp_path, capsys, monkeypatch):
+    """An exact artifact lookup error is uncertainty, not proven absence.
+
+    ``os.path.lexists`` swallows every lstat error; the exact-name helper must
+    preserve that distinction before a genuine output ancestor is accepted as
+    an ordinary repository location.
+    """
+    from glossabet.corpus import path_policy
+
+    output = tmp_path / "glossabet-out"
+    root = output / "repository"
+    root.mkdir(parents=True)
+    artifact = output / "evidence.json"
+    artifact.write_text("{}\n", encoding="utf-8")
+    (root / "a.py").write_text("payment_service = 1\n", encoding="utf-8")
+    real_lstat = os.lstat
+
+    def uninspectable_artifact(path, *args, **kwargs):
+        if os.fspath(path) == os.fspath(artifact):
+            raise PermissionError("artifact lookup denied")
+        return real_lstat(path, *args, **kwargs)
+
+    monkeypatch.setattr(path_policy.os, "lstat", uninspectable_artifact)
+
+    assert main(["scan", str(root)]) == 1
+
+    assert (
+        "output-directory ownership could not be proved"
+        in capsys.readouterr().err
+    )
+    assert not (root / "glossabet-out").exists()
+
+
+def test_output_artifact_vanishing_during_name_confirmation_is_uncertain(
+    tmp_path, capsys, monkeypatch
+):
+    """An artifact seen by the path lookup but absent from the immediately
+    following listing is a race, so no nested output write is authorized."""
+    from glossabet.corpus import path_policy
+
+    output = tmp_path / "glossabet-out"
+    root = output / "repository"
+    root.mkdir(parents=True)
+    artifact = output / "glossary.json"
+    artifact.write_text("{}\n", encoding="utf-8")
+    (root / "a.py").write_text("payment_service = 1\n", encoding="utf-8")
+    real_scandir = os.scandir
+    vanished = False
+
+    def vanish_then_scan(directory):
+        nonlocal vanished
+        if os.fspath(directory) == os.fspath(output) and artifact.exists():
+            artifact.unlink()
+            vanished = True
+        return real_scandir(directory)
+
+    monkeypatch.setattr(path_policy.os, "scandir", vanish_then_scan)
+
+    assert main(["scan", str(root)]) == 1
+
+    assert vanished is True
+    assert (
+        "output-directory ownership could not be proved"
+        in capsys.readouterr().err
+    )
+    assert not (root / "glossabet-out").exists()
+
+
+def test_vanishing_output_artifact_is_not_explained_by_casefold_sibling(
+    tmp_path, capsys, monkeypatch
+):
+    """A surviving differently cased file is not proof that it was the exact
+    artifact reached before that separate exact file concurrently vanished."""
+    from glossabet.corpus import path_policy
+
+    output = tmp_path / "glossabet-out"
+    root = output / "repository"
+    root.mkdir(parents=True)
+    exact = output / "evidence.json"
+    sibling = output / "Evidence.JSON"
+    exact.write_text("{}\n", encoding="utf-8")
+    sibling.write_text("ordinary\n", encoding="utf-8")
+    (root / "a.py").write_text("payment_service = 1\n", encoding="utf-8")
+    real_scandir = os.scandir
+
+    def vanish_exact_then_scan(directory):
+        if os.fspath(directory) == os.fspath(output) and exact.exists():
+            exact.unlink()
+        return real_scandir(directory)
+
+    monkeypatch.setattr(path_policy.os, "scandir", vanish_exact_then_scan)
+
+    assert main(["scan", str(root)]) == 1
+
+    assert sibling.read_text(encoding="utf-8") == "ordinary\n"
+    assert (
+        "output-directory ownership could not be proved"
+        in capsys.readouterr().err
+    )
+    assert not (root / "glossabet-out").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="requires two case-distinct hardlinks")
+def test_restored_exact_hardlink_is_not_hidden_by_casefold_sibling(
+    tmp_path, capsys, monkeypatch
+):
+    """Hardlinks share inode identity but remain separate directory entries.
+    Restoring the exact link after the first listing must trigger uncertainty."""
+    from glossabet.corpus import path_policy
+
+    output = tmp_path / "glossabet-out"
+    root = output / "repository"
+    root.mkdir(parents=True)
+    exact = output / "evidence.json"
+    sibling = output / "EVIDENCE.JSON"
+    exact.write_text("{}\n", encoding="utf-8")
+    os.link(exact, sibling)
+    (root / "a.py").write_text("payment_service = 1\n", encoding="utf-8")
+    real_scandir = os.scandir
+    raced = False
+
+    class RestoreExactAfterListing:
+        def __enter__(self):
+            exact.unlink()
+            self.entries = real_scandir(output)
+            return self.entries.__enter__()
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            nonlocal raced
+            try:
+                return self.entries.__exit__(exc_type, exc_value, traceback)
+            finally:
+                os.link(sibling, exact)
+                raced = True
+
+    def restore_between_listings(directory):
+        if os.fspath(directory) == os.fspath(output) and not raced:
+            return RestoreExactAfterListing()
+        return real_scandir(directory)
+
+    monkeypatch.setattr(path_policy.os, "scandir", restore_between_listings)
+
+    assert main(["scan", str(root)]) == 1
+
+    assert raced is True
+    assert exact.is_file() and sibling.is_file()
+    assert (
+        "output-directory ownership could not be proved"
+        in capsys.readouterr().err
+    )
+    assert not (root / "glossabet-out").exists()
 
 
 def test_lone_surrogates_in_repository_text_render_as_escapes(tmp_path):

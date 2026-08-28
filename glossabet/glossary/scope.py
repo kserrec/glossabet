@@ -2,9 +2,9 @@
 
 A concept either owns the whole repository (``None``) or a set of literal,
 repository-relative path prefixes. This module owns normalization of those
-prefixes, path membership, overlap between scopes, and the ownership index
-that validation uses to find one conflicting owner in path-prefix time. It
-imports neither persistence nor commands.
+prefixes, their NFC identity, path membership, overlap between scopes, and the
+ownership index that validation uses to find one conflicting owner in
+path-prefix time. It imports neither persistence nor commands.
 """
 
 from __future__ import annotations
@@ -25,6 +25,17 @@ from glossabet.glossary.model import (
 VocabularyOwner = tuple[int, str, str]
 
 
+def canonical_scope_path(path: str) -> str:
+    """Return the one Unicode identity used for a scope-domain path.
+
+    Filesystems and user input can spell the same path with composed or
+    decomposed code points. NFC preserves canonically distinct names while
+    giving equivalent spellings one identity before validation, comparison,
+    indexing, or persistence.
+    """
+    return unicodedata.normalize("NFC", path)
+
+
 def is_literal_path_prefix(prefix: str) -> bool:
     """A repository-relative prefix with no leading slash, backslash, NUL,
     empty/dot component, surrounding whitespace, or glob character."""
@@ -40,13 +51,14 @@ def is_literal_path_prefix(prefix: str) -> bool:
 
 
 def normalize_scope(prefixes: list[str]) -> tuple[ConceptScope, bool, bool]:
-    """Sort and de-duplicate literal prefixes into a scope.
+    """Canonicalize, sort, and de-duplicate literal prefixes into a scope.
 
     Returns ``(scope, duplicated, overlapping)``: the scope is ``None`` when
     the list is empty, repeats a prefix, or one prefix is an ancestor of
     another — such a scope is reported, never silently narrowed."""
-    unique = set(prefixes)
-    duplicated = len(unique) != len(prefixes)
+    canonical = [canonical_scope_path(prefix) for prefix in prefixes]
+    unique = set(canonical)
+    duplicated = len(unique) != len(canonical)
     overlapping = False
     ancestry: list[str] = []
     # Component-wise order keeps every descendant directly after its
@@ -59,7 +71,7 @@ def normalize_scope(prefixes: list[str]) -> tuple[ConceptScope, bool, bool]:
             overlapping = True
             break
         ancestry.append(prefix)
-    usable = bool(prefixes) and not duplicated and not overlapping
+    usable = bool(canonical) and not duplicated and not overlapping
     return (tuple(sorted(unique)) if usable else None), duplicated, overlapping
 
 
@@ -69,7 +81,10 @@ def concept_scope(concept: ConceptRecord) -> ConceptScope:
     if raw is None:
         return None
     prefixes = raw.get(SCOPE_PATHS_KEY, [])
-    return tuple(sorted(prefixes)) if prefixes else None
+    return (
+        tuple(sorted(canonical_scope_path(prefix) for prefix in prefixes))
+        if prefixes else None
+    )
 
 
 def path_in_scope(path: str, scope: ConceptScope) -> bool:
@@ -80,10 +95,10 @@ def path_in_scope(path: str, scope: ConceptScope) -> bool:
     matched nothing would turn into confident false drift."""
     if scope is None:
         return True
-    path = unicodedata.normalize("NFC", path)
+    path = canonical_scope_path(path)
     return any(
         path == prefix or path.startswith(prefix + "/")
-        for prefix in (unicodedata.normalize("NFC", p) for p in scope)
+        for prefix in (canonical_scope_path(value) for value in scope)
     )
 
 
@@ -91,10 +106,12 @@ def scopes_overlap(left: ConceptScope, right: ConceptScope) -> bool:
     """Repository-wide overlaps everything; path scopes overlap by ancestry."""
     if left is None or right is None:
         return True
+    canonical_left = tuple(canonical_scope_path(prefix) for prefix in left)
+    canonical_right = tuple(canonical_scope_path(prefix) for prefix in right)
     return any(
         a == b or a.startswith(b + "/") or b.startswith(a + "/")
-        for a in left
-        for b in right
+        for a in canonical_left
+        for b in canonical_right
     )
 
 
@@ -104,7 +121,8 @@ def scope_evidence(scope: ConceptScope) -> ScopeEvidence:
         repository: RepositoryScopeEvidence = {"kind": "repository"}
         return repository
     scoped: PathPrefixScopeEvidence = {
-        "kind": "path-prefixes", SCOPE_PATHS_KEY: list(scope),
+        "kind": "path-prefixes",
+        SCOPE_PATHS_KEY: sorted(canonical_scope_path(prefix) for prefix in scope),
     }
     return scoped
 
@@ -139,7 +157,7 @@ class ScopeOwnerIndex:
             return self.root.subtree_owner
         for prefix in scope:
             node = self.root
-            for part in prefix.split("/"):
+            for part in canonical_scope_path(prefix).split("/"):
                 if node.owner_here is not None:
                     return node.owner_here
                 child = node.children.get(part)
@@ -162,10 +180,9 @@ class ScopeOwnerIndex:
             node = self.root
             if node.subtree_owner is None:
                 node.subtree_owner = owner
-            for part in prefix.split("/"):
+            for part in canonical_scope_path(prefix).split("/"):
                 node = node.children.setdefault(part, _ScopeNode())
                 if node.subtree_owner is None:
                     node.subtree_owner = owner
             if node.owner_here is None:
                 node.owner_here = owner
-

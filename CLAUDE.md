@@ -26,6 +26,11 @@ never diluted by machinery.
   Graphify clone; rich structure comes from optional adapters.
 - **No contamination.** Evidence gathering excludes `glossabet-out/`,
   `.glossabet/`, `GLOSSARY.md`, and the derived `GLOSSABET.md` report, always.
+  A path component named `glossabet-out` is not itself proof of tool ownership;
+  repository-root refusal requires an exact regular current Glossabet artifact.
+  A differently cased preserved spelling additionally requires available
+  matching non-symlink directory identity with the lowercase output lookup,
+  and uncertainty in a required check fails closed.
 - **Three artifacts, kept separate.** `GLOSSARY.md` is the vocabulary humans
   agreed to use; `GLOSSABET.md` is Glossabet's derived vocabulary-health
   report (excluded from evidence and freshness, safe to regenerate, never
@@ -38,7 +43,9 @@ never diluted by machinery.
 - **Explicit concept scope.** Optional glossary `scope.path_prefixes` are
   literal repository-relative subsystem boundaries. Omission is
   repository-wide; aliases inherit scope; vocabulary ownership must be unique
-  wherever scopes overlap. Drift and lexical validation enforce the boundary.
+  wherever scopes overlap. Scope paths use NFC identity, so canonically
+  equivalent Unicode spellings are one boundary. Drift and lexical validation
+  enforce the boundary.
 - **Unicode lexical contract.** Identifier and glossary terms use NFKC plus
   casefold, with documented acronym/digit and language-form rules. The scanner
   remains lexical, not parser-backed; comments and strings are not syntax-
@@ -60,6 +67,10 @@ never diluted by machinery.
   complete. Treat `skipped.corpus_budget.complete: false` as partial evidence,
   never as repository-wide coverage.
 - **Tests protect concrete threats**, not coverage numbers.
+- **Project-owned writes require proven identity.** `sync-context` may replace
+  only an exactly named regular host file whose identity and bytes remain
+  stable; a case collision or indeterminate exact-name lookup is
+  uninspectable, never permission to write.
 
 ## Workflow
 

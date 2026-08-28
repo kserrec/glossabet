@@ -5,6 +5,7 @@ and the show command."""
 import io
 import json
 import os
+import unicodedata
 
 import pytest
 
@@ -14,6 +15,7 @@ from glossabet.glossary.schema import MAX_VALIDATION_ERRORS
 from glossabet.glossary.store import (
     GlossaryError,
     checked_glossary,
+    glossary_sha256,
     load_glossary,
     path_in_scope,
     save_glossary,
@@ -172,6 +174,59 @@ def test_scope_prefixes_respect_path_component_boundaries():
     assert not scopes_overlap(("src/auth",), ("src/db",))
 
 
+def test_scope_identity_is_nfc_for_duplicates_ancestry_and_comparison():
+    composed = unicodedata.normalize("NFC", "café")
+    decomposed = unicodedata.normalize("NFD", "café")
+    assert composed != decomposed
+
+    concept = {
+        "id": "cafe",
+        "term": "Cafe",
+        "definition": "A subsystem.",
+        "status": "canonical",
+        "scope": {"path_prefixes": [composed, decomposed]},
+    }
+    errors = validate_glossary({"schema_version": 1, "concepts": [concept]})
+    assert any("contains duplicate paths" in error for error in errors)
+
+    concept["scope"] = {
+        "path_prefixes": [composed, f"{decomposed}/orders"]
+    }
+    errors = validate_glossary({"schema_version": 1, "concepts": [concept]})
+    assert any("contains overlapping paths" in error for error in errors)
+    assert scopes_overlap((composed,), (f"{decomposed}/orders",))
+
+    # NFC does not collapse paths that are merely similar spellings.
+    concept["scope"] = {"path_prefixes": ["cafe", composed]}
+    assert validate_glossary({"schema_version": 1, "concepts": [concept]}) == []
+    assert not scopes_overlap(("cafe",), (composed,))
+
+
+@pytest.mark.parametrize("ancestor_first", [True, False])
+def test_vocabulary_ownership_rejects_canonically_equivalent_scopes(
+    ancestor_first,
+):
+    composed = unicodedata.normalize("NFC", "café")
+    decomposed = unicodedata.normalize("NFD", "café")
+    scopes = [composed, f"{decomposed}/orders"]
+    if not ancestor_first:
+        scopes.reverse()
+    concepts = [
+        {
+            "id": f"owner-{index}",
+            "term": "Session",
+            "definition": "A subsystem-local session.",
+            "status": "canonical",
+            "scope": {"path_prefixes": [scope]},
+        }
+        for index, scope in enumerate(scopes)
+    ]
+
+    errors = validate_glossary({"schema_version": 1, "concepts": concepts})
+
+    assert any("overlapping scopes" in error for error in errors)
+
+
 @pytest.mark.parametrize(
     "left_scope,right_scope",
     [
@@ -272,6 +327,49 @@ def test_save_normalizes_scope_order_and_show_reports_it(tmp_path, capsys):
     ]
     assert main(["show", str(tmp_path)]) == 0
     assert "scope: packages/payments, src/payments" in capsys.readouterr().out
+
+
+def test_save_and_load_use_one_nfc_scope_identity(tmp_path):
+    composed = unicodedata.normalize("NFC", "café")
+    decomposed = unicodedata.normalize("NFD", "café")
+    assert composed != decomposed
+
+    def document(prefix):
+        return {
+            "schema_version": 1,
+            "concepts": [{
+                "id": "cafe",
+                "term": "Cafe",
+                "definition": "A subsystem.",
+                "status": "canonical",
+                "scope": {"path_prefixes": [prefix, "src"]},
+            }],
+        }
+
+    first = save_glossary(tmp_path, document(decomposed)).read_bytes()
+    second = save_glossary(tmp_path, document(composed)).read_bytes()
+    assert first == second
+    assert glossary_sha256(document(decomposed)) == glossary_sha256(
+        document(composed)
+    )
+    persisted = json.loads(second)
+    assert persisted["concepts"][0]["scope"]["path_prefixes"] == [
+        composed, "src"
+    ]
+
+    # Loading an accepted schema-1 file written before this canonicalization
+    # returns the same internal scope identity without rewriting the file.
+    path = tmp_path / "glossabet-out" / "glossary.json"
+    path.write_text(
+        json.dumps(document(decomposed), ensure_ascii=False), encoding="utf-8"
+    )
+    original = path.read_bytes()
+    loaded = load_glossary(tmp_path)
+    assert loaded is not None
+    assert path.read_bytes() == original
+    assert loaded["concepts"][0]["scope"]["path_prefixes"] == [
+        composed, "src"
+    ]
 
 
 def test_load_raises_on_corrupt_file(tmp_path):
@@ -680,6 +778,24 @@ def test_save_command_rejects_invalid_stdin_without_writing(
     assert captured.out == ""
     assert "unknown field" in captured.err
     assert path.read_bytes() == original
+
+
+def test_save_command_routes_json_null_to_schema_validation(
+    tmp_path, capsys, monkeypatch
+):
+    """A successfully parsed JSON null is invalid glossary data, not an input
+    failure. It must reach the schema validator and produce its diagnostic."""
+    monkeypatch.setattr("sys.stdin", io.StringIO("null"))
+
+    assert main(["save", str(tmp_path)]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "refusing to save invalid glossary: top level must be an object" in (
+        captured.err
+    )
+    assert "standard input is unreadable" not in captured.err
+    assert not (tmp_path / "glossabet-out" / "glossary.json").exists()
 
 
 def test_save_command_bounds_standard_input(tmp_path, capsys, monkeypatch):

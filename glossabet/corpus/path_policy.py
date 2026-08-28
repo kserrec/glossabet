@@ -91,6 +91,49 @@ def _target_relative(full: str, root: Path) -> str | None:
         return None
 
 
+def _same_known_identity(left: os.stat_result, right: os.stat_result) -> bool:
+    """Whether two path-based observations prove one filesystem entry."""
+    return (
+        left.st_ino != 0
+        and right.st_ino != 0
+        and os.path.samestat(left, right)
+    )
+
+
+def _listed_name_state(
+    root: Path, name: str, lookup: os.stat_result,
+) -> bool | None:
+    """Confirm exact spelling or one identity-bound alternate in one scan."""
+    matching_alternate = False
+    folded_name = name.casefold()
+    try:
+        with os.scandir(root) as entries:
+            for index, entry in enumerate(entries):
+                if index >= walk_budget.MAX_WALK_ENTRIES:
+                    return None
+                entry_path = os.path.join(root, entry.name)
+                if entry.name == name:
+                    # A DirEntry can retain a name after that entry is renamed
+                    # or removed. Require its path spelling to resolve now;
+                    # the second scan below catches a case-only rename on a
+                    # filesystem whose lookup is case-insensitive.
+                    try:
+                        os.lstat(entry_path)
+                    except (OSError, ValueError):
+                        return None
+                    return True
+                if entry.name.casefold() == folded_name:
+                    try:
+                        alternate = os.lstat(entry_path)
+                    except (OSError, ValueError):
+                        continue
+                    if _same_known_identity(lookup, alternate):
+                        matching_alternate = True
+    except OSError:
+        return None
+    return False if matching_alternate else None
+
+
 def entry_named_exactly(root: Path, name: str) -> bool | None:
     """Whether ``root`` holds a directory entry spelled exactly ``name`` — as
     the walk's fixed-name rules see it — not a path lookup, which on a
@@ -101,23 +144,32 @@ def entry_named_exactly(root: Path, name: str) -> bool | None:
     materializing the whole listing, so a root with millions of entries costs
     no memory.
 
-    Returns True/False when the answer is known, and None when something is
-    there but its exact name could not be confirmed (the root cannot be
-    listed, or the cap was reached first). Callers never report None as
-    absent: a false absence claim is the one failure to avoid.
+    Returns True when two bounded listings confirm the exact entry and False
+    when the path lookup is absent or both listings confirm an
+    identity-bound, case-insensitive alternate spelling. A requested-path
+    lookup between the listings binds the second observation. Returns None
+    when those observations disagree or presence, spelling, or identity could
+    not be confirmed. Callers never report None as absent: a false absence
+    claim is the one failure to avoid.
     """
-    if not os.path.lexists(os.path.join(root, name)):
-        return False
+    lookup = os.path.join(root, name)
     try:
-        with os.scandir(root) as entries:
-            for index, entry in enumerate(entries):
-                if index >= walk_budget.MAX_WALK_ENTRIES:
-                    return None
-                if entry.name == name:
-                    return True
-    except OSError:
+        initial = os.lstat(lookup)
+    except FileNotFoundError:
+        return False
+    except (OSError, ValueError):
+        # ``os.path.lexists`` cannot be used here: it converts every lstat
+        # failure into False, collapsing an uninspectable lookup into absence.
         return None
-    return False
+    first = _listed_name_state(root, name, initial)
+    if first is None:
+        return None
+    try:
+        current = os.lstat(lookup)
+    except (OSError, ValueError):
+        return None
+    second = _listed_name_state(root, name, current)
+    return first if second == first else None
 
 
 def glossary_link_refusal(full: str, root: Path) -> str | None:

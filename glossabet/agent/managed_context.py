@@ -171,6 +171,26 @@ def analyze_managed_block(text: str, glossary: GlossaryDocument) -> _Analysis:
     )
 
 
+def _confirm_unchanged_identity(path: Path, expected: os.stat_result) -> None:
+    """Require ``path`` to remain the same file as an earlier observation."""
+    try:
+        current = path.lstat()
+    except FileNotFoundError as exc:
+        raise ContextSyncError(
+            f"host-context target changed while being inspected: {path.name}"
+        ) from exc
+    except OSError as exc:
+        raise ContextSyncError(f"cannot inspect {path.name}: {exc}") from exc
+    if expected.st_ino == 0 or current.st_ino == 0:
+        raise ContextSyncError(
+            f"cannot inspect {path.name}: filesystem identity is unavailable"
+        )
+    if (expected.st_dev, expected.st_ino) != (current.st_dev, current.st_ino):
+        raise ContextSyncError(
+            f"host-context target changed while being inspected: {path.name}"
+        )
+
+
 def read_regular_target(path: Path) -> tuple[bytes | None, int]:
     """Return existing bytes and the mode to preserve; reject unsafe targets."""
     try:
@@ -179,13 +199,36 @@ def read_regular_target(path: Path) -> tuple[bytes | None, int]:
         return None, 0o644
     except OSError as exc:
         raise ContextSyncError(f"cannot inspect {path.name}: {exc}") from exc
-    if entry_named_exactly(path.parent, path.name) is False:
+    exact_name = entry_named_exactly(path.parent, path.name)
+    if exact_name is False:
+        # False is also the helper's truthful answer when the path is absent
+        # at its first observation. Because this caller already found the
+        # path, bind a repeated spelling decision to that earlier file before
+        # diagnosing a stable case-only mismatch.
+        _confirm_unchanged_identity(path, info)
+        repeated_name = entry_named_exactly(path.parent, path.name)
+        if repeated_name is True:
+            raise ContextSyncError(
+                f"host-context target changed while being inspected: {path.name}"
+            )
+        if repeated_name is None:
+            raise ContextSyncError(
+                f"cannot inspect {path.name}: its exact name could not be confirmed"
+            )
+        _confirm_unchanged_identity(path, info)
         # On a case-insensitive filesystem the lookup found ``agents.md``
         # while the exact ``AGENTS.md`` does not exist. Writing "a new
         # AGENTS.md" would silently replace that other file's contents.
         raise ContextSyncError(
             f"a host-context file exists at {path.name} under a different "
             "spelling of its name; rename it to exactly that name first"
+        )
+    if exact_name is None:
+        # A bounded or failed directory listing cannot prove which entry a
+        # case-insensitive path lookup opened. Uncertainty never authorizes a
+        # write into a project-owned host file.
+        raise ContextSyncError(
+            f"cannot inspect {path.name}: its exact name could not be confirmed"
         )
     if stat.S_ISLNK(info.st_mode):
         raise ContextSyncError(f"refusing symlinked host-context target: {path.name}")
@@ -202,6 +245,13 @@ def read_regular_target(path: Path) -> tuple[bytes | None, int]:
         descriptor = os.open(path, flags)
         opened = os.fstat(descriptor)
         current = path.lstat()
+        if any(observed.st_ino == 0 for observed in (info, opened, current)):
+            # Some supported filesystems report zero when portable file
+            # identity is unavailable. Three unknown identities comparing
+            # equal cannot prove that the target stayed the same file.
+            raise ContextSyncError(
+                f"cannot inspect {path.name}: filesystem identity is unavailable"
+            )
         identities = {
             (info.st_dev, info.st_ino),
             (opened.st_dev, opened.st_ino),

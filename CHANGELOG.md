@@ -81,6 +81,20 @@ not been published to PyPI or a public plugin directory.
 - Performance coverage separates fast default smoke measurements from
   generated opt-in scale cases. No production optimization was made without a
   measured bottleneck.
+- Concept scope paths now use one NFC identity across validation,
+  duplicate/overlap ownership checks, lookup, semantic hashing, load, and
+  deterministic persistence. Existing schema-1 files remain accepted and are
+  normalized in memory without a schema migration.
+- Command boundaries now keep successful JSON parsing separate from input
+  failure, require confirmed exact host-file names before `sync-context`
+  writes, and recognize `glossabet-out` ownership from exact regular current
+  artifacts. Differently cased preserved output names additionally require
+  matching non-symlink directory identity; unrelated similarly named ancestors,
+  lowercase symlink aliases, and artifact-shaped special entries remain
+  ordinary paths. Exact-entry lookup errors remain explicit uncertainty, while
+  disagreement with an earlier managed-host observation is a detected change,
+  not absence or a filename collision. An existing host file whose portable
+  identity is unavailable is uninspectable rather than assumed unchanged.
 - Active documentation now describes the current artifact. Completed plans,
   refactor specifications, and stale handoffs are preserved and clearly
   labelled under `docs/history/`.
@@ -108,4 +122,5 @@ not been published to PyPI or a public plugin directory.
   uses a timeout.
 - Managed host files and installed skill/plugin files preserve differing or
   ambiguous state, detect ordinary concurrent changes where documented, and
-  never follow an existing final-target symlink.
+  never follow an existing final-target symlink. An indeterminate exact-name
+  lookup is uninspectable and authorizes no host-file write.

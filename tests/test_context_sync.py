@@ -242,6 +242,47 @@ def test_symlink_target_is_never_followed_or_replaced(tmp_path):
     assert _target(report, "AGENTS.md")["status"] == "uninspectable"
 
 
+@pytest.mark.parametrize(
+    ("exact_name", "status", "diagnostic"),
+    [
+        (True, 0, ""),
+        (False, 1, "under a different spelling"),
+        (None, 1, "exact name could not be confirmed"),
+    ],
+)
+def test_host_context_exact_name_tristate_controls_writes(
+    tmp_path,
+    capsys,
+    monkeypatch,
+    exact_name,
+    status,
+    diagnostic,
+):
+    """Only a confirmed exact entry name authorizes replacing a host file;
+    mismatch and bounded-lookup uncertainty both leave its bytes untouched."""
+    save_glossary(tmp_path, GLOSSARY)
+    target = tmp_path / "AGENTS.md"
+    original = b"Human instructions.\n"
+    target.write_bytes(original)
+    monkeypatch.setattr(
+        "glossabet.agent.managed_context.entry_named_exactly",
+        lambda *_args: exact_name,
+    )
+
+    assert main(["sync-context", str(tmp_path)]) == status
+
+    captured = capsys.readouterr()
+    if exact_name is True:
+        assert target.read_bytes() != original
+        assert "Appended managed vocabulary context" in captured.out
+    else:
+        assert target.read_bytes() == original
+        assert captured.out == ""
+        assert diagnostic in captured.err
+        report = inspect_managed_context(tmp_path, load_glossary(tmp_path))
+        assert _target(report, "AGENTS.md")["status"] == "uninspectable"
+
+
 @pytest.mark.parametrize("kind", ["directory", "oversized", "non_utf8"])
 def test_unsafe_existing_targets_are_unchanged(tmp_path, kind):
     save_glossary(tmp_path, GLOSSARY)

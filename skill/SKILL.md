@@ -560,8 +560,10 @@ are invalid.
 A prefix includes that exact file/module and descendants. Aliases inherit the
 concept's scope. The same normalized term or alias may have different owners
 only when every owner has a disjoint path scope; repository-wide and ancestor
-scopes overlap their descendants. Use a scope only after the user confirms
-that the subsystem boundary is real.
+scopes overlap their descendants. Composed and decomposed Unicode spellings of
+the same path are one NFC scope identity; canonically distinct paths remain
+distinct. Use a scope only after the user confirms that the subsystem boundary
+is real.
 
 `bindings` are optional and connect a concept to its implementation for
 `glossabet validate`. Write them only when the user confirms the mapping,

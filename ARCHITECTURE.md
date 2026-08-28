@@ -20,7 +20,7 @@ that every import participates in one universal downward hierarchy.
 | Area | Responsibility | Important dependencies |
 | --- | --- | --- |
 | [`glossabet.cli`](glossabet/cli.py) | Argument parsing, lazy command dispatch, stream safety, and exit-status boundary | Command entry points and terminal-safe display |
-| [`glossabet.command_run`](glossabet/command_run.py) | Resolve one repository root and apply a command's glossary-presence policy | Glossary storage and runtime artifacts |
+| [`glossabet.command_run`](glossabet/command_run.py) | Resolve one repository root and apply a command's glossary-presence policy | Glossary storage, corpus exact-name policy, and runtime artifacts |
 | [`glossabet.runtime`](glossabet/runtime/) | Generic artifact I/O, coverage ledgers, display escaping, executable lookup, and hardened Git queries | Standard library and other runtime modules only |
 | [`glossabet.corpus`](glossabet/corpus/) | Configuration, path policy, bounded traversal, classification, tokenization, imports, extraction, and cache reuse | Runtime plus the shared managed-block format used to strip generated context |
 | [`glossabet.analysis`](glossabet/analysis/) | Evidence assembly and schemas, terminology, naming importance, and Graphify adaptation | Corpus and runtime |
@@ -71,7 +71,17 @@ stdout pipe without a traceback.
 Most repository commands begin with
 [`command_run.open_run`](glossabet/command_run.py). It resolves the root,
 rejects a missing directory, and loads an optional or required structured
-glossary under one consistent error policy.
+glossary under one consistent error policy. A `glossabet-out` path component
+is not enough to claim an arbitrary ancestor: output-subtree refusal requires
+an exact regular `evidence.json`, `glossary.json`, `drift.json`, or
+`validation.json` file. An exact lowercase component already names the path
+Glossabet addresses. A differently cased, case-preserved component is accepted
+only when available non-symlink directory identity proves it is that same
+directory. Artifact proof therefore precedes identity lookup, so an unrelated
+same-named ancestor with no artifact remains ordinary even when identity is
+unavailable; a lowercase symlink cannot claim the differently cased directory,
+and path-lookup errors, indeterminate exact-name/file-kind checks, or required
+identity failures remain uncertainty and fail closed.
 
 ### Scan and evidence
 
@@ -111,8 +121,10 @@ or work were omitted.
 [`glossary.model`](glossabet/glossary/model.py) defines the persisted glossary
 shape; [`glossary.schema`](glossabet/glossary/schema.py) validates it;
 [`glossary.store`](glossabet/glossary/store.py) performs confined bounded reads,
-semantic hashing, and atomic writes. `save` trusts its caller about human
-approval: it validates data, not the preceding conversation.
+semantic hashing, and atomic writes. Scope paths cross those boundaries in NFC,
+so composed and decomposed spellings of the same repository path have one
+validation, ownership, lookup, and persistence identity. `save` trusts its
+caller about human approval: it validates data, not the preceding conversation.
 
 [`glossary.matching.EvidenceIndex`](glossabet/glossary/matching.py) creates the
 bounded lexical lookup shared by drift and reconciliation.
@@ -154,8 +166,10 @@ Managed project context is separate and explicit.
 [`agent.managed_context`](glossabet/agent/managed_context.py) renders, safely
 reads, and classifies one marked block in root `AGENTS.md` or `CLAUDE.md`.
 [`agent.context_sync`](glossabet/agent/context_sync.py) is the only command
-implementation that writes that block. Drift and validation inspect the same
-format without importing the writer.
+implementation that writes that block. It requires a confirmed exact target
+entry name before replacement; a case collision or indeterminate bounded
+lookup is uninspectable and authorizes no write. Drift and validation inspect
+the same format without importing the writer.
 
 The canonical workflow is [`skill/SKILL.md`](skill/SKILL.md). Standalone
 installation copies that exact resource. The checked-in Codex plugin under

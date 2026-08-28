@@ -68,38 +68,42 @@ def _print_glossary(glossary: GlossaryDocument) -> None:
                 print(f"    note: {escape_terminal_text(concept['notes'])}")
 
 
-def _read_glossary_from_stdin() -> object:
-    """One bounded, still-unvalidated JSON document from standard input, or
-    ``None`` after reporting why there is none usable."""
+def _read_glossary_from_stdin() -> tuple[bool, object]:
+    """Return ``(read, value)`` for one bounded, unvalidated JSON document.
+
+    The boolean owns the input channel outcome so a successfully parsed JSON
+    ``null`` remains data for the glossary schema validator rather than being
+    confused with a read or parse failure.
+    """
     if sys.stdin.isatty():
         print_error("save requires one glossary JSON document on standard input")
-        return None
+        return False, None
     stream = getattr(sys.stdin, "buffer", sys.stdin)
     try:
         raw = stream.read(MAX_JSON_BYTES + 1)
     except (OSError, UnicodeError) as exc:
         print_error(f"cannot read glossary JSON from standard input: {exc}")
-        return None
+        return False, None
     parsed = parse_bounded_json(raw, MAX_JSON_BYTES)
     if parsed.status == READ_OVERSIZED:
         print_error(
             "glossary JSON on standard input is larger than "
             f"{MAX_JSON_BYTES} bytes"
         )
-        return None
+        return False, None
     if not parsed.ok:
         print_error(
             f"glossary JSON on standard input is unreadable ({parsed.error})"
         )
-        return None
-    return parsed.value
+        return False, None
+    return True, parsed.value
 
 
 def save_command(path_arg: str) -> int:
     """Validate JSON from stdin and persist it through the safe writer."""
     run = open_run(path_arg)
-    document = _read_glossary_from_stdin()
-    if document is None:
+    read, document = _read_glossary_from_stdin()
+    if not read:
         return 1
     try:
         path = save_glossary(run.root, document)

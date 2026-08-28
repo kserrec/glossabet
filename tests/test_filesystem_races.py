@@ -20,6 +20,7 @@ import pytest
 from glossabet.agent import managed_context
 from glossabet.agent.managed_context import ContextSyncError, read_regular_target
 from glossabet.corpus import cache as cache_module
+from glossabet.corpus import path_policy
 from glossabet.corpus.cache import clear_cache
 from glossabet.runtime import artifacts
 from glossabet.runtime.artifacts import (
@@ -64,6 +65,180 @@ def test_bounded_read_stays_bounded_when_the_file_grows_after_the_check(
     assert read.size is not None and read.size > cap  # best-effort hint
 
 
+# --- exact entry names: lookup and listing must describe one state --------
+
+
+@pytest.mark.parametrize("with_casefold_sibling", [False, True])
+def test_host_file_vanishing_during_exact_name_confirmation_is_uncertain(
+    tmp_path, monkeypatch, with_casefold_sibling
+):
+    """A successful path lookup followed by a listing with no target is a
+    concurrent disappearance, even when a casefold-equivalent sibling remains."""
+    target = tmp_path / "AGENTS.md"
+    target.write_text("human text\n", encoding="utf-8")
+    sibling = tmp_path / "agents.md"
+    if with_casefold_sibling:
+        sibling.write_text("different file\n", encoding="utf-8")
+    real_scandir = os.scandir
+
+    def vanish_then_scan(directory):
+        if os.fspath(directory) == os.fspath(tmp_path) and target.exists():
+            target.unlink()
+        return real_scandir(directory)
+
+    monkeypatch.setattr(path_policy.os, "scandir", vanish_then_scan)
+
+    with pytest.raises(ContextSyncError) as raised:
+        read_regular_target(target)
+
+    assert "exact name could not be confirmed" in str(raised.value)
+    assert "different spelling" not in str(raised.value)
+    assert not target.exists()
+    assert sibling.exists() is with_casefold_sibling
+
+
+def test_host_file_vanishing_before_exact_name_lookup_is_a_detected_change(
+    tmp_path, monkeypatch
+):
+    """A file seen by the managed caller but absent at the helper's first
+    observation changed concurrently; it is not a differently spelled file."""
+    target = tmp_path / "AGENTS.md"
+    target.write_text("human text\n", encoding="utf-8")
+    real_entry_named_exactly = managed_context.entry_named_exactly
+
+    def vanish_before_lookup(root, name):
+        if target.exists():
+            target.unlink()
+        return real_entry_named_exactly(root, name)
+
+    monkeypatch.setattr(
+        managed_context,
+        "entry_named_exactly",
+        vanish_before_lookup,
+    )
+
+    with pytest.raises(ContextSyncError) as raised:
+        read_regular_target(target)
+
+    assert "changed while being inspected" in str(raised.value)
+    assert "different spelling" not in str(raised.value)
+    assert not target.exists()
+
+
+@POSIX_ONLY
+def test_host_file_restored_after_missing_exact_name_lookup_is_a_detected_change(
+    tmp_path, monkeypatch
+):
+    """Restoring the same inode after the helper observed absence does not
+    turn that disagreement into proof of a stable alternate spelling."""
+    target = tmp_path / "AGENTS.md"
+    target.write_text("human text\n", encoding="utf-8")
+    held_link = tmp_path / ".held-agents"
+    os.link(target, held_link)
+    real_entry_named_exactly = managed_context.entry_named_exactly
+    raced_once = False
+
+    def vanish_then_restore(root, name):
+        nonlocal raced_once
+        if not raced_once:
+            raced_once = True
+            target.unlink()
+            answer = real_entry_named_exactly(root, name)
+            os.link(held_link, target)
+            return answer
+        return real_entry_named_exactly(root, name)
+
+    monkeypatch.setattr(
+        managed_context,
+        "entry_named_exactly",
+        vanish_then_restore,
+    )
+
+    with pytest.raises(ContextSyncError) as raised:
+        read_regular_target(target)
+
+    assert "changed while being inspected" in str(raised.value)
+    assert "different spelling" not in str(raised.value)
+    assert target.samefile(held_link)
+
+
+def test_stable_different_spelling_remains_a_definite_mismatch(
+    tmp_path, monkeypatch
+):
+    """Emulate a case-insensitive lookup whose directory entry preserves a
+    different spelling; this is a known mismatch, not lookup uncertainty."""
+    requested = tmp_path / "AGENTS.md"
+    actual = tmp_path / "agents.md"
+    actual.write_text("human text\n", encoding="utf-8")
+    real_lstat = os.lstat
+
+    def case_insensitive_lstat(path, *args, **kwargs):
+        if os.fspath(path) == os.fspath(requested):
+            return real_lstat(actual, *args, **kwargs)
+        return real_lstat(path, *args, **kwargs)
+
+    monkeypatch.setattr(path_policy.os, "lstat", case_insensitive_lstat)
+
+    assert path_policy.entry_named_exactly(tmp_path, requested.name) is False
+
+
+def test_different_spelling_without_file_identity_is_uncertain(
+    tmp_path, monkeypatch
+):
+    """A listed alternate spelling cannot be bound to the requested lookup
+    when the filesystem reports zero instead of portable file identity."""
+    requested = tmp_path / "AGENTS.md"
+    actual = tmp_path / "agents.md"
+    actual.write_text("human text\n", encoding="utf-8")
+    real_lstat = os.lstat
+
+    def case_insensitive_lstat_without_identity(path, *args, **kwargs):
+        looked_up = actual if os.fspath(path) == os.fspath(requested) else path
+        info = real_lstat(looked_up, *args, **kwargs)
+        return SimpleNamespace(
+            st_mode=info.st_mode,
+            st_dev=info.st_dev,
+            st_ino=0,
+        )
+
+    monkeypatch.setattr(
+        path_policy.os,
+        "lstat",
+        case_insensitive_lstat_without_identity,
+    )
+
+    assert path_policy.entry_named_exactly(tmp_path, requested.name) is None
+
+
+@POSIX_ONLY
+def test_stale_exact_directory_entry_after_rename_is_uncertain(
+    tmp_path, monkeypatch
+):
+    """A DirEntry keeps the spelling it had when enumerated. If that entry is
+    renamed before being yielded, its stale name is not current exact proof."""
+    requested = tmp_path / "AGENTS.md"
+    alternate = tmp_path / "agents.md"
+    requested.write_text("human text\n", encoding="utf-8")
+    real_scandir = os.scandir
+
+    class RenameBeforeYield:
+        def __enter__(self):
+            self.entries = real_scandir(tmp_path)
+            iterator = self.entries.__enter__()
+            stale = next(iterator)
+            requested.rename(alternate)
+            return iter([stale])
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return self.entries.__exit__(exc_type, exc_value, traceback)
+
+    monkeypatch.setattr(path_policy.os, "scandir", lambda _root: RenameBeforeYield())
+
+    assert path_policy.entry_named_exactly(tmp_path, requested.name) is None
+    assert not requested.exists()
+    assert alternate.is_file()
+
+
 # --- managed host-context read: identity is compared across the open ------
 
 
@@ -94,6 +269,52 @@ def test_host_file_swapped_for_a_symlink_after_the_check_is_never_read(
 
     assert "CANARY" not in str(raised.value)
     assert canary.read_text(encoding="utf-8") == "CANARY\n"
+
+
+@pytest.mark.parametrize("replace_target", [False, True])
+def test_host_file_identity_must_be_available_across_the_open(
+    tmp_path, monkeypatch, replace_target
+):
+    """A zero inode means identity is unavailable, not that every observed
+    file is the same file. Both a stable read and a replacement fail closed."""
+    target = tmp_path / "AGENTS.md"
+    target.write_text("human text\n", encoding="utf-8")
+    replacement = tmp_path / "replacement.md"
+    replacement.write_text("replacement text\n", encoding="utf-8")
+    real_path_lstat = pathlib.Path.lstat
+    real_fstat = os.fstat
+    real_named_exactly = managed_context.entry_named_exactly
+
+    def without_identity(info):
+        return SimpleNamespace(
+            st_mode=info.st_mode,
+            st_size=info.st_size,
+            st_dev=info.st_dev,
+            st_ino=0,
+        )
+
+    def lstat_without_identity(path):
+        return without_identity(real_path_lstat(path))
+
+    def fstat_without_identity(descriptor):
+        return without_identity(real_fstat(descriptor))
+
+    def optionally_replace_then_confirm(root, name):
+        answer = real_named_exactly(root, name)
+        if replace_target:
+            os.replace(replacement, target)
+        return answer
+
+    monkeypatch.setattr(pathlib.Path, "lstat", lstat_without_identity)
+    monkeypatch.setattr(managed_context.os, "fstat", fstat_without_identity)
+    monkeypatch.setattr(
+        managed_context,
+        "entry_named_exactly",
+        optionally_replace_then_confirm,
+    )
+
+    with pytest.raises(ContextSyncError, match="filesystem identity is unavailable"):
+        read_regular_target(target)
 
 
 @POSIX_ONLY
