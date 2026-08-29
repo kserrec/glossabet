@@ -3,6 +3,7 @@
 from typing import cast
 
 from glossabet.analysis.evidence_facts import (
+    oversized_identifier_count,
     production_corpus_complete,
     repository_corpus_complete,
     skipped_path_entries,
@@ -26,6 +27,13 @@ def test_complete_legacy_budget_proves_its_production_subset():
 
     assert repository_corpus_complete(evidence) is True
     assert production_corpus_complete(evidence) is True
+
+
+def test_missing_oversized_identifier_counter_means_no_recorded_omission():
+    assert oversized_identifier_count(_evidence({})) == 0
+    assert oversized_identifier_count(
+        _evidence({"oversized_identifiers": 3})
+    ) == 3
 
 
 def test_skipped_path_entries_tolerate_missing_and_legacy_ledgers():

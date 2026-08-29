@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import uuid
 from pathlib import Path
 from typing import NoReturn
@@ -130,7 +131,11 @@ def write_new_json(path: Path, value: object) -> None:
 
 
 def tree_sha256(root: Path) -> str:
-    if root.is_symlink() or not root.is_dir():
+    try:
+        root_info = root.lstat()
+    except OSError:
+        fail(f"tree is missing or unreadable: {root}")
+    if not stat.S_ISDIR(root_info.st_mode):
         fail(f"tree is missing or symlinked: {root}")
     files: list[Path] = []
     for current, directories, names in os.walk(root, followlinks=False):
@@ -139,7 +144,8 @@ def tree_sha256(root: Path) -> str:
             path = Path(current) / name
             if dotenv_part(name) or name == "__pycache__":
                 continue
-            if path.is_symlink():
+            info = path.lstat()
+            if not stat.S_ISDIR(info.st_mode):
                 fail(f"tree contains a symlinked directory: {path}")
             kept.append(name)
         directories[:] = kept
@@ -147,8 +153,11 @@ def tree_sha256(root: Path) -> str:
             if dotenv_part(name) or name.endswith(".pyc"):
                 continue
             path = Path(current) / name
-            if path.is_symlink():
+            info = path.lstat()
+            if stat.S_ISLNK(info.st_mode):
                 fail(f"tree contains a symlinked file: {path}")
+            if not stat.S_ISREG(info.st_mode):
+                fail(f"tree contains a non-regular file: {path}")
             files.append(path)
     ordered = sorted(files, key=lambda item: item.relative_to(root).as_posix())
     return framed_digest(

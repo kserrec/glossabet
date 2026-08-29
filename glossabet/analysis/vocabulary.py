@@ -11,20 +11,16 @@ from collections import Counter, defaultdict
 from itertools import combinations
 
 from glossabet.corpus.tokenize import (
+    MAX_IDENTIFIER_TOKENS,
     TOKEN_ORIGIN_DOMAIN,
     TOKEN_ORIGIN_LANGUAGE,
     token_origin,
-    tokenize_identifier,
+    tokenize_identifier_bounded,
 )
 
 # Per-(token, module) neighbor sets are capped so the context-dispersion
 # analysis stays bounded; every set that hit the cap is recorded.
 MODULE_CONTEXT_ANALYSIS_CAP = 30
-# A real identifier has a handful of tokens. The pattern and co-occurrence
-# views are O(t^2) in token count, so a single pathological spelling
-# (permitted up to the 2 MB file cap) would otherwise exhaust CPU and
-# memory; the token list is cut here and the spelling counted.
-MAX_IDENTIFIER_TOKENS = 64
 
 
 class ProductionVocabulary:
@@ -47,7 +43,8 @@ class ProductionVocabulary:
     ``module_neighbor_truncated`` recording every (token, module) that hit
     the cap · ``identifier_counts`` / ``identifier_files`` keyed by the raw
     identifier spelling · ``oversized_identifiers`` the number of spellings
-    whose token list was cut at ``MAX_IDENTIFIER_TOKENS``.
+    whose token list was cut at ``MAX_IDENTIFIER_TOKENS`` ·
+    ``identifier_tokens`` each spelling's one retained bounded token prefix.
     """
 
     def __init__(self) -> None:
@@ -63,6 +60,7 @@ class ProductionVocabulary:
         self.module_neighbor_truncated: set[tuple[str, str]] = set()
         self.identifier_counts: Counter[str] = Counter()
         self.identifier_files: dict[str, Counter[str]] = defaultdict(Counter)
+        self.identifier_tokens: dict[str, list[str]] = {}
         self._oversized_spellings: set[str] = set()
 
     def fold(
@@ -76,11 +74,14 @@ class ProductionVocabulary:
         for name, count in sorted(identifiers.items()):
             self.identifier_counts[name] += count
             self.identifier_files[name][rel] += count
-            tokens = tokenize_identifier(name)
-            if len(tokens) > MAX_IDENTIFIER_TOKENS:
-                # See MAX_IDENTIFIER_TOKENS.
-                tokens = tokens[:MAX_IDENTIFIER_TOKENS]
-                self._oversized_spellings.add(name)
+            if name not in self.identifier_tokens:
+                tokens, truncated = tokenize_identifier_bounded(
+                    name, MAX_IDENTIFIER_TOKENS
+                )
+                self.identifier_tokens[name] = tokens
+                if truncated:
+                    self._oversized_spellings.add(name)
+            tokens = self.identifier_tokens[name]
             uniq = sorted(set(tokens))
             for token in tokens:
                 self.token_counts[token] += count
@@ -116,6 +117,10 @@ class ProductionVocabulary:
     def oversized_identifiers(self) -> int:
         """Spellings (not per-file occurrences) whose token list was cut."""
         return len(self._oversized_spellings)
+
+    def identifier_tokens_truncated(self, name: str) -> bool:
+        """Whether ``identifier_tokens[name]`` omits a proven tail."""
+        return name in self._oversized_spellings
 
     def language_token_count(self) -> int:
         """Vocabulary tokens tagged as language builtins — excluded from the

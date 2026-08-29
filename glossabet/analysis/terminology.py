@@ -52,7 +52,6 @@ from glossabet.corpus.tokenize import (
     TOKEN_ORIGIN_DOMAIN,
     TOKEN_ORIGIN_LANGUAGE,
     identifier_style,
-    tokenize_identifier,
 )
 from glossabet.runtime.coverage import (
     CoverageLedger,
@@ -86,20 +85,21 @@ class _RegisterTally:
         "prose_dominated_flat": 0,
     }))
 
-    def count_affixes(self, tokens: list[str]) -> None:
+    def count_affixes(self, tokens: list[str], *, suffix_exact: bool) -> None:
         if len(tokens) >= 2:
-            self.suffixes[tokens[-1]] += 1
             self.prefixes[tokens[0]] += 1
+            if suffix_exact:
+                self.suffixes[tokens[-1]] += 1
 
 
 def _register_tally(
-    identifier_counts: Counter[str],
+    vocabulary: ProductionVocabulary,
     doc_term_counts: Counter[str],
-    token_origins: dict[str, str],
 ) -> _RegisterTally:
     tally = _RegisterTally()
-    for name, code_count in identifier_counts.items():
-        tokens = tokenize_identifier(name)
+    for name, code_count in vocabulary.identifier_counts.items():
+        tokens = vocabulary.identifier_tokens[name]
+        tokens_truncated = vocabulary.identifier_tokens_truncated(name)
         if not tokens:
             tally.excluded_by_reason["no_lexical_tokens"] += 1
             continue
@@ -114,11 +114,11 @@ def _register_tally(
             tally.styles[style] += 1
             bucket = str(len(tokens)) if len(tokens) <= 3 else "4+"
             tally.token_counts_dist[bucket] += 1
-            tally.count_affixes(tokens)
+            tally.count_affixes(tokens, suffix_exact=not tokens_truncated)
             continue
 
         if any(
-            token_origins.get(token, TOKEN_ORIGIN_DOMAIN)
+            vocabulary.token_origins.get(token, TOKEN_ORIGIN_DOMAIN)
             == TOKEN_ORIGIN_LANGUAGE
             for token in tokens
         ):
@@ -138,7 +138,7 @@ def _register_tally(
             continue
 
         tally.used_by_reason["corroborated_flat"] += 1
-        tally.count_affixes(tokens)
+        tally.count_affixes(tokens, suffix_exact=not tokens_truncated)
     return tally
 
 
@@ -151,6 +151,9 @@ def _pct(counter: Counter[str], total: int) -> dict[str, float]:
 
 def _top_affixes(
     counter: Counter[str], policy: TerminologyPolicy,
+    *,
+    total_items_exact: bool = True,
+    incomplete_reasons: tuple[str, ...] = (),
 ) -> tuple[list[AffixRecord], CoverageLedger]:
     ranked: list[AffixRecord] = [
         {"token": token, "identifiers": count}
@@ -165,22 +168,37 @@ def _top_affixes(
         cap_reason=(
             f"register affix display cap is {policy.register_affix_cap} items"
         ),
+        total_items_exact=total_items_exact,
+        incomplete_reasons=incomplete_reasons,
     )
 
 
 def _register(
-    identifier_counts: Counter[str],
+    vocabulary: ProductionVocabulary,
     doc_term_counts: Counter[str],
-    token_origins: dict[str, str],
     policy: TerminologyPolicy,
 ) -> RegisterSection:
-    tally = _register_tally(identifier_counts, doc_term_counts, token_origins)
+    tally = _register_tally(vocabulary, doc_term_counts)
     used_by_reason = tally.used_by_reason
     excluded_by_reason = tally.excluded_by_reason
     headline_total = used_by_reason["structurally_styled"]
     used_total = sum(used_by_reason.values())
     excluded_total = sum(excluded_by_reason.values())
-    suffix_items, suffix_coverage = _top_affixes(tally.suffixes, policy)
+    oversized_identifiers = vocabulary.oversized_identifiers
+    suffix_reasons = (
+        ()
+        if not oversized_identifiers
+        else (
+            f"{oversized_identifiers} identifier spelling(s) omitted identifier "
+            "token tails, so their suffix tokens are unknown",
+        )
+    )
+    suffix_items, suffix_coverage = _top_affixes(
+        tally.suffixes,
+        policy,
+        total_items_exact=not oversized_identifiers,
+        incomplete_reasons=suffix_reasons,
+    )
     prefix_items, prefix_coverage = _top_affixes(tally.prefixes, policy)
 
     return {
@@ -188,7 +206,7 @@ def _register(
         # admitted into the register, not every lexical scanner match.
         "unique_identifiers": used_total,
         "composition": {
-            "total_spellings": len(identifier_counts),
+            "total_spellings": len(vocabulary.identifier_counts),
             "used_spellings": used_total,
             "excluded_spellings": excluded_total,
             "used_by_reason": dict(used_by_reason),
@@ -210,6 +228,9 @@ def _register(
 def _layers(
     token_counts: Counter[str], doc_term_counts: Counter[str],
     policy: TerminologyPolicy,
+    *,
+    total_items_exact: bool = True,
+    incomplete_reasons: tuple[str, ...] = (),
 ) -> LayersSection:
     def top(
         counter: Counter[str], keep: Callable[[str], bool], label: str,
@@ -220,6 +241,8 @@ def _layers(
             items,
             policy.layer_cap,
             cap_reason=f"{label} layer display cap is {policy.layer_cap} items",
+            total_items_exact=total_items_exact,
+            incomplete_reasons=incomplete_reasons,
         )
 
     shared, shared_coverage = top(
@@ -514,7 +537,6 @@ def build_terminology(
     calibrated nomination ``policy`` (the module default when omitted)."""
     if policy is None:
         policy = DEFAULT_TERMINOLOGY_POLICY
-    identifier_counts = vocabulary.identifier_counts
     token_counts = vocabulary.token_counts
     token_files = vocabulary.token_files
     token_modules = vocabulary.token_modules
@@ -524,7 +546,15 @@ def build_terminology(
     module_neighbor_truncated = vocabulary.module_neighbor_truncated
     token_origins = vocabulary.token_origins
     language_tokens_excluded = vocabulary.language_token_count()
-    eligibility_reasons = []
+    oversized_identifiers = vocabulary.oversized_identifiers
+    token_omission_reasons = []
+    if oversized_identifiers:
+        token_omission_reasons.append(
+            f"{oversized_identifiers} identifier spelling(s) exceeded the "
+            "per-identifier token limit; omitted identifier token tails make "
+            "terminology eligibility a lower bound"
+        )
+    eligibility_reasons = list(token_omission_reasons)
     if language_tokens_excluded:
         eligibility_reasons.append(
             f"{language_tokens_excluded} language-origin vocabulary token(s) "
@@ -546,6 +576,7 @@ def build_terminology(
         cap_reason=(
             f"terminology analysis cap is the top {policy.pair_top_n} eligible tokens"
         ),
+        total_items_exact=not oversized_identifiers,
         incomplete_reasons=eligibility_reasons,
     )
     dispersion_profiles, dispersion_section = _context_dispersion(
@@ -561,10 +592,14 @@ def build_terminology(
         "domain_vocabulary_size": len(token_counts) - language_tokens_excluded,
         "language_vocabulary_size": language_tokens_excluded,
         "coverage": {"eligible_tokens": token_coverage},
-        "register": _register(
-            identifier_counts, doc_term_counts, token_origins, policy
+        "register": _register(vocabulary, doc_term_counts, policy),
+        "layers": _layers(
+            token_counts,
+            doc_term_counts,
+            policy,
+            total_items_exact=not oversized_identifiers,
+            incomplete_reasons=tuple(token_omission_reasons),
         ),
-        "layers": _layers(token_counts, doc_term_counts, policy),
         "synonym_candidates": _synonym_candidates(
             top_tokens, token_counts, token_files, token_patterns, neighbors,
             token_coverage, policy,

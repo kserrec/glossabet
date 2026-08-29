@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import os
 from pathlib import Path
 
 import pytest
@@ -14,13 +15,14 @@ import evaluation.codex.results as codex_results
 import evaluation.deterministic.contract as deterministic_contract
 import evaluation.deterministic.results as deterministic_results
 import evaluation.deterministic.sources as deterministic_sources
-import evaluation.review as review
+import evaluation.reviewer.contract as reviewer_contract
+import evaluation.reviewer.results as reviewer_results
 from evaluation.harness.identity import (
     LANE_WRAPPERS,
     lane_source_identity,
     lane_source_paths,
 )
-from evaluation.harness.io import framed_digest
+from evaluation.harness.io import dotenv_part, framed_digest, tree_sha256
 
 ROOT = Path(__file__).resolve().parents[1]
 HARNESS = ROOT / "evaluation" / "harness"
@@ -62,7 +64,22 @@ def fake_repo(tmp_path: Path) -> Path:
         "from evaluation.harness import io\n",
     )
     _write(tmp_path, "evaluation/run.py", "import json\n")
-    _write(tmp_path, "evaluation/review.py", "import json\n")
+    _write(
+        tmp_path,
+        "evaluation/review.py",
+        "from evaluation.reviewer.cli import main\n",
+    )
+    _write(tmp_path, "evaluation/reviewer/__init__.py", "")
+    _write(
+        tmp_path,
+        "evaluation/reviewer/cli.py",
+        "from evaluation.reviewer.results import verify_results\n",
+    )
+    _write(
+        tmp_path,
+        "evaluation/reviewer/results.py",
+        "from evaluation.harness.io import sha\n",
+    )
     _write(tmp_path, "glossabet/engine.py", "VERSION = 1\n")
     return tmp_path
 
@@ -106,6 +123,44 @@ def test_framed_digest_separates_name_from_content():
     )
 
 
+@pytest.mark.parametrize(
+    "name",
+    [".ENV", "service.ENV", ".EnV.Production", "service.EnV.Local"],
+)
+def test_dotenv_component_detection_is_case_insensitive(name):
+    assert dotenv_part(name) is True
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO creation is POSIX-only")
+def test_shared_tree_identity_rejects_a_fifo_without_reading_it(monkeypatch, tmp_path):
+    fifo = tmp_path / "blocked.py"
+    os.mkfifo(fifo)
+    original_read = Path.read_bytes
+
+    def guarded_read(path):
+        if path == fifo:
+            raise AssertionError("tree identity attempted to read a FIFO")
+        return original_read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", guarded_read)
+
+    with pytest.raises(OSError, match="non-regular entry: blocked.py"):
+        tree_sha256(tmp_path)
+
+
+def test_shared_tree_identity_rejects_a_symlinked_directory(tmp_path):
+    target = tmp_path / "target"
+    target.mkdir()
+    link = tmp_path / "linked"
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"directory symlinks are unavailable: {exc}")
+
+    with pytest.raises(OSError, match="non-regular entry: linked"):
+        tree_sha256(tmp_path)
+
+
 def test_changing_a_lane_file_changes_only_that_lane(fake_repo):
     before = {
         lane: lane_source_identity(lane, root=fake_repo) for lane in LANE_WRAPPERS
@@ -131,7 +186,7 @@ def test_changing_shared_harness_changes_every_lane_that_imports_it(fake_repo):
     assert after["codex"] != before["codex"]
     assert after["claude"] != before["claude"]
     assert after["deterministic"] == before["deterministic"]
-    assert after["reviewer"] == before["reviewer"]
+    assert after["reviewer"] != before["reviewer"]
 
 
 def test_unrelated_production_code_does_not_change_identity(fake_repo):
@@ -159,7 +214,7 @@ def test_real_lanes_include_wrapper_and_harness():
     [
         (codex_results, "lane_source_identity"),
         (claude_results, "lane_source_identity"),
-        (review, "lane_source_identity"),
+        (reviewer_results, "reviewer_input_identity"),
         (deterministic_sources, "lane_source_paths"),
     ],
 )
@@ -199,14 +254,14 @@ def test_default_verification_never_consults_current_evaluator_source(
             )
     else:
         args = (
-            review.DEFAULT_REVIEW_RESULTS,
-            review.DEFAULT_PACKET,
-            review.DEFAULT_MANIFEST,
-            review.DEFAULT_RESULTS,
+            reviewer_contract.DEFAULT_REVIEW_RESULTS,
+            reviewer_contract.DEFAULT_PACKET,
+            reviewer_contract.DEFAULT_MANIFEST,
+            reviewer_contract.DEFAULT_RESULTS,
         )
-        assert review.verify_results(*args) == []
+        assert reviewer_results.verify_results(*args) == []
         with pytest.raises(AssertionError):
-            review.verify_results(*args, current=True)
+            reviewer_results.verify_results(*args, current=True)
 
 
 def _imports(path: Path) -> set[str]:

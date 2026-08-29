@@ -99,6 +99,10 @@ DOC_STOPWORDS = frozenset("""
 
 MIN_TOKEN_LEN = 2
 MIN_DOC_WORD_LEN = 3
+# Derived token work for one source identifier. The bounded tokenizer stops
+# after one extra accepted token, so this is a work/memory boundary rather
+# than a slice applied after an arbitrarily large list has been built.
+MAX_IDENTIFIER_TOKENS = 64
 
 STRUCTURED_IDENTIFIER_STYLES = frozenset({
     "snake_case",
@@ -173,12 +177,34 @@ def tokenize_identifier(name: str) -> list[str]:
     standalone numeric hunks are dropped. Unicode is normalized with NFKC and
     case-folded. Keyword and short tokens are dropped.
     """
-    normalized = (
-        name if name.isascii() else unicodedata.normalize("NFKC", name)
-    )
+    return list(_iter_identifier_tokens(name))
+
+
+def tokenize_identifier_bounded(
+    name: str, limit: int = MAX_IDENTIFIER_TOKENS
+) -> tuple[list[str], bool]:
+    """Return at most ``limit`` tokens and whether another token exists.
+
+    After whole-string Unicode normalization, token production is lazy: once
+    the first omitted accepted token proves truncation, no further tokens are
+    materialized or folded into downstream views. The returned list is the
+    exact retained prefix and ``truncated`` is honest without constructing an
+    omitted-token list.
+    """
+    if limit < 0:
+        raise ValueError("identifier token limit must be non-negative")
     tokens: list[str] = []
-    for hunk in _identifier_hunks(normalized):
-        for word in _split_case_and_digits(hunk):
+    for token in _iter_identifier_tokens(name):
+        if len(tokens) == limit:
+            return tokens, True
+        tokens.append(token)
+    return tokens, False
+
+
+def _iter_identifier_tokens(name: str) -> Iterator[str]:
+    normalized = name if name.isascii() else unicodedata.normalize("NFKC", name)
+    for hunk in _iter_identifier_hunks(normalized):
+        for word in _iter_split_case_and_digits(hunk):
             token = (
                 word.lower() if word.isascii()
                 else unicodedata.normalize("NFKC", word).casefold()
@@ -192,8 +218,7 @@ def tokenize_identifier(name: str) -> list[str]:
                 continue
             if token in KEYWORD_TOKENS or token in DOC_STOPWORDS:
                 continue
-            tokens.append(token)
-    return tokens
+            yield token
 
 
 def tokenize_term(term: str) -> list[str]:
@@ -223,8 +248,13 @@ def tokenize_bounded_term(term: str, *, truncated: bool) -> list[str]:
     return tokenize_identifier(normalized)
 
 
+def _iter_identifier_hunks(name: str) -> Iterator[str]:
+    for match in _WORD_HUNK_RE.finditer(name.replace("_", " ")):
+        yield match.group()
+
+
 def _identifier_hunks(name: str) -> list[str]:
-    return _WORD_HUNK_RE.findall(name.replace("_", " "))
+    return list(_iter_identifier_hunks(name))
 
 
 def _kind(char: str) -> str:
@@ -247,26 +277,39 @@ def _kind(char: str) -> str:
     return "letter"
 
 
-def _split_case_and_digits(hunk: str) -> list[str]:
+def _iter_split_case_and_digits(hunk: str) -> Iterator[str]:
     if not hunk:
-        return []
+        return
     if hunk.isascii():
-        return _ASCII_WORD_RE.findall(hunk)
-    kinds = [_kind(char) for char in hunk]
-    # A combining mark continues the character it attaches to, so for
-    # boundary purposes it takes that character's kind (a leading mark is
-    # a plain letter).
-    for index, kind in enumerate(kinds):
-        if kind == "mark":
-            kinds[index] = kinds[index - 1] if index else "letter"
-    words: list[str] = []
-    current = [hunk[0]]
-    for index in range(1, len(hunk)):
-        char = hunk[index]
-        current_kind = kinds[index]
-        previous_kind = kinds[index - 1]
-        next_kind = kinds[index + 1] if index + 1 < len(hunk) else None
-        next_next_kind = kinds[index + 2] if index + 2 < len(hunk) else None
+        for match in _ASCII_WORD_RE.finditer(hunk):
+            yield match.group()
+        return
+
+    def kinded_characters() -> Iterator[tuple[str, str]]:
+        previous_kind = "letter"
+        for index, char in enumerate(hunk):
+            kind = _kind(char)
+            # A combining mark continues the character it attaches to, so
+            # for boundary purposes it takes that character's kind (a
+            # leading mark is a plain letter).
+            if kind == "mark":
+                kind = previous_kind if index else "letter"
+            yield char, kind
+            previous_kind = kind
+
+    characters = iter(kinded_characters())
+    previous = next(characters, None)
+    if previous is None:
+        return
+    current = next(characters, None)
+    following = next(characters, None)
+    after_following = next(characters, None)
+    word = [previous[0]]
+    while current is not None:
+        char, current_kind = current
+        previous_kind = previous[1]
+        next_kind = following[1] if following is not None else None
+        next_next_kind = after_following[1] if after_following is not None else None
         boundary = (
             (
                 current_kind == "upper"
@@ -298,12 +341,19 @@ def _split_case_and_digits(hunk: str) -> list[str]:
             )
         )
         if boundary:
-            words.append("".join(current))
-            current = [char]
+            yield "".join(word)
+            word = [char]
         else:
-            current.append(char)
-    words.append("".join(current))
-    return words
+            word.append(char)
+        previous = current
+        current = following
+        following = after_following
+        after_following = next(characters, None)
+    yield "".join(word)
+
+
+def _split_case_and_digits(hunk: str) -> list[str]:
+    return list(_iter_split_case_and_digits(hunk))
 
 
 def iter_identifiers(text: str, language: str | None = None) -> Iterator[str]:

@@ -7,7 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from evaluation.review import verify_results
+from evaluation.reviewer import contract, results, trace
+from evaluation.reviewer.contract import ReviewerEvaluationError
+from evaluation.reviewer.results import verify_results
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKET = ROOT / "evaluation" / "reviewer-packet.json"
@@ -87,22 +89,20 @@ def test_reviewer_verifier_rejects_tampered_comparison(tmp_path):
 def test_genuine_verification_tolerates_evaluator_limit_constant_changes(
     monkeypatch,
 ):
-    from evaluation import review
-
     monkeypatch.setattr(
-        review,
+        results,
         "TRACE_LIMITS",
         {
-            **review.TRACE_LIMITS,
+            **results.TRACE_LIMITS,
             "stored_output_characters": (
-                review.TRACE_LIMITS["stored_output_characters"] + 1
+                results.TRACE_LIMITS["stored_output_characters"] + 1
             ),
         },
     )
-    assert review.verify_results(RESULTS, PACKET) == []
+    assert results.verify_results(RESULTS, PACKET) == []
     assert any(
         "identity or blinding metadata is malformed" in error
-        for error in review.verify_results(RESULTS, PACKET, current=True)
+        for error in results.verify_results(RESULTS, PACKET, current=True)
     )
 
 
@@ -140,17 +140,13 @@ def test_bounded_text_redacts_repo_root_and_home(tmp_path):
     # The committed reviewer-results.json must not carry the maintainer's repo
     # root or home directory even when the reviewer echoes an absolute path the
     # workspace replacement never anticipated (mirrors agent_eval redaction).
-    from pathlib import Path
-
-    from evaluation.review import PROJECT_ROOT, _bounded_text
-
     workspace = tmp_path / "review-workspace"
     text = (
-        f"ran {PROJECT_ROOT}/scripts/x and {Path.home()}/.local/bin/codex "
+        f"ran {contract.ROOT}/scripts/x and {Path.home()}/.local/bin/codex "
         f"in {workspace}/pkg"
     )
-    out = _bounded_text(text, workspace, limit=10_000)
-    assert str(PROJECT_ROOT) not in out
+    out = trace.bounded_text(text, workspace, limit=10_000)
+    assert str(contract.ROOT) not in out
     assert str(Path.home()) not in out
     assert "<REPO>" in out and "<HOME>" in out
     assert "<REVIEW_WORKSPACE>" in out
@@ -159,8 +155,6 @@ def test_bounded_text_redacts_repo_root_and_home(tmp_path):
 def test_live_reviewer_trace_rejects_a_packet_read_combined_with_another_file(
     tmp_path,
 ):
-    from evaluation import review
-
     (tmp_path / "reviewer-packet.json").write_text(
         "blinded packet\n", encoding="utf-8"
     )
@@ -175,20 +169,18 @@ def test_live_reviewer_trace_rejects_a_packet_read_combined_with_another_file(
         },
     })
 
-    with pytest.raises(review.EvaluationError, match="outside the blinded packet"):
-        review._parse_reviewer_trace(raw, tmp_path)
+    with pytest.raises(ReviewerEvaluationError, match="outside the blinded packet"):
+        trace.parse_reviewer_trace(raw, tmp_path)
 
     raw = raw.replace(
         "/usr/bin/zsh -lc 'cat reviewer-packet.json /etc/passwd'",
         "/tmp/cat reviewer-packet.json",
     )
-    with pytest.raises(review.EvaluationError, match="outside the blinded packet"):
-        review._parse_reviewer_trace(raw, tmp_path)
+    with pytest.raises(ReviewerEvaluationError, match="outside the blinded packet"):
+        trace.parse_reviewer_trace(raw, tmp_path)
 
 
 def test_live_reviewer_trace_binds_cwd_and_output_to_the_isolated_packet(tmp_path):
-    from evaluation import review
-
     packet_output = "blinded packet\n"
     (tmp_path / "reviewer-packet.json").write_text(
         packet_output, encoding="utf-8"
@@ -205,50 +197,48 @@ def test_live_reviewer_trace_binds_cwd_and_output_to_the_isolated_packet(tmp_pat
         },
     }
 
-    commands, _usage = review._parse_reviewer_trace(json.dumps(event), tmp_path)
+    commands, _usage = trace.parse_reviewer_trace(json.dumps(event), tmp_path)
     assert commands[0]["output_sha256"] == hashlib.sha256(
         packet_output.encode()
     ).hexdigest()
 
     outside = deepcopy(event)
     outside["item"]["cwd"] = str(tmp_path.parent)
-    with pytest.raises(review.EvaluationError, match="isolated workspace"):
-        review._parse_reviewer_trace(json.dumps(outside), tmp_path)
+    with pytest.raises(ReviewerEvaluationError, match="isolated workspace"):
+        trace.parse_reviewer_trace(json.dumps(outside), tmp_path)
 
     unrelated = deepcopy(event)
     unrelated["item"]["aggregated_output"] = "PRIMARY LABELS FROM ANOTHER FILE"
-    with pytest.raises(review.EvaluationError, match="did not match"):
-        review._parse_reviewer_trace(json.dumps(unrelated), tmp_path)
+    with pytest.raises(ReviewerEvaluationError, match="did not match"):
+        trace.parse_reviewer_trace(json.dumps(unrelated), tmp_path)
 
     incomplete = deepcopy(event)
     incomplete["item"]["status"] = "failed"
-    with pytest.raises(review.EvaluationError, match="did not complete"):
-        review._parse_reviewer_trace(json.dumps(incomplete), tmp_path)
+    with pytest.raises(ReviewerEvaluationError, match="did not complete"):
+        trace.parse_reviewer_trace(json.dumps(incomplete), tmp_path)
 
 
 def test_reviewer_publication_leaves_prior_result_when_packet_retention_fails(
     tmp_path,
     monkeypatch,
 ):
-    from evaluation import review
-
     packet = tmp_path / "packet.json"
     retained = tmp_path / "retained"
     output = tmp_path / "results.json"
     packet.write_text("new packet\n", encoding="utf-8")
     output.write_text("prior accepted result\n", encoding="utf-8")
 
-    real_replace = review.replace_via_temporary
+    real_replace = results.replace_via_temporary
 
     def fail_retention(target, write_payload):
         if target.parent == retained:
             raise OSError("synthetic retained-packet failure")
         return real_replace(target, write_payload)
 
-    monkeypatch.setattr(review, "replace_via_temporary", fail_retention)
+    monkeypatch.setattr(results, "replace_via_temporary", fail_retention)
 
     with pytest.raises(OSError, match="synthetic retained-packet failure"):
-        review._publish_review_artifacts(
+        results.publish_review_artifacts(
             {}, output, packet.read_bytes(), retained
         )
 
@@ -261,8 +251,6 @@ def test_reviewer_result_failure_preserves_the_prior_evidence_pair(
     tmp_path,
     monkeypatch,
 ):
-    from evaluation import review
-
     packet_doc = json.loads(PACKET.read_text(encoding="utf-8"))
     packet = tmp_path / "packet.json"
     # Same reviewed payload and packet semantics, but different exact bytes.
@@ -278,22 +266,22 @@ def test_reviewer_result_failure_preserves_the_prior_evidence_pair(
     prior_packet = REVIEWED_PACKETS / f"{trace_sha256}.json"
     (retained / prior_packet.name).write_bytes(prior_packet.read_bytes())
 
-    assert review.verify_results(
+    assert results.verify_results(
         output,
         packet,
         reviewed_packets=retained,
     ) == []
-    real_replace = review.replace_via_temporary
+    real_replace = results.replace_via_temporary
 
     def fail_result(target, write_payload):
         if target == output:
             raise OSError("synthetic result-commit failure")
         return real_replace(target, write_payload)
 
-    monkeypatch.setattr(review, "replace_via_temporary", fail_result)
+    monkeypatch.setattr(results, "replace_via_temporary", fail_result)
 
     with pytest.raises(OSError, match="synthetic result-commit failure"):
-        review._publish_review_artifacts(
+        results.publish_review_artifacts(
             {}, output, packet.read_bytes(), retained
         )
 
@@ -301,7 +289,7 @@ def test_reviewer_result_failure_preserves_the_prior_evidence_pair(
     assert output.read_bytes() == prior_result
     assert (retained / prior_packet.name).is_file()
     assert (retained / f"{new_sha256}.json").read_bytes() == packet.read_bytes()
-    assert review.verify_results(
+    assert results.verify_results(
         output,
         packet,
         reviewed_packets=retained,
@@ -316,18 +304,16 @@ def test_reviewer_verifier_enforces_every_blinding_trace_and_usefulness_gate(tmp
     ceilings, a packet carrying usefulness labels or a stale schema, and —
     kept consistent with its own recomputation so no other error masks it —
     a usefulness rate below the threshold. Genuineness mode throughout."""
-    from evaluation import review
-
     original = json.loads(RESULTS.read_text(encoding="utf-8"))
     packet = json.loads(PACKET.read_text(encoding="utf-8"))
-    assert review.verify_results(RESULTS, PACKET) == []
+    assert results.verify_results(RESULTS, PACKET) == []
 
     def verify(results_doc=None, packet_doc=None):
         results_path = tmp_path / "results.json"
         packet_path = tmp_path / "packet.json"
         results_path.write_text(json.dumps(results_doc or original), encoding="utf-8")
         packet_path.write_text(json.dumps(packet_doc or packet), encoding="utf-8")
-        return review.verify_results(results_path, packet_path)
+        return results.verify_results(results_path, packet_path)
 
     def mutated(mutate):
         doc = deepcopy(original)
@@ -343,7 +329,7 @@ def test_reviewer_verifier_enforces_every_blinding_trace_and_usefulness_gate(tmp
         (lambda d: d["reviewer"]["execution"].__setitem__("repository_available", True), metadata),
         (lambda d: d["reviewer"]["execution"]["trace_limits"].__setitem__("commands", 0), metadata),
         (lambda d: d["reviewer"]["execution"]["trace_limits"].__setitem__(
-            "commands", review.TRACE_LIMIT_CEILINGS["commands"] + 1), metadata),
+            "commands", results.TRACE_LIMIT_CEILINGS["commands"] + 1), metadata),
         (lambda d: d["reviewer"]["input_identity"].__setitem__("prompt_sha256", "nothex"), metadata),
         (lambda d: d["reviewer"].__setitem__("trace", []), trace),
         (lambda d: d["reviewer"].__setitem__(
@@ -387,9 +373,9 @@ def test_reviewer_verifier_enforces_every_blinding_trace_and_usefulness_gate(tmp
     useless = deepcopy(original)
     for judgment in useless["judgments"]:
         judgment["useful"] = False
-    rebuilt = review._review_results(
+    rebuilt = results._review_results(
         packet, {"judgments": useless["judgments"]},
-        review._stored_primary_labels(useless),
+        results._stored_primary_labels(useless),
         evaluation_results_sha256=useless["evaluation_results_sha256"],
         reviewer=useless["reviewer"],
     )

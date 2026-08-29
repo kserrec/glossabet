@@ -30,10 +30,10 @@
       "terminology_recall_where_complete": 1.0
     },
     "runtime": {
-      "cold_median_seconds_total": 0.529269,
-      "cold_seconds_per_1000_source_files": 5.346,
-      "warm_median_seconds_total": 0.449677,
-      "warm_seconds_per_1000_source_files": 4.542
+      "cold_median_seconds_total": 0.610467,
+      "cold_seconds_per_1000_source_files": 6.166,
+      "warm_median_seconds_total": 0.578481,
+      "warm_seconds_per_1000_source_files": 5.843
     },
     "source_bytes": 661164,
     "source_files": 99,
@@ -475,21 +475,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.014067,
+        "cold_median": 0.014503,
         "cold_samples": [
-          0.016917,
-          0.014067,
-          0.012694,
-          0.01526,
-          0.013114
+          0.014735,
+          0.015406,
+          0.013691,
+          0.013378,
+          0.014503
         ],
-        "warm_median": 0.016939,
+        "warm_median": 0.02375,
         "warm_samples": [
-          0.016939,
-          0.026501,
-          0.022644,
-          0.015002,
-          0.014506
+          0.026642,
+          0.02375,
+          0.018423,
+          0.018839,
+          0.029002
         ]
       },
       "source": {
@@ -636,21 +636,21 @@
       },
       "review_items": [],
       "runtime_seconds": {
-        "cold_median": 0.014122,
+        "cold_median": 0.01576,
         "cold_samples": [
-          0.013025,
-          0.013021,
-          0.016196,
-          0.014122,
-          0.016283
+          0.017012,
+          0.016688,
+          0.014125,
+          0.015302,
+          0.01576
         ],
-        "warm_median": 0.015193,
+        "warm_median": 0.017109,
         "warm_samples": [
-          0.014947,
-          0.014965,
-          0.022648,
-          0.027723,
-          0.015193
+          0.017109,
+          0.028459,
+          0.022765,
+          0.016081,
+          0.016763
         ]
       },
       "source": {
@@ -931,21 +931,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.334788,
+        "cold_median": 0.356873,
         "cold_samples": [
-          0.369427,
-          0.348058,
-          0.334788,
-          0.327972,
-          0.320461
+          0.35818,
+          0.358409,
+          0.353622,
+          0.356873,
+          0.354681
         ],
-        "warm_median": 0.234138,
+        "warm_median": 0.291973,
         "warm_samples": [
-          0.211431,
-          0.240555,
-          0.270135,
-          0.233413,
-          0.234138
+          0.279397,
+          0.273176,
+          0.291973,
+          0.342772,
+          0.322111
         ]
       },
       "source": {
@@ -1097,21 +1097,21 @@
       },
       "review_items": [],
       "runtime_seconds": {
-        "cold_median": 0.067491,
+        "cold_median": 0.08904,
         "cold_samples": [
-          0.067132,
-          0.06879,
-          0.066286,
-          0.067491,
-          0.079581
+          0.093793,
+          0.08904,
+          0.092165,
+          0.08306,
+          0.082535
         ],
-        "warm_median": 0.073561,
+        "warm_median": 0.086488,
         "warm_samples": [
-          0.079229,
-          0.070746,
-          0.073561,
-          0.063704,
-          0.077968
+          0.073518,
+          0.07336,
+          0.104016,
+          0.086488,
+          0.098425
         ]
       },
       "source": {
@@ -1285,21 +1285,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.071701,
+        "cold_median": 0.092284,
         "cold_samples": [
-          0.070679,
-          0.077719,
-          0.070634,
-          0.079423,
-          0.071701
+          0.085542,
+          0.084824,
+          0.092284,
+          0.101598,
+          0.130027
         ],
-        "warm_median": 0.067444,
+        "warm_median": 0.110503,
         "warm_samples": [
-          0.068645,
-          0.065031,
-          0.067444,
-          0.088332,
-          0.066526
+          0.087662,
+          0.110503,
+          0.124796,
+          0.116262,
+          0.096482
         ]
       },
       "source": {
@@ -1610,21 +1610,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.014066,
+        "cold_median": 0.017381,
         "cold_samples": [
-          0.015618,
-          0.020615,
-          0.014036,
-          0.013718,
-          0.014066
+          0.016561,
+          0.017381,
+          0.01984,
+          0.015403,
+          0.018205
         ],
-        "warm_median": 0.021762,
+        "warm_median": 0.024495,
         "warm_samples": [
-          0.02429,
-          0.021582,
-          0.02217,
-          0.021762,
-          0.016931
+          0.021722,
+          0.030884,
+          0.027361,
+          0.024495,
+          0.021785
         ]
       },
       "source": {
@@ -1816,21 +1816,21 @@
       },
       "review_items": [],
       "runtime_seconds": {
-        "cold_median": 0.013034,
+        "cold_median": 0.024626,
         "cold_samples": [
-          0.015032,
-          0.013034,
-          0.01269,
-          0.013046,
-          0.012655
+          0.018597,
+          0.02622,
+          0.024626,
+          0.026818,
+          0.019111
         ],
-        "warm_median": 0.02064,
+        "warm_median": 0.024163,
         "warm_samples": [
-          0.028557,
-          0.016546,
-          0.01563,
-          0.02064,
-          0.029124
+          0.024163,
+          0.033534,
+          0.025503,
+          0.018148,
+          0.021069
         ]
       },
       "source": {
@@ -1908,7 +1908,7 @@
     "evaluation_schema_version": 8,
     "evidence_schema_version": 17,
     "name": "glossabet",
-    "source_sha256": "6db3494eadd11941f8389f2e559d4ffb5231ec673a4b89947a33674b3b53fc7d",
+    "source_sha256": "6c3f9946a0a0f76d57d4b1f7149bdee9f7d43835a5ad902109a73c2f141f2682",
     "validation_schema_version": 12,
     "version": "0.1.0"
   },
@@ -1970,7 +1970,7 @@
         "target": 50.0
       },
       {
-        "actual": 5.346,
+        "actual": 6.166,
         "name": "cold_seconds_per_1000_source_files_max",
         "passed": true,
         "target": 10.0
@@ -2135,15 +2135,15 @@
         "excluded_by_reason": {
           "language_tagged_flat": 27,
           "no_lexical_tokens": 142,
-          "prose_dominated_flat": 2104
+          "prose_dominated_flat": 2134
         },
-        "excluded_spellings": 2273,
-        "total_spellings": 7002,
+        "excluded_spellings": 2303,
+        "total_spellings": 7057,
         "used_by_reason": {
-          "corroborated_flat": 1924,
-          "structurally_styled": 2805
+          "corroborated_flat": 1918,
+          "structurally_styled": 2836
         },
-        "used_spellings": 4729
+        "used_spellings": 4754
       },
       "dominant_style": "snake_case",
       "multi_word_pct": 100.0,

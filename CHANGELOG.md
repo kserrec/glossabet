@@ -67,6 +67,14 @@ not been published to PyPI or a public plugin directory.
   infrastructure boundary. Command orchestration lives in
   `glossabet.command_run`; the dependency-free managed-block format lives in
   `glossabet.managed_block`; runtime modules import no domain features.
+- Evaluation implementation now lives behind thin lane entry points. The
+  blinded reviewer is split into packet, trace, result, live-host, contract,
+  and CLI owners; offline verification cannot import its host, and its only
+  cross-lane dependency is the deterministic result reader. Recorded
+  evaluation JSON and public evaluator commands are unchanged.
+- The output-neutral routine self-context dogfood target is now 110,000 bytes
+  to accommodate the longer evaluator package paths. Context serialization
+  and the separate 1,000,000-byte hard limit are unchanged.
 - Internal glossary callers now import model, validation, and scope behavior
   from their owning modules rather than through the persistence store. The
   store retains its exact historical aliases for Python import compatibility;
@@ -166,3 +174,22 @@ not been published to PyPI or a public plugin directory.
   ambiguous state, detect ordinary concurrent changes where documented, and
   never follow an existing final-target symlink. An indeterminate exact-name
   lookup is uninspectable and authorizes no host-file write.
+- Scanner reads now admit only regular files and regular confined symlink
+  targets; source-shaped FIFOs, sockets, and devices are visible omissions and
+  are never opened.
+- Managed-context replacement now binds the final device and inode as well as
+  bytes and mode. Installation without `--force` also preserves a target that
+  appears between its initial decision and atomic commit.
+- The 64-token identifier bound is enforced during tokenization, and omitted
+  tails propagate inexactness through evidence, terminology layers, suffixes,
+  naming candidates, and glossary matching instead of supporting false absence
+  findings.
+- Root `GLOSSARY.md` validation requires valid UTF-8; undecodable content is
+  present-but-unreadable and cannot yield a falsely complete divergence result.
+- Deterministic evaluation rejects duplicate or path-unsafe source IDs. Codex
+  and Claude mutation snapshots include directories and non-regular metadata,
+  never open special entries, retain only metadata for case-insensitive dotenv
+  paths, and pair the allowed Codex evidence write with only its identity-stable
+  parent metadata change. After their named exclusions, evaluator tree
+  identities reject included symlinks and non-regular entries before hashing
+  regular-file paths and bytes.

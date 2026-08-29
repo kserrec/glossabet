@@ -41,7 +41,8 @@ trailer before merging if it is missing.
 
 - `PLAN.md` is the authoritative roadmap and lists the binding principles
   (human authority over vocabulary, lexical-first scanner, no contamination,
-  no secrets ingested, determinism, bounded work with logged truncation).
+  path-based exclusion of sensitive files while ordinary included source may
+  still contain secrets, determinism, bounded work with logged truncation).
 - `skill/SKILL.md` is the behavioral spec; its philosophy is preserved
   verbatim, never diluted by machinery.
 - Dependencies must earn their place: a real use site and a one-line

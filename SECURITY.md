@@ -53,10 +53,10 @@ The important check/use behavior is:
 | --- | --- | --- |
 | Generated JSON paths | Every component is checked for symlinks and confinement before same-directory atomic replacement. Replacing a final symlink replaces the link, not its target. | A parent swapped after the check is same-user adversarial racing and out of scope. |
 | Direct JSON reads | The file must be regular and unsymlinked; the bound is judged from bytes actually read, not a prior size. | A path-component swap after validation is out of scope. |
-| Root `AGENTS.md` / `CLAUDE.md` | `lstat`, exact-name confirmation, non-following open where available, opened/pre/post device-and-inode comparison, `cap + 1` read, and byte/mode recheck before replacement. A lookup/listing race or unavailable inode identity is uninspectable and fails closed. | An edit after the final recheck but before `os.replace` is not prevented. |
-| Scanner walk and source read | Initial target resolution, role, and walk-time size are checked; directory links are not descended. | A file that changes after the walk can produce a mixed-time scan; adversarial mutation is out of scope. |
+| Root `AGENTS.md` / `CLAUDE.md` | `lstat`, exact-name confirmation, non-following open where available, opened/pre/post device-and-inode comparison, `cap + 1` read, and byte, mode, device, and inode recheck before replacement. A lookup/listing race or unavailable inode identity is uninspectable and fails closed. | An edit after the final recheck but before `os.replace` is not prevented. |
+| Scanner walk and source read | Initial target resolution, role, regular-file kind, and walk-time size are checked; directory links are not descended and non-regular source-shaped entries are never opened. | A regular file that changes after the walk can produce a mixed-time scan; adversarial mutation is out of scope. |
 | User cache | Bounded unsymlinked read and current-content SHA-256 determine reuse; stale or changed state becomes a miss. | The cache belongs to the same user and is not an attacker-isolation boundary. |
-| Skill/plugin install | Destination symlink components are rejected before and after directory creation; differing existing files require `--force`; writes are atomic. | A parent raced after the final component check is out of scope. |
+| Skill/plugin install | Destination symlink components are rejected before and after directory creation; differing or newly appearing files require `--force`; writes are atomic. | A parent raced after the final component check is out of scope. |
 
 [`tests/test_filesystem_races.py`](tests/test_filesystem_races.py) proves the
 ordinary-change cases and states the unprotected windows directly.
@@ -71,6 +71,9 @@ documentation symlink is followed only when its resolved target remains inside
 the repository and the target itself is not excluded; otherwise the path and
 reason are recorded. This prevents an innocent-looking link from laundering a
 sensitive, vendored, generated, or Glossabet-owned target into evidence.
+Only regular direct entries and regular confined symlink targets are opened.
+Sockets, devices, FIFOs, and other non-regular source-shaped entries are
+recorded as visible skips instead of being read.
 
 Direct control/artifact inputs are stricter. No component of
 `glossabet.json`, `graphify-out/graph.json`, or
@@ -88,10 +91,11 @@ data.
 The root maintainer-owned `GLOSSARY.md` is excluded from lexical evidence at
 every depth. Its exact root entry may be bounded-read to report presence,
 readability, size, digest, and a validation-only lexical term-presence check.
-Its content is not copied into engine evidence or agent context. A confined
-symlink is reported as such so the skill will not write through it; escaping,
-sensitive-target, excluded-target, dangling, oversized, or unconfirmed entries
-are present-but-unreadable, never falsely absent.
+Readable content must be valid UTF-8. It is not copied into engine evidence or
+agent context. A confined symlink is reported as such so the skill will not
+write through it; escaping, sensitive-target, excluded-target, dangling,
+oversized, invalid-UTF-8, or unconfirmed entries are present-but-unreadable,
+never falsely absent or complete.
 
 Glossabet's derived root `GLOSSABET.md` and every nested file with that name are
 excluded from evidence. One exact managed Glossabet block is stripped from
@@ -126,6 +130,14 @@ bound, its total is explicitly a lower bound (`exact: false`). Vocabulary,
 terminology, naming, Graphify, matching, drift, validation, brief, and agent
 projection use their own ledgers and reasons. Consumers suppress absence or
 low-use conclusions when incomplete evidence cannot support them.
+
+Identifier tokenization retains at most the first 64 accepted tokens. After
+whole-string Unicode normalization, it stops consuming the lazy splitter once
+one more accepted token proves that a tail was omitted. Vocabulary owns that
+one bounded prefix; terminology, evidence serialization, naming, and matching
+reuse it instead of retokenizing the spelling. An omitted tail makes every
+affected token, suffix, layer, naming, and match-absence ledger inexact, so
+omitted text cannot support a false absence conclusion.
 
 Graphify is checked for reference work before members are materialized and for
 total label characters before tokenization. Unsupported shapes, non-finite or
@@ -166,9 +178,10 @@ The update preserves surrounding bytes, line-ending style, and file mode.
 One current deterministic block is a no-write result. One integrity-valid
 stale block is replaced inside its exact markers. An edited but structurally
 unambiguous block requires `--force`; missing, duplicate, nested, or malformed
-markers remain an error even with force. A concurrent byte or mode change
-detected before replacement aborts the write. Drift and validation only inspect
-the two targets and report `stale`, `edited`, or `uninspectable` state.
+markers remain an error even with force. A concurrent byte, mode, device, or
+inode change detected before replacement aborts the write. Drift and validation
+only inspect the two targets and report `stale`, `edited`, or `uninspectable`
+state.
 
 ## Git and executable behavior
 

@@ -597,6 +597,41 @@ def test_manifest_rejects_escaping_local_path(tmp_path):
         assert "path must be a safe relative path" in str(exc)
 
 
+@pytest.mark.parametrize(
+    "bad_id", ("../escape", "/absolute", r"..\escape", "nested/source", ".")
+)
+def test_manifest_rejects_source_ids_that_are_not_safe_path_components(
+    tmp_path, bad_id
+):
+    """A source ID becomes a cache-directory name. It must be one confined,
+    unambiguous component rather than a path supplied by the manifest."""
+    from evaluation.deterministic.contract import EvaluationError
+    from evaluation.deterministic.sources import read_manifest
+
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    manifest["sources"][0]["id"] = bad_id
+    path = tmp_path / "corpus.json"
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(EvaluationError, match="safe single path component"):
+        read_manifest(path)
+
+
+def test_manifest_rejects_duplicate_source_ids(tmp_path):
+    """Source IDs key retained cases and private caches, so two manifest
+    entries may not alias the same identity."""
+    from evaluation.deterministic.contract import EvaluationError
+    from evaluation.deterministic.sources import read_manifest
+
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    manifest["sources"][1]["id"] = manifest["sources"][0]["id"]
+    path = tmp_path / "corpus.json"
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(EvaluationError, match="duplicate source id"):
+        read_manifest(path)
+
+
 def test_manifest_rejects_non_hex_commit(tmp_path):
     # A commit beginning with `-` is parsed by git as an option in a refspec
     # slot; require a 40/64-char hex object name.

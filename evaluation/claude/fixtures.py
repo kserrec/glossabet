@@ -19,33 +19,43 @@ from evaluation.claude.contract import (
     fail,
     write_json,
 )
-from evaluation.harness.io import dotenv_part
+from evaluation.harness.io import dotenv_part, entry_stat_snapshot, walk_paths
 
 
 def snapshot(root: Path) -> dict[str, tuple]:
-    """Hash a fixture without descending into Git or any dotenv path."""
+    """Hash fixture entries without reading or descending into dotenv paths."""
     snapshot: dict[str, tuple] = {}
-    for current, directories, names in os.walk(root, followlinks=False):
-        directories[:] = sorted(
-            name
-            for name in directories
-            if name not in {".git", "__pycache__"} and not dotenv_part(name)
-        )
-        for name in sorted(names):
-            if dotenv_part(name) or name.endswith(".pyc"):
-                continue
-            path = Path(current) / name
-            relative = path.relative_to(root).as_posix()
-            info = path.lstat()
-            if path.is_symlink():
-                snapshot[relative] = ("symlink", os.readlink(path))
-            else:
-                snapshot[relative] = (
-                    "file",
-                    info.st_size,
-                    stat.S_IMODE(info.st_mode),
-                    hashlib.sha256(path.read_bytes()).hexdigest(),
-                )
+    for path in walk_paths(
+        root,
+        excluded_directory=".git",
+        skip_dotenv=False,
+        include_directories=True,
+        additionally_excluded_directories=("__pycache__",),
+    ):
+        if path.name.endswith(".pyc"):
+            continue
+        relative_path = path.relative_to(root)
+        relative = relative_path.as_posix()
+        sensitive = any(dotenv_part(part) for part in relative_path.parts)
+        info = path.lstat()
+        if path.is_symlink():
+            snapshot[relative] = (
+                entry_stat_snapshot("sensitive-symlink-stat", info)
+                if sensitive
+                else (*entry_stat_snapshot("symlink", info), os.readlink(path))
+            )
+        elif stat.S_ISDIR(info.st_mode):
+            label = "sensitive-directory-stat" if sensitive else "directory"
+            snapshot[relative] = entry_stat_snapshot(label, info)
+        elif not stat.S_ISREG(info.st_mode):
+            snapshot[relative] = entry_stat_snapshot("special-stat", info)
+        elif sensitive:
+            snapshot[relative] = entry_stat_snapshot("sensitive-stat", info)
+        else:
+            snapshot[relative] = (
+                *entry_stat_snapshot("file", info),
+                hashlib.sha256(path.read_bytes()).hexdigest(),
+            )
     return snapshot
 
 

@@ -16,9 +16,10 @@ For `scan`, `analyze`, `inspect`, `drift`, and `validate`, the CLI may read:
 - root `glossabet.json` and Glossabet-owned JSON artifacts when the selected
   command needs them;
 - an exact root `GLOSSARY.md` through a bounded safe-read path for presence,
-  size/digest metadata and, during validation, lexical term-presence only; its
-  words never enter repository evidence or agent context, and nested
-  `GLOSSARY.md` files are ignored;
+  size/digest metadata and, when it is valid UTF-8, lexical term-presence during
+  validation only; its words never enter repository evidence or agent context,
+  invalid UTF-8 is present-but-unreadable rather than complete evidence, and
+  nested `GLOSSARY.md` files are ignored;
 - optional `graphify-out/graph.json` as repository-controlled structural
   evidence; and
 - local Git commit and worktree status through a constrained `git` subprocess.

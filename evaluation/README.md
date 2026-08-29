@@ -32,7 +32,7 @@ which files are generated rather than edited.
 | Deterministic corpus | [`corpus.json`](corpus.json) and [`fixtures/`](fixtures/) | [`deterministic/`](deterministic/) with thin entry point [`run.py`](run.py) | [`results.json`](results.json) | `uv run python evaluation/run.py --verify-results evaluation/results.json` |
 | Installed Codex boundary | [`agent-scenarios.json`](agent-scenarios.json), [`agent-prompt.md`](agent-prompt.md), and [`agent-response-schema.json`](agent-response-schema.json) | [`codex/`](codex/) with thin entry point [`../scripts/agent_eval.py`](../scripts/agent_eval.py) | [`agent-results.json`](agent-results.json), [`agent-history.json`](agent-history.json), and Codex records in [`agent-runs/`](agent-runs/) | `uv run python scripts/agent_eval.py --verify-results evaluation/agent-results.json` |
 | Claude Code boundary | [`claude-scenarios.json`](claude-scenarios.json) and [`claude-response-schema.json`](claude-response-schema.json) | [`claude/`](claude/) with thin entry point [`../scripts/claude_eval.py`](../scripts/claude_eval.py) | [`claude-results.json`](claude-results.json), [`claude-history.json`](claude-history.json), and Claude records in [`agent-runs/`](agent-runs/) | `uv run python scripts/claude_eval.py --verify-history` |
-| Blinded reviewer | [`reviewer-prompt.md`](reviewer-prompt.md) and [`reviewer-response-schema.json`](reviewer-response-schema.json) | [`review.py`](review.py), which currently owns packet construction, live-host execution, comparison, and offline verification | [`reviewer-packet.json`](reviewer-packet.json), [`reviewer-results.json`](reviewer-results.json), and [`reviewer-reviewed-packets/`](reviewer-reviewed-packets/) | `uv run python evaluation/review.py --verify-results evaluation/reviewer-results.json` |
+| Blinded reviewer | [`reviewer-prompt.md`](reviewer-prompt.md) and [`reviewer-response-schema.json`](reviewer-response-schema.json) | [`reviewer/`](reviewer/) with thin entry point [`review.py`](review.py) | [`reviewer-packet.json`](reviewer-packet.json), [`reviewer-results.json`](reviewer-results.json), and [`reviewer-reviewed-packets/`](reviewer-reviewed-packets/) | `uv run python evaluation/review.py --verify-results evaluation/reviewer-results.json` |
 | Shared harness | No scenario input | [`harness/`](harness/) owns bounded JSON I/O, framed hashing, atomic replacement, and evaluator-source identity | No independent result | Exercised through every lane verifier |
 
 The deterministic lane uses no model provider. Its source adapter may perform
@@ -40,16 +40,22 @@ a confined public Git fetch when `--fetch` is explicit. Codex live process and
 temporary-plugin behavior belongs in `codex/host.py`; Claude live process,
 profile sanitization, and scratch ownership belongs in `claude/host.py`.
 Their `results.py` modules are the offline authorities and do not import the
-live host. The reviewer lane has not yet been split into a package, so
-`review.py` is both its current live and offline owner.
+live host. The reviewer follows the same boundary: `reviewer/host.py` owns the
+authenticated Codex invocation, `reviewer/results.py` owns comparison and
+offline verification, and `reviewer/cli.py` imports the host only for
+`--run-reviewer`. `reviewer/packet.py` is the lane's sole dependency on
+another evaluator package, through the deterministic lane's public result
+reader and verifier.
 
 ## Scenarios, fixtures, and schemas
 
 The three scenario sources serve different purposes:
 
 - `corpus.json` names pinned repositories, controlled fixtures, labels,
-  expected findings, and release thresholds. `fixtures/` contains only the
-  repository content and Graphify inputs for its local cases.
+  expected findings, and release thresholds. Source IDs are unique safe path
+  components because they also name evaluator cache or checkout state.
+  `fixtures/` contains only the repository content and Graphify inputs for its
+  local cases.
 - `agent-scenarios.json` declares the installed-Codex cases. `codex/fixtures.py`
   creates their temporary repositories; `codex/scenarios.py` validates the
   manifest and judges the bounded traces.
@@ -57,13 +63,28 @@ The three scenario sources serve different purposes:
   `claude/fixtures.py` creates their temporary repositories and
   `claude/scenarios.py` judges the response and event evidence.
 
+Codex and Claude fixture snapshots compare ordinary file contents plus
+directory and non-regular entry metadata. They never open special entries.
+Dotenv entry names are matched case-insensitively and contribute only their
+path key and bounded `lstat` metadata (type, mode, size, modification time,
+device, and inode). They are never opened or descended, so mutation detection
+does not weaken the evaluator's secret-file boundary.
+
+Tree identities are a different contract: case-insensitive dotenv and
+bytecode-cache names are excluded without a read, and real directories
+contribute no host-specific metadata. Every included symlink or non-regular
+entry is rejected before a content read; only included regular-file paths and
+bytes enter those digests.
+
 Files ending in `-response-schema.json` constrain a model host's structured
 response. They are not schemas for the retained result files. Persisted result,
 history, and packet schema versions are owned by the corresponding lane's
-`contract.py`/`results.py` code, or by `review.py` for the reviewer lane. A
-persisted-schema change updates its producer, verifier, tests, recorded
-identity, and compatibility policy together; it is never performed by editing
-one retained JSON document.
+`contract.py`/`results.py` code. A persisted-schema change updates its
+producer, verifier, tests, recorded identity, and compatibility policy
+together; it is never performed by editing one retained JSON document.
+Reviewer packet/result versions live in `reviewer/contract.py`, with packet
+validation in `reviewer/packet.py` and result validation in
+`reviewer/results.py`.
 
 ## Retained baselines and archives
 

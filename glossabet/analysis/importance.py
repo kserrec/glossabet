@@ -159,12 +159,14 @@ def _term_candidates(token_counts: Counter[str],
 
 def _ranked(
     candidates: Iterable[C], cap: int, key: Callable[[C], SupportsRichComparison], label: str,
-    *, incomplete_reasons: Iterable[str] = (),
+    *, total_items_exact: bool = True,
+    incomplete_reasons: Iterable[str] = (),
 ) -> tuple[list[C], CoverageLedger]:
     return capped_collection(
         sorted(candidates, key=key),
         cap,
         cap_reason=f"{label} candidate detail cap is {cap} items",
+        total_items_exact=total_items_exact,
         incomplete_reasons=incomplete_reasons,
     )
 
@@ -205,6 +207,12 @@ def build_naming_candidates(imports_section: ImportsSection,
             f"{untagged_tokens_excluded} untagged vocabulary token(s) "
             "excluded from the domain-only term naming candidate pool"
         )
+    oversized_identifiers = vocabulary.oversized_identifiers
+    if oversized_identifiers:
+        term_input_reasons.append(
+            f"{oversized_identifiers} identifier spelling(s) omitted identifier "
+            "token tails, so term naming candidates are a lower bound"
+        )
     module_input_reasons = []
     if imports_section.get("edges_truncated"):
         module_input_reasons.append(
@@ -226,6 +234,7 @@ def build_naming_candidates(imports_section: ImportsSection,
         policy.term_candidate_cap,
         key=lambda candidate: (-candidate["score"], candidate["term"]),
         label="term naming",
+        total_items_exact=not oversized_identifiers,
         incomplete_reasons=term_input_reasons,
     )
     return {

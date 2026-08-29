@@ -47,6 +47,36 @@ def test_register_statistics(tmp_path):
     assert suffixes["service"] == 3 and suffixes["total"] == 2
 
 
+def test_register_does_not_retokenize_an_omitted_identifier_tail():
+    core = "_".join(f"part{i}" for i in range(64))
+    vocabulary = ProductionVocabulary.from_files(
+        [
+            (
+                "a.py",
+                ".",
+                "python",
+                {
+                    f"one_{core}_tailtoken": 1,
+                    f"two_{core}_tailtoken": 1,
+                },
+            )
+        ]
+    )
+
+    terminology = build_terminology(vocabulary, Counter({"tailtoken": 2}))
+    register = terminology["register"]
+
+    assert "tailtoken" not in {
+        item["token"] for item in register["common_suffix_tokens"]
+    }
+    suffix_coverage = register["coverage"]["common_suffix_tokens"]
+    assert suffix_coverage["total_items_exact"] is False
+    assert any("identifier token" in reason for reason in suffix_coverage["reasons"])
+    for coverage in terminology["layers"]["coverage"].values():
+        assert coverage["total_items_exact"] is False
+        assert any("identifier token" in reason for reason in coverage["reasons"])
+
+
 def test_register_filters_ambiguous_flat_prose_and_language_spellings(tmp_path):
     (tmp_path / "app.py").write_text(
         "# the Project\n"

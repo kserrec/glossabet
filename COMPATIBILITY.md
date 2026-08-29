@@ -181,6 +181,9 @@ tests that assemble an `EvidenceDocument` in memory:
 - when `production_complete` is absent, a legacy `complete: true` repository
   budget also proves its production subset complete; an explicit
   `production_complete` value takes precedence; and
+- a missing `oversized_identifiers` counter means that supported minimal
+  in-memory evidence recorded no identifier-tail omission; current schema-17
+  evidence always supplies the counter; and
 - the optional vocabulary `truncated` marker may be absent.
 
 The CLI does not use these rules to open an arbitrary old

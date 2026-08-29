@@ -26,7 +26,7 @@ from evaluation.codex.contract import (
     fail,
     write_json,
 )
-from evaluation.harness.io import changed_paths, walk_paths
+from evaluation.harness.io import changed_paths, entry_stat_snapshot, walk_paths
 from glossabet.corpus.scanner import is_sensitive
 from glossabet.runtime.artifacts import MAX_JSON_BYTES
 
@@ -220,23 +220,30 @@ def make_scenario(root: Path, scenario_id: str) -> None:
 def snapshot(root: Path) -> dict[str, tuple]:
     snapshot: dict[str, tuple] = {}
     for path in walk_paths(
-        root, excluded_directory=".git", skip_dotenv=False
+        root, excluded_directory=".git", skip_dotenv=False,
+        include_directories=True,
     ):
         relative = path.relative_to(root).as_posix()
         info = path.lstat()
+        sensitive = is_sensitive(path.name)
         if path.is_symlink():
-            snapshot[relative] = ("symlink", os.readlink(path))
-        elif is_sensitive(path.name):
             snapshot[relative] = (
-                "sensitive-stat",
-                info.st_size,
-                stat.S_IMODE(info.st_mode),
-                info.st_mtime_ns,
+                entry_stat_snapshot("sensitive-symlink-stat", info)
+                if sensitive
+                else (*entry_stat_snapshot("symlink", info), os.readlink(path))
             )
+        elif stat.S_ISDIR(info.st_mode):
+            label = (
+                "sensitive-directory-stat" if sensitive else "directory"
+            )
+            snapshot[relative] = entry_stat_snapshot(label, info)
+        elif not stat.S_ISREG(info.st_mode):
+            snapshot[relative] = entry_stat_snapshot("special-stat", info)
+        elif sensitive:
+            snapshot[relative] = entry_stat_snapshot("sensitive-stat", info)
         else:
             snapshot[relative] = (
-                "file",
-                info.st_size,
+                *entry_stat_snapshot("file", info),
                 hashlib.sha256(path.read_bytes()).hexdigest(),
             )
     return snapshot
@@ -246,6 +253,43 @@ def unexpected_writes(
     before: dict[str, tuple], after: dict[str, tuple]
 ) -> list[str]:
     changed = changed_paths(before, after)
-    return [
-        path for path in changed if path != "glossabet-out/evidence.json"
-    ]
+    evidence_path = "glossabet-out/evidence.json"
+    parent_path = "glossabet-out"
+    allowed: set[str] = set()
+
+    after_evidence = after.get(evidence_path)
+    if evidence_path in changed and after_evidence and after_evidence[0] == "file":
+        allowed.add(evidence_path)
+        changed_below_parent = {
+            path
+            for path in changed
+            if path == parent_path or path.startswith(f"{parent_path}/")
+        }
+        before_parent = before.get(parent_path)
+        after_parent = after.get(parent_path)
+        parent_metadata_only = (
+            before_parent is not None
+            and after_parent is not None
+            and before_parent[0] == after_parent[0] == "directory"
+            and before_parent[6] != 0
+            and after_parent[6] != 0
+            and tuple(before_parent[index] for index in (1, 2, 5, 6))
+            == tuple(after_parent[index] for index in (1, 2, 5, 6))
+        )
+        new_parent_contains_only_evidence = (
+            before_parent is None
+            and after_parent is not None
+            and after_parent[0] == "directory"
+            and {
+                path
+                for path in after
+                if path.startswith(f"{parent_path}/")
+            }
+            == {evidence_path}
+        )
+        if changed_below_parent == {parent_path, evidence_path} and (
+            parent_metadata_only or new_parent_contains_only_evidence
+        ):
+            allowed.add(parent_path)
+
+    return [path for path in changed if path not in allowed]

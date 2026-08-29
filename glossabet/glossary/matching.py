@@ -13,6 +13,7 @@ from collections import Counter
 from collections.abc import Iterable
 from typing import TypedDict
 
+from glossabet.analysis.evidence_facts import oversized_identifier_count
 from glossabet.analysis.evidence_facts import (
     production_corpus_complete as evidence_production_corpus_complete,
 )
@@ -26,7 +27,12 @@ from glossabet.analysis.evidence_types import (
     VocabularyEntry,
 )
 from glossabet.corpus.imports import module_of
-from glossabet.corpus.tokenize import doc_words, tokenize_identifier, tokenize_term
+from glossabet.corpus.tokenize import (
+    MAX_IDENTIFIER_TOKENS,
+    doc_words,
+    tokenize_identifier_bounded,
+    tokenize_term,
+)
 from glossabet.glossary.model import ScopeEvidence
 from glossabet.glossary.scope import path_in_scope, scope_evidence
 from glossabet.runtime.coverage import (
@@ -217,6 +223,8 @@ class EvidenceIndex:
         self.token_section = evidence["vocabulary"]["tokens"]
         self.identifier_section = evidence["vocabulary"]["identifiers"]
         self.doc_section = evidence["vocabulary"]["doc_terms"]
+        oversized_identifiers = oversized_identifier_count(evidence)
+        self.identifier_tokens_complete = oversized_identifiers == 0
         self.token_entries = {
             entry["term"]: entry for entry in self.token_section["items"]
         }
@@ -251,13 +259,20 @@ class EvidenceIndex:
         for entry in self.identifier_section["items"]:
             unit = entry.get("tokens")
             if not isinstance(unit, list):
-                unit = tokenize_identifier(entry["name"])
+                unit, _truncated = tokenize_identifier_bounded(
+                    entry["name"], MAX_IDENTIFIER_TOKENS
+                )
             units.append((entry, unit))
         self._compound_matches, processed_starts, total_starts = (
             _match_compounds(units, supported, compound_start_budget)
         )
 
         work_reasons = []
+        if oversized_identifiers:
+            work_reasons.append(
+                f"{oversized_identifiers} identifier spelling(s) omitted "
+                "identifier token tails before lexical matching"
+            )
         if processed_starts < total_starts:
             work_reasons.append(
                 "compound lexical matching reached its "
@@ -273,6 +288,7 @@ class EvidenceIndex:
             "compound_match_positions": coverage_ledger(
                 total_starts,
                 processed_starts,
+                total_items_exact=self.identifier_tokens_complete,
                 reasons=work_reasons,
             ),
             "compound_terms": coverage_ledger(
@@ -301,7 +317,9 @@ class EvidenceIndex:
         self, term: str, scope: tuple[str, ...] | None = None
     ) -> TermOccurrence:
         wanted = tokenize_term(term)
-        corpus_complete = self.production_corpus_complete
+        corpus_complete = (
+            self.production_corpus_complete and self.identifier_tokens_complete
+        )
         empty: TermOccurrence = {
             "term_tokens": wanted,
             "match_kind": "token" if len(wanted) <= 1 else "lexical-unit",

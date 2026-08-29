@@ -1,6 +1,6 @@
 # Glossabet — Current Roadmap
 
-Last updated: 2026-08-28.
+Last updated: 2026-08-29.
 
 Glossabet 0.1.0 is an unreleased source alpha. The implementation and local
 release machinery exist, but Kyle is still testing the product as its owner.
@@ -34,7 +34,7 @@ Every future change must preserve these constraints:
 - External account use, paid/live evaluation, publication, tags, releases, and
   repository-setting changes require separate explicit authorization.
 
-## 0. Targeted hardening and cleanup (active)
+## 0. Targeted hardening and cleanup (complete)
 
 **Outcome:** the reviewed 0.1.0 alpha keeps its existing architecture while
 its declared platform support, analytical completeness contracts, boundary
@@ -1137,16 +1137,17 @@ chunk is Step 4.1.
   skill text changed.
 
   Planning classification followed observed completion, not directory names.
-  `docs/plans/evaluation-modularization.md` is still active: its reviewer split
-  and evaluation mypy/documentation passes remain open in this roadmap, and
-  `evaluation/review.py` remains a 947-line combined lane. It therefore stays
-  packaged as a supporting specification, but no longer presents its own
-  status checklist; `PLAN.md` is explicitly the sole current roadmap and
-  status record. All four files in `docs/history/` already carried historical
-  warnings and were already excluded from source distributions. The one
-  retained transcript sentence that still called itself the authoritative
-  roadmap is now in the past tense. No plan, archive, raw run, history, packet,
-  or other reproducibility evidence moved or was deleted.
+  At this pass's close, `docs/plans/evaluation-modularization.md` was still
+  active because its reviewer split and evaluation mypy/documentation passes
+  remained open, and `evaluation/review.py` was still a 947-line combined
+  lane. Pass 9 later completed that split; Pass 10 remains open. The supporting
+  specification stays packaged but does not present its own status checklist;
+  `PLAN.md` is explicitly the sole current roadmap and status record. All four
+  files in `docs/history/` already carried historical warnings and were already
+  excluded from source distributions. The one retained transcript sentence
+  that still called itself the authoritative roadmap is now in the past tense.
+  No plan, archive, raw run, history, packet, or other reproducibility evidence
+  moved or was deleted.
 
   A red-first release-policy test failed against the old authority wording. It
   now requires the root roadmap, the supporting-spec classification, a
@@ -1173,10 +1174,12 @@ chunk is Step 4.1.
 
 ### Phase 6 — cold review and stopping decision
 
-- [ ] **Step 6.1 — complete regression and deterministic-artifact surface.**
-  Local implementation, regression, artifact comparison, and pre-closure
-  distribution work are complete; the post-change hosted matrix remains the
-  completion gate (2026-08-29).
+- [x] **Step 6.1 — complete regression and deterministic-artifact surface.**
+  Local implementation, regression, artifact comparison, hosted verification,
+  and pre-closure distribution work are complete (2026-08-29). Closure uses
+  this final wording to regenerate the producer-owned deterministic evidence
+  and rebuild the release artifacts to a fixed point; the checkbox records
+  their verified completion.
 
   The verified starting hosted run was
   [33232538121](https://github.com/kserrec/glossabet/actions/runs/33232538121)
@@ -1242,19 +1245,83 @@ chunk is Step 4.1.
   invocation, removal, and exact-state cleanup smoke passed. Rebuilding the
   checked-in plugin produced no diff.
 
-  Completion still requires a hosted run containing this test-only change to
-  pass all fifteen Python/operating-system lanes, static checks, and the
-  dependent package job. After that observed result, closure must mark this
-  Step complete, regenerate deterministic evidence after the final wording,
-  rebuild the wheel/plugin/source distribution to a fixed point, and rerun
-  current parity and smoke checks. No commit or push has been made.
-- [ ] **Step 6.2 — fresh inheritance review, residue audit, and stop.** A fresh
-  reviewer uses only current source and top-level docs to identify subsystem,
-  I/O, validation, matching, partial-evidence, canonical/derived,
-  compatibility, and safe-change ownership. Remove only proven residue from
-  this work, confirm no category-one defect or worthwhile category-two
-  simplification remains, record disproportionate rejections, and declare the
-  clean local optimum without beginning another speculative refactor cycle.
+  The test-only portability change was committed as `fad213c` and pushed to
+  `main`. Hosted
+  [run 33251759554](https://github.com/kserrec/glossabet/actions/runs/33251759554)
+  succeeded on exact commit `fad213c6d56c7bc4212541cce14c13e849ba4969`:
+  static checks, all fifteen Python 3.10–3.14/Linux/macOS/Windows lanes, and the
+  dependent evidence, build, distribution-parity, and wheel-smoke job passed.
+- [x] **Step 6.2 — fresh inheritance review, residue audit, and stop.** The
+  verified starting point was exact local and remote commit
+  `fad213c6d56c7bc4212541cce14c13e849ba4969`, plus only the intentional
+  uncommitted Step 6.1 closure wording and producer-owned deterministic result.
+  A temporary source-only Graphify view found 117 code files, 1,628 nodes,
+  4,582 edges, 92 communities, and no import cycle; it remained under `/tmp`
+  and created no repository artifact. A reviewer with no inherited
+  conversation then read only current source and top-level documentation and
+  mapped subsystem, I/O, validation, matching, partial-evidence,
+  canonical/derived, compatibility, safe-write, and evaluation ownership.
+
+  The pass proved and closed the following residue before declaring a stop:
+
+  - scanner admission now requires a regular direct entry or regular confined
+    symlink target before size/read work, so source-shaped FIFOs, sockets, and
+    devices are visible omissions instead of blocking reads;
+  - deterministic source IDs are unique safe single path components before
+    they can name checkout/cache state;
+  - managed-context precommit now binds device/inode identity as well as bytes
+    and mode, and the installer rechecks whether a target appeared between its
+    initial authorization decision and atomic commit;
+  - identifier folding consumes one retained 64-token prefix per spelling,
+    reuses it across vocabulary, evidence, terminology, naming, and matching,
+    and propagates omitted-tail inexactness through token, suffix, layer,
+    nomination, and absence ledgers; the supported minimal-evidence fallback
+    is owned and documented by `analysis.evidence_facts`;
+  - invalid-UTF-8 root `GLOSSARY.md` content is present-but-unreadable and can
+    never yield a complete lexical-divergence result;
+  - Codex and Claude mutation snapshots include directory and non-regular
+    metadata, detect chmod/identity/empty-directory changes, classify dotenv
+    names case-insensitively, never open or descend into dotenv entries, never
+    open special entries, and conditionally pair the one allowed
+    `glossabet-out/evidence.json` write with only a proven stable or newly
+    constrained parent directory;
+  - evaluator tree identities reject every included symlink or non-regular
+    entry before content reads and hash only host-independent regular-file
+    paths and bytes; and
+  - contribution guidance no longer makes the false content-level promise
+    that no secrets are ingested: it now matches the implemented path-based
+    exclusion boundary and warns that ordinary included source may contain
+    secrets.
+
+  The final fresh reviewer rechecked every repair and interaction against the
+  live diff, ran 31 focused tests, and found no unresolved category-one
+  correctness, security, or trust defect and no worthwhile category-two
+  simplification. The clean local optimum keeps scanner/config/budget ownership
+  in `glossabet.corpus`, token semantics in `corpus.tokenize`, the one retained
+  prefix in `analysis.vocabulary`, omission ledgers in their analysis owners,
+  matching in `glossary.matching`, tolerant reads in `analysis.evidence_facts`,
+  host writes in `agent.context_sync`, install authorization in
+  `install.installer`, and shared evaluator mechanics in `evaluation.harness`
+  while each host lane retains its own policy and failure vocabulary.
+
+  Disproportionate changes were explicitly rejected: one generic coverage or
+  omission algebra; merging analysis/glossary/agent facades; unifying the two
+  host snapshots despite their different policies; replacing snapshot tuples
+  with a new data class; merging independent strict-UTF-8 checks; chunking
+  Unicode normalization; an `openat`/`O_NOFOLLOW` filesystem rewrite; expanding
+  fixed Linux evaluation IDs into a generic Windows-name policy; schema bumps
+  for an already published identifier bound; removing compatibility aliases or
+  fallbacks before their criteria; and cosmetic/helper churn without a second
+  owner or behavior to simplify.
+
+  The executable changes preserve evidence schema 17 and every other persisted
+  product/evaluation shape, public command set, zero runtime dependencies, and
+  the established architecture. Final closure uses this exact roadmap wording
+  to regenerate the seven-case deterministic result from pinned public sources,
+  rerun all offline genuineness verifiers, run the complete test/static/workflow
+  gates, and rebuild the release wheel, source distribution, and checked-in
+  plugin to a verified fixed point. No live model, paid service, authenticated
+  host, external account, publication, tag, commit, or push is used.
 
 ## 1. Complete the owner walkthrough
 
@@ -1420,18 +1487,35 @@ step and stops); each pass ends green with no recorded-evidence change.
   (2026-08-22). `evaluation/deterministic/results.py` (aggregate,
   thresholds, genuineness, currency, `verify_results`), `runner.py`
   (per-source evaluation and run composition), `cli.py`; `evaluation/run.py`
-  is an 18-line wrapper; `review.py` and the tests import the new owners.
+  is an 18-line wrapper. At Pass 8's close, `review.py` and the tests imported
+  the new deterministic owners; Pass 9 later moved reviewer ownership behind
+  its own thin wrapper.
   Both verifiers and the strict `--current` stale report are unchanged; no
   recorded JSON changed. **Calibration expectation changed with Kyle's
   authorization:** the self-nomination check is now 6/8 with
   `forbidden:file` recorded as a second open miss — see the heuristic item
   below. `corpus.json` is untouched; `file` stays forbidden.
-- [ ] Pass 9 — split the reviewer lane; thin wrapper; explicit narrow
-  dependency on deterministic result reading.
-- [ ] Pass 10 — mypy gate for `evaluation/` and the wrappers, dependency
-  tests, sdist/wheel checks, and documentation (`ARCHITECTURE.md`,
-  `docs/CODE-WALKTHROUGH.md`, `EVALUATION.md`, command docs; drop the
-  duplicated "Persisted documents are…" line).
+- [x] Pass 9 — split the reviewer lane; thin wrapper; explicit narrow
+  dependency on deterministic result reading (2026-08-29).
+  `evaluation/reviewer/` now owns its contract and paths, blinded-packet
+  construction, pure trace rules, comparison and offline verification, live
+  Codex host, and CLI; `evaluation/review.py` is an 18-line entry wrapper.
+  The CLI imports the live host only for `--run-reviewer`, and boundary tests
+  prove that ordinary verification neither imports that host nor spawns a
+  process or reads user state. The lane's sole cross-lane dependency is
+  `evaluation.deterministic.results`, whose public `read_results` boundary
+  now shares the deterministic verifier's exact bounded reader. All 24
+  retained evaluation JSON files stayed byte-identical. With Kyle's explicit
+  authorization, the output-neutral routine self-context dogfood target rose
+  from 100,000 to 110,000 bytes after the package layout measured 100,805;
+  serialization and the separate 1,000,000-byte hard limit are unchanged.
+- [ ] Pass 10 — extend the mypy gate to `evaluation/` and the wrappers, finish
+  the remaining dependency and sdist/wheel checks, and re-verify documentation
+  against the typed/package result. The 2026-08-29 wrapup already synchronized
+  reviewer ownership in `ARCHITECTURE.md`, `docs/CODE-WALKTHROUGH.md`,
+  `EVALUATION.md`, `evaluation/README.md`, and `CHANGELOG.md`; the previously
+  duplicated "Persisted documents are…" text is already singular. Do not
+  rewrite those accurate sections without a concrete Pass 10 change.
 
 ### Nomination heuristic open findings
 

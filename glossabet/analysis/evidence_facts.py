@@ -28,6 +28,23 @@ def skipped_path_entries(evidence: EvidenceDocument, kind: str) -> list[object]:
     return list(entries) if isinstance(entries, list) else []
 
 
+def oversized_identifier_count(evidence: EvidenceDocument) -> int:
+    """Return the current counter or zero for supported minimal evidence.
+
+    Direct pure-builder callers historically assembled only the ledgers their
+    consumer needed. Absence therefore means that no identifier-tail omission
+    was recorded; current schema-17 evidence always supplies the counter.
+    """
+    document: Mapping[str, object] = evidence
+    skipped = document.get("skipped")
+    value = (
+        skipped.get("oversized_identifiers")
+        if isinstance(skipped, Mapping)
+        else None
+    )
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
 def vocabulary_truncation(
     evidence: EvidenceDocument, name: VocabularyName
 ) -> TruncationMarker | None:

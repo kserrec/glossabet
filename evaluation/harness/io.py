@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import uuid
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -21,11 +22,25 @@ _SHA256_HEX = re.compile(r"[0-9a-f]{64}")
 
 def dotenv_part(name: str) -> bool:
     """A path component naming a dotenv variant, which no lane ever reads."""
+    lower = name.casefold()
     return (
-        name == ".env"
-        or name.endswith(".env")
-        or name.startswith(".env.")
-        or ".env." in name
+        lower == ".env"
+        or lower.endswith(".env")
+        or lower.startswith(".env.")
+        or ".env." in lower
+    )
+
+
+def entry_stat_snapshot(label: str, info: os.stat_result) -> tuple:
+    """Filesystem metadata shared by agent-lane mutation snapshots."""
+    return (
+        label,
+        stat.S_IFMT(info.st_mode),
+        stat.S_IMODE(info.st_mode),
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_dev,
+        info.st_ino,
     )
 
 
@@ -56,35 +71,73 @@ def framed_digest(records: Iterable[tuple[str, bytes]]) -> str:
 
 
 def walk_paths(
-    root: Path, *, excluded_directory: str, skip_dotenv: bool = True
+    root: Path,
+    *,
+    excluded_directory: str,
+    skip_dotenv: bool = True,
+    include_directories: bool = False,
+    additionally_excluded_directories: Iterable[str] = (),
 ) -> list[Path]:
-    """Deterministic file walk skipping one directory name.
+    """Deterministic entry walk skipping named directory trees.
 
     Dotenv names are skipped by default so identity digests never touch
     them; a write-diff snapshot may opt back in to track sensitive files by
-    stat only.
+    metadata only. Dotenv directories are never descended into. Directory
+    entries are optional because content digests consume regular files only,
+    while write-diff snapshots must observe empty-directory mutations.
     """
-    files: list[Path] = []
+    entries: list[Path] = []
+    excluded_directories = {
+        excluded_directory,
+        *additionally_excluded_directories,
+    }
     for current, directories, names in os.walk(root, followlinks=False):
-        directories[:] = sorted(
-            name
-            for name in directories
-            if name != excluded_directory and not dotenv_part(name)
-        )
+        kept_directories = []
+        for name in sorted(directories):
+            if name in excluded_directories:
+                continue
+            path = Path(current) / name
+            if dotenv_part(name):
+                if include_directories and not skip_dotenv:
+                    entries.append(path)
+                continue
+            if include_directories:
+                entries.append(path)
+            kept_directories.append(name)
+        directories[:] = kept_directories
         for name in sorted(names):
             if not skip_dotenv or not dotenv_part(name):
-                files.append(Path(current) / name)
-    return files
+                entries.append(Path(current) / name)
+    return entries
 
 
 def tree_sha256(root: Path) -> str:
     """Framed digest of every regular file under ``root`` except
     ``__pycache__`` and dotenv names, in repository-relative sorted order."""
-    files = walk_paths(root, excluded_directory="__pycache__")
-    ordered = sorted(files, key=lambda item: item.relative_to(root).as_posix())
-    return framed_digest(
-        (path.relative_to(root).as_posix(), path.read_bytes()) for path in ordered
+    try:
+        root_info = root.lstat()
+    except OSError as exc:
+        raise OSError(f"tree is unreadable: {root}: {exc}") from exc
+    if not stat.S_ISDIR(root_info.st_mode):
+        raise OSError(f"tree is missing, symlinked, or non-directory: {root}")
+    entries = walk_paths(
+        root, excluded_directory="__pycache__", include_directories=True
     )
+    records: list[tuple[str, bytes]] = []
+    for path in sorted(
+        entries, key=lambda item: item.relative_to(root).as_posix()
+    ):
+        relative = path.relative_to(root).as_posix()
+        try:
+            info = path.lstat()
+        except OSError as exc:
+            raise OSError(f"tree entry is unreadable: {relative}: {exc}") from exc
+        if stat.S_ISDIR(info.st_mode):
+            continue
+        if not stat.S_ISREG(info.st_mode):
+            raise OSError(f"tree contains a non-regular entry: {relative}")
+        records.append((relative, path.read_bytes()))
+    return framed_digest(records)
 
 
 def read_json_object(

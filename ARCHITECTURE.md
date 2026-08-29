@@ -37,6 +37,16 @@ reproduce its claims. The application wheel carries only runtime product code
 and the canonical skill. Repository-only construction history remains
 available from version control without becoming published package guidance.
 
+The four evaluator entry files are thin command wrappers over lane packages:
+`evaluation/deterministic/`, `evaluation/codex/`, `evaluation/claude/`, and
+`evaluation/reviewer/`. Each lane keeps offline result verification outside
+its live-host module; the reviewer CLI imports its host only for an explicitly
+requested live run. Evaluator identities cover each wrapper, its whole lane
+package, and the shared harness modules it imports. Cross-lane imports are
+forbidden except for the reviewer's narrow use of the deterministic result
+reader and verifier. [`evaluation/README.md`](evaluation/README.md) is the
+detailed authority map.
+
 ## Composition, not a global layer stack
 
 The package is a small composition root plus feature-oriented packages. Some
@@ -118,7 +128,12 @@ identity failures remain uncertainty and fail closed.
 [`corpus.config`](glossabet/corpus/config.py) reads the optional root
 `glossabet.json`. [`corpus.scanner`](glossabet/corpus/scanner.py) performs a
 manual deterministic walk, classifies paths, enforces file/byte/entry budgets,
-and records every exclusion or unknown remainder. Per-file extraction lives in
+admits only regular direct files or regular confined symlink targets, and
+records every exclusion, non-regular entry, or unknown remainder. Identifier
+tokenization retains one 64-token prefix per spelling and lazily stops
+consuming accepted tokens after proving an omission; vocabulary owns and reuses
+that prefix across evidence and terminology consumers instead of repeating
+token work. Per-file extraction lives in
 [`corpus.extraction`](glossabet/corpus/extraction.py); the user-owned cache in
 [`corpus.cache`](glossabet/corpus/cache.py) reuses results only when the current
 content digest matches.
@@ -166,7 +181,9 @@ and are not extended with new concepts. The broader `corpus.scanner` and
 `analysis.graphify` facades remain intentional composition boundaries.
 
 [`glossary.matching.EvidenceIndex`](glossabet/glossary/matching.py) creates the
-bounded lexical lookup shared by drift and reconciliation.
+bounded lexical lookup shared by drift and reconciliation. It inherits
+identifier-tail omissions from vocabulary, so a lookup that could depend on an
+omitted token remains inexact rather than becoming an absence claim.
 [`glossary.drift.build_drift`](glossabet/glossary/drift.py) reports changes in
 usage of already governed vocabulary: parallel terms, watched aliases still in
 use, fading canonical terms, and overloaded canonical terms.
@@ -256,7 +273,8 @@ deprecation horizons, and removal criteria are defined in
   are security requirements, not convenience abstractions.
 - Traversal, vocabulary, matching, Graphify, findings, brief, and context caps
   all carry coverage ledgers. A lower bound is never serialized as an exact
-  total.
+  total. A clipped identifier tail propagates to every affected token, suffix,
+  layer, naming, and matching ledger.
 - Occurrence scalars carry literal `count_exact`, `files_exact`, and
   `modules_exact` truth flags. `locations_truncated` governs only the bounded
   location display, so final display sampling cannot make an already-computed

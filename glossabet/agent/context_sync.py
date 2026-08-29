@@ -45,11 +45,14 @@ def _write_bytes_atomic(
     mode: int,
     *,
     expected: bytes | None,
+    expected_identity: tuple[int, int] | None,
 ) -> None:
     def _require_unchanged_target() -> None:
-        current, current_mode = read_regular_target(path)
-        if current != expected or (
-            expected is not None and current_mode != mode
+        current, current_mode, current_identity = read_regular_target(path)
+        if (
+            current != expected
+            or current_identity != expected_identity
+            or (expected is not None and current_mode != mode)
         ):
             raise ContextSyncError(
                 f"{path.name} changed during synchronization; no update was made"
@@ -93,7 +96,7 @@ def sync_context(
         raise ContextSyncError(f"unsupported agent: {agent}") from exc
     root = root.resolve()
     target = root / filename
-    existing_bytes, mode = read_regular_target(target)
+    existing_bytes, mode, identity = read_regular_target(target)
     if existing_bytes is None:
         existing = ""
     else:
@@ -136,6 +139,7 @@ def sync_context(
             payload,
             mode,
             expected=existing_bytes,
+            expected_identity=identity,
         )
     except OSError as exc:
         raise ContextSyncError(f"cannot update {filename}: {exc}") from exc

@@ -972,6 +972,43 @@ def test_over_long_compound_terms_are_reported_as_unmatched_not_absent(tmp_path)
             if f["term"] == over and f["signal_strength"] == "strong"] == []
 
 
+def test_omitted_identifier_tail_tokens_make_lexical_absence_inexact(tmp_path):
+    """The per-identifier token cap is an omission boundary, not evidence
+    that a canonical token in the unseen tail is absent."""
+    from glossabet.analysis.vocabulary import MAX_IDENTIFIER_TOKENS
+
+    name = "_".join([f"part{i}" for i in range(MAX_IDENTIFIER_TOKENS)] + ["tailterm"])
+    (tmp_path / "a.py").write_text(name + " = 1\n")
+    evidence = build_evidence(tmp_path)
+
+    matcher = EvidenceIndex(evidence, ["tailterm"])
+    occurrence = matcher.code_term_occurrence("tailterm")
+    assert occurrence["count"] == 0
+    assert occurrence["count_exact"] is False
+    position_coverage = matcher.coverage["compound_match_positions"]
+    assert position_coverage["total_items_exact"] is False
+    assert any("identifier token" in reason for reason in position_coverage["reasons"])
+
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": "tail",
+                "term": "tailterm",
+                "definition": "Tail term.",
+                "status": "canonical",
+            }
+        ],
+    }
+    fading = build_drift(evidence, glossary)["canonical_fading"]
+    assert fading["items"] == []
+    assert fading["coverage"]["complete"] is False
+    assert any(
+        "canonical-fading check(s) suppressed" in reason
+        for reason in fading["coverage"]["reasons"]
+    )
+
+
 def test_parallel_term_findings_are_ordered_strongest_first_under_the_cap(
     tmp_path, monkeypatch
 ):

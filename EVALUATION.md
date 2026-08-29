@@ -17,6 +17,9 @@ results are immutable testimony about the exact inputs identified inside each
 JSON file. During ordinary development they may lag the source tree but must
 remain internally genuine. A release requires separate `--current` checks and,
 when needed, newly authorized live evidence against the exact candidate.
+Every deterministic source ID is unique and must be one safe path component;
+absolute, parent, nested, and separator-bearing IDs are rejected before they
+can name evaluator cache or checkout state.
 
 ## Deterministic corpus
 
@@ -121,11 +124,14 @@ comparison. It is not an ordinary per-edit gate.
 
 ## Blinded usefulness review
 
-[`evaluation/review.py`](evaluation/review.py) builds a packet that withholds
-the primary useful/not-useful labels, then records one separate ephemeral Codex
-review in an isolated temporary directory. The reviewer receives only the
-prompt, response schema, and bounded packet; its sandbox is read-only and the
-harness rejects unrelated tool behavior.
+[`evaluation/review.py`](evaluation/review.py) is the thin command entry point
+for [`evaluation/reviewer/`](evaluation/reviewer/). `packet.py` builds a packet
+that withholds the primary useful/not-useful labels; `host.py` records one
+separate ephemeral Codex review in an isolated temporary directory; and
+`results.py` owns comparison and offline verification. The reviewer receives
+only the prompt, response schema, and bounded packet; its sandbox is read-only
+and the harness rejects unrelated tool behavior. Offline verification never
+imports the live host.
 
 [`evaluation/reviewer-results.json`](evaluation/reviewer-results.json) records
 20 judgments: 17 useful, a 0.85 secondary-usefulness rate, and 0.85 agreement
@@ -176,7 +182,20 @@ input identities and immutable raw bytes are retained by
 passes and misses remain there instead of being selected away. Safety gates
 cover canary disclosure, unexpected repository writes, forbidden inspection
 after a failed boundary, and cleanup of the evaluator-owned temporary plugin
-state.
+state. Before/after snapshots include ordinary directory and non-regular entry
+metadata so empty-directory or FIFO/socket/device mutations are visible without
+opening special files. Dotenv entry names are matched case-insensitively and
+represented only by their path key and bounded `lstat` metadata—type, mode,
+size, modification time, device, and inode—and are never opened or descended.
+A valid `inspect` write may change
+`glossabet-out/evidence.json` and its parent directory metadata; the parent is
+accepted only when that exact pair changed and its type, mode, device, and inode
+identity stayed stable, or when a new parent contains only the allowed file.
+Separate plugin/source tree identities first exclude case-insensitive dotenv
+and bytecode-cache names without reading them, ignore real directory structure,
+reject every included symlink or non-regular entry before a content read, and
+hash included regular-file paths and bytes only so the digest remains
+host-independent.
 
 The result is evidence for one host version and operating system, not a support
 claim for other Codex versions, Windows/macOS plugin lifecycle, ChatGPT, or a
@@ -204,6 +223,12 @@ manual owner session on Claude Code 2.1.235/Linux provided partial evidence
 that SessionStart vocabulary and `/glossabet` were available, but it allowed
 project reads/tools and did not capture the controlled negative case or a
 digest-bound transcript.
+
+Claude fixture mutation snapshots use the same directory, non-regular, and
+dotenv-metadata-only contract described for the Codex lane; special entries
+and dotenv contents are never opened. After its named exclusions, Claude plugin
+identity likewise rejects included symlinks and non-regular entries before
+hashing regular-file paths and bytes.
 
 [`evaluation/claude-results.json`](evaluation/claude-results.json) records the
 one controlled three-call attempt honestly as 0/3. All processes stopped before

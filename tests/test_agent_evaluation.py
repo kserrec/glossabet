@@ -2,6 +2,8 @@
 
 import hashlib
 import json
+import os
+import stat
 from copy import deepcopy
 from pathlib import Path
 
@@ -18,7 +20,7 @@ from evaluation.codex.contract import (
     HOOK_TERM,
     AgentEvaluationError,
 )
-from evaluation.codex.fixtures import make_scenario, snapshot
+from evaluation.codex.fixtures import make_scenario, snapshot, unexpected_writes
 from evaluation.codex.history import (
     AbortedRun,
     append_attempt,
@@ -44,6 +46,7 @@ from evaluation.codex.runner import run_missing_cli_scenario
 from evaluation.codex.scenarios import evaluate_scenario, evaluate_session_hook
 from evaluation.codex.trace import installed_version_command
 from evaluation.harness.io import tree_sha256
+from glossabet.cli import main as glossabet_main
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "evaluation" / "agent-scenarios.json"
@@ -81,6 +84,150 @@ def test_agent_manifest_covers_every_phase_22_and_31_boundary():
     hook = manifest["scenarios"][-2]
     assert hook["delivery"] == "plugin-hook"
     assert hook["expected_status"] == "grounded"
+
+
+def test_codex_write_snapshot_detects_an_empty_directory_creation(tmp_path):
+    (tmp_path / "payment.py").write_text("payment = 1\n", encoding="utf-8")
+    before = snapshot(tmp_path)
+
+    (tmp_path / "unexpected-empty").mkdir()
+    (tmp_path / ".env.production").mkdir()
+    after = snapshot(tmp_path)
+
+    assert before != after
+    assert after["unexpected-empty"][0] == "directory"
+    assert after[".env.production"][0] == "sensitive-directory-stat"
+
+
+def test_codex_write_snapshot_detects_directory_metadata_changes(tmp_path):
+    ordinary = tmp_path / "ordinary"
+    ordinary.mkdir()
+    sensitive = tmp_path / ".ENV.Production"
+    sensitive.mkdir()
+    before = snapshot(tmp_path)
+
+    (sensitive / "unseen-child").mkdir()
+    for directory in (ordinary, sensitive):
+        info = directory.stat()
+        os.utime(
+            directory,
+            ns=(info.st_atime_ns, info.st_mtime_ns + 2_000_000_000),
+        )
+    after = snapshot(tmp_path)
+
+    assert before["ordinary"] != after["ordinary"]
+    assert before[".ENV.Production"] != after[".ENV.Production"]
+    assert ".ENV.Production/unseen-child" not in after
+
+
+def test_codex_write_snapshot_detects_an_ordinary_file_mode_change(tmp_path):
+    path = tmp_path / "payment.py"
+    path.write_text("payment = 1\n", encoding="utf-8")
+    original_mode = stat.S_IMODE(path.stat().st_mode)
+    before = snapshot(tmp_path)
+
+    try:
+        path.chmod(original_mode ^ stat.S_IWUSR)
+        if stat.S_IMODE(path.stat().st_mode) == original_mode:
+            pytest.skip("this filesystem did not apply the requested mode change")
+        after = snapshot(tmp_path)
+    finally:
+        path.chmod(original_mode)
+
+    assert before["payment.py"] != after["payment.py"]
+
+
+def test_codex_write_snapshot_never_reads_a_dotenv_symlink(
+    monkeypatch, tmp_path
+):
+    link = tmp_path / ".env.local"
+    try:
+        link.symlink_to("opaque-target")
+    except OSError as exc:
+        pytest.skip(f"symlinks are unavailable: {exc}")
+    original_readlink = os.readlink
+
+    def guarded_readlink(path):
+        if Path(path) == link:
+            raise AssertionError("dotenv symlink target was inspected")
+        return original_readlink(path)
+
+    monkeypatch.setattr(os, "readlink", guarded_readlink)
+
+    result = snapshot(tmp_path)
+
+    assert result[".env.local"][0] == "sensitive-symlink-stat"
+    assert "opaque-target" not in repr(result[".env.local"])
+
+
+def test_codex_write_snapshot_allows_the_real_inspect_output(tmp_path, capsys):
+    (tmp_path / "payment.py").write_text(
+        "payment_service = 1\n", encoding="utf-8"
+    )
+    before = snapshot(tmp_path)
+
+    assert glossabet_main(["inspect", str(tmp_path)]) == 0
+    capsys.readouterr()
+    after = snapshot(tmp_path)
+
+    assert unexpected_writes(before, after) == []
+
+
+def test_codex_write_snapshot_does_not_hide_output_directory_replacement(
+    tmp_path, capsys
+):
+    output = tmp_path / "glossabet-out"
+    output.mkdir()
+    before = snapshot(tmp_path)
+    assert glossabet_main(["inspect", str(tmp_path)]) == 0
+    capsys.readouterr()
+
+    moved = tmp_path / "moved-output"
+    output.rename(moved)
+    output.mkdir()
+    (moved / "evidence.json").replace(output / "evidence.json")
+    moved.rmdir()
+    after = snapshot(tmp_path)
+
+    assert unexpected_writes(before, after) == ["glossabet-out"]
+
+
+def test_codex_write_snapshot_does_not_trust_an_unavailable_parent_inode():
+    before = {
+        "glossabet-out": (
+            "directory", stat.S_IFDIR, 0o755, 0, 1, 1, 0,
+        ),
+    }
+    after = {
+        "glossabet-out": (
+            "directory", stat.S_IFDIR, 0o755, 4096, 2, 1, 0,
+        ),
+        "glossabet-out/evidence.json": (
+            "file", stat.S_IFREG, 0o644, 100, 2, 1, 2, "digest",
+        ),
+    }
+
+    assert unexpected_writes(before, after) == ["glossabet-out"]
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO creation is POSIX-only")
+def test_codex_write_snapshot_records_special_entries_without_opening_them(
+    monkeypatch, tmp_path
+):
+    fifo = tmp_path / "unexpected.py"
+    os.mkfifo(fifo)
+    original_read = Path.read_bytes
+
+    def guarded_read(path):
+        if path == fifo:
+            raise AssertionError("Codex snapshot attempted to read a FIFO")
+        return original_read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", guarded_read)
+
+    result = snapshot(tmp_path)
+
+    assert result["unexpected.py"][0] == "special-stat"
 
 
 def test_session_hook_prompt_does_not_supply_the_answer_or_product_name():

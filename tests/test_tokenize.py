@@ -4,6 +4,7 @@ import pytest
 
 from glossabet.corpus.tokenize import (
     LANGUAGE_BUILTIN_TOKENS,
+    MAX_IDENTIFIER_TOKENS,
     STRUCTURED_IDENTIFIER_STYLES,
     TOKEN_ORIGIN_DOMAIN,
     TOKEN_ORIGIN_LANGUAGE,
@@ -13,6 +14,7 @@ from glossabet.corpus.tokenize import (
     tokenization_contract,
     tokenize_bounded_term,
     tokenize_identifier,
+    tokenize_identifier_bounded,
 )
 
 
@@ -54,6 +56,16 @@ from glossabet.corpus.tokenize import (
 )
 def test_tokenize_identifier(identifier, expected):
     assert tokenize_identifier(identifier) == expected
+
+
+def test_bounded_identifier_tokenization_returns_only_the_proven_prefix():
+    name = "_".join(f"part{i}" for i in range(50_000))
+
+    tokens, truncated = tokenize_identifier_bounded(name, MAX_IDENTIFIER_TOKENS)
+
+    assert len(tokens) == MAX_IDENTIFIER_TOKENS
+    assert tokens == [f"part{i}" for i in range(MAX_IDENTIFIER_TOKENS)]
+    assert truncated is True
 
 
 def test_truncated_term_does_not_promote_its_final_fragment_to_a_token():

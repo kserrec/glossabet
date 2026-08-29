@@ -191,12 +191,19 @@ def _confirm_unchanged_identity(path: Path, expected: os.stat_result) -> None:
         )
 
 
-def read_regular_target(path: Path) -> tuple[bytes | None, int]:
-    """Return existing bytes and the mode to preserve; reject unsafe targets."""
+def read_regular_target(
+    path: Path,
+) -> tuple[bytes | None, int, tuple[int, int] | None]:
+    """Return bytes, mode, and stable identity; reject unsafe targets.
+
+    An absent target has no identity. For an existing target the device/inode
+    pair is the one proven equal before, during, and after the bounded read;
+    callers that may write can bind a later recheck to this exact file.
+    """
     try:
         info = path.lstat()
     except FileNotFoundError:
-        return None, 0o644
+        return None, 0o644, None
     except OSError as exc:
         raise ContextSyncError(f"cannot inspect {path.name}: {exc}") from exc
     exact_name = entry_named_exactly(path.parent, path.name)
@@ -279,12 +286,16 @@ def read_regular_target(path: Path) -> tuple[bytes | None, int]:
         raise ContextSyncError(
             f"{path.name} is larger than {MAX_HOST_FILE_BYTES} bytes"
         )
-    return payload, stat.S_IMODE(opened.st_mode)
+    return (
+        payload,
+        stat.S_IMODE(opened.st_mode),
+        (opened.st_dev, opened.st_ino),
+    )
 
 
 def _inspect_target(path: Path, glossary: GlossaryDocument) -> ManagedTargetReport:
     try:
-        existing, _mode = read_regular_target(path)
+        existing, _mode, _identity = read_regular_target(path)
     except ContextSyncError as exc:
         return {"path": path.name, "status": "uninspectable", "detail": str(exc)}
     if existing is None:

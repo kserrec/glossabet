@@ -23,8 +23,8 @@ from evaluation.codex.contract import AgentEvaluationError
 from evaluation.codex.results import verify_results as agent_verify
 from evaluation.deterministic.contract import EvaluationError
 from evaluation.deterministic.results import verify_results as run_verify
-from evaluation.review import DEFAULT_PACKET
-from evaluation.review import verify_results as review_verify
+from evaluation.reviewer.contract import DEFAULT_PACKET, ReviewerEvaluationError
+from evaluation.reviewer.results import verify_results as review_verify
 
 ROOT = Path(__file__).resolve().parents[1]
 SEED = 20260819  # chosen so the run family reaches the once-unguarded arithmetic within 400 cases
@@ -102,7 +102,7 @@ CASES = {
     "review": (
         ROOT / "evaluation" / "reviewer-results.json",
         lambda path: review_verify(path, DEFAULT_PACKET),
-        (EvaluationError, OSError),
+        (ReviewerEvaluationError, OSError),
     ),
 }
 
@@ -130,4 +130,3 @@ def test_mutated_evidence_is_reported_or_classified_never_a_traceback(tmp_path, 
             isinstance(error, str) for error in errors
         ), f"{which} case {case}"
     assert dumped >= 300
-

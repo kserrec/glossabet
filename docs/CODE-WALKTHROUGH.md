@@ -144,6 +144,40 @@ depend on domain features, the glossary model remains a leaf, Graphify input
 does not depend on group construction, and finding producers do not import the
 reconciliation orchestrator.
 
+### Evaluation lane map
+
+The four executable evaluator files are deliberately thin wrappers. Their
+implementations live in lane packages under [`evaluation/`](../evaluation/),
+whose own [`README.md`](../evaluation/README.md) is the detailed input/code/
+evidence authority map.
+
+| Lane | Main owners | Where a maintainer changes it |
+| --- | --- | --- |
+| Deterministic | `evaluation/deterministic/` behind `evaluation/run.py` | Add a labelled case or threshold in `corpus.json`; add source handling in `sources.py`; keep each scoring rule with its family in `scoring.py`; aggregate and verify in `results.py`. |
+| Installed Codex | `evaluation/codex/` behind `scripts/agent_eval.py` | Add a case to `agent-scenarios.json`, build its repository in `fixtures.py`, judge it in `scenarios.py`, and keep process/plugin lifecycle in `host.py`/`runner.py`. |
+| Claude Code | `evaluation/claude/` behind `scripts/claude_eval.py` | Add a case to `claude-scenarios.json`, then update `fixtures.py` and `scenarios.py`; authentication/profile handling stays in `host.py`, orchestration in `runner.py`. |
+| Blinded reviewer | `evaluation/reviewer/` behind `evaluation/review.py` | Change blinded input construction in `packet.py`, packet-only trace rules in `trace.py`, live Codex execution in `host.py`, and judgment comparison or verification in `results.py`. |
+
+Live execution and offline evidence checking are separate responsibilities.
+Codex, Claude, and reviewer `results.py` modules never import their live host;
+the reviewer CLI additionally imports `host.py` only inside the
+`--run-reviewer` branch. The reviewer lane's only cross-lane dependency is the
+deterministic package's public result reader and verifier.
+
+Every verifier distinguishes **genuine** from **current**. Default verification
+checks the retained artifact's internal claim without pretending it describes
+today's source. `--current` additionally compares current inputs, governing
+code identity, artifacts, and release gates. The aggregate identity in
+[`evaluation.harness.identity`](../evaluation/harness/identity.py) hashes the
+entry wrapper, every Python file in that lane, and the harness modules the lane
+imports, so moving logic behind a wrapper cannot hide evaluator changes.
+
+Codex and Claude raw runs are immutable and their histories append attempts;
+misses remain evidence. The reviewer retains each accepted blinded packet by
+content digest before committing its result. Do not edit evidence to make a
+check pass: change the maintained scenario, score, or rule at its owner, run
+the authorized producer, and retain the old live-attempt history.
+
 ## 4. Startup and dispatch
 
 [`pyproject.toml`](../pyproject.toml) registers the console entry point as

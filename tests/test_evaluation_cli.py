@@ -14,7 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from evaluation import review, run
+from evaluation import run
+from evaluation.reviewer import cli as review
 from scripts import agent_eval, claude_eval
 
 ROOT = Path(__file__).resolve().parents[1]

@@ -349,6 +349,42 @@ def test_concurrent_target_change_is_not_overwritten(tmp_path, monkeypatch):
     assert list(tmp_path.glob(".AGENTS.md.*.tmp")) == []
 
 
+def test_same_bytes_and_mode_on_a_replacement_inode_are_not_overwritten(
+    tmp_path, monkeypatch
+):
+    """Content equality does not make a different file ours to replace. A
+    concurrent same-byte inode swap must survive the pre-commit guard."""
+    save_glossary(tmp_path, GLOSSARY)
+    target = tmp_path / "AGENTS.md"
+    original = b"Original human text.\n"
+    target.write_bytes(original)
+    target.chmod(0o640)
+    original_reader = context_sync.read_regular_target
+    calls = 0
+    replacement_inode = None
+
+    def replace_with_same_bytes_before_commit(path):
+        nonlocal calls, replacement_inode
+        calls += 1
+        if calls == 2:
+            replacement = tmp_path / "concurrent-AGENTS.md"
+            replacement.write_bytes(original)
+            replacement.chmod(0o640)
+            os.replace(replacement, target)
+            replacement_inode = target.stat().st_ino
+        return original_reader(path)
+
+    monkeypatch.setattr(
+        "glossabet.agent.context_sync.read_regular_target",
+        replace_with_same_bytes_before_commit,
+    )
+
+    assert main(["sync-context", str(tmp_path)]) == 1
+    assert target.read_bytes() == original
+    assert target.stat().st_ino == replacement_inode
+    assert list(tmp_path.glob(".AGENTS.md.*.tmp")) == []
+
+
 def test_no_glossary_means_no_host_file_write(tmp_path):
     assert main(["sync-context", str(tmp_path)]) == 1
     assert not (tmp_path / "AGENTS.md").exists()

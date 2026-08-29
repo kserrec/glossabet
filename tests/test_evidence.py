@@ -8,7 +8,13 @@ import pytest
 
 from glossabet.analysis.evidence import Limits, build_evidence, write_evidence
 from glossabet.cli import main
-from glossabet.corpus.scanner import EXCLUSION_KINDS, SkippedPaths, WalkResult
+from glossabet.corpus.config import load_config
+from glossabet.corpus.scanner import (
+    EXCLUSION_KINDS,
+    SkippedPaths,
+    WalkResult,
+    walk_repository,
+)
 
 
 def make_repo(tmp_path):
@@ -618,6 +624,8 @@ def test_pathological_single_identifier_is_bounded_not_a_dos(tmp_path):
     # the truncation recorded.
     import time
 
+    from glossabet.analysis.vocabulary import MAX_IDENTIFIER_TOKENS
+
     huge = "_".join(f"t{i:05d}" for i in range(50000))
     (tmp_path / "main.py").write_text(huge + " = 1\n")
 
@@ -633,7 +641,28 @@ def test_pathological_single_identifier_is_bounded_not_a_dos(tmp_path):
         item for item in evidence["vocabulary"]["identifiers"]["items"]
         if item["name"] == huge
     )
-    assert entry is not None
+    assert len(entry["tokens"]) == MAX_IDENTIFIER_TOKENS
+    token_coverage = evidence["vocabulary"]["tokens"]["coverage"]
+    assert token_coverage["total_items_exact"] is False
+    assert any("identifier token" in reason for reason in token_coverage["reasons"])
+
+
+def test_identifier_tail_omission_makes_term_naming_coverage_inexact(tmp_path):
+    identifier = "_".join([*["head"] * 64, "tail"])
+    for module in ("left", "right"):
+        directory = tmp_path / module
+        directory.mkdir()
+        (directory / "service.py").write_text(f"{identifier} = 1\n")
+
+    evidence = build_evidence(tmp_path)
+    coverage = evidence["naming_candidates"]["coverage"]["terms"]
+
+    assert "tail" not in {
+        item["term"] for item in evidence["naming_candidates"]["terms"]
+    }
+    assert coverage["complete"] is False
+    assert coverage["total_items_exact"] is False
+    assert any("identifier token" in reason for reason in coverage["reasons"])
 
 
 def test_symlink_to_in_repo_sensitive_file_is_not_laundered(tmp_path):
@@ -869,6 +898,28 @@ def test_unstatable_source_files_make_the_corpus_incomplete(tmp_path):
     assert budget["complete"] is False
     assert budget["production_complete"] is False
     assert budget["skipped"]["source_files"] == 2  # the dangling link is not source
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO creation is POSIX-only")
+def test_special_files_with_source_names_are_skipped_before_the_read(tmp_path):
+    """A FIFO named like source is not a readable repository file. Admitting
+    it directly or through a confined symlink would make extraction block
+    forever waiting for a writer; the walk must instead report both entries
+    and make the production corpus incomplete."""
+    os.mkfifo(tmp_path / "blocked.py")
+    os.mkfifo(tmp_path / "linked-target")
+    os.symlink("linked-target", tmp_path / "linked.py")
+
+    walk = walk_repository(tmp_path, load_config(tmp_path))
+
+    assert walk.code_files == []
+    assert walk.skipped_unreadable == ["blocked.py", "linked.py"]
+    budget = walk.corpus_budget.as_evidence()
+    assert budget["production_complete"] is False
+    assert budget["skipped"]["sample"] == [
+        {"path": "blocked.py", "reason": "not-regular-file"},
+        {"path": "linked.py", "reason": "not-regular-file"},
+    ]
 
 
 def test_symlinked_file_takes_its_targets_role(tmp_path):

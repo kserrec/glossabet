@@ -68,6 +68,30 @@ def test_install_refuses_different_existing_skill_without_force(tmp_path, capsys
     assert "--force" in capsys.readouterr().err
 
 
+def test_install_does_not_overwrite_a_file_created_at_commit(
+    tmp_path, capsys, monkeypatch
+):
+    """An absent target is not advance permission to replace a file another
+    process creates before the atomic commit."""
+    import glossabet.install.installer as installer
+
+    destination = tmp_path / "glossabet"
+    target = destination / "SKILL.md"
+    concurrent = b"concurrent user-owned skill\n"
+    replace_file_atomic = installer.replace_file_atomic
+
+    def create_target_then_replace(path, payload, **kwargs):
+        path.write_bytes(concurrent)
+        return replace_file_atomic(path, payload, **kwargs)
+
+    monkeypatch.setattr(installer, "replace_file_atomic", create_target_then_replace)
+
+    assert main(["install", "--destination", str(destination)]) == EXIT_USER_ERROR
+    assert target.read_bytes() == concurrent
+    assert not list(destination.glob(".SKILL.md.*.tmp"))
+    assert "--force" in capsys.readouterr().err
+
+
 def test_force_replaces_only_the_skill_file_and_leaves_no_temporary_file(
     tmp_path, capsys
 ):

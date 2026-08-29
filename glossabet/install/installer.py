@@ -110,10 +110,11 @@ def _install_file(
         raise InstallError(
             f"skill destination exists but is not a directory: {destination}"
         )
-    if target.exists() and not target.is_file():
+    target_existed = target.exists()
+    if target_existed and not target.is_file():
         raise InstallError(f"{label} target exists but is not a file: {target}")
 
-    if target.exists():
+    if target_existed:
         try:
             existing = target.read_bytes()
         except OSError as exc:
@@ -131,8 +132,28 @@ def _install_file(
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         _reject_symlink_components(target)
-        outcome: InstallOutcome = "replaced" if target.exists() else "installed"
-        replace_file_atomic(target, payload, mode=0o644)
+        outcome: InstallOutcome = "replaced" if target_existed else "installed"
+
+        def require_authorized_target() -> None:
+            nonlocal outcome
+            _reject_symlink_components(target)
+            exists_at_commit = target.exists()
+            if exists_at_commit and not target.is_file():
+                raise InstallError(f"{label} target exists but is not a file: {target}")
+            if exists_at_commit and not target_existed and not force:
+                raise InstallError(
+                    f"a different {label} was created at {target} during "
+                    "installation; rerun with --force only if replacing that "
+                    "file is intended"
+                )
+            outcome = "replaced" if exists_at_commit else "installed"
+
+        replace_file_atomic(
+            target,
+            payload,
+            mode=0o644,
+            before_replace=require_authorized_target,
+        )
     except InstallError:
         raise
     except OSError as exc:

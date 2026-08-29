@@ -562,19 +562,12 @@ def currency_errors(results: dict, manifest_path: Path) -> list[str]:
     return errors
 
 
-def verify_results(
-    results_path: Path,
-    manifest_path: Path = DEFAULT_MANIFEST,
-    *,
-    current: bool = False,
-) -> list[str]:
-    """Check committed evaluation evidence.
+def read_results(results_path: Path) -> dict:
+    """Read one bounded deterministic result document.
 
-    Always checks genuineness: the artifact is untampered and internally
-    consistent, so it truthfully reports the run it records. With
-    ``current=True`` (the release gate) it additionally checks currency:
-    the evidence describes the current engine source, manifest, and local
-    corpora, not an earlier state of the repository.
+    This is the reviewer lane's sole data boundary into deterministic
+    evaluation results. Validation of the recorded claim remains the job of
+    ``verify_results``.
     """
     try:
         if results_path.stat().st_size > MAX_JSON_BYTES:
@@ -589,6 +582,24 @@ def verify_results(
         ) from exc
     if not isinstance(results, dict):
         raise EvaluationError(f"{results_path}: results must be a JSON object")
+    return results
+
+
+def verify_results(
+    results_path: Path,
+    manifest_path: Path = DEFAULT_MANIFEST,
+    *,
+    current: bool = False,
+) -> list[str]:
+    """Check committed evaluation evidence.
+
+    Always checks genuineness: the artifact is untampered and internally
+    consistent, so it truthfully reports the run it records. With
+    ``current=True`` (the release gate) it additionally checks currency:
+    the evidence describes the current engine source, manifest, and local
+    corpora, not an earlier state of the repository.
+    """
+    results = read_results(results_path)
     errors = genuineness_errors(results)
     if current:
         errors.extend(currency_errors(results, manifest_path))

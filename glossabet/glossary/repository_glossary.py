@@ -54,6 +54,7 @@ REASON_SYMLINK_EXCLUDED = LINK_TO_EXCLUDED_CONTENT
 REASON_NOT_REGULAR = "not-a-regular-file"
 REASON_OVERSIZED = "oversized"
 REASON_UNREADABLE = "unreadable"
+REASON_NOT_UTF8 = "not-utf-8"
 REASON_LISTING_UNCONFIRMED = "root-listing-unconfirmed"
 
 
@@ -144,6 +145,13 @@ def _read_repository_glossary(
     if not read.ok or payload is None:
         # unreadable, or the entry vanished between checks
         return _unreadable(REASON_UNREADABLE, None), None
+    try:
+        payload.decode("utf-8")
+    except UnicodeDecodeError:
+        # This channel declares readable Markdown text, not merely readable
+        # bytes. Replacement decoding would invent characters and let a
+        # divergence check make exact absence claims about corrupted text.
+        return _unreadable(REASON_NOT_UTF8, len(payload)), None
     return {
         "present": True,
         "path": REPOSITORY_GLOSSARY_FILE,
@@ -212,7 +220,7 @@ def _divergence_result(
         "superseded_terms_still_present": superseded,
         "checked_terms": checked,
         "skipped_terms": skipped,
-        "complete": skipped == 0,
+        "complete": skipped == 0 and reason is None,
         "term_cap": MAX_DIVERGENCE_TERMS,
         "text_cap": MAX_DIVERGENCE_TEXT_CHARS,
     }
@@ -242,13 +250,23 @@ def repository_glossary_divergence(
         (c for c in glossary["concepts"] if c.get("status") == "canonical"),
         key=lambda c: c["id"],
     )
+    try:
+        decoded = payload.decode("utf-8")
+    except UnicodeDecodeError:
+        return _divergence_result(
+            [],
+            [],
+            checked=0,
+            skipped=sum(1 + len(_superseded_aliases(c)) for c in canonical),
+            reason=REASON_NOT_UTF8,
+        )
     # The bound is judged as early as the expansion can be seen: NFKC can
     # grow a code point 18× and casefold a further 3×, and each of casefold
     # and the whitespace collapse allocates ~170 MB on an already-expanded
     # 12 M-character string. So: NFKC → check → casefold → check → collapse,
     # and only then any search.
     nfkc = unicodedata.normalize(
-        "NFKC", payload.decode("utf-8", errors="replace")
+        "NFKC", decoded
     )
     normalized = nfkc.casefold() if len(nfkc) <= MAX_DIVERGENCE_TEXT_CHARS else nfkc
     if len(normalized) > MAX_DIVERGENCE_TEXT_CHARS:

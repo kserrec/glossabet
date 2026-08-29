@@ -152,9 +152,18 @@ def read_manifest(path: Path) -> tuple[dict, str]:
     sources = manifest.get("sources")
     if not isinstance(sources, list) or not sources:
         raise EvaluationError(f"{path}: sources must be a non-empty list")
+    seen_source_ids: set[str] = set()
     for source in sources:
         if not isinstance(source, dict) or not isinstance(source.get("id"), str):
             raise EvaluationError(f"{path}: every source needs a string id")
+        source_id = source["id"]
+        if not is_safe_relative(source_id) or "/" in source_id or source_id == ".":
+            raise EvaluationError(
+                f"{path}: source id must be a safe single path component"
+            )
+        if source_id in seen_source_ids:
+            raise EvaluationError(f"{path}: duplicate source id {source_id!r}")
+        seen_source_ids.add(source_id)
         digest = source.get("corpus_sha256")
         files = source.get("corpus_files")
         if (

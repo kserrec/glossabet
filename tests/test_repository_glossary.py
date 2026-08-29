@@ -231,6 +231,60 @@ def test_directory_named_glossary_is_present_but_not_readable(tmp_path):
     }
 
 
+def test_non_utf8_repository_glossary_is_never_declared_readable(tmp_path, capsys):
+    _code(tmp_path)
+    payload = b"Caf\xe9\n"  # Latin-1 text, not valid UTF-8.
+    (tmp_path / "GLOSSARY.md").write_bytes(payload)
+    save_glossary(
+        tmp_path,
+        {
+            "schema_version": 1,
+            "concepts": [
+                {
+                    "id": "cafe",
+                    "term": "Café",
+                    "definition": "A cafe.",
+                    "status": "canonical",
+                }
+            ],
+        },
+    )
+
+    section = _inspect(tmp_path, capsys)["repository_glossary"]
+
+    assert section == {
+        "present": True,
+        "path": "GLOSSARY.md",
+        "readable": False,
+        "reason": "not-utf-8",
+        "bytes": len(payload),
+        "nested_ignored": [],
+    }
+    assert "divergence" not in section
+
+
+def test_divergence_helper_refuses_invalid_utf8_instead_of_replacing_bytes():
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": "cafe",
+                "term": "Café",
+                "definition": "A cafe.",
+                "status": "canonical",
+            }
+        ],
+    }
+
+    result = repository_glossary_divergence(glossary, b"Caf\xe9\n")
+
+    assert result["complete"] is False
+    assert result["checked_terms"] == 0
+    assert result["skipped_terms"] == 1
+    assert result["canonical_missing_from_markdown"] == []
+    assert result["reason"] == "not-utf-8"
+
+
 def test_oversized_glossary_is_reported_never_absent(tmp_path, capsys):
     _code(tmp_path)
     (tmp_path / "GLOSSARY.md").write_bytes(

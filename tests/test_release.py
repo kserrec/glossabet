@@ -278,6 +278,17 @@ def test_repository_documents_name_one_current_roadmap():
         assert "This document is the authoritative roadmap." not in text, path.name
 
 
+def test_contribution_guidance_states_the_path_based_secret_boundary():
+    contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    normalized = " ".join(contributing.split())
+
+    assert "no secrets ingested" not in normalized
+    assert (
+        "path-based exclusion of sensitive files while ordinary included source "
+        "may still contain secrets"
+    ) in normalized
+
+
 def test_source_distribution_rejects_repository_only_construction_history(
     tmp_path,
 ):

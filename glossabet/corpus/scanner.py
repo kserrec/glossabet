@@ -15,6 +15,7 @@ from __future__ import annotations
 import errno
 import json
 import os
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypedDict
@@ -325,7 +326,26 @@ def _classify_files(
         if ext not in CODE_LANGUAGES and ext not in DOC_EXTENSIONS:
             result.other_files += 1
             continue
-        if os.path.islink(full):
+        try:
+            entry_info = entry.stat(follow_symlinks=False)
+        except OSError as exc:
+            result.skipped_unreadable.append(rel)
+            if exc.errno != errno.ENOENT:
+                result.corpus_budget.skip_source(
+                    rel, 0, "unreadable", production=role == "production"
+                )
+            continue
+        is_link = stat.S_ISLNK(entry_info.st_mode)
+        if not is_link and not stat.S_ISREG(entry_info.st_mode):
+            # Opening a FIFO can block indefinitely and devices/sockets are
+            # not repository text. Only a regular file, or a link whose
+            # regular target passes the content rules below, is source.
+            result.skipped_unreadable.append(rel)
+            result.corpus_budget.skip_source(
+                rel, 0, "not-regular-file", production=role == "production"
+            )
+            continue
+        if is_link:
             # The name check above sees only the link's own name; the shared
             # content rule also classifies the resolved target.
             refusal = symlink_content_refusal(full, root, config)
@@ -345,7 +365,7 @@ def _classify_files(
             if target is not None:
                 role = config.role_for(target)
         try:
-            size = os.path.getsize(full)
+            content_info = os.stat(full) if is_link else entry_info
         except OSError as exc:
             result.skipped_unreadable.append(rel)
             if exc.errno != errno.ENOENT:
@@ -357,6 +377,13 @@ def _classify_files(
                     rel, 0, "unreadable", production=role == "production"
                 )
             continue
+        if not stat.S_ISREG(content_info.st_mode):
+            result.skipped_unreadable.append(rel)
+            result.corpus_budget.skip_source(
+                rel, 0, "not-regular-file", production=role == "production"
+            )
+            continue
+        size = content_info.st_size
         refusal = result.corpus_budget.source_refusal(size)
         if refusal is not None:
             if refusal == "file-size-limit":

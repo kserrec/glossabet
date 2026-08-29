@@ -268,11 +268,11 @@ EXCLUSION_KINDS: tuple[ExclusionKind, ...] = (
                   "did not descend into {n} symlinked director(ies) inside "
                   "the repository (content is read at its real path, if that "
                   "path is not itself excluded)"),
-    # Entries the walk met but could not stat or read at all: dangling
-    # links, permission denied. Not source evidence and not silently gone.
+    # Entries the walk met but could not stat or read as regular text:
+    # dangling links, permission denied, or special filesystem entries. Not
+    # source evidence and not silently gone.
     ExclusionKind("unreadable", "skipped_unreadable",
-                  "skipped {n} unreadable path(s) (dangling link or "
-                  "permission denied)"),
+                  "skipped {n} unreadable or non-regular path(s)"),
     ExclusionKind("configured", "skipped_configured",
                   "ignored {n} configured path(s)"),
     ExclusionKind("generated", "skipped_generated",
@@ -303,5 +303,4 @@ def exclusion_sentences(skipped: Mapping[str, object]) -> list[str]:
         if isinstance(paths, Sized) and len(paths):
             sentences.append(kind.sentence.format(n=len(paths)))
     return sentences
-
 

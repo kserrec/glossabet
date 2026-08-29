@@ -30,6 +30,7 @@ from evaluation.claude.contract import (
     load_response_schema,
     tree_sha256,
 )
+from evaluation.claude.fixtures import snapshot as claude_snapshot
 from evaluation.claude.history import (
     AbortedRun,
     append_attempt,
@@ -378,6 +379,11 @@ def test_tree_identity_never_reads_dotenv_contents(monkeypatch, tmp_path):
     (tmp_path / ".env.production" / "nested.txt").write_text(
         "synthetic", encoding="utf-8"
     )
+    (tmp_path / "SERVICE.ENV.LOCAL").write_text("synthetic", encoding="utf-8")
+    (tmp_path / ".ENV.Production").mkdir()
+    (tmp_path / ".ENV.Production" / "nested.txt").write_text(
+        "synthetic", encoding="utf-8"
+    )
     original = Path.read_bytes
 
     def guarded_read(path):
@@ -391,6 +397,79 @@ def test_tree_identity_never_reads_dotenv_contents(monkeypatch, tmp_path):
     second = tree_sha256(tmp_path)
 
     assert first != second
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO creation is POSIX-only")
+def test_claude_tree_identity_rejects_a_fifo_without_reading_it(
+    monkeypatch, tmp_path
+):
+    fifo = tmp_path / "blocked.py"
+    os.mkfifo(fifo)
+    original_read = Path.read_bytes
+
+    def guarded_read(path):
+        if path == fifo:
+            raise AssertionError("Claude tree identity attempted to read a FIFO")
+        return original_read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", guarded_read)
+
+    with pytest.raises(ClaudeEvaluationError, match="non-regular file"):
+        tree_sha256(tmp_path)
+
+
+def test_claude_write_snapshot_detects_an_empty_directory_creation(tmp_path):
+    (tmp_path / "payment.py").write_text("payment = 1\n", encoding="utf-8")
+    before = claude_snapshot(tmp_path)
+
+    (tmp_path / "unexpected-empty").mkdir()
+    (tmp_path / ".env.production").mkdir()
+    after = claude_snapshot(tmp_path)
+
+    assert before != after
+    assert after["unexpected-empty"][0] == "directory"
+    assert after[".env.production"][0] == "sensitive-directory-stat"
+
+
+def test_claude_write_snapshot_detects_directory_metadata_changes(tmp_path):
+    ordinary = tmp_path / "ordinary"
+    ordinary.mkdir()
+    sensitive = tmp_path / ".ENV.Production"
+    sensitive.mkdir()
+    before = claude_snapshot(tmp_path)
+
+    (sensitive / "unseen-child").mkdir()
+    for directory in (ordinary, sensitive):
+        info = directory.stat()
+        os.utime(
+            directory,
+            ns=(info.st_atime_ns, info.st_mtime_ns + 2_000_000_000),
+        )
+    after = claude_snapshot(tmp_path)
+
+    assert before["ordinary"] != after["ordinary"]
+    assert before[".ENV.Production"] != after[".ENV.Production"]
+    assert ".ENV.Production/unseen-child" not in after
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO creation is POSIX-only")
+def test_claude_write_snapshot_records_special_entries_without_opening_them(
+    monkeypatch, tmp_path
+):
+    fifo = tmp_path / "unexpected.py"
+    os.mkfifo(fifo)
+    original_read = Path.read_bytes
+
+    def guarded_read(path):
+        if path == fifo:
+            raise AssertionError("Claude snapshot attempted to read a FIFO")
+        return original_read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", guarded_read)
+
+    result = claude_snapshot(tmp_path)
+
+    assert result["unexpected.py"][0] == "special-stat"
 
 
 def test_preflight_refuses_non_linux_before_inspecting_host_paths(

@@ -8,7 +8,7 @@ truncated never reads as complete.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypedDict, TypeVar
@@ -42,7 +42,7 @@ from glossabet.corpus.config import load_config
 from glossabet.corpus.extraction import SourceExtractor
 from glossabet.corpus.imports import build_imports_section, module_of
 from glossabet.corpus.scanner import WalkResult, detect_monorepo, walk_repository
-from glossabet.corpus.tokenize import tokenization_contract, tokenize_identifier
+from glossabet.corpus.tokenize import tokenization_contract
 from glossabet.runtime import git_state
 from glossabet.runtime.artifacts import write_artifact
 from glossabet.runtime.coverage import (
@@ -70,13 +70,20 @@ class Limits:
 
 def _capped(
     counter: Counter[str], cap: int, entry: Callable[[str, int], E],
+    *,
+    total_items_exact: bool = True,
+    incomplete_reasons: Iterable[str] = (),
 ) -> tuple[list[E], TruncationMarker | None, CoverageLedger]:
     """Top-`cap` entries by (-count, key), with the remainder logged: the
     kept entries, the truncation marker (``None`` when nothing was dropped),
     and the coverage ledger — the three fields of one vocabulary table."""
     ranked = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
     kept, coverage = capped_collection(
-        ranked, cap, cap_reason=f"evidence detail cap is {cap} items"
+        ranked,
+        cap,
+        cap_reason=f"evidence detail cap is {cap} items",
+        total_items_exact=total_items_exact,
+        incomplete_reasons=incomplete_reasons,
     )
     dropped = ranked[cap:]
     truncated: TruncationMarker | None = None if not dropped else {
@@ -214,7 +221,7 @@ def _vocabulary_section(
         )
         return {
             "name": name,
-            "tokens": tokenize_identifier(name),
+            "tokens": vocabulary.identifier_tokens[name],
             "count": count,
             "files": len(per_file),
             "modules": len({module_of(path) for path in per_file}),
@@ -235,8 +242,22 @@ def _vocabulary_section(
             "locations_truncated": locations_truncated,
         }
 
+    oversized_identifiers = vocabulary.oversized_identifiers
+    token_omission_reasons = (
+        []
+        if not oversized_identifiers
+        else [
+            f"{oversized_identifiers} identifier spelling(s) exceeded the "
+            "per-identifier token limit; omitted identifier token tails make "
+            "the token vocabulary a lower bound"
+        ]
+    )
     tokens, tokens_truncated, tokens_coverage = _capped(
-        vocabulary.token_counts, limits.tokens, token_entry
+        vocabulary.token_counts,
+        limits.tokens,
+        token_entry,
+        total_items_exact=not oversized_identifiers,
+        incomplete_reasons=token_omission_reasons,
     )
     identifiers, identifiers_truncated, identifiers_coverage = _capped(
         vocabulary.identifier_counts, limits.identifiers, identifier_entry

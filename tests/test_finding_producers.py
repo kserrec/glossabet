@@ -101,6 +101,12 @@ def glossary(*concepts):
     return {"schema_version": 1, "concepts": list(concepts)}
 
 
+def test_evidence_index_accepts_minimal_evidence_without_tail_counter():
+    index = EvidenceIndex(evidence(tokens=[token("run", 1, {"run.py": 1})]))
+
+    assert index.identifier_tokens_complete is True
+
+
 # ---- drift producers ------------------------------------------------------
 
 

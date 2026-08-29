@@ -16,7 +16,7 @@ from evaluation.codex.contract import (
     RESULT_SCHEMA_VERSION as CODEX_RESULT_SCHEMA_VERSION,
 )
 from evaluation.deterministic.contract import EVALUATION_SCHEMA_VERSION
-from evaluation.review import PACKET_SCHEMA_VERSION, REVIEW_SCHEMA_VERSION
+from evaluation.reviewer.contract import PACKET_SCHEMA_VERSION, REVIEW_SCHEMA_VERSION
 from glossabet.agent.agent_context_protocol import AGENT_CONTEXT_SCHEMA_VERSION
 from glossabet.agent.brief import BRIEF_FORMAT_VERSION
 from glossabet.agent.managed_context import MANAGED_CONTEXT_SCHEMA_VERSION
@@ -90,6 +90,7 @@ def test_compatibility_policy_names_each_retained_exception_and_lifetime():
         "`glossabet.agent.agent_context`",
         "`production_complete`",
         "`complete: true`",
+        "`oversized_identifiers`",
         "`glossarize-out/`",
         "`.glossarize/`",
         "Removal criterion",
