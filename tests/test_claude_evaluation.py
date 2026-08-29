@@ -379,9 +379,9 @@ def test_tree_identity_never_reads_dotenv_contents(monkeypatch, tmp_path):
     (tmp_path / ".env.production" / "nested.txt").write_text(
         "synthetic", encoding="utf-8"
     )
-    (tmp_path / "SERVICE.ENV.LOCAL").write_text("synthetic", encoding="utf-8")
-    (tmp_path / ".ENV.Production").mkdir()
-    (tmp_path / ".ENV.Production" / "nested.txt").write_text(
+    (tmp_path / "OTHER.ENV.LOCAL").write_text("synthetic", encoding="utf-8")
+    (tmp_path / ".ENV.Staging").mkdir()
+    (tmp_path / ".ENV.Staging" / "nested.txt").write_text(
         "synthetic", encoding="utf-8"
     )
     original = Path.read_bytes

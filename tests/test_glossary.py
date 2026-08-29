@@ -1155,7 +1155,8 @@ def test_hostile_glossary_family_never_raises_and_accepted_documents_survive_eve
     (root / "docs").mkdir()
     (root / "docs" / "g.md").write_text("payment service session token ledger\n")
     (root / "GLOSSARY.md").write_text(
-        "# Glossary\n\n**Payment Service** — thing\n\n**Session** — other\nLedger is old.\n"
+        "# Glossary\n\n**Payment Service** — thing\n\n**Session** — other\nLedger is old.\n",
+        encoding="utf-8",
     )
     evidence = build_evidence(root)
 

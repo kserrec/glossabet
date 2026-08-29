@@ -62,7 +62,9 @@ def _maximal_context(tmp_path):
     """A lean agent context built over a fixture that fills every optional
     channel: structured glossary, root GLOSSARY.md, and a Graphify graph."""
     (tmp_path / "a.py").write_text("payment_service = 1\npayment_worker = 2\n")
-    (tmp_path / "GLOSSARY.md").write_text("# Glossary\n\n- Payment Service — x\n")
+    (tmp_path / "GLOSSARY.md").write_text(
+        "# Glossary\n\n- Payment Service — x\n", encoding="utf-8"
+    )
     gout = tmp_path / "graphify-out"
     gout.mkdir()
     (gout / "graph.json").write_text(json.dumps({

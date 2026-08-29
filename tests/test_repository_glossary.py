@@ -513,7 +513,8 @@ def test_validate_reports_repository_glossary_divergence(tmp_path, capsys):
     _code(tmp_path)
     save_glossary(tmp_path, _glossary_with_alias())
     (tmp_path / "GLOSSARY.md").write_text(
-        "**Settlement bundle** — the group.\nPayments.\n"
+        "**Settlement bundle** — the group.\nPayments.\n",
+        encoding="utf-8",
     )
 
     assert main(["validate", str(tmp_path)]) == 0
