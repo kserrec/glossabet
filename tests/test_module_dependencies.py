@@ -56,6 +56,19 @@ def _imports(module: str) -> set[str]:
     return _imports_of(_MODULE_PATHS[module])
 
 
+def _names_imported_from(module: str, source: str) -> set[str]:
+    """Return the names one product module imports from an exact module."""
+    tree = ast.parse(_MODULE_PATHS[module].read_text(encoding="utf-8"))
+    return {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.level == 0
+        and node.module == source
+        for alias in node.names
+    }
+
+
 def _matches(name: str, target: str) -> bool:
     return name == target or name.startswith(target + ".")
 
@@ -160,6 +173,64 @@ def test_glossary_model_imports_nothing_from_the_package():
         if name.startswith("glossabet.")
     }
     assert package_imports == set()
+
+
+def test_glossary_internal_imports_name_the_conceptual_owner():
+    """The store's historical facade is compatibility, not ownership."""
+    compatibility_exports = {
+        "BINDING_KINDS",
+        "GLOSSARY_SCHEMA_VERSION",
+        "SCOPE_PATHS_KEY",
+        "STATUSES",
+        "checked_glossary",
+        "concept_scope",
+        "path_in_scope",
+        "scope_evidence",
+        "scopes_overlap",
+        "validate_glossary",
+    }
+    offenders = {
+        module: sorted(imported)
+        for module in sorted(_MODULE_PATHS)
+        if module != "glossabet.glossary.store"
+        and (
+            imported := _names_imported_from(
+                module, "glossabet.glossary.store"
+            ) & compatibility_exports
+        )
+    }
+    assert not offenders, offenders
+
+
+def test_glossary_owner_core_dependencies_follow_acyclic_order():
+    """The conceptual owners may depend only on owners below them."""
+    order = {
+        "glossabet.glossary.model": 0,
+        "glossabet.glossary.scope": 1,
+        "glossabet.glossary.schema": 2,
+        "glossabet.glossary.store": 3,
+    }
+    for module, rank in order.items():
+        backward = {
+            imported
+            for imported in _imports(module)
+            if imported in order and order[imported] >= rank
+        }
+        assert not backward, f"{module} imports {sorted(backward)}"
+
+
+def test_agent_context_protocol_is_projection_independent():
+    """Versioned shape is lower than projection mechanics and commands."""
+    protocol = "glossabet.agent.agent_context_protocol"
+    projection = "glossabet.agent.agent_context"
+
+    assert protocol in _MODULE_PATHS
+    assert protocol in _imports(projection)
+    forbidden = _forbidden_imports(
+        protocol,
+        (projection, "glossabet.cli", "glossabet.command_run"),
+    )
+    assert not forbidden, f"{protocol} imports {sorted(forbidden)}"
 
 
 def test_runtime_boundary_rule_detects_a_domain_import(tmp_path):

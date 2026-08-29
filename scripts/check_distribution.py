@@ -28,15 +28,18 @@ SESSION_START_COMMAND_WINDOWS = (
 SDIST_REQUIRED_RELATIVE = frozenset({
     ".github/workflows/quality.yml",
     "CHANGELOG.md",
+    "COMPATIBILITY.md",
     "CONTRIBUTING.md",
     "DISTRIBUTION.md",
     "LICENSE",
     "NAME-CLEARANCE.md",
+    "PLAN.md",
     "PRIVACY.md",
     "README.md",
     "RELEASING.md",
     "SECURITY.md",
     "docs/CODE-WALKTHROUGH.md",
+    "docs/plans/evaluation-modularization.md",
     "docs/WALKTHROUGH.md",
     "examples/payment-service/glossabet-out/glossary.json",
     "examples/payment-service/src/payment_service.py",
@@ -45,6 +48,7 @@ SDIST_REQUIRED_RELATIVE = frozenset({
     "evaluation/agent-response-schema.json",
     "evaluation/agent-results.json",
     "evaluation/agent-scenarios.json",
+    "evaluation/README.md",
     "evaluation/fixtures/structural-complete/README.md",
     "evaluation/fixtures/structural-complete/core.py",
     "evaluation/fixtures/structural-complete/graphify-out/graph.json",
@@ -87,6 +91,10 @@ SDIST_REQUIRED_RELATIVE = frozenset({
     "tests/test_reviewer_evaluation.py",
     "tests/test_walkthrough.py",
 })
+
+# These records remain useful in the Git repository but are not current
+# package documentation or executable release evidence.
+SDIST_FORBIDDEN_RELATIVE_PREFIXES = ("docs/history/",)
 
 
 def _fail(message: str) -> None:
@@ -381,6 +389,24 @@ def _check_sdist(
                         )
 
         required_relative = SDIST_REQUIRED_RELATIVE
+        relative_names = {
+            name[len(prefix):]
+            for name in names
+            if name.startswith(prefix)
+        }
+        forbidden = sorted(
+            name
+            for name in relative_names
+            if any(
+                name.startswith(forbidden_prefix)
+                for forbidden_prefix in SDIST_FORBIDDEN_RELATIVE_PREFIXES
+            )
+        )
+        if forbidden:
+            _fail(
+                "source distribution contains repository-only construction "
+                f"history: {', '.join(forbidden)}"
+            )
         required = {prefix + name for name in required_relative}
         missing = sorted(required - set(names))
         if missing:

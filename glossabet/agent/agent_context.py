@@ -1,9 +1,10 @@
-"""Fresh, bounded JSON context for the installed agent skill.
+"""Project and serialize fresh, bounded JSON for the installed agent skill.
 
-The skill must not parse repository-owned machine artifacts itself.  This
-module keeps path confinement, glossary validation, scanning, and output
-bounding behind one CLI command while leaving the full RepositoryEvidence
-artifact available to deterministic engine consumers.
+The versioned shapes live in :mod:`glossabet.agent.agent_context_protocol`.
+The skill must not parse repository-owned machine artifacts itself. This
+module keeps path confinement, glossary validation, scanning, projection, and
+output bounding behind one CLI command while leaving the full
+RepositoryEvidence artifact available to deterministic engine consumers.
 """
 
 from __future__ import annotations
@@ -13,60 +14,63 @@ from collections import Counter
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Literal, TypedDict, TypeVar, cast
+from typing import TypeVar, cast
 
+from glossabet.agent.agent_context_protocol import (
+    AGENT_CONTEXT_SCHEMA_VERSION,
+    AgentContextCoverage,
+    AgentContextDocument,
+    ContextCoverage,
+    ContextCoverageRecord,
+    ContextFreshness,
+    ContextGlossarySection,
+    ContextLimits,
+    ContextNamingCandidates,
+    ContextRegisterSection,
+    ContextTermCandidate,
+    ContextTerminology,
+    LeanVocabularySection,
+    ModuleRollupEntry,
+    ModuleRollupTable,
+    Projection,
+    RegisterExemplar,
+    RegisterExemplars,
+    _ContextSource,
+)
 from glossabet.analysis.evidence import persist_evidence
 from glossabet.analysis.evidence_types import (
-    ContextDispersionSection,
     EvidenceDocument,
-    FilesSection,
-    GeneratorRecord,
-    IdentifierEntry,
     IdentifierTable,
-    LayersSection,
-    ModuleCandidate,
-    ModuleRecord,
     NamingCandidates,
-    NamingCoverage,
-    OverloadCandidatesSection,
-    RegisterSection,
-    RepositoryRecord,
-    SkippedSection,
-    StructuralGroups,
-    StructureCandidate,
-    SynonymCandidatesSection,
-    TermCandidate,
-    TerminologyCoverage,
-    TerminologyScope,
     TerminologySection,
-    TotalsRecord,
-    TruncationMarker,
     VocabularySection,
     VocabularyTable,
 )
 from glossabet.command_run import GLOSSARY_OPTIONAL, open_run
-from glossabet.corpus.config import ConfigurationEvidence
 from glossabet.corpus.imports import module_of
-from glossabet.corpus.scanner import CorpusBudgetEvidence, MonorepoEvidence
 from glossabet.corpus.tokenize import (
     STRUCTURED_IDENTIFIER_STYLES,
-    TokenizationContract,
     identifier_style,
 )
-from glossabet.glossary.model import ConceptRecord, GlossaryDocument
+from glossabet.glossary.model import GlossaryDocument
 from glossabet.glossary.repository_glossary import (
     RepositoryGlossarySection,
     repository_glossary_section,
 )
 from glossabet.runtime.artifacts import ArtifactError
 from glossabet.runtime.coverage import (
-    CoverageLedger,
-    LocationSample,
     capped_collection,
     coverage_reasons,
 )
 
-AGENT_CONTEXT_SCHEMA_VERSION = 6
+# Compatibility boundary: these protocol types remain importable from this
+# module; their definitions and new imports belong to agent_context_protocol.
+_PROTOCOL_COMPATIBILITY_TYPES = (
+    AgentContextCoverage,
+    ContextFreshness,
+    ContextLimits,
+)
+
 MAX_AGENT_CONTEXT_BYTES = 1_000_000
 ROUTINE_AGENT_CONTEXT_TARGET_BYTES = 100_000
 MAX_AGENT_CONTEXT_STRING_CHARS = 512
@@ -106,163 +110,6 @@ _FULL_LIST_LIMITS: dict[tuple[str, ...], int] = {
 
 class AgentContextError(ArtifactError):
     """A safe agent context could not be produced within its contract."""
-
-
-# -- the AgentContext v6 document -------------------------------------------
-
-Projection = Literal["lean", "full"]
-
-
-class ContextCoverageRecord(TypedDict):
-    """One exclusion, source omission, or truncation.
-
-    List indexes fold to ``*`` so repeated losses with the same meaning can be
-    coalesced without hiding their total amount.
-    """
-
-    path: str
-    kind: str
-    amount: int
-
-
-class ContextLimits(TypedDict):
-    serialized_bytes: int
-    string_characters: int
-    default_list_items: int
-    list_items: dict[str, int]
-    coverage_records: int
-
-
-class ContextCoverage(TypedDict):
-    """The selected projection, its source/projection truth, and why."""
-
-    projection: Projection
-    projection_complete: bool
-    source_complete: bool
-    intentional_exclusions: list[ContextCoverageRecord]
-    source_omissions: list[ContextCoverageRecord]
-    truncations: list[ContextCoverageRecord]
-    applied_limits: ContextLimits
-
-
-class AgentContextCoverage(TypedDict):
-    corpus: CorpusBudgetEvidence
-    context: ContextCoverage
-
-
-class ContextFreshness(TypedDict):
-    status: str
-    basis: str
-
-
-class _ContextGlossaryRequired(TypedDict):
-    present: bool
-
-
-class ContextGlossarySection(_ContextGlossaryRequired, total=False):
-    """The managed glossary as the skill sees it; the optional keys are
-    present exactly when the glossary is."""
-
-    schema_version: int
-    concepts: list[ConceptRecord]
-
-
-# A vocabulary entry with its file locations rolled up into per-module
-# counts. The rollup keeps every other key of the table's own entry type
-# (token, identifier, or doc-term), so the three shapes share one mapping.
-ModuleRollupEntry = dict[str, object]
-
-
-class ModuleRollupTable(TypedDict):
-    items: list[ModuleRollupEntry]
-    truncated: TruncationMarker | None
-    coverage: CoverageLedger
-
-
-class LeanVocabularySection(TypedDict):
-    normalization: TokenizationContract
-    tokens: ModuleRollupTable
-    identifiers: ModuleRollupTable
-    doc_terms: ModuleRollupTable
-
-
-class RegisterExemplar(IdentifierEntry):
-    style: str
-
-
-class RegisterExemplars(TypedDict):
-    items: list[RegisterExemplar]
-    coverage: CoverageLedger
-
-
-class ContextRegisterSection(RegisterSection, total=False):
-    exemplars: RegisterExemplars
-
-
-class ContextTerminology(TypedDict):
-    """The evidence terminology section whose register may carry the lean
-    projection's exemplars."""
-
-    considered_tokens: int
-    vocabulary_size: int
-    domain_vocabulary_size: int
-    language_vocabulary_size: int
-    coverage: TerminologyCoverage
-    register: ContextRegisterSection
-    layers: LayersSection
-    synonym_candidates: SynonymCandidatesSection
-    context_dispersion: ContextDispersionSection
-    overload_candidates: OverloadCandidatesSection
-    scope: TerminologyScope
-
-
-class ContextTermCandidate(TermCandidate):
-    locations: list[LocationSample]
-    locations_truncated: bool
-
-
-class ContextNamingCandidates(TypedDict):
-    """``naming_candidates`` with each term's source locations attached."""
-
-    modules: list[ModuleCandidate]
-    modules_dropped: int
-    terms: list[ContextTermCandidate]
-    terms_dropped: int
-    structures: list[StructureCandidate]
-    structures_dropped: int
-    structures_source_groups_dropped: int
-    structures_complete: bool
-    coverage: NamingCoverage
-
-
-class _ContextSource(TypedDict):
-    """The projection before bounding; ``AgentContextDocument`` adds the
-    coverage computed while bounding it."""
-
-    context_schema_version: int
-    evidence_schema_version: int
-    generator: GeneratorRecord
-    freshness: ContextFreshness
-    repository: RepositoryRecord
-    configuration: ConfigurationEvidence
-    totals: TotalsRecord
-    languages: dict[str, int]
-    modules: list[ModuleRecord]
-    files: FilesSection
-    vocabulary: VocabularySection | LeanVocabularySection
-    terminology: ContextTerminology
-    naming_candidates: NamingCandidates | ContextNamingCandidates
-    structural_groups: StructuralGroups
-    monorepo: MonorepoEvidence
-    skipped: SkippedSection
-    glossary: ContextGlossarySection
-    repository_glossary: RepositoryGlossarySection
-
-
-class AgentContextDocument(_ContextSource):
-    """AgentContext v6: what ``inspect`` prints."""
-
-    coverage: AgentContextCoverage
 
 
 @dataclass

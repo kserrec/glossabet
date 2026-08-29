@@ -4,7 +4,8 @@ This directory preserves planning transcripts, completed refactor
 specifications, and stale session handoffs. They document how Glossabet was
 built and why earlier decisions were made, but they may contain superseded
 paths, commands, claims, machine state, or future-work status. They are not
-current instructions.
+current instructions. They remain available in version control and are
+deliberately excluded from source distributions.
 
 For current information, start with the root [`README.md`](../../README.md),
 [`PLAN.md`](../../PLAN.md), and [`ARCHITECTURE.md`](../../ARCHITECTURE.md).

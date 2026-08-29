@@ -28,7 +28,7 @@ from glossabet.analysis.evidence_types import (
 from glossabet.corpus.imports import module_of
 from glossabet.corpus.tokenize import doc_words, tokenize_identifier, tokenize_term
 from glossabet.glossary.model import ScopeEvidence
-from glossabet.glossary.store import path_in_scope, scope_evidence
+from glossabet.glossary.scope import path_in_scope, scope_evidence
 from glossabet.runtime.coverage import (
     CoverageLedger,
     LocationSample,
@@ -283,7 +283,7 @@ class EvidenceIndex:
         }
         # The position budget is index-wide (an exhausted pass leaves every
         # compound term's count a lower bound); the term-length cap is not —
-        # an over-cap term is simply absent from the matches, and must not
+        # an over-cap term does not enter the matches and must not
         # mark every other compound term's count inexact.
         self.compound_complete = self.coverage["compound_match_positions"]["complete"]
 

@@ -7,8 +7,8 @@ It owns three things that must never drift apart: the hardened invocation
 that hides only Glossabet-owned output from the dirty check
 (``FRESHNESS_STATUS_ARGS``), and the stamp shape ``{"head", "dirty"}`` that
 evidence, brief, the Graphify adapter, and the cache all consume. Callers
-never spell any of it themselves; tests substitute ``repository_git_stamp``
-here to control freshness.
+consume ``repository_git_stamp`` instead of reproducing those subprocess and
+pathspec rules.
 """
 
 from __future__ import annotations
@@ -97,8 +97,8 @@ def _run_git(
     # Bytes, decoded as UTF-8 with replacement: git writes paths in UTF-8
     # (``core.quotePath=false`` leaves them raw), and the locale's codec
     # (ASCII in a bare CI shell, cp1252 on Windows) must not turn a
-    # non-ASCII untracked filename into a decode crash. Callers only test
-    # emptiness or read ASCII values, so replacement never changes a result.
+    # non-ASCII untracked filename into a decode crash. Callers consume only
+    # emptiness or ASCII values, so replacement cannot change their result.
     proc = subprocess.run(
         [git_exe, *SAFE_CONFIG, *overrides, "-C", str(root), *args],
         capture_output=True, timeout=30, env=env,

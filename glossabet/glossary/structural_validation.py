@@ -45,8 +45,10 @@ from glossabet.glossary.policy import (
 from glossabet.runtime.coverage import CoverageLedger, coverage_ledger
 
 STRUCTURAL_MATCH_BUDGET = 50_000
+# One overloaded-region finding may match every accepted canonical concept.
+# Keep the exact known count independent from this deterministic display bound.
+OVERLOADED_CONCEPT_SAMPLE_CAP = 10
 
-# Looked up by name at each call so a test can count or replace it.
 _match_strength_from_tokens = structural_match_strength
 
 
@@ -244,14 +246,24 @@ def _structure_findings(
                 group=group["label"],
             ))
         if is_overloaded_region(len(strong), policy):
+            concept_count = len(strong)
+            count_text = (
+                str(concept_count)
+                if group_match_complete else f"at least {concept_count}"
+            )
             overloaded.append(heuristic_finding(
                 "overloaded-structural-region",
                 f"group '{group['label']}' matches "
-                f"{len(strong)} distinct canonical concepts",
+                f"{count_text} distinct canonical concepts",
                 {"members_sample": group["members_sample"]},
                 signal_strength="moderate",
                 group=group["label"],
-                concepts=strong,
+                concept_count=concept_count,
+                concept_count_exact=group_match_complete,
+                concepts_sample=strong[:OVERLOADED_CONCEPT_SAMPLE_CAP],
+                concepts_sample_truncated=(
+                    concept_count > OVERLOADED_CONCEPT_SAMPLE_CAP
+                ),
             ))
     unnamed.sort(key=lambda row: (-row[0], row[1]))
     overloaded.sort(key=lambda f: f["group"])

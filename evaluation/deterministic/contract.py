@@ -15,7 +15,7 @@ DEFAULT_MANIFEST = PROJECT_ROOT / "evaluation" / "corpus.json"
 DEFAULT_RESULTS = PROJECT_ROOT / "evaluation" / "results.json"
 RELEASE_RUNTIME_RUNS = 5
 # Every metric the evaluator can gate on. Genuineness verification pins this
-# exact set so a tampered artifact cannot simply drop the checks it fails;
+# exact set so a tampered artifact cannot drop the checks it fails;
 # which targets those checks carry is verified against the manifest at the
 # release gate.
 RELEASE_THRESHOLD_NAMES = frozenset({

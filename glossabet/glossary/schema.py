@@ -4,8 +4,8 @@
 it, with semantic ceilings on sizes, strings, and scope work so a compact
 hostile document cannot create quadratic owner comparisons or an enormous
 diagnostic. Diagnostics are accumulated in encounter order and truncated to
-a fixed useful prefix. ``checked_glossary`` is the one place a validated
-``object`` becomes a ``GlossaryDocument``.
+a fixed useful prefix. ``checked_glossary`` is the validation boundary where
+an accepted ``object`` becomes a ``GlossaryDocument``.
 """
 
 from __future__ import annotations
@@ -429,11 +429,9 @@ def validate_glossary(glossary: object) -> list[str]:
 
 
 def checked_glossary(value: object) -> tuple[GlossaryDocument | None, list[str]]:
-    """The one place untrusted JSON becomes a ``GlossaryDocument``: the
-    document after ``validate_glossary`` accepted every field, status, scope,
-    and ownership rule, or ``None`` with the diagnostics in their order."""
+    """Return the typed document after validating every field, status, scope,
+    and ownership rule, or ``None`` with diagnostics in encounter order."""
     errors = validate_glossary(value)
     if errors or not isinstance(value, dict):
         return None, errors
     return cast(GlossaryDocument, value), []
-

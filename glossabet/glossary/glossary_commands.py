@@ -6,10 +6,10 @@ import sys
 
 from glossabet.command_run import GLOSSARY_OPTIONAL, open_run
 from glossabet.glossary.model import ConceptRecord, GlossaryDocument
+from glossabet.glossary.scope import concept_scope
 from glossabet.glossary.store import (
     GLOSSARY_FILE,
     GlossaryError,
-    concept_scope,
     save_glossary,
 )
 from glossabet.runtime.artifacts import (

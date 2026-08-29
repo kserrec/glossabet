@@ -5,10 +5,8 @@ import json
 import re
 from pathlib import Path
 
-from glossabet.agent.agent_context import (
-    AGENT_CONTEXT_SCHEMA_VERSION,
-    build_agent_context,
-)
+from glossabet.agent.agent_context import build_agent_context
+from glossabet.agent.agent_context_protocol import AGENT_CONTEXT_SCHEMA_VERSION
 from glossabet.analysis.evidence import build_evidence
 from glossabet.glossary.repository_glossary import repository_glossary_section
 from glossabet.glossary.store import save_glossary
@@ -161,7 +159,7 @@ def test_skill_keeps_ambient_vocabulary_read_only_and_human_gated():
 
 
 def test_skill_glossary_protocol_matches_engine():
-    from glossabet.glossary.store import SCOPE_PATHS_KEY, STATUSES
+    from glossabet.glossary.model import SCOPE_PATHS_KEY, STATUSES
 
     text = SKILL.read_text(encoding="utf-8")
     assert "glossabet-out/glossary.json" in text

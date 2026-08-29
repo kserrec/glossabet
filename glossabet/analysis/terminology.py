@@ -61,8 +61,8 @@ from glossabet.runtime.coverage import (
     coverage_reasons,
 )
 
-# The calibrated defaults, named for readers and tests; the analysis itself
-# reads the policy object it was given (``analysis.policy``).
+# Named views of the calibrated default bounds. Analysis reads its supplied
+# policy object, so these values do not override a non-default policy.
 PAIR_TOP_N = DEFAULT_TERMINOLOGY_POLICY.pair_top_n
 OVERLOAD_MIN_MODULES = DEFAULT_TERMINOLOGY_POLICY.overload_min_modules
 OVERLOAD_MIN_DISPERSION = DEFAULT_TERMINOLOGY_POLICY.overload_min_dispersion

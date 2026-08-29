@@ -57,18 +57,17 @@ from glossabet.corpus.walk_budget import (
 )
 
 __all__ = [
-    # owned here
+    # Orchestration owners.
     "CODE_LANGUAGES", "DOC_EXTENSIONS", "PACKAGE_MANIFESTS",
     "MONOREPO_SUBROOT_THRESHOLD", "MONOREPO_CODE_FILE_THRESHOLD",
     "MonorepoEvidence", "WalkResult", "walk_repository", "detect_monorepo",
-    # path policy (glossabet.corpus.path_policy)
+    # Compatibility exports owned by glossabet.corpus.path_policy.
     "LINK_ESCAPES_REPOSITORY", "LINK_TO_EXCLUDED_CONTENT",
     "LINK_TO_SENSITIVE_FILE", "SELF_DIRS", "SELF_FILES", "SELF_REPORT_FILES",
     "WORKSPACE_MANIFESTS", "entry_named_exactly", "glossary_link_refusal",
     "is_sensitive", "symlink_content_refusal",
-    # budget and coverage (glossabet.corpus.walk_budget); the limits are
-    # re-exported for reading — to change one for a test, patch it on
-    # ``walk_budget``, where the walk and the ledger read it.
+    # Compatibility exports owned and read by glossabet.corpus.walk_budget;
+    # scanner aliases are not a second source for runtime bounds.
     "BUDGET_PATH_SAMPLE", "EXCLUSION_KINDS", "MAX_DIRECTORY_ENTRIES",
     "MAX_FILE_BYTES", "MAX_SOURCE_BYTES", "MAX_SOURCE_FILES",
     "MAX_WALK_ENTRIES", "SKIPPED_SELF_GLOSSARIES", "BudgetLimits",
@@ -247,8 +246,8 @@ def _classify_directories(
             return kept, True
         result.corpus_budget.walk_entries += 1
         # After fixed tool namespaces, sensitive classification precedes
-        # every repository-controlled prune so the exclusion is reported,
-        # never silent (mirrors the file rule).
+        # every repository-controlled prune so the exclusion is recorded
+        # before any later prune (mirrors the file rule).
         if is_sensitive(name):
             result.skipped_sensitive.append(relative)
             continue
@@ -305,8 +304,8 @@ def _classify_files(
             return True
         result.corpus_budget.walk_entries += 1
         # After the fixed glossary filename, sensitive classification
-        # precedes the hidden-file skip so exclusions are reported rather
-        # than silently dropped.
+        # precedes the hidden-file skip so the exclusion is recorded before
+        # that later prune.
         if is_sensitive(fname):
             result.skipped_sensitive.append(rel)
             continue
@@ -420,7 +419,7 @@ def _read_root_manifest(
         refusal = symlink_content_refusal(str(path), root, config)
         if refusal == LINK_ESCAPES_REPOSITORY and rel not in walk.skipped_symlinks:
             walk.skipped_symlinks.append(rel)
-        if refusal is not None:  # escaping, sensitive, or Glossabet's own output
+        if refusal is not None:
             return None
     if not path.is_file():
         return None

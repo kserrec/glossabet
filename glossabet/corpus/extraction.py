@@ -74,8 +74,8 @@ def extract_doc_entry(text: str, *, content_sha256: str, size: int) -> DocEntry:
 
 
 class UnreadReclassifier(Protocol):
-    """The one corpus-budget operation extraction needs: move a file the
-    walk admitted but the build could not read from used to skipped."""
+    """Move a walk-admitted file that extraction could not read from the
+    included corpus budget to the skipped budget."""
 
     def reclassify_unread(
         self, relative: str, reason: str, *, production: bool

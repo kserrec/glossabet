@@ -60,6 +60,10 @@ class _FindingFields(_FindingRequired, total=False):
     binding_status: str
     group: str
     concepts: list[str]
+    concept_count: int
+    concept_count_exact: bool
+    concepts_sample: list[str]
+    concepts_sample_truncated: bool
 
 
 class ObservedFinding(_FindingFields):
@@ -271,6 +275,10 @@ def heuristic_finding(
     concept_id: str | None = None,
     group: str | None = None,
     concepts: list[str] | None = None,
+    concept_count: int | None = None,
+    concept_count_exact: bool | None = None,
+    concepts_sample: list[str] | None = None,
+    concepts_sample_truncated: bool | None = None,
 ) -> HeuristicFinding:
     """One heuristic finding: a nomination at a stated signal strength.
     Evidence is optional; scope and the producer fields are written only
@@ -290,6 +298,14 @@ def heuristic_finding(
         record["group"] = group
     if concepts is not None:
         record["concepts"] = concepts
+    if concept_count is not None:
+        record["concept_count"] = concept_count
+    if concept_count_exact is not None:
+        record["concept_count_exact"] = concept_count_exact
+    if concepts_sample is not None:
+        record["concepts_sample"] = concepts_sample
+    if concepts_sample_truncated is not None:
+        record["concepts_sample_truncated"] = concepts_sample_truncated
     if scope is not None:
         record["scope"] = scope
     if evidence is not None:
@@ -315,7 +331,7 @@ def capped_section(
     """
     reasons = list(incomplete_reasons)
     if cap is None:
-        cap = FINDINGS_CAP  # resolved at call time so tests can lower it
+        cap = FINDINGS_CAP
     if total_items_exact is None:
         total_items_exact = not reasons
     kept, ledger = coverage.capped_collection(

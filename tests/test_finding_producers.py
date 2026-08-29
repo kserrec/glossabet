@@ -6,6 +6,9 @@ the rule rather than only the command. The end-to-end pipeline over a scanned
 corpus is proven once per command in ``test_drift.py`` or ``test_reconcile.py``.
 """
 
+import json
+from itertools import combinations, islice
+
 from glossabet.glossary.binding_validation import (
     _resolve_bindings,
     build_binding_findings,
@@ -19,8 +22,15 @@ from glossabet.glossary.drift import (
     _watched_in_use,
 )
 from glossabet.glossary.matching import EvidenceIndex
+from glossabet.glossary.schema import (
+    MAX_GLOSSARY_CONCEPTS,
+    MAX_GLOSSARY_IDENTITY_CHARS,
+    validate_glossary,
+)
 from glossabet.glossary.structural_validation import _structure_findings
 from glossabet.runtime.coverage import coverage_ledger
+
+EXPECTED_OVERLOADED_CONCEPT_SAMPLE_CAP = 10
 
 # ---- a hand-built RepositoryEvidence, only the parts the producers read ----
 
@@ -590,10 +600,106 @@ def test_structure_findings_all_three_records():
     [region] = overloaded["items"]
     assert region["kind"] == "overloaded-structural-region"
     assert region["group"] == "community 2"
-    assert region["concepts"] == ["payment", "run", "tenant"]
+    assert region["concept_count"] == 3
+    assert region["concept_count_exact"] is True
+    assert region["concepts_sample"] == ["payment", "run", "tenant"]
+    assert region["concepts_sample_truncated"] is False
+    assert "concepts" not in region
     for section in (unnamed, boundary, overloaded):
         assert section["coverage"]["total_items_exact"] is True
     assert work["complete"] is True
+
+
+def _structural_concepts(count):
+    """A valid concept set whose unique two-token terms match one group."""
+    words = [f"word{chr(97 + first)}{chr(97 + second)}"
+             for first in range(6) for second in range(26)]
+    pairs = islice(combinations(words, 2), count)
+    long_ids = [
+        "a" + "\U0001f600" * (MAX_GLOSSARY_IDENTITY_CHARS - 2) + chr(97 + index)
+        for index in range(EXPECTED_OVERLOADED_CONCEPT_SAMPLE_CAP)
+    ]
+    concepts = [
+        concept(
+            long_ids[index] if index < len(long_ids) else f"z{index:05d}",
+            f"{left} {right}",
+        )
+        for index, (left, right) in enumerate(pairs)
+    ]
+    return concepts, words
+
+
+def test_overloaded_region_concept_detail_is_exact_bounded_and_deterministic():
+    canonical, words = _structural_concepts(MAX_GLOSSARY_CONCEPTS)
+    document = glossary(*canonical)
+    assert validate_glossary(document) == []
+    structural = {"groups": [_group("g", "region", ["Node"], words)]}
+
+    def overloaded(concepts):
+        vocabulary = build_concept_vocabulary(concepts)
+        return _structure_findings(
+            structural, concepts, vocabulary, []
+        )[2]["items"][0]
+
+    forward = overloaded(canonical)
+    reverse = overloaded(list(reversed(canonical)))
+
+    assert forward["concept_count"] == MAX_GLOSSARY_CONCEPTS
+    assert forward["concept_count_exact"] is True
+    assert len(forward["concepts_sample"]) == EXPECTED_OVERLOADED_CONCEPT_SAMPLE_CAP
+    assert forward["concepts_sample"] == sorted(
+        concept["id"] for concept in canonical
+    )[:EXPECTED_OVERLOADED_CONCEPT_SAMPLE_CAP]
+    assert forward["concepts_sample_truncated"] is True
+    assert "concepts" not in forward
+    assert forward == reverse
+
+    concept_detail = {
+        key: forward[key]
+        for key in (
+            "concept_count",
+            "concept_count_exact",
+            "concepts_sample",
+            "concepts_sample_truncated",
+        )
+    }
+    serialized = json.dumps(concept_detail, sort_keys=True).encode("utf-8")
+    # json.dumps may use two six-byte surrogate escapes for one non-BMP
+    # character. The scalar plus ten maximum-length IDs still has a fixed
+    # bound independent of the other 9,990 accepted concepts.
+    assert len(serialized) <= (
+        EXPECTED_OVERLOADED_CONCEPT_SAMPLE_CAP * MAX_GLOSSARY_IDENTITY_CHARS * 12
+        + 512
+    )
+
+
+def test_overloaded_region_marks_a_partial_concept_count_as_a_lower_bound(
+    monkeypatch,
+):
+    canonical = [
+        concept("alpha", "Alpha"),
+        concept("beta", "Beta"),
+        concept("delta", "Delta"),
+        concept("gamma", "Gamma"),
+    ]
+    structural = {"groups": [
+        _group("g", "region", ["Node"], ["alpha", "beta", "delta", "gamma"])
+    ]}
+    monkeypatch.setattr(
+        "glossabet.glossary.structural_validation.STRUCTURAL_MATCH_BUDGET", 3
+    )
+
+    overloaded = _structure_findings(
+        structural, canonical, build_concept_vocabulary(canonical), []
+    )[2]
+
+    [region] = overloaded["items"]
+    assert region["concept_count"] == 3
+    assert region["concept_count_exact"] is False
+    assert region["concepts_sample"] == ["alpha", "beta", "delta"]
+    assert region["concepts_sample_truncated"] is False
+    assert "at least 3 distinct canonical concepts" in region["summary"]
+    assert overloaded["coverage"]["total_items_exact"] is False
 
 
 def test_structure_findings_confess_missing_member_tokens():

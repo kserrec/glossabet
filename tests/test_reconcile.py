@@ -12,7 +12,8 @@ from glossabet.analysis.evidence import Limits, build_evidence
 from glossabet.cli import main
 from glossabet.glossary.matching import EvidenceIndex
 from glossabet.glossary.reconcile import build_validation
-from glossabet.glossary.store import save_glossary, validate_glossary
+from glossabet.glossary.schema import validate_glossary
+from glossabet.glossary.store import save_glossary
 
 GLOSSARY = {
     "schema_version": 1,
@@ -123,7 +124,11 @@ def test_boundary_mismatch_detected(tmp_path):
 def test_overloaded_region_detected(tmp_path):
     items = validation_for(tmp_path)["overloaded_structural_region"]["items"]
     finding = next(f for f in items if f["group"] == "community 2")
-    assert set(finding["concepts"]) == {"payment", "run", "tenant"}
+    assert finding["concept_count"] == 3
+    assert finding["concept_count_exact"] is True
+    assert set(finding["concepts_sample"]) == {"payment", "run", "tenant"}
+    assert finding["concepts_sample_truncated"] is False
+    assert "concepts" not in finding
 
 
 def test_orphaned_concept_detected(tmp_path):
@@ -257,7 +262,7 @@ def test_drift_sections_embedded(tmp_path):
 
 def test_without_graph_structural_checks_skip_cleanly(tmp_path):
     validation = validation_for(tmp_path, graph=None)
-    assert validation["schema_version"] == 11
+    assert validation["schema_version"] == 12
     assert validation["finding_checks"]["all_executed"] is False
     assert [
         item["name"] for item in validation["finding_checks"]["skipped"]
@@ -702,23 +707,24 @@ def test_truncated_graph_fragments_do_not_create_structural_matches(tmp_path):
         for group in evidence["structural_groups"]["groups"]
     }
     validation = build_validation(evidence, glossary)
-    structural_items = [
-        *validation["boundary_mismatch"]["items"],
-        *validation["overloaded_structural_region"]["items"],
-    ]
+    boundary_items = validation["boundary_mismatch"]["items"]
+    overloaded_items = validation["overloaded_structural_region"]["items"]
 
     assert groups["0"]["coverage"]["member_tokens"][
         "total_items_exact"
     ] is False
     assert groups["1"]["label_truncated"] is True
     assert all(
-        "payment" not in item["concepts"] for item in structural_items
+        "payment" not in item["concepts"] for item in boundary_items
+    )
+    assert all(
+        "payment" not in item["concepts_sample"] for item in overloaded_items
     )
     assert {
         tuple(item["concepts"])
-        for item in validation["boundary_mismatch"]["items"]
+        for item in boundary_items
     } == {("invoice", "tenant")}
-    assert validation["overloaded_structural_region"]["items"] == []
+    assert overloaded_items == []
 
 
 def test_structural_matching_uses_inverted_token_candidates(

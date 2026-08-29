@@ -55,7 +55,7 @@ from glossabet.glossary.policy import (
     overload_signal,
     parallel_term_signal,
 )
-from glossabet.glossary.store import (
+from glossabet.glossary.scope import (
     concept_scope,
     path_in_scope,
     scope_evidence,

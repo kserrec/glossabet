@@ -81,15 +81,20 @@ include = [
   "/.github/workflows",
   "/ARCHITECTURE.md",
   "/CHANGELOG.md",
+  "/COMPATIBILITY.md",
   "/CONTRIBUTING.md",
   "/DISTRIBUTION.md",
   "/EVALUATION.md",
   "/LICENSE",
   "/NAME-CLEARANCE.md",
+  "/PLAN.md",
   "/PRIVACY.md",
   "/README.md",
   "/RELEASING.md",
   "/SECURITY.md",
   "/pyproject.toml",
   "/uv.lock",
+]
+exclude = [
+  "/docs/history/**",
 ]

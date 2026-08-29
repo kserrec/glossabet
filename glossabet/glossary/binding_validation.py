@@ -37,7 +37,7 @@ from glossabet.glossary.policy import (
     is_fragmented,
     orphan_signal,
 )
-from glossabet.glossary.store import concept_scope, path_in_scope, scope_evidence
+from glossabet.glossary.scope import concept_scope, path_in_scope, scope_evidence
 
 
 def vocabulary_tokens(text: str) -> set[str]:
@@ -87,9 +87,9 @@ class BindingResolution(TypedDict):
     scope: ScopeEvidence
 
 
-# Omission ledgers whose entries are paths the scan chose not to read: a
-# binding into one of them names something that may well exist, so it is
-# never "unresolved" — the engine simply cannot judge it.
+# Omission ledgers contain paths the scan chose not to read. A binding into
+# one of them has unknown existence and is therefore uncertain rather than
+# unresolved.
 _EXCLUDED_PATH_LEDGERS = (
     "configured", "generated", "vendored", "sensitive", "oversized",
     "symlinks_escaping_repo", "symlinks_to_excluded_content",

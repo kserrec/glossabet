@@ -5,11 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 
 from glossabet.command_run import GLOSSARY_OPTIONAL, open_run
-from glossabet.glossary.model import AliasRecord, ConceptRecord, GlossaryDocument
+from glossabet.glossary.model import (
+    GLOSSARY_SCHEMA_VERSION,
+    AliasRecord,
+    ConceptRecord,
+    GlossaryDocument,
+)
+from glossabet.glossary.scope import concept_scope
 from glossabet.glossary.store import (
     GLOSSARY_FILE,
-    GLOSSARY_SCHEMA_VERSION,
-    concept_scope,
     glossary_sha256,
 )
 from glossabet.runtime import git_state
@@ -233,9 +237,9 @@ def build_brief(glossary: GlossaryDocument, git_stamp: BriefGitStamp) -> str:
     )
     glossary_state = git_stamp.get("glossary_json")
     if glossary_state is not None:
-        # ``dirty`` excludes glossabet-out/ by design (evidence freshness);
-        # the one file there that is not derived output gets its own state
-        # so a reader never infers "committed" from "dirty=false".
+        # ``dirty`` excludes glossabet-out/ by design (evidence freshness).
+        # Human-governed glossary.json therefore has an independent state,
+        # preventing ``dirty=false`` from implying that it is committed.
         line += f"; glossary.json={_git_value(glossary_state)}"
     return _render_brief(glossary, line + "\n", LIVE_BRIEF_ORIGIN)
 

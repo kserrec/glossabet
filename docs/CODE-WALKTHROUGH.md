@@ -95,14 +95,18 @@ renames code. They produce evidence for a maintainer, not verdicts.
 
 ### Repository map
 
+This table is a navigation aid. The canonical-versus-generated ownership and
+distribution lifecycles are defined in the root
+[`ARCHITECTURE.md`](../ARCHITECTURE.md#repository-authority-map).
+
 | Path | Purpose |
 | --- | --- |
 | [`.github/`](../.github/) | Continuous-integration and prepared release workflows. |
 | [`docs/`](./) | User walkthrough, performance notes, this maintainer guide, and explicitly historical records. |
-| [`evaluation/`](../evaluation/) | Deterministic, agent, Claude, and reviewer evaluation inputs, runners, schemas, and recorded results. |
+| [`evaluation/`](../evaluation/) | Deterministic, agent, Claude, and reviewer evaluation inputs, runners, schemas, and producer-owned evidence; its [`README.md`](../evaluation/README.md) is the file authority map. |
 | [`examples/`](../examples/) | The reproducible payment-service sample and its settled glossary. |
 | [`glossabet/`](../glossabet/) | Production Python package. |
-| [`plugins/`](../plugins/) | Checked-in Codex plugin, canonical skill copy, hook, runner, and bundled wheel. |
+| [`plugins/`](../plugins/) | Checked-in Codex plugin configuration plus the generated canonical-skill copy, digest-bound runner, and bundled wheel. |
 | [`scripts/`](../scripts/) | Development, benchmark, distribution, plugin-build, smoke, and workflow checks. |
 | [`skill/`](../skill/) | Canonical agent workflow packaged into the wheel and plugins. |
 | [`tests/`](../tests/) | Unit, integration, security-ratchet, compatibility, distribution, and evaluation tests. |
@@ -197,8 +201,8 @@ the document.
 | Repository evidence | [`analysis.evidence.build_evidence`](../glossabet/analysis/evidence.py) assembles it; `persist_evidence` refreshes and writes it for scan/analyze/inspect/drift/validate. Reports, agent context, matching, drift, and reconciliation consume it. | `glossabet-out/evidence.json`, schema 17; [`analysis.evidence_types`](../glossabet/analysis/evidence_types.py) owns field types and [`analysis.evidence`](../glossabet/analysis/evidence.py) owns assembly. | Normal consumers use freshly rebuilt evidence, not a legacy artifact loader. [`evidence_facts`](../glossabet/analysis/evidence_facts.py) is the narrow tolerant boundary for older or hand-built omission data and defaults missing completeness proof to incomplete. `skipped.corpus_budget` and per-collection `CoverageLedger` records separate known drops from unknown upstream omissions. |
 | Glossary document | The skill submits a human-settled document to `save`; [`glossary.store.save_glossary`](../glossabet/glossary/store.py) validates, normalizes, and writes it. Every maintained-vocabulary path consumes it. | `glossabet-out/glossary.json`, schema 1; [`glossary.model`](../glossabet/glossary/model.py) owns meaning, [`glossary.schema`](../glossabet/glossary/schema.py) validation, and [`glossary.store`](../glossabet/glossary/store.py) persistence/hash. | Only schema 1 is accepted; unknown fields and ambiguous ownership are rejected rather than migrated silently. Semantic ceilings reject an over-large state. This is human-governed state, so it has no “partial glossary” coverage mode. |
 | Drift document | [`glossary.drift.build_drift`](../glossabet/glossary/drift.py) produces it from fresh evidence and a glossary; `drift_command` persists and renders it. Maintainers and the skill consume it. | `glossabet-out/drift.json`, schema 7; [`glossary.drift`](../glossabet/glossary/drift.py) owns its sections while [`glossary.findings`](../glossabet/glossary/findings.py) owns shared finding/coverage shapes. | Rebuilt rather than migrated. Each section carries exact/lower-bound totals, drops, and reasons; top-level completeness is true only when all relevant section totals are exact. |
-| Validation document | [`glossary.reconcile.build_validation`](../glossabet/glossary/reconcile.py) combines drift, bindings, structure, managed context, and root-glossary metadata; `validate_command` persists and renders it. | `glossabet-out/validation.json`, schema 11; [`glossary.reconcile`](../glossabet/glossary/reconcile.py) owns composition and [`glossary.findings`](../glossabet/glossary/findings.py) owns common shapes. | Rebuilt rather than migrated. `finding_checks` names every skipped finding-producing check; `total_findings_exact` describes only the total from checks that ran. The `graph` object is the sole graph state and always carries presence, usability, freshness, warnings, and group coverage. |
-| Agent context | [`agent.agent_context.build_agent_context`](../glossabet/agent/agent_context.py) projects fresh evidence and optional glossary metadata; `inspect_command` serializes it to stdout for the skill. | Not persisted by `inspect`; context schema 6 declares evidence schema 17 alongside it. [`agent.agent_context`](../glossabet/agent/agent_context.py) owns the projection. | The skill refuses an unexpected context version. Lean and full projections share one schema but deliberately retain different detail. `coverage.corpus` retains detailed scanner-budget evidence. `coverage.context` names the selected projection and actual limits, then separates source completeness, projection completeness, intentional exclusions, source omissions, and limit-driven truncations. |
+| Validation document | [`glossary.reconcile.build_validation`](../glossabet/glossary/reconcile.py) combines drift, bindings, structure, managed context, and root-glossary metadata; `validate_command` persists and renders it. | `glossabet-out/validation.json`, schema 12; [`glossary.reconcile`](../glossabet/glossary/reconcile.py) owns composition and [`glossary.findings`](../glossabet/glossary/findings.py) owns common shapes. | Rebuilt rather than migrated. `finding_checks` names every skipped finding-producing check; `total_findings_exact` describes only the total from checks that ran. The `graph` object is the sole graph state and always carries presence, usability, freshness, warnings, and group coverage. Overloaded-region detail separates `concept_count`/`concept_count_exact` from a deterministic ten-ID `concepts_sample` and its own truncation flag. |
+| Agent context | [`agent.agent_context.build_agent_context`](../glossabet/agent/agent_context.py) projects fresh evidence and optional glossary metadata; `inspect_command` serializes it to stdout for the skill. | Not persisted by `inspect`; context schema 6 declares evidence schema 17 alongside it. [`agent.agent_context_protocol`](../glossabet/agent/agent_context_protocol.py) owns the versioned shapes; [`agent.agent_context`](../glossabet/agent/agent_context.py) owns projection and serialization. | The skill refuses an unexpected context version. Lean and full projections share one schema but deliberately retain different detail. `coverage.corpus` retains detailed scanner-budget evidence. `coverage.context` names the selected projection and actual limits, then separates source completeness, projection completeness, intentional exclusions, source omissions, and limit-driven truncations. |
 | Managed context | [`agent.managed_context.render_block`](../glossabet/agent/managed_context.py) derives one block from the glossary; [`agent.context_sync.sync_context`](../glossabet/agent/context_sync.py) is the explicit writer. Agent hosts consume the block; drift and validation inspect it. | One marked range in root `AGENTS.md` or `CLAUDE.md`. [`managed_block`](../glossabet/managed_block.py) owns wire format 1; [`agent.managed_context`](../glossabet/agent/managed_context.py) owns report schema 1. | Exact content and semantic glossary hashes distinguish current, stale, edited, absent, and uninspectable. An older format is stale; a newer or changed block is edited and is never replaced without an unambiguous range plus explicit `--force`. The embedded brief carries its own byte/entry coverage, while the report names every target issue. |
 
 The shared [`CoverageLedger`](../glossabet/runtime/coverage.py) is the key
@@ -377,6 +381,15 @@ diagnostic.
 sort-key JSON, so semantically identical state has one digest independent of
 pretty-print layout.
 
+These modules also define an import-ownership boundary. Internal callers take
+schema types and constants from [`glossary.model`](../glossabet/glossary/model.py),
+validation from [`glossary.schema`](../glossabet/glossary/schema.py), scope
+behavior from [`glossary.scope`](../glossabet/glossary/scope.py), and only
+persistence behavior from [`glossary.store`](../glossabet/glossary/store.py).
+The store still exposes its exact pre-split aliases for Python import
+compatibility, but new internal code does not use those aliases as an ownership
+shortcut.
+
 ### Existing root glossary
 
 A maintainer-owned root `GLOSSARY.md` is separate from Glossabet's structured
@@ -454,9 +467,12 @@ through the same section/coverage contract. Neither auto-fixes anything.
 
 ### `inspect`
 
-[`inspect_command`](../glossabet/agent/agent_context.py) opens an optional
-glossary, refreshes and persists evidence, safely discovers root-glossary
-metadata, builds context, and prints deterministic compact JSON.
+[`agent_context_protocol`](../glossabet/agent/agent_context_protocol.py) owns
+the version and static document shapes without importing projection or command
+behavior. [`inspect_command`](../glossabet/agent/agent_context.py) opens an
+optional glossary, refreshes and persists evidence, safely discovers
+root-glossary metadata, builds that context, and prints deterministic compact
+JSON.
 
 The normal lean projection rolls repeated file locations up to modules, adds
 useful naming-candidate locations and identifier-style exemplars, and omits
@@ -634,9 +650,11 @@ trust-ratchet, and artifact tests rather than relying on coverage percentage.
 10. [`glossabet/glossary/drift.py`](../glossabet/glossary/drift.py) and
     [`reconcile.py`](../glossabet/glossary/reconcile.py) — Why are drift and
     validation different?
-11. [`glossabet/agent/agent_context.py`](../glossabet/agent/agent_context.py)
-    and [`brief.py`](../glossabet/agent/brief.py) — What crosses from the
-    deterministic engine into an agent session?
+11. [`glossabet/agent/agent_context_protocol.py`](../glossabet/agent/agent_context_protocol.py),
+    [`agent_context.py`](../glossabet/agent/agent_context.py), and
+    [`brief.py`](../glossabet/agent/brief.py) — What crosses from the
+    deterministic engine into an agent session, and which module owns its
+    shape versus its projection?
 12. [`glossabet/agent/managed_context.py`](../glossabet/agent/managed_context.py),
     [`context_sync.py`](../glossabet/agent/context_sync.py), and
     [`glossabet/managed_block.py`](../glossabet/managed_block.py) — How is

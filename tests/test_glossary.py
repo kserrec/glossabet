@@ -9,18 +9,23 @@ import unicodedata
 
 import pytest
 
+import glossabet.glossary.model as glossary_model
+import glossabet.glossary.schema as glossary_schema
+import glossabet.glossary.scope as glossary_scope
+import glossabet.glossary.store as glossary_store
 from glossabet.cli import main
 from glossabet.glossary.model import BINDING_KINDS, STATUSES
-from glossabet.glossary.schema import MAX_VALIDATION_ERRORS
+from glossabet.glossary.schema import (
+    MAX_VALIDATION_ERRORS,
+    checked_glossary,
+    validate_glossary,
+)
+from glossabet.glossary.scope import path_in_scope, scopes_overlap
 from glossabet.glossary.store import (
     GlossaryError,
-    checked_glossary,
     glossary_sha256,
     load_glossary,
-    path_in_scope,
     save_glossary,
-    scopes_overlap,
-    validate_glossary,
 )
 
 GLOSSARY = {
@@ -44,6 +49,31 @@ GLOSSARY = {
         },
     ],
 }
+
+
+def test_store_reexports_only_the_historical_compatibility_surface():
+    owners = {
+        "BINDING_KINDS": glossary_model,
+        "GLOSSARY_SCHEMA_VERSION": glossary_model,
+        "SCOPE_PATHS_KEY": glossary_model,
+        "STATUSES": glossary_model,
+        "checked_glossary": glossary_schema,
+        "validate_glossary": glossary_schema,
+        "concept_scope": glossary_scope,
+        "path_in_scope": glossary_scope,
+        "scope_evidence": glossary_scope,
+        "scopes_overlap": glossary_scope,
+    }
+    persistence_exports = {
+        "GLOSSARY_FILE",
+        "GlossaryError",
+        "glossary_sha256",
+        "load_glossary",
+        "save_glossary",
+    }
+    assert set(glossary_store.__all__) == persistence_exports | owners.keys()
+    for name, owner in owners.items():
+        assert getattr(glossary_store, name) is getattr(owner, name)
 
 
 def test_round_trip(tmp_path):

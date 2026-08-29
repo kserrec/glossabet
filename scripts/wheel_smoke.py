@@ -15,7 +15,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from glossabet.agent.agent_context import AGENT_CONTEXT_SCHEMA_VERSION  # noqa: E402
+from glossabet.agent.agent_context_protocol import (  # noqa: E402
+    AGENT_CONTEXT_SCHEMA_VERSION,
+)
 
 
 def _one_wheel(dist: Path) -> Path:

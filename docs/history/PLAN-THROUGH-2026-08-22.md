@@ -17,8 +17,9 @@ before the trusted-alpha gate and Phase 23 in execution order, so outside
 testers meet the corrected signals rather than re-reporting known defects.
 Public release remains a separate, explicit authorization gate after those
 phases.
-This document is the authoritative roadmap. Provenance: merged from the working
-sessions of 2026-08-14 — Claude's loop/reconciliation analysis, ChatGPT's
+During those sessions, this document was the authoritative roadmap. Provenance:
+merged from the working sessions of 2026-08-14 — Claude's loop/reconciliation
+analysis, ChatGPT's
 "Robust Repository Vocabulary System" spec and repo-transition notes, and the
 existing `/glossabet` skill, which is the behavioral spec this project serves.
 

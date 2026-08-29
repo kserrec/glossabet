@@ -173,13 +173,14 @@ The complete pre-release verification and publication procedure is in
 | Understand the product and try it | This README and the executable [`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md) |
 | Understand code organization and constraints | [`ARCHITECTURE.md`](ARCHITECTURE.md) |
 | Follow the implementation in execution order | [`docs/CODE-WALKTHROUGH.md`](docs/CODE-WALKTHROUGH.md) |
+| Understand accepted formats, import stability, and removal rules | [`COMPATIBILITY.md`](COMPATIBILITY.md) |
 | Understand security claims and limits | [`SECURITY.md`](SECURITY.md) |
 | Understand local and model-provider data flow | [`PRIVACY.md`](PRIVACY.md) |
-| Understand empirical evaluation | [`EVALUATION.md`](EVALUATION.md) |
+| Understand empirical evaluation or its file ownership | [`EVALUATION.md`](EVALUATION.md) and [`evaluation/README.md`](evaluation/README.md) |
 | Reproduce performance observations | [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md) |
 | Build or release distributions | [`DISTRIBUTION.md`](DISTRIBUTION.md) and [`RELEASING.md`](RELEASING.md) |
 | See current/future work or contribute | [`PLAN.md`](PLAN.md) and [`CONTRIBUTING.md`](CONTRIBUTING.md) |
-| Read construction history | Optional [`docs/history/`](docs/history/README.md) archive |
+| Read construction history | Optional [repository-only archive](https://github.com/kserrec/glossabet/tree/main/docs/history), excluded from source distributions |
 
 ## Provenance and affiliation
 
@@ -190,5 +191,5 @@ identify third-party hosts or optional tools and remain their owners' marks.
 
 Glossabet is developed with AI coding assistants under human direction and
 review. Claude Code contributions are recorded in the commit history;
-the [historical plan](docs/history/PLAN-THROUGH-2026-08-22.md) records
+the repository-only [historical plan](https://github.com/kserrec/glossabet/blob/main/docs/history/PLAN-THROUGH-2026-08-22.md) records
 ChatGPT's contribution to the initial 2026-08-14 product plan.

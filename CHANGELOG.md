@@ -67,6 +67,23 @@ not been published to PyPI or a public plugin directory.
   infrastructure boundary. Command orchestration lives in
   `glossabet.command_run`; the dependency-free managed-block format lives in
   `glossabet.managed_block`; runtime modules import no domain features.
+- Internal glossary callers now import model, validation, and scope behavior
+  from their owning modules rather than through the persistence store. The
+  store retains its exact historical aliases for Python import compatibility;
+  command behavior, persisted schemas, and serialized bytes are unchanged.
+- The agent-context protocol shapes and schema version now live in a lower
+  module than projection, bounding, serialization, and command behavior. The
+  historical `agent_context` imports remain available, and context schema,
+  command behavior, and serialized bytes are unchanged.
+- Repository documentation now identifies canonical product, test,
+  evaluation, script, skill, plugin, generated-artifact, and history owners.
+  Evaluation inputs and producer-owned evidence have their own file map;
+  repository-only construction history remains preserved in Git but is no
+  longer included in source distributions.
+- Compatibility policy now records exact accepted product and evaluation
+  versions, Python import-path status, field deprecation horizons, and the
+  purpose and removal criterion for every retained graph/evidence fallback,
+  re-export, and pre-rename output exclusion.
 - Typed evidence documents are read directly. Only compatibility-tolerant and
   derived evidence meaning remains in `analysis.evidence_facts`, and the
   dynamic finding-section view remains where it supplies real narrowing.
@@ -115,6 +132,11 @@ not been published to PyPI or a public plugin directory.
   is exact; the duplicate `graph_available` and ambiguous validation
   `total_findings_complete` fields are removed. Evidence, context, validation,
   and deterministic-evaluation schemas advance together.
+- Overloaded structural-region findings now keep an exact or explicitly
+  lower-bound `concept_count` separately from a deterministic ten-ID
+  `concepts_sample`. `concept_count_exact` and `concepts_sample_truncated`
+  distinguish incomplete matching from display sampling; validation advances
+  to schema 12.
 - Active documentation now describes the current artifact. Completed plans,
   refactor specifications, and stale handoffs are preserved and clearly
   labelled under `docs/history/`.

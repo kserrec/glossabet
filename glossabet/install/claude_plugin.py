@@ -22,8 +22,9 @@ from typing import NamedTuple, TypedDict
 from glossabet import __version__
 from glossabet.runtime.executables import which_on_path
 
-# Fields shared with the checked-in Codex plugin manifest; a test pins them
-# to plugins/glossabet/.codex-plugin/plugin.json so the two hosts cannot drift.
+# Fields shared with the checked-in Codex plugin manifest. Distribution
+# verification pins them to plugins/glossabet/.codex-plugin/plugin.json so the
+# two host manifests cannot drift.
 PLUGIN_DESCRIPTION = (
     "Build and maintain a shared codebase vocabulary with a bundled local CLI."
 )

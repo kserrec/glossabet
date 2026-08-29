@@ -57,7 +57,7 @@ from glossabet.glossary.repository_glossary import (
     RepositoryGlossarySection,
     repository_glossary_section,
 )
-from glossabet.glossary.store import concept_scope
+from glossabet.glossary.scope import concept_scope
 from glossabet.glossary.structural_validation import (
     STRUCTURAL_MATCH_BUDGET,
     build_structural_validation,
@@ -76,7 +76,7 @@ __all__ = [
     "validate_command",
 ]
 
-VALIDATION_SCHEMA_VERSION = 11
+VALIDATION_SCHEMA_VERSION = 12
 VALIDATION_FILE = "validation.json"
 
 FRAGMENTATION_MIN_MODULES = DEFAULT_RECONCILIATION_POLICY.fragmentation_min_modules
@@ -240,7 +240,7 @@ def build_validation(
         # The repository's own root GLOSSARY.md: discovery record plus, when
         # structured state exists and the file was read completely, the
         # lexical term-presence divergence. Not a findings section: it is
-        # one deterministic signal, never a diagnosis.
+        # one deterministic signal, not a diagnosis.
         "repository_glossary": (
             repository_glossary
             if repository_glossary is not None

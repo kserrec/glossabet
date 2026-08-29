@@ -238,6 +238,73 @@ def test_distribution_content_guard_catches_local_home_paths():
     assert not _LOCAL_PATH_RE.search(b"(?:/home/|/Users/)[literal]")
 
 
+def test_source_distribution_requires_current_policy_and_evaluation_guides():
+    from scripts.check_distribution import SDIST_REQUIRED_RELATIVE
+
+    assert {
+        "COMPATIBILITY.md",
+        "PLAN.md",
+        "docs/plans/evaluation-modularization.md",
+        "evaluation/README.md",
+    } <= SDIST_REQUIRED_RELATIVE
+
+
+def test_repository_documents_name_one_current_roadmap():
+    plan = (ROOT / "PLAN.md").read_text(encoding="utf-8")
+    architecture = (ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    supporting_spec = (
+        ROOT / "docs" / "plans" / "evaluation-modularization.md"
+    ).read_text(encoding="utf-8")
+
+    assert plan.startswith("# Glossabet — Current Roadmap\n")
+    assert (
+        "`PLAN.md` is the sole current roadmap and status record"
+        in " ".join(architecture.split())
+    )
+    normalized_spec = " ".join(supporting_spec.split())
+    assert (
+        "`PLAN.md` is the sole current roadmap and status record"
+        in normalized_spec
+    )
+    assert "## Specified pass sequence" in supporting_spec
+    assert "## Passes" not in supporting_spec
+    assert "*(done)*" not in supporting_spec
+
+    history = ROOT / "docs" / "history"
+    for path in sorted(history.glob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        if path.name != "README.md":
+            assert "Historical record" in text[:500], path.name
+        assert "This document is the authoritative roadmap." not in text, path.name
+
+
+def test_source_distribution_rejects_repository_only_construction_history(
+    tmp_path,
+):
+    import io
+    import tarfile
+
+    from scripts import check_distribution as dist
+
+    sdist = tmp_path / "glossabet-0.0.0.tar.gz"
+    with tarfile.open(sdist, "w:gz") as archive:
+        member = tarfile.TarInfo(
+            "glossabet-0.0.0/docs/history/old-session.md"
+        )
+        member.size = 8
+        archive.addfile(member, io.BytesIO(b"historic"))
+
+    with pytest.raises(SystemExit) as info:
+        dist._check_sdist(
+            sdist,
+            tmp_path / "unused.whl",
+            "0.0.0",
+            b"",
+            current=False,
+        )
+    assert "repository-only construction history" in str(info.value)
+
+
 def test_distribution_home_path_scan_reaches_every_archive_layer(tmp_path, monkeypatch):
     """The regex alone is not the guard: the wheel scan must read every
     wheel member, the sdist scan every tar member, and a wheel *nested*

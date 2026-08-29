@@ -224,8 +224,8 @@ def _divergence_result(
 def repository_glossary_divergence(
     glossary: GlossaryDocument, payload: bytes
 ) -> DivergenceRecord:
-    """The one reconciliation signal the engine can give without parsing
-    Markdown: is each settled term lexically present in the document?
+    """Return the lexical reconciliation signal available without parsing
+    Markdown: whether each settled term is present in the document.
 
     ``canonical_missing_from_markdown`` lists canonical concept terms whose
     NFKC+casefold form occurs nowhere in the folded document text.

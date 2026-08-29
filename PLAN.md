@@ -8,7 +8,9 @@ Outside testing, contribution intake, release-candidate work, and publication
 remain paused until he explicitly advances those gates.
 
 This file contains only current and future work. The complete construction
-record is preserved under [`docs/history/`](docs/history/README.md).
+record is preserved in the repository-only
+[history archive](https://github.com/kserrec/glossabet/tree/main/docs/history),
+which is excluded from source distributions.
 
 ## Product boundary
 
@@ -758,43 +760,416 @@ chunk is Step 4.1.
 
 ### Phase 4 — bounded findings and clear ownership
 
-- [ ] **Step 4.1 — bound large finding details.** Store exact structural
-  `concept_count` with a bounded sample and explicit sample truncation, then
-  audit only other per-finding collections proportional to accepted glossary
-  size. Prove exact totals, payload bounds, intended serialized size, and
-  deterministic order.
-- [ ] **Step 4.2 — expose conceptual module owners.** Move clear internal scope
-  imports from persistence re-export façades to `glossary.scope`, preserve only
-  policy-backed public compatibility re-exports, audit a few similarly clear
-  cases, and prove no dependency cycle. Do not perform a repository-wide import
-  rewrite.
-- [ ] **Step 4.3 — conditional cohesion improvements.** Reassess
-  `agent_context.py` after its schema change and split protocol model from
-  projection code into exactly two modules only if local reasoning materially
-  improves and output stays byte-identical. Likewise add mypy coverage only for
-  the critical evaluator cleanup/lifecycle modules if that gives a narrow,
-  maintainable gate. Record a no-change decision when either move is churn.
+- [x] **Step 4.1 — bound large finding details.** Implementation, verification,
+  the fresh cold review, and post-review artifact currency are complete
+  (2026-08-28).
+
+  The verified before-state capped each finding section at ten records but put
+  every strong canonical concept ID into one overloaded-region record's
+  `concepts` list. A valid glossary may contain 10,000 concepts, so one retained
+  finding still grew linearly with accepted concept count. Boundary-mismatch
+  `concepts` are always one exact pair. The targeted audit found no other
+  per-finding collection whose length grows with accepted concept count;
+  remaining lists come from already bounded repository/Graphify evidence or
+  from the one concept the finding describes.
+
+  The named invariant is: overloaded-region detail retains at most ten sorted
+  concept IDs; `concept_count` remains independent of that display sample;
+  `concept_count_exact` distinguishes complete matching from a sound lower
+  bound; and `concepts_sample_truncated` describes only known IDs omitted from
+  `concepts_sample`. Section finding totals, structural match-work coverage,
+  and graph-source incompleteness remain separate.
+
+  Overloaded findings now implement that contract and say “at least” when the
+  structural match budget leaves the scalar inexact. Validation advances from
+  schema 11 to 12; the retired overloaded `concepts` field is not retained as a
+  parallel alias. Boundary findings keep their exact two-ID `concepts` pair,
+  including the deterministic evaluator key that consumes it. Changelog,
+  architecture, code walkthrough, evaluation guide, tests, deterministic
+  evidence, generated plugin runner, and bundled wheel consume the new shape.
+
+  Red producer scenarios first proved the missing scalar/sample contract at
+  the full accepted 10,000-concept ceiling and under an exhausted structural
+  match budget. The maximum case uses ten 1,024-character non-BMP IDs to prove
+  the serialized concept detail stays within the derived JSON escape bound,
+  and reversed canonical input proves byte-stable ordering. The partial case
+  proves the known count stays a lower bound without conflating unfinished
+  matching with final sample truncation.
+
+  Focused reconciliation, evaluation, release, plugin, and artifact tests
+  passed; the complete suite passed with 883 tests and three platform-specific
+  skips. Ruff, mypy over all 55 product files, workflow policy, deterministic,
+  installed-agent, blinded-reviewer, and Claude-history integrity verification,
+  current distribution parity, isolated wheel smoke, the public walkthrough,
+  the benchmark, and the Codex plugin install/update/invocation/removal smoke
+  passed. `actionlint` remains unavailable locally and no workflow changed.
+
+  Offline deterministic evidence was regenerated from all seven pinned cases
+  with five cold and five warm runs and no model or paid service. Repeated
+  unchanged regenerations exposed host-sensitive timing: three pre-closure
+  runs measured 10.747–10.936 cold seconds per 1,000 source files and missed
+  the 10.0 ceiling, while later post-documentation runs passed it. The exact
+  retained measurement lives in `evaluation/results.json`; 14 of 15 thresholds
+  pass, with only distinctive nomination quality at 0.75 against 1.0. The
+  evaluator times `build_evidence`; this Step's structural-validation
+  serialization is outside that interval. During investigation the host
+  reported the `powersave` governor, `balance_power`, roughly 33% CPU scaling,
+  and elevated load, but no earlier power-policy snapshot exists, so that state
+  is an observation rather than a proved sole cause.
+
+  The required non-author cold review close-read every changed production,
+  test, runner, and documentation surface; traced active validation consumers;
+  verified the complete/partial matching boundary, all 55 shipped product
+  modules, canonical skill parity, wheel integrity, runner digest, and runner
+  execution; and found no code, schema, consumer, or wheel defect. It found one
+  artifact-order inconsistency: `evaluation/results.json` preceded the final
+  roadmap prose, so strict-current verification correctly reported four stale
+  self-register spellings. Closure therefore regenerates deterministic evidence
+  after this final roadmap wording, rebuilds the source distribution, and
+  requires the replacement current verifier to retain only the deliberate
+  nomination-quality threshold miss.
+
+  No runtime dependency, live model host, external account, publication,
+  commit, push, or Step 4.2 work was introduced.
+- [x] **Step 4.2 — expose conceptual module owners.** Implementation,
+  verification, and artifact closure are complete (2026-08-28).
+
+  The verified before-state had six product modules importing scope-owned
+  behavior through the persistence-owned `glossary.store` facade:
+  `matching`, `binding_validation`, `reconcile`, `drift`,
+  `glossary_commands`, and `agent.brief`. The brief also obtained the glossary
+  schema version through that facade. The store itself legitimately imports
+  those owners to normalize, validate, and hash persisted glossaries, and its
+  pre-decomposition `__all__` is the recorded Python import compatibility
+  surface.
+
+  The named invariant is: package internals import a concept from the module
+  that owns its behavior; `glossary.store` exposes persistence to internal
+  consumers while retaining its exact historical non-persistence aliases for
+  external import compatibility; and the `model` → `scope` → `schema` →
+  `store` owner core remains acyclic. A red architecture test first named all
+  six product offenders. It now scans every shipped product module, rejects
+  internal use of any compatibility-only store name, and separately enforces
+  the acyclic owner order. A glossary test pins the exact five persistence
+  exports, ten compatibility aliases, and each alias's identity with its owner.
+
+  The six product consumers now import scope helpers from `glossary.scope`;
+  `agent.brief` takes the schema version from `glossary.model`. The narrow
+  adjacent audit also moved deterministic-evaluator validation to
+  `glossary.schema` and moved test-only validator/model/scope imports to their
+  owners. It deliberately left persistence imports at `store` and preserved
+  the intentional `corpus.scanner` and `analysis.graphify` composition
+  facades. No repository-wide import rewrite, module split, re-export removal,
+  runtime dependency, public API change, command change, or persisted-schema
+  change was made.
+
+  The 201-test before baseline passed. After the red-first assertion and
+  refactor, 214 focused tests passed; the complete suite passed with 886 tests
+  and three platform-specific skips. Ruff, mypy over all 55 product files,
+  workflow policy, isolated wheel smoke, and the Codex plugin
+  install/update/invocation/removal smoke passed. The plugin builder first
+  rejected the ignored `dist/` directory's old wheel because its bundled skill
+  differed from the canonical skill; building the current wheel supplied the
+  required input and the unchanged build script then passed.
+
+  Artifact closure regenerated the seven-case offline deterministic evidence
+  after this final roadmap wording, confirmed byte equality between the bundled
+  and release wheels, rebuilt the source distribution, and passed current
+  distribution parity. Default deterministic verification passes. Strict
+  current verification is not green: the distinctive-nomination miss is
+  persistent, and unchanged closure regenerations included a 6.750-second cold
+  throughput pass plus three consecutive 11.539–15.911-second misses against
+  the 10.0-second ceiling. No code changed between those runs; the evaluator
+  times `build_evidence`, and the host reported 4.89 one-minute load, the
+  `powersave` governor, and 42% CPU scaling. With no controlled power/load
+  baseline, those are observations rather than a proved sole cause;
+  `evaluation/results.json` is authoritative for the retained run. The
+  installed-agent and blinded-reviewer artifacts still pass their default
+  genuineness checks. Installed-agent
+  current verification names stale input and delivery identities. Reviewer
+  current verification reports malformed identity/blinding metadata and cannot
+  build a current packet while the deterministic release threshold remains
+  open. No live refresh was authorized, so those current-only failures remain
+  recorded rather than being replaced. No live model, paid service, external
+  account, publication, commit, push, or Step 4.3 work was introduced.
+- [x] **Step 4.3 — conditional cohesion improvements.** Implementation,
+  verification, and artifact closure are complete (2026-08-28).
+
+  The verified starting state was one 672-line
+  `glossabet.agent.agent_context` module. Its schema version and roughly 150
+  lines of protocol-only `TypedDict` and projection-shape declarations sat
+  between output limits and more than 400 lines of projection, bounding,
+  serialization, and command behavior. That was a material local reasoning
+  seam, so the conditional split earned its place. The versioned model now
+  lives in the new 197-line `agent_context_protocol` module; the existing
+  517-line `agent_context` module owns projection and command mechanics. No
+  third agent-context module or broader package reorganization was introduced.
+
+  The named invariant is: protocol version and document shapes are lower than
+  projection, serialization, and command behavior; the protocol module never
+  imports `agent_context`, `cli`, or `command_run`; and all historical named
+  imports from `agent_context` remain available and resolve to the protocol
+  owner's objects. A
+  red-first dependency test failed while the protocol module was nonexistent,
+  then passed after the extraction. A compatibility test covers every moved
+  public protocol type and the schema version. Internal schema-version
+  consumers now import its owner. The context schema stays at 6, and no
+  command or persisted format changed.
+
+  A direct before/after probe loaded the pre-split `HEAD` implementation and
+  the extracted implementation against the same isolated repository and
+  validated glossary. Their lean JSON was byte-identical at 11,078 bytes
+  (`2e7b8bfcc3ed046154b4fb96aaca90e328e179828e36cbb2a3d6aed48188ef0d`),
+  and their full JSON was byte-identical at 9,904 bytes
+  (`1ae1955329917866e4ade3d2bc26b28d2594d5eb7f4b4c87d82c97cd6b8b49fd`).
+
+  The evaluator mypy condition did not earn a change. A strict probe over
+  `evaluation/claude/{host,runner}.py` and
+  `evaluation/codex/{host,runner}.py` reported 49 errors: the modules still
+  rely broadly on unparameterized dynamic dictionaries and untyped protocol
+  helpers, with additional attempt-record boundary mismatches. Covering only
+  cleanup and lifecycle lines would therefore either require a broad evaluator
+  type migration or relax the gate until it stopped protecting the critical
+  values. Neither is this Step's narrow maintainable gate. No evaluator
+  cleanup/lifecycle implementation or mypy configuration changed; the existing
+  product-only mypy gate remains strict.
+
+  The 107-test before baseline passed. The two new contract tests passed, then
+  109 focused agent/evaluator/dependency tests passed. The complete suite
+  passed with 888 tests and three platform-specific skips. Ruff, mypy over all
+  56 product files, workflow policy, Claude-history integrity, the default
+  deterministic/installed-agent/blinded-reviewer verifiers, isolated wheel
+  smoke, and the Codex plugin install/update/invocation/removal smoke passed.
+
+  Artifact closure regenerates deterministic evidence after this final
+  roadmap wording, rebuilds the wheel, bundled plugin, and source distribution,
+  and requires current distribution parity. `evaluation/results.json` remains
+  authoritative for the retained host-sensitive timing. The pre-closure run
+  passed the cold-throughput ceiling and retained only the existing distinctive
+  nomination-quality miss, 0.75 against 1.0. Default retained-evidence
+  verification remains the genuineness gate. Strict current verification also
+  continues to name stale installed-agent delivery/input identities and the
+  reviewer's unavailable current packet while the deterministic release
+  threshold is open; no live refresh was authorized.
+
+  Executable changes are the protocol extraction and owner imports; test
+  changes enforce dependency direction and import compatibility; documentation
+  records the new owner. No runtime dependency, live model, paid service,
+  external account, publication, commit, push, or Phase 5 work was introduced.
 
 ### Phase 5 — comments, compatibility, and repository coherence
 
-- [ ] **Step 5.1 — repository and evaluation authority map.** Make the existing
-  top-level architecture surface identify canonical product/test/evaluation/
-  script/skill/plugin/history/generated ownership; make `evaluation/README.md`
-  distinguish scenarios, schemas, accepted baselines, raw runs, provider code,
-  archives, and files not edited manually; archive rather than delete useful
-  evidence; and keep irrelevant history out of source distributions.
-- [ ] **Step 5.2 — explicit compatibility policy.** Document accepted persisted
-  versions, Python import-path status, field deprecation horizons, legacy output
-  exclusions, and removal criteria. Apply it narrowly to graph/evidence
-  fallbacks, re-exports, tolerant hand-built artifacts, and pre-rename output
-  names; keep every retained path tied to a purpose or lifetime.
-- [ ] **Step 5.3 — current-invariant comments and authoritative history.** Audit
-  the named large modules for test-directed, development-history,
-  conversational, rhetorical, and narrating comments; retain or add only
-  security, ordering, bound, exactness, projection, failure-precedence, and
-  compatibility invariants. Classify plans/history, leave one apparent current
-  roadmap, preserve reproducibility evidence, and verify packaging/distribution
-  parity after movement.
+- [x] **Step 5.1 — repository and evaluation authority map.** Documentation,
+  distribution enforcement, verification, and artifact closure are complete
+  (2026-08-28).
+
+  The verified starting state had no `evaluation/README.md` and no
+  repository-wide canonical/generated ownership map. `EVALUATION.md` explained
+  methodology and recorded claims but did not distinguish maintained
+  scenarios and response schemas from producer-owned results, immutable raw
+  runs, histories, and reviewer packets. The sdist configuration included all
+  of `docs/`; the built archive therefore carried five explicitly stale
+  `docs/history/` records while omitting the current `PLAN.md` even though
+  shipped documents linked to it. The separate
+  `docs/plans/evaluation-modularization.md` remains a binding in-progress
+  specification, so it is current planning rather than irrelevant history.
+
+  The named invariant is: every repository surface has one canonical owner;
+  copies and generated files name their producer; maintained evaluation inputs
+  remain distinct from retained evidence; generated evidence is never repaired
+  by hand; misses and raw evidence are archived rather than selected away; and
+  source distributions include reproducibility material but no superseded
+  construction instructions.
+
+  `ARCHITECTURE.md` now maps product, test, evaluation, script, canonical
+  skill, plugin, workflow, example, planning, history, and generated-output
+  authority. The new 125-line `evaluation/README.md` maps every lane's
+  scenarios, fixtures, response versus persisted schemas, implementation,
+  provider/live-host boundary, selected result, raw runs, append-only history,
+  content-addressed reviewer packets, verification command, and mutation
+  authority. `EVALUATION.md` remains the public methodology/claims owner and
+  now delegates file lifecycle to that guide instead of duplicating volatile
+  exact timing. README, code walkthrough, distribution, history, and changelog
+  surfaces point to the same ownership model.
+
+  No useful evidence moved or disappeared. The existing eight immutable raw
+  Codex/Claude files, twelve Codex attempt records, one Claude attempt record,
+  and one digest-named reviewer packet remain checked in and packaged because
+  the offline verifiers consume them. `docs/history/` remains available in Git
+  with its non-authoritative warning, but Hatchling now excludes that tree from
+  sdists. Current `PLAN.md` is now included. The distribution checker requires
+  the roadmap, evaluation authority guide, and still-active modularization
+  specification, and independently rejects any `docs/history/` member so later
+  include-pattern drift fails the release gate. Shipped links to the excluded
+  archive use repository URLs rather than broken relative paths.
+
+  Two red-first release tests proved the old checker neither required the new
+  guide nor distinguished construction history from missing required files.
+  Both now pass; the focused release suite passes 52 tests. The complete suite
+  passes 890 tests with three platform-specific skips. Ruff, mypy over all 56
+  product files, workflow policy, a real sdist member inspection, and current
+  distribution parity pass. The README-derived wheel metadata changed the
+  wheel digest as expected; rebuilding the generated plugin from that wheel
+  restored byte identity without a code fix.
+
+  Artifact closure regenerates deterministic evidence after this final roadmap
+  wording, rebuilds the release wheel, checked-in plugin, and sdist, then reruns
+  current distribution parity and isolated artifact smoke. Default retained
+  evidence remains the ordinary genuineness gate; no authenticated evaluator,
+  live model, paid service, external account, publication, deletion, commit,
+  push, or Step 5.2 work was introduced.
+- [x] **Step 5.2 — explicit compatibility policy.** Documentation,
+  distribution enforcement, verification, and artifact closure are complete
+  (2026-08-28).
+
+  The verified starting state had no repository compatibility policy. Exact
+  format versions were scattered across owning constants, the architecture
+  table, the evaluation guide, and the roadmap; the architecture table also
+  called the extraction cache schema 4 while both its loader and writer require
+  cache version 5. Product commands do not reopen persisted evidence, drift,
+  or validation reports, but `analysis.evidence_facts` deliberately tolerates
+  a few missing or legacy facts in in-memory hand-built evidence. The Graphify
+  adapter retains a top-level `edges` fallback, the scanner and Graphify
+  provenance retain pre-rename names, and two exact Python re-export surfaces
+  had identity tests but no stated lifetime or removal rule.
+
+  The named invariant is: compatibility is declared per owned surface, never
+  inferred from an importable module or old JSON file; durable human state,
+  replaceable output, external adapter input, Python imports, and immutable
+  evaluation evidence have distinct migration rules; and every retained
+  legacy path has a named purpose plus an evidence-based removal criterion.
+
+  The new 245-line `COMPATIBILITY.md` is the normative human-readable policy.
+  It records product configuration 1, evidence 17, glossary 1, drift 7,
+  validation 12, agent context 6, managed-context report 1, managed-block
+  format 1, brief format 1, and cache version 5, together with the exact reader
+  behavior and lifecycle of each. It separately records deterministic
+  manifest/result 6/8, Codex scenario/result/history 1/5/1, Claude
+  scenario/result/history 1/1/1, and reviewer packet/result 1/2. Evaluation
+  verifiers require current result schemas even when their default genuineness
+  mode intentionally permits older recorded input identity; immutable raw and
+  reviewed evidence keeps the fields its original engine emitted.
+
+  The CLI and versioned protocols remain the supported application interface;
+  0.1.0 declares no general Python library API. The policy nevertheless pins
+  all fifteen names in `glossary.store.__all__`—five persistence names and ten
+  historical owner aliases—and the eighteen schema/type names that remain
+  importable from `agent.agent_context` after the protocol split. The scanner
+  and Graphify `__all__` facades are explicitly internal composition paths.
+  Neither protected re-export is deprecated or scheduled for removal.
+
+  No current product field is deprecated. After a first public release, a
+  durable input field or protected import deprecated in one feature release
+  remains accepted through the next feature release and may be removed no
+  earlier than the following one; patches cannot shorten that minimum and
+  post-1.0 removal must also respect Semantic Versioning. Replaceable output
+  fields receive an explicit schema bump and regeneration instead of parallel
+  aliases. The policy therefore names retired evidence and validation fields
+  as non-current while distinguishing drift's still-current, independently
+  defined `total_findings_complete`.
+
+  Four narrow exceptions now carry literal removal criteria. Graphify's
+  `edges` alias remains until a declared/tested producer range uses `links`.
+  Tolerant evidence reads remain until every maintained direct builder caller
+  crosses a current-shape validator without turning missing completeness into
+  completeness. Re-exports require a documented owner path, the release
+  horizon, no repository/packaged consumer, an explicit compatibility-test
+  change, and changelog notice. Exact `glossarize-out/` and `.glossarize/`
+  exclusions have no time-based expiry: removal requires a safe reclaim and a
+  tested artifact-identity or migration rule, because old generated state can
+  otherwise contaminate a new scan indefinitely.
+
+  README, architecture, changelog, and distribution documentation link the
+  policy. Hatchling includes it in the source distribution, and the independent
+  distribution checker requires it. The architecture cache row now matches the
+  verified version-5 implementation. Two policy tests bind every documented
+  current version to its executable constant or maintained manifest and bind
+  every exact re-export/legacy exception to the policy. A red-first run failed
+  both policy tests because the document was nonexistent and failed the release
+  test because the sdist checker did not require it; all three passed after the
+  change. The focused compatibility suite passed 286 tests with two
+  platform-specific skips; the complete suite passed 892 tests with three
+  platform-specific skips. Ruff, mypy over all 56 product files, and workflow
+  policy passed.
+
+  Artifact closure regenerates deterministic evidence after this final roadmap
+  wording, rebuilds the wheel, checked-in plugin, and source distribution, and
+  reruns current distribution parity and isolated artifact smoke. Default
+  retained-evidence verification remains the genuineness gate; no authenticated
+  evaluator, live model, paid service, external account, publication, product
+  runtime change, persisted-schema change, import removal, command change,
+  deletion, commit, push, or Step 5.3 work was introduced.
+- [x] **Step 5.3 — current-invariant comments and authoritative history.**
+  Implementation, documentation, verification, and artifact closure are
+  complete (2026-08-28).
+
+  The retained maintainability specification named four formerly oversized
+  owners: `corpus/scanner.py`, `analysis/graphify.py`, `glossary/store.py`, and
+  `glossary/reconcile.py`. They currently exist as a 474-line orchestrator, a
+  49-line facade, a 127-line persistence facade, and a 403-line orchestrator.
+  The audit covered those owners and their extracted modules, manually
+  classified every comment in current product/evaluator/script modules of at
+  least 400 lines, and tokenized every Python file under `glossabet/`,
+  `evaluation/`, and `scripts/` for development-status, test-directed, and
+  rhetorical residue.
+
+  The verified comment violations were literal. Scanner, Graphify,
+  terminology, finding, structural-matching, Git-state, Claude-manifest, and
+  Codex-history prose told tests or the evaluation fixture where to patch or
+  what state they owned. Agent-context and store compatibility comments
+  narrated the refactor that created them. Brief, binding, matching,
+  reconciliation, schema, extraction, repository-glossary, and deterministic
+  contract prose used argumentative wording where a present-tense invariant
+  was enough. Comments that remain explain security boundaries, classification
+  order, work/detail bounds, exact versus uncertain evidence, projections,
+  atomic failure precedence, or compatibility. The residual “one place” text
+  in Git-state and walk-budget owners states enforced security/bound
+  uniqueness; the remaining skill “Step 3” reference is the current installed
+  workflow protocol, not development history.
+
+  Eighteen Python files received wording-only edits. Thirteen changed only
+  comments. Five also changed six `__doc__` values: the Graphify, glossary
+  schema, and Git-state module descriptions plus the schema validation,
+  extraction-budget, and repository-glossary function/class descriptions. A
+  before/after digest of each parsed AST after stripping docstrings was
+  identical for all eighteen files. No executable statement, type, constant,
+  control-flow edge, threshold, schema, ordering rule, command, or canonical
+  skill text changed.
+
+  Planning classification followed observed completion, not directory names.
+  `docs/plans/evaluation-modularization.md` is still active: its reviewer split
+  and evaluation mypy/documentation passes remain open in this roadmap, and
+  `evaluation/review.py` remains a 947-line combined lane. It therefore stays
+  packaged as a supporting specification, but no longer presents its own
+  status checklist; `PLAN.md` is explicitly the sole current roadmap and
+  status record. All four files in `docs/history/` already carried historical
+  warnings and were already excluded from source distributions. The one
+  retained transcript sentence that still called itself the authoritative
+  roadmap is now in the past tense. No plan, archive, raw run, history, packet,
+  or other reproducibility evidence moved or was deleted.
+
+  A red-first release-policy test failed against the old authority wording. It
+  now requires the root roadmap, the supporting-spec classification, a
+  historical banner on every archived record, and absence of the contradictory
+  present-tense roadmap claim. The focused owner/release/evaluator surface
+  passes 417 tests. The complete suite passes 893 tests with three
+  platform-specific skips. Ruff, strict mypy over all 56 product files, and
+  workflow policy pass.
+
+  Seven-case deterministic evidence was regenerated from the pinned sources
+  without an authenticated host or paid model. Default deterministic,
+  installed-agent, and blinded-reviewer verification plus Claude-history
+  verification pass. Fourteen of fifteen deterministic release thresholds
+  pass; the only miss remains distinctive nomination quality at 0.75 against
+  1.0. Cold throughput passed at 5.346 seconds per 1,000 source files. The
+  rebuilt release wheel and checked-in plugin wheel are byte-identical at
+  SHA-256 `c1da46d739d0810560ef51daf2a7023dc433d82e4b095570e32335c61770ca0b`.
+  Final closure rebuilt the source distribution after this roadmap wording;
+  current source/wheel/plugin parity and isolated wheel smoke pass.
+
+  No runtime dependency, live model, paid service, external account,
+  publication, behavior change, persisted-schema change, file movement,
+  deletion, commit, push, or Phase 6 work was introduced.
 
 ### Phase 6 — cold review and stopping decision
 

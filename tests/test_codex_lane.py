@@ -14,7 +14,7 @@ import pytest
 from evaluation.codex import host, results, runner, scenarios
 from evaluation.codex.contract import DEFAULT_RESULTS, AgentEvaluationError
 from glossabet import __version__
-from glossabet.agent.agent_context import AGENT_CONTEXT_SCHEMA_VERSION
+from glossabet.agent.agent_context_protocol import AGENT_CONTEXT_SCHEMA_VERSION
 
 ROOT = Path(__file__).resolve().parents[1]
 LANE = ROOT / "evaluation" / "codex"

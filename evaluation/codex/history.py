@@ -295,9 +295,9 @@ def attempt_from_error(attempt_id: str, aborted: AbortedRun) -> AttemptRecord:
     failures = [message]
     if aborted.cleanup_error is not None:
         failures.append(aborted.cleanup_error)
-    # Errors raised before the managed plugin lifecycle create no test-owned
-    # state; the runner reports the observed cleanup outcome once that
-    # lifecycle has begun.
+    # Errors raised before the managed plugin lifecycle create no
+    # evaluator-owned state; the runner reports the observed cleanup outcome
+    # once that lifecycle has begun.
     cleanup_verified = aborted.cleanup_verified is True
     unsafe = any(
         marker in message.casefold()

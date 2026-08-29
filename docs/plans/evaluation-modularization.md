@@ -1,6 +1,9 @@
 # Spec: Modularize and Type Glossabet's Evaluation Harnesses
 
-Tracked as PLAN.md §3. One pass per session; each pass ends green.
+> Active supporting engineering specification for `PLAN.md` §3. Root
+> `PLAN.md` is the sole current roadmap and status record. This file defines
+> binding scope, non-goals, compatibility requirements, and acceptance; the
+> roadmap records completion and later decisions.
 
 ## Purpose
 
@@ -149,13 +152,13 @@ between a genuine historical result and one current for release; existing
 JSON serialization ordering for newly written documents. Private Python
 function locations are not compatibility contracts.
 
-## Passes
+## Specified pass sequence
 
 Each pass finishes with a green repository and stops.
 
 1. **Characterize and establish shared identity** — packages, CLI
    characterization tests, aggregate identity and mutation tests, move only
-   clearly duplicated identity/bounded-JSON/hashing primitives. *(done)*
+   clearly duplicated identity/bounded-JSON/hashing primitives.
 2. **Codex offline results and history** → `evaluation.codex.results`:
    shape, artifact identity, safety/coherence, history validation, record
    construction, immutable retention, genuine-versus-current. Typed shapes

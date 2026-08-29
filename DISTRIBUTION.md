@@ -27,6 +27,30 @@ not remove it. Root `GLOSSABET.md` and the other JSON reports are derived;
 `GLOSSARY.md` is maintainer-owned human vocabulary. See the ownership table in
 [`README.md`](README.md).
 
+## Source distribution
+
+The source distribution is the reproducibility bundle. It includes product
+source, tests, current documentation, maintainer scripts, examples, the active
+evaluation implementation and inputs, and the retained evidence required by
+the offline verifiers. Evaluation raw runs, append-only histories, and
+content-addressed reviewer packets are evidence behind published claims, not
+discardable construction notes; [`evaluation/README.md`](evaluation/README.md)
+maps their exact ownership.
+
+The bundle also carries [`COMPATIBILITY.md`](COMPATIBILITY.md), the policy for
+accepted persisted versions, protected import paths, deprecation horizons, and
+retained fallbacks. The distribution checker requires both policy/authority
+guides so an sdist cannot present executable readers without their lifecycle
+contract.
+
+Repository-only [construction transcripts](https://github.com/kserrec/glossabet/tree/main/docs/history)
+remain in version control for provenance but are excluded from source distributions
+because they contain superseded paths, commands, and status. The distribution
+checker requires the evaluation authority guide and rejects any reintroduced
+`docs/history/` member. The application wheel remains narrower: runtime product
+code plus the canonical skill, with no tests, evaluation harness, scripts, or
+history.
+
 ## Codex plugin bundle
 
 [`plugins/glossabet/`](plugins/glossabet/) contains:

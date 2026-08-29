@@ -33,7 +33,7 @@ from evaluation.codex.fixtures import snapshot, unexpected_writes
 from evaluation.codex.trace import extract_context, scenario_commands, trace_summary
 from evaluation.harness.io import changed_paths
 from glossabet import __version__
-from glossabet.agent.agent_context import AGENT_CONTEXT_SCHEMA_VERSION
+from glossabet.agent.agent_context_protocol import AGENT_CONTEXT_SCHEMA_VERSION
 
 
 def validate_manifest(manifest: dict) -> tuple[list[dict], dict]:

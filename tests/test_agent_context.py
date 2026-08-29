@@ -4,11 +4,41 @@ import json
 import os
 from pathlib import Path
 
-from glossabet.agent import agent_context
+from glossabet.agent import agent_context, agent_context_protocol
 from glossabet.agent.agent_context import ROUTINE_AGENT_CONTEXT_TARGET_BYTES
 from glossabet.analysis.evidence import build_evidence
 from glossabet.cli import EXIT_USER_ERROR, main
 from glossabet.glossary.store import save_glossary
+
+
+def test_agent_context_preserves_protocol_import_compatibility():
+    assert (
+        agent_context.AGENT_CONTEXT_SCHEMA_VERSION
+        == agent_context_protocol.AGENT_CONTEXT_SCHEMA_VERSION
+    )
+    protocol_types = (
+        "AgentContextCoverage",
+        "AgentContextDocument",
+        "ContextCoverage",
+        "ContextCoverageRecord",
+        "ContextFreshness",
+        "ContextGlossarySection",
+        "ContextLimits",
+        "ContextNamingCandidates",
+        "ContextRegisterSection",
+        "ContextTermCandidate",
+        "ContextTerminology",
+        "LeanVocabularySection",
+        "ModuleRollupEntry",
+        "ModuleRollupTable",
+        "Projection",
+        "RegisterExemplar",
+        "RegisterExemplars",
+    )
+    for name in protocol_types:
+        assert getattr(agent_context, name) is getattr(
+            agent_context_protocol, name
+        )
 
 
 def _concept(index: int) -> dict:

@@ -44,10 +44,9 @@ from glossabet.runtime.artifacts import (
 
 GLOSSARY_FILE = "glossary.json"
 
-# The schema (``glossary.model``), its validator (``glossary.schema``), and
-# concept scope (``glossary.scope``) are owned elsewhere; their public names
-# are re-exported here for the callers that address the glossary through its
-# store.
+# Compatibility boundary: callers may import these exact aliases from the
+# store facade. Internal code and new non-persistence concepts import their
+# owners in ``model``, ``schema``, and ``scope`` instead of extending this list.
 __all__ = [
     "BINDING_KINDS", "GLOSSARY_FILE", "GLOSSARY_SCHEMA_VERSION",
     "SCOPE_PATHS_KEY", "STATUSES", "GlossaryError", "checked_glossary",

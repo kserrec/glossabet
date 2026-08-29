@@ -45,7 +45,7 @@ from evaluation.deterministic.sources import (
 )
 from glossabet.analysis.evidence import build_evidence
 from glossabet.glossary.drift import build_drift
-from glossabet.glossary.store import validate_glossary
+from glossabet.glossary.schema import validate_glossary
 
 
 def evaluate_source(source: dict, root: Path, runs: int,

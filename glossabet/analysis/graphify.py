@@ -8,8 +8,9 @@ settled vocabulary cannot echo back through the graph as fake structural
 support. Graphify's artifacts are read, never written.
 
 This module is the stable facade: input adaptation lives in
-``graphify_input`` and group analysis in ``graphify_groups``. Tests that
-patch a cap or a helper must patch the owning module, not this re-export.
+``graphify_input`` and group analysis in ``graphify_groups``. Those modules
+own and read their bounds; aliases here are compatibility views, not a second
+policy source.
 """
 
 from __future__ import annotations
