@@ -172,8 +172,10 @@ def _print_graphify_summary(structural: StructuralGroups) -> None:
             f"graphify adapter: {escape_terminal_text(warning)}",
             file=sys.stderr,
         )
-    if structural.get("available"):
+    if structural["usable"]:
         freshness = structural["freshness"]
+        if freshness is None:
+            raise ValueError("usable structural groups require freshness state")
         groups_summary = f"{len(structural['groups'])} structural group(s)"
         if structural.get("groups_dropped"):
             groups_summary += (

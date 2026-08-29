@@ -209,9 +209,20 @@ def test_skill_referenced_fields_exist_in_agent_context(tmp_path):
     assert "`files[*].role`" in text
     assert context["coverage"]["corpus"]["complete"] is True
     assert "`coverage.corpus.complete`" in text
-    assert context["coverage"]["context"]["complete"] is False
-    assert context["coverage"]["context"]["projection"] == "lean"
-    assert "`coverage.context.complete`" in text
+    projection = context["coverage"]["context"]
+    assert projection["projection"] == "lean"
+    assert projection["projection_complete"] is True
+    assert projection["source_complete"] is True
+    assert projection["truncations"] == []
+    assert projection["intentional_exclusions"]
+    for field in (
+        "coverage.context.projection_complete",
+        "coverage.context.source_complete",
+        "coverage.context.intentional_exclusions",
+        "coverage.context.truncations",
+        "coverage.context.applied_limits",
+    ):
+        assert f"`{field}`" in text
     assert "module_counts" in text
     assert "module_counts_truncated" in text
     assert context["terminology"]["register"]["exemplars"]["items"]
@@ -219,11 +230,13 @@ def test_skill_referenced_fields_exist_in_agent_context(tmp_path):
     assert context["naming_candidates"]["terms"][0]["locations"]
     assert "`walk_remainder.exact`" in text
     structural = context["structural_groups"]
-    assert {"present", "available", "warnings"} <= structural.keys()
+    assert {"present", "usable", "freshness", "warnings"} <= structural.keys()
+    assert "available" not in structural
     for field in (
         "structural_groups.present",
-        "structural_groups.available",
+        "structural_groups.usable",
         "structural_groups.freshness",
+        "structural_groups.warnings",
     ):
         assert field in text
 

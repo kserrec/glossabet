@@ -11,6 +11,7 @@ from glossabet.corpus.tokenize import (
     iter_identifiers,
     token_origin,
     tokenization_contract,
+    tokenize_bounded_term,
     tokenize_identifier,
 )
 
@@ -53,6 +54,21 @@ from glossabet.corpus.tokenize import (
 )
 def test_tokenize_identifier(identifier, expected):
     assert tokenize_identifier(identifier) == expected
+
+
+def test_truncated_term_does_not_promote_its_final_fragment_to_a_token():
+    synthetic_prefix = "x" * 504 + " payment"
+
+    assert tokenize_bounded_term("alpha payment", truncated=False) == [
+        "alpha", "payment",
+    ]
+    assert tokenize_bounded_term("alpha payment", truncated=True) == ["alpha"]
+    assert tokenize_bounded_term("alpha payment ", truncated=True) == [
+        "alpha", "payment",
+    ]
+    assert "payment" not in tokenize_bounded_term(
+        synthetic_prefix, truncated=True
+    )
 
 
 def test_doc_words_filters_stopwords_and_short_words():

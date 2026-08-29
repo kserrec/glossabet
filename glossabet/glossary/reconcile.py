@@ -37,6 +37,7 @@ from glossabet.glossary.drift import build_drift
 from glossabet.glossary.findings import (
     FindingsDocumentView,
     FindingSection,
+    SkippedValidationCheck,
     ValidationDocument,
     capped_section,
     collection_limitations,
@@ -75,7 +76,7 @@ __all__ = [
     "validate_command",
 ]
 
-VALIDATION_SCHEMA_VERSION = 8
+VALIDATION_SCHEMA_VERSION = 11
 VALIDATION_FILE = "validation.json"
 
 FRAGMENTATION_MIN_MODULES = DEFAULT_RECONCILIATION_POLICY.fragmentation_min_modules
@@ -160,6 +161,7 @@ def build_validation(
             "orphaned concept",
             incomplete_reasons=(
                 production_reasons + code_vocabulary_reasons + matching_limits
+                + binding_findings.orphan_incompleteness_reasons
             ),
         ),
         "unresolved_bindings": capped_section(
@@ -185,12 +187,21 @@ def build_validation(
     total = sum(
         section["coverage"]["total_items"]
         for section in sections.values()
+        if not section.get("skipped")
     )
-    total_complete = all(
+    total_exact = all(
         section["coverage"]["total_items_exact"]
         for section in sections.values()
         if not section.get("skipped")
     )
+    skipped_checks: list[SkippedValidationCheck] = []
+    for name, section in sections.items():
+        if not section.get("skipped"):
+            continue
+        reason = section.get("skip_reason")
+        if reason is None:
+            raise ValueError(f"skipped validation check {name} has no reason")
+        skipped_checks.append({"name": name, "reason": reason})
     return {
         "schema_version": VALIDATION_SCHEMA_VERSION,
         "canonical_concepts": len(canonical),
@@ -210,20 +221,21 @@ def build_validation(
                 "structural_matches": structural_validation.matching_coverage,
             },
         },
+        "finding_checks": {
+            "all_executed": not skipped_checks,
+            "skipped": skipped_checks,
+        },
         "graph": {
-            "present": structural.get("present"),
+            "present": graph.present,
             "usable": graph.usable,
-            "freshness": structural.get("freshness"),
-            "warnings": list(structural.get("warnings", [])),
+            "freshness": graph.freshness,
+            "warnings": list(graph.warnings),
             "groups_dropped": graph.groups_dropped,
             "groups_complete": graph.groups_complete,
-            "coverage": structural.get("coverage", {}).get("groups"),
+            "coverage": graph.coverage,
         },
-        # Backward-compatible convenience flag; `graph` carries the complete
-        # state and distinguishes absent, unusable, stale, and unverified.
-        "graph_available": graph.usable,
         "total_findings": total,
-        "total_findings_complete": total_complete,
+        "total_findings_exact": total_exact,
         "managed_context": managed_context or unchecked_managed_context(),
         # The repository's own root GLOSSARY.md: discovery record plus, when
         # structured state exists and the file was read completely, the
@@ -259,8 +271,14 @@ _TITLES = {
 
 def _print_report(document: ValidationDocument) -> None:
     sections = FindingsDocumentView(document)
-    complete = document.get("total_findings_complete", True)
-    count_label = "finding(s)" if complete else "evaluated finding(s)"
+    total_exact = document["total_findings_exact"]
+    all_executed = document["finding_checks"]["all_executed"]
+    if not total_exact:
+        count_label = "known finding(s) from evaluated checks"
+    elif not all_executed:
+        count_label = "finding(s) from evaluated checks"
+    else:
+        count_label = "finding(s)"
     print(
         f"validate: {document['canonical_concepts']} canonical concept(s), "
         f"{document['total_findings']} {count_label}"

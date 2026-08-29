@@ -120,17 +120,51 @@ def check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
     failures = []
     coverage = mapping(context.get("coverage"))
     projection_ledger = mapping(coverage.get("context"))
-    omissions = projection_ledger.get("omissions")
-    if not isinstance(omissions, list):
-        omissions = []
+    record_fields = (
+        "intentional_exclusions",
+        "source_omissions",
+        "truncations",
+    )
+    records: dict[str, list[dict]] = {}
+    for field in record_fields:
+        value = projection_ledger.get(field)
+        if not isinstance(value, list):
+            failures.append(f"context {field} was not a list")
+            value = []
+        valid_records: list[dict] = []
+        malformed = False
+        for item in value:
+            if (
+                not isinstance(item, dict)
+                or set(item) != {"path", "kind", "amount"}
+                or not isinstance(item.get("path"), str)
+                or not item["path"]
+                or not isinstance(item.get("kind"), str)
+                or not item["kind"]
+                or not isinstance(item.get("amount"), int)
+                or isinstance(item["amount"], bool)
+                or item["amount"] <= 0
+            ):
+                malformed = True
+                continue
+            valid_records.append(item)
+        if malformed:
+            failures.append(f"context {field} contained malformed records")
+        pairs = [(item["path"], item["kind"]) for item in valid_records]
+        if len(pairs) != len(set(pairs)):
+            failures.append(f"context {field} contained duplicate records")
+        records[field] = valid_records
     observed: dict[str, object] = {
         "context_schema_version": context.get("context_schema_version"),
         "generator": context.get("generator"),
         "freshness": mapping(context.get("freshness")).get("status"),
         "corpus_complete": mapping(coverage.get("corpus")).get("complete"),
-        "context_complete": projection_ledger.get("complete"),
+        "projection_complete": projection_ledger.get("projection_complete"),
+        "source_complete": projection_ledger.get("source_complete"),
         "context_projection": projection_ledger.get("projection"),
-        "context_omissions": len(omissions),
+        "intentional_exclusions": len(records["intentional_exclusions"]),
+        "source_omissions": len(records["source_omissions"]),
+        "truncations": len(records["truncations"]),
     }
     if context.get("context_schema_version") != AGENT_CONTEXT_SCHEMA_VERSION:
         failures.append(
@@ -144,15 +178,25 @@ def check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
         failures.append("scenario unexpectedly had partial scanner coverage")
     if observed["context_projection"] != "lean":
         failures.append("inspect did not return the routine lean projection")
-    if observed["context_complete"] is not False:
-        failures.append("lean projection did not disclose its standard omissions")
+    if observed["source_complete"] is not True:
+        failures.append("scenario unexpectedly had incomplete projection sources")
+    expected_projection_complete = scenario_id != "partial"
+    if observed["projection_complete"] is not expected_projection_complete:
+        failures.append(
+            "projection completeness did not match the scenario's applied limits"
+        )
 
-    omission_pairs = {
+    intentional_pairs = {
         (item.get("path"), item.get("kind"))
-        for item in omissions
+        for item in records["intentional_exclusions"]
         if isinstance(item, dict)
     }
-    required_lean_omissions = {
+    truncation_pairs = {
+        (item.get("path"), item.get("kind"))
+        for item in records["truncations"]
+        if isinstance(item, dict)
+    }
+    required_lean_exclusions = {
         ("imports", "section_excluded"),
         (
             "vocabulary.tokens.items.*.locations",
@@ -163,16 +207,38 @@ def check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
             "file_locations_rolled_up",
         ),
     }
-    if not required_lean_omissions <= omission_pairs:
-        failures.append("lean projection did not account for standard omissions")
+    if not required_lean_exclusions <= intentional_pairs:
+        failures.append(
+            "lean projection did not account for its intentional exclusions"
+        )
+    allowed_lean_exclusions = required_lean_exclusions | {
+        (
+            "vocabulary.doc_terms.items.*.locations",
+            "file_locations_rolled_up",
+        ),
+    }
+    if any(
+        (item["path"], item["kind"]) not in allowed_lean_exclusions
+        for item in records["intentional_exclusions"]
+    ):
+        failures.append(
+            "context intentional_exclusions contained unexpected records"
+        )
+    if any(
+        item["path"] == "imports"
+        and item["kind"] == "section_excluded"
+        and item["amount"] != 1
+        for item in records["intentional_exclusions"]
+    ):
+        failures.append("context imports exclusion amount was not 1")
 
     structural = mapping(context.get("structural_groups"))
     glossary = mapping(context.get("glossary"))
     if scenario_id == "fresh":
         observed["graph_freshness"] = mapping(structural.get("freshness")).get("status")
-        observed["graph_available"] = structural.get("available")
+        observed["graph_usable"] = structural.get("usable")
         if observed["graph_freshness"] != "current" or observed[
-            "graph_available"
+            "graph_usable"
         ] is not True:
             failures.append("fresh Graphify input was not reported current/available")
     elif scenario_id == "stale":
@@ -190,7 +256,7 @@ def check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
         if (
             "vocabulary.identifiers.items",
             "list_items",
-        ) not in omission_pairs:
+        ) not in truncation_pairs:
             failures.append(
                 "partial projection did not expose its identifier sample cap"
             )
@@ -248,21 +314,7 @@ def check_context(scenario_id: str, context: dict) -> tuple[list[str], dict]:
             failures.append("sensitive canary entered the agent context")
 
     if scenario_id != "partial":
-        unexpected = [
-            item
-            for item in omissions
-            if isinstance(item, dict)
-            and not (
-                item.get("kind") == "section_excluded"
-                and item.get("path") == "imports"
-            )
-            and not (
-                item.get("kind") == "file_locations_rolled_up"
-                and str(item.get("path") or "").startswith("vocabulary.")
-                and str(item.get("path") or "").endswith(".locations")
-            )
-        ]
-        if unexpected:
+        if records["truncations"] or records["source_omissions"]:
             failures.append(
                 "scenario unexpectedly exceeded the standard lean projection"
             )

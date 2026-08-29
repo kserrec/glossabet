@@ -69,17 +69,17 @@ def parallel_term_signal(similarity: float, policy: DriftPolicy) -> str:
 def fading_state(
     count: int,
     doc_mentions: int | None,
-    doc_count_complete: bool,
+    doc_count_exact: bool,
     policy: DriftPolicy,
 ) -> tuple[str, str] | None:
-    """``(signal_strength, state)`` for a canonical term with a complete
-    code count, or ``None`` when it is in ordinary use."""
+    """``(signal_strength, state)`` for a canonical term with an exact code
+    count, or ``None`` when it is in ordinary use."""
     if count == 0:
         return "strong", "absent from code"
     if (
         count <= policy.fading_max_count
         and doc_mentions == 0
-        and doc_count_complete
+        and doc_count_exact
     ):
         return "moderate", "fading"
     return None
@@ -130,7 +130,7 @@ def is_overloaded_region(strong_matches: int, policy: ReconciliationPolicy) -> b
 
 
 def orphan_signal(count: int, policy: ReconciliationPolicy) -> str | None:
-    """Signal for a canonical term with ``count`` complete lexical uses and
+    """Signal for a canonical term with ``count`` exact lexical uses and
     no resolved or uncertain binding; ``None`` when it is in ordinary use."""
     if count == 0:
         return "strong"

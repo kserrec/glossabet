@@ -46,7 +46,7 @@ from glossabet.glossary.findings import (
     suppressed_reason,
     vocabulary_omission_reasons,
 )
-from glossabet.glossary.matching import EvidenceIndex, IdentifierOccurrence
+from glossabet.glossary.matching import EvidenceIndex, is_unproven_zero
 from glossabet.glossary.model import ConceptRecord, ConceptScope, GlossaryDocument
 from glossabet.glossary.policy import (
     DEFAULT_DRIFT_POLICY,
@@ -65,7 +65,7 @@ from glossabet.runtime.artifacts import write_artifact
 from glossabet.runtime.coverage import coverage_reasons
 from glossabet.runtime.display import escape_terminal_text
 
-DRIFT_SCHEMA_VERSION = 6
+DRIFT_SCHEMA_VERSION = 7
 DRIFT_FILE = "drift.json"
 
 FADING_MAX_COUNT = DEFAULT_DRIFT_POLICY.fading_max_count
@@ -155,19 +155,6 @@ def _overlap_cost(
     )
 
 
-def _sampled_to_zero(occurrence: IdentifierOccurrence) -> bool:
-    """Whether a zero count reflects a clipped location sample, not absence.
-
-    Scoped counts are summed over an entry's retained location sample; when
-    that sample was truncated, zero proves nothing and the check must be
-    reported as suppressed rather than silently passing as complete.
-    """
-    return occurrence["count"] == 0 and occurrence.get(
-        "locations_truncated", False
-    )
-
-
-
 def _parallel_terms(
     evidence: EvidenceDocument, canonical: dict[str, list[ConceptRecord]],
     known_scopes: dict[str, list[ConceptScope]], matcher: EvidenceIndex,
@@ -206,9 +193,12 @@ def _parallel_terms(
             )
             new_occurrence = matcher.code_term_occurrence(new_term, scope)
             if not canonical_occurrence["count"] or not new_occurrence["count"]:
-                if _sampled_to_zero(canonical_occurrence) or _sampled_to_zero(
-                    new_occurrence
-                ):
+                zero_occurrences = [
+                    occurrence
+                    for occurrence in (canonical_occurrence, new_occurrence)
+                    if occurrence["count"] == 0
+                ]
+                if all(is_unproven_zero(item) for item in zero_occurrences):
                     suppressed += 1
                 continue
             similarity = item["similarity"]
@@ -251,11 +241,11 @@ def _watched_in_use(
     for entry in watched:
         occurrence = matcher.code_term_occurrence(entry["term"], entry["scope"])
         if occurrence["count"] == 0:
-            if _sampled_to_zero(occurrence):
+            if is_unproven_zero(occurrence):
                 suppressed += 1
             continue
         count = occurrence["count"]
-        quantity = f"at least {count}" if not occurrence["count_complete"] else str(count)
+        quantity = f"at least {count}" if not occurrence["count_exact"] else str(count)
         ranked.append((count, entry["term"], observed_finding(
             "watched-term-in-use",
             f"{entry['status']} term '{entry['term']}' still in use: "
@@ -275,26 +265,41 @@ def _watched_in_use(
 def _canonical_fading(
     glossary: GlossaryDocument, matcher: EvidenceIndex,
     policy: DriftPolicy = DEFAULT_DRIFT_POLICY,
-) -> list[HeuristicFinding]:
+) -> tuple[list[HeuristicFinding], list[str]]:
     """Canonical terms absent from code or barely hanging on."""
     findings: list[HeuristicFinding] = []
+    suppressed = 0
     for concept in glossary["concepts"]:
         if concept["status"] != "canonical":
             continue
         tokens = tokenize_term(concept["term"])
-        if not tokens:
-            continue
         scope = concept_scope(concept)
         occurrence = matcher.code_term_occurrence(concept["term"], scope)
-        if not occurrence["count_complete"]:
-            continue  # capped evidence cannot prove absence or low use
         count = occurrence["count"]
+        if is_unproven_zero(occurrence):
+            suppressed += 1
+            continue
         # The current document index proves only one-token mentions. Separate
         # prose words are not treated as a compound occurrence.
         doc_occurrence = matcher.doc_term_occurrence(concept["term"], scope)
         doc_mentions = doc_occurrence["count"] if len(tokens) == 1 else None
+        if not occurrence["count_exact"]:
+            if (
+                len(tokens) == 1
+                and count <= policy.fading_max_count
+                and doc_mentions == 0
+            ):
+                suppressed += 1
+            continue
+        if (
+            count > 0
+            and count <= policy.fading_max_count
+            and is_unproven_zero(doc_occurrence)
+        ):
+            suppressed += 1
+            continue
         fading = fading_state(
-            count, doc_mentions, doc_occurrence["count_complete"], policy
+            count, doc_mentions, doc_occurrence["count_exact"], policy
         )
         if fading is None:
             continue
@@ -316,7 +321,7 @@ def _canonical_fading(
             concept_id=concept["id"],
         ))
     findings.sort(key=lambda f: f["term"])
-    return findings
+    return findings, suppressed_reason(suppressed, "canonical-fading")
 
 
 def _overload_details_complete(item: Mapping[str, object]) -> bool:
@@ -462,6 +467,9 @@ def build_drift(
         evidence, canonical, known_scopes, matcher, policy
     )
     watched_findings, watched_suppressed = _watched_in_use(watched, matcher)
+    fading_findings, fading_suppressed = _canonical_fading(
+        glossary, matcher, policy
+    )
     sections: dict[str, FindingSection] = {}
     producers: list[tuple[str, Sequence[FindingRecord], list[str]]] = [
         (
@@ -482,8 +490,9 @@ def build_drift(
         ),
         (
             "canonical_fading",
-            _canonical_fading(glossary, matcher, policy),
-            corpus_reasons + vocabulary_reasons + matching_limits,
+            fading_findings,
+            corpus_reasons + vocabulary_reasons + matching_limits
+            + fading_suppressed,
         ),
         (
             "canonical_overloaded",

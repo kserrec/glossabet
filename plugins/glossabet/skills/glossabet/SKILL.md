@@ -125,7 +125,7 @@ Do not replace a failed command with recursive repository reading.
 
 If the engine is missing or mismatched, exits nonzero, produces
 malformed/truncated JSON, or returns a `context_schema_version` other than
-`3`, stop before Step 1. Tell the user the exact failure and that the engine
+`6`, stop before Step 1. Tell the user the exact failure and that the engine
 from the same Glossabet distribution as this skill must be installed or
 repaired. Do not install a package, guess at half-read output, or silently
 enter a lower-trust mode.
@@ -141,26 +141,40 @@ authentication mechanism or an atomic repository snapshot.
   evidence is partial. Report exact source-file/byte skips from
   `coverage.corpus.skipped`; when `walk_remainder.exact` is false, say plainly
   that additional unseen paths cannot be counted.
-- Read `coverage.context.complete`. If false, name each relevant omission from
-  `coverage.context.omissions`. Use retained entries for positive observations
-  only; do not make repository-wide absence, uniqueness, or exhaustiveness
-  claims.
+- Read `coverage.context.source_complete`. If false, the selected context did
+  not have all required source evidence. Name each relevant item from
+  `coverage.context.source_omissions`, also consult `coverage.corpus`, and use
+  retained entries for positive observations only. Do not make repository-wide
+  absence, uniqueness, or exhaustiveness claims.
+- Read `coverage.context.projection_complete`. If false, an applied projection
+  limit removed detail. Name each relevant item from
+  `coverage.context.truncations` and restrict claims that depend on it. A true
+  value means only that the selected projection did not hit its own limits; it
+  does not override source or nested-ledger incompleteness.
+- Read `coverage.context.intentional_exclusions`. These records disclose the
+  selected protocol's designed shape; they do not make source completeness or
+  projection completeness false. Read `coverage.context.applied_limits` for
+  the limits actually used by this invocation.
 - For every retained collection with a nested `coverage` ledger, read
   `complete`, `total_items_exact`, and `reasons` before using it (the ledger
   also records `total_items`, `included_items`, `dropped_items`). A false
   `complete` means the detailed list is partial; a false `total_items_exact`
   means even its known total is only a lower bound. Surface the reason.
-- If an omission affects `glossary.concepts` or truncates a glossary string,
-  stop before proposing collision-sensitive new terms. Explain that the
-  bounded context cannot safely represent the complete maintained vocabulary.
+- If a source omission or projection truncation affects `glossary.concepts`,
+  or truncates a glossary string, stop before proposing collision-sensitive new
+  terms. Explain that the bounded context cannot safely represent the complete
+  maintained vocabulary.
 
-No omission — corpus, context, or ledger — licenses reconstructing the missing
-detail by bulk-reading the repository. The routine projection intentionally
-replaces repeated vocabulary file paths with `module_counts` (a true
-`module_counts_truncated` means that rollup came from a bounded file sample)
-and omits the raw import graph; those standard omissions are named in
-`coverage.context`. `glossabet inspect --full .` exists for diagnostics, never
-as a way around a routine-context omission during a naming session.
+No source omission, projection truncation, or incomplete nested ledger licenses
+reconstructing the missing detail by bulk-reading the repository. The routine
+projection intentionally replaces repeated vocabulary file paths with
+`module_counts` and omits the raw import graph; those designed exclusions are
+named in `coverage.context.intentional_exclusions`.
+Identifier and token `modules` remain exact for the accepted scanned corpus;
+`module_counts_truncated: true` says only that the detailed rollup came from a
+bounded file-location sample. Repository-wide claims still require complete
+`coverage.corpus`. `glossabet inspect --full .` exists for diagnostics, never
+as a way around a routine-context truncation during a naming session.
 
 **How the context feeds the later steps:** `configuration`, per-role `totals`,
 `languages`, `modules`, role-labelled `files`, and `coverage.corpus` seed Step
@@ -186,17 +200,23 @@ glossary term from independent word hits: the engine's lexical rule requires
 its tokens contiguously in one identifier; a structural group is the separately
 defined local context for Graphify matching.
 
-**Graphify structural state:** `structural_groups.present` (a graph file was
-found) and `structural_groups.available` (usable community groups loaded) are
-not interchangeable: never claim structural coverage when `available` is
-false, and surface every adapter warning. When groups are available, read
-`structural_groups.freshness` — `current` (recorded `built_at_commit` matches
-a clean worktree), `stale` (commits differ), `unverified` (stamp or
-clean-worktree proof unavailable); the stamp is repository-controlled and
-authenticates nothing. State stale or unverified status before using those
-groups and treat them as advisory. `members_sample` is display evidence only;
-structural matching uses each group's complete `member_tokens` set, so never
-treat the sample as the group boundary or conclude an unshown member is absent.
+**Graphify structural state:** always read `structural_groups.present`,
+`structural_groups.usable`, `structural_groups.freshness`, and
+`structural_groups.warnings` together. `present` distinguishes a found graph
+from an absent one (and is null when the adapter was disabled); `usable` says
+whether community groups were loaded. Never claim structural coverage when
+`usable` is false, and surface every warning. When groups are usable,
+`freshness` is `current` (recorded `built_at_commit` matches a clean worktree),
+`stale` (commits differ), or `unverified` (stamp or clean-worktree proof
+unavailable); the stamp is repository-controlled and authenticates nothing.
+State stale or unverified status before using those groups and treat them as
+advisory. `members_sample` is display evidence only;
+structural matching uses each group's retained `member_tokens` together with
+its `coverage.member_tokens` ledger and bounded group label. It discards the
+unfinished final word of a character-truncated node or group label. Retained
+complete tokens can support positive matches, but incomplete token evidence
+cannot prove absence or an unnamed structure. Never treat the sample as the
+group boundary or conclude an unshown member is absent.
 
 ### Monorepo alert
 
@@ -632,8 +652,10 @@ not a dozen "none" sections:
   provenance already in the Step 0 context: Glossabet version, Git HEAD and
   clean/dirty/unverified state, Graphify presence/availability/freshness
   when structurally relevant, and any evidence-coverage limitation
-  (`coverage.corpus.complete` false, walk remainder inexact, context
-  omissions). Repeat the engine's wording: the Git stamp records observed
+  (`coverage.corpus.complete` false, walk remainder inexact,
+  `coverage.context.source_complete` false, or
+  `coverage.context.projection_complete` false). Repeat the engine's wording:
+  the Git stamp records observed
   state and authenticates nothing.
 - `## Vocabulary health` — a factual, concise summary ("3 unresolved naming
   gaps; 1 likely overload; 2 glossary/code mismatches; no binding drift;

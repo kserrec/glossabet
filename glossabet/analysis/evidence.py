@@ -53,7 +53,7 @@ from glossabet.runtime.coverage import (
 
 E = TypeVar("E")
 
-EVIDENCE_SCHEMA_VERSION = 15
+EVIDENCE_SCHEMA_VERSION = 17
 
 EVIDENCE_FILE = "evidence.json"
 
@@ -217,6 +217,7 @@ def _vocabulary_section(
             "tokens": tokenize_identifier(name),
             "count": count,
             "files": len(per_file),
+            "modules": len({module_of(path) for path in per_file}),
             "locations": locations,
             "locations_truncated": locations_truncated,
         }

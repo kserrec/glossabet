@@ -201,6 +201,25 @@ def test_truncation_is_capped_marked_and_counted(tmp_path):
     assert len(beta["locations"]) == 1 and beta["locations_truncated"] is True
 
 
+def test_identifier_module_total_survives_location_sampling(tmp_path):
+    """The persisted identifier spread is computed from every source file,
+    not reconstructed from the bounded location display."""
+    for index in range(6):
+        module = tmp_path / f"module_{index}"
+        module.mkdir()
+        (module / "service.py").write_text("shared_identifier = 1\n")
+
+    evidence = build_evidence(tmp_path, Limits(locations_per_term=1))
+    entry = next(
+        item for item in evidence["vocabulary"]["identifiers"]["items"]
+        if item["name"] == "shared_identifier"
+    )
+
+    assert entry["modules"] == 6
+    assert len(entry["locations"]) == 1
+    assert entry["locations_truncated"] is True
+
+
 def test_corpus_file_budget_is_deterministic_and_reported(tmp_path, monkeypatch):
     monkeypatch.setattr("glossabet.corpus.walk_budget.MAX_SOURCE_FILES", 2)
     for name in ("c.py", "a.py", "b.py"):
@@ -466,7 +485,10 @@ def test_deeply_nested_graph_json_does_not_crash(tmp_path):
     depth = 60000
     (gout / "graph.json").write_text("[" * depth + "]" * depth)
     evidence = build_evidence(tmp_path)  # must not raise RecursionError
-    assert evidence["structural_groups"]["available"] is False
+    structural = evidence["structural_groups"]
+    assert structural["usable"] is False
+    assert structural["freshness"] is None
+    assert "available" not in structural
 
 
 def test_evidence_symlink_cannot_overwrite_outside_file(tmp_path, capsys):

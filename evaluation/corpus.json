@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "reviewed_on": "2026-08-15",
   "release_thresholds": {
     "terminology_precision_min": 0.8,
@@ -683,7 +683,17 @@
               "total_items": 5,
               "total_items_exact": true
             },
-            "validation_total_findings_complete": true,
+            "graph_state": {
+              "present": true,
+              "usable": true,
+              "freshness": "unverified",
+              "warnings": []
+            },
+            "validation_finding_checks": {
+              "all_executed": true,
+              "skipped": []
+            },
+            "validation_total_findings_exact": true,
             "partial_sections": []
           }
         }
@@ -745,7 +755,17 @@
               "total_items": 51,
               "total_items_exact": true
             },
-            "validation_total_findings_complete": false,
+            "graph_state": {
+              "present": true,
+              "usable": true,
+              "freshness": "unverified",
+              "warnings": []
+            },
+            "validation_finding_checks": {
+              "all_executed": true,
+              "skipped": []
+            },
+            "validation_total_findings_exact": false,
             "partial_sections": [
               "unnamed_structure",
               "boundary_mismatch",

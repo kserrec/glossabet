@@ -25,7 +25,11 @@ from glossabet.glossary.findings import (
     observed_finding,
     suppressed_reason,
 )
-from glossabet.glossary.matching import EvidenceIndex, TermOccurrence
+from glossabet.glossary.matching import (
+    EvidenceIndex,
+    TermOccurrence,
+    is_unproven_zero,
+)
 from glossabet.glossary.model import ConceptRecord, ConceptScope, ScopeEvidence
 from glossabet.glossary.policy import (
     DEFAULT_RECONCILIATION_POLICY,
@@ -71,6 +75,7 @@ def build_concept_vocabulary(
 
 
 BindingStatus = Literal["resolved", "out-of-scope", "uncertain", "unresolved"]
+OrphanSuppression = Literal["occurrence", "binding"]
 
 
 class BindingResolution(TypedDict):
@@ -166,10 +171,12 @@ def _resolve_bindings(
             global_occurrence = matcher.code_identifier_occurrence(value)
             if scoped["count"]:
                 status = "resolved"
-            elif not scoped["count_complete"]:
+            elif is_unproven_zero(scoped):
                 status = "uncertain"
             elif global_occurrence["count"]:
                 status = "out-of-scope"
+            elif is_unproven_zero(global_occurrence):
+                status = "uncertain"
             else:
                 status = "unresolved"
         elif kind == "file":
@@ -223,20 +230,23 @@ def _orphan_finding(
     resolved: list[BindingResolution],
     uncertain: list[BindingResolution],
     policy: ReconciliationPolicy,
-) -> HeuristicFinding | None:
-    """The orphaned-concept finding for a canonical term with weak, complete
-    lexical evidence and no resolved or uncertain binding — or None."""
-    if not (
-        term_tokens
-        and occurrence["count_complete"]
-        and not resolved
-        and not uncertain
-    ):
-        return None
+) -> tuple[HeuristicFinding | None, OrphanSuppression | None]:
+    """An orphan finding and the uncertainty that suppressed it, if any."""
+    if resolved:
+        return None, None
+    if not term_tokens:
+        return None, "occurrence" if is_unproven_zero(occurrence) else None
     count = occurrence["count"]
     signal_strength = orphan_signal(count, policy)
     if signal_strength is None:
-        return None
+        return None, None
+    occurrence_inexact = (
+        is_unproven_zero(occurrence) or not occurrence["count_exact"]
+    )
+    if occurrence_inexact:
+        return None, "occurrence"
+    if uncertain:
+        return None, "binding"
     finding_evidence: dict[str, object] = {
         **occurrence,
         "lexical_occurrences": count,
@@ -255,7 +265,7 @@ def _orphan_finding(
         signal_strength=signal_strength,
         scope=scope_evidence(scope),
         concept_id=concept["id"],
-    )
+    ), None
 
 
 @dataclass(frozen=True)
@@ -263,6 +273,7 @@ class BindingFindings:
     """Named glossary-to-evidence findings and their omission reasons."""
 
     orphaned_concepts: list[HeuristicFinding]
+    orphan_incompleteness_reasons: list[str]
     unresolved_bindings: list[ObservedFinding]
     fragmentation: list[HeuristicFinding]
     fragmentation_incompleteness_reasons: list[str]
@@ -281,7 +292,10 @@ def build_binding_findings(
     unresolved: list[ObservedFinding] = []
     # (module spread, concept id, finding)
     fragmented: list[tuple[int, str, HeuristicFinding]] = []
+    orphan_occurrence_suppressed = 0
+    orphan_binding_suppressed = 0
     fragmentation_suppressed = 0
+    symbol_binding_suppressed = 0
     excluded_bindings = 0
     for concept in canonical:
         scope = concept_scope(concept)
@@ -290,43 +304,41 @@ def build_binding_findings(
         bindings = _resolve_bindings(concept, matcher, root)
         resolved = [b for b in bindings if b["status"] == "resolved"]
         uncertain = [b for b in bindings if b["status"] == "uncertain"]
+        symbol_binding_suppressed += sum(
+            1 for binding in uncertain
+            if binding["ref"].partition(":")[0] == "symbol"
+        )
         excluded_bindings += sum(
             1 for b in uncertain
             if b["ref"].partition(":")[0] in ("file", "module")
             and matcher.repository_corpus_complete
         )
         unresolved.extend(_binding_findings(concept, scope, bindings))
-        orphan = _orphan_finding(
+        orphan, orphan_suppression = _orphan_finding(
             concept, scope, term_tokens, occurrence, bindings, resolved,
             uncertain, policy,
         )
+        orphan_occurrence_suppressed += orphan_suppression == "occurrence"
+        orphan_binding_suppressed += orphan_suppression == "binding"
         if orphan is not None:
             orphaned.append(orphan)
         spread = occurrence["modules"]
-        # A scoped single-token occurrence counts modules over the entry's
-        # retained location sample, so a clipped sample undercounts spread:
-        # a value that still clears the threshold is a valid lower bound,
-        # one below it proves nothing. For that path locations_truncated is
-        # exactly the entry-level clip. Compound occurrences also fold the
-        # final display clip into the same flag, which does not reduce the
-        # module set — treating it as sampling would cry wolf on ordinary
-        # repositories, so compound spread stays a best-effort lower bound.
-        modules_sampled = (
-            scope is not None
-            and occurrence["match_kind"] == "token"
-            and occurrence["locations_truncated"]
-        )
+        spread_exact = occurrence["modules_exact"]
         if is_fragmented(spread, policy):
+            quantity = str(spread) if spread_exact else f"at least {spread}"
             fragmented.append((spread, concept["id"], heuristic_finding(
                 "fragmentation",
-                f"'{concept['term']}' spans {spread} modules — may be "
+                f"'{concept['term']}' spans {quantity} modules — may be "
                 "legitimately cross-cutting or problematically scattered",
-                {"module_spread": spread},
+                {
+                    "module_spread": spread,
+                    "module_spread_exact": spread_exact,
+                },
                 signal_strength="weak",
                 scope=scope_evidence(scope),
                 concept_id=concept["id"],
             )))
-        elif modules_sampled:
+        elif not spread_exact:
             fragmentation_suppressed += 1
     orphaned.sort(key=lambda f: f["concept_id"])
     unresolved.sort(key=lambda f: (f["concept_id"], f["ref"]))
@@ -334,13 +346,26 @@ def build_binding_findings(
     fragmentation_reasons = suppressed_reason(
         fragmentation_suppressed, "fragmentation"
     )
-    binding_reasons = [] if not excluded_bindings else [
-        f"{excluded_bindings} binding(s) name paths the scan did not read "
-        "(vendored, generated, ignored, sensitive, oversized, linked, or not "
-        "a code/doc file) and were not judged"
-    ]
+    binding_reasons = suppressed_reason(
+        symbol_binding_suppressed, "symbol-binding"
+    )
+    if excluded_bindings:
+        binding_reasons.append(
+            f"{excluded_bindings} binding(s) name paths the scan did not read "
+            "(vendored, generated, ignored, sensitive, oversized, linked, or "
+            "not a code/doc file) and were not judged"
+        )
+    orphan_reasons = suppressed_reason(
+        orphan_occurrence_suppressed, "orphaned-concept"
+    )
+    if orphan_binding_suppressed:
+        orphan_reasons.append(
+            f"{orphan_binding_suppressed} orphaned-concept check(s) suppressed "
+            "because one or more bindings were uncertain"
+        )
     return BindingFindings(
         orphaned_concepts=orphaned,
+        orphan_incompleteness_reasons=orphan_reasons,
         unresolved_bindings=unresolved,
         fragmentation=[row[2] for row in fragmented],
         fragmentation_incompleteness_reasons=fragmentation_reasons,

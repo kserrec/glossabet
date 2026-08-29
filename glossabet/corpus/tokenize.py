@@ -202,6 +202,27 @@ def tokenize_term(term: str) -> list[str]:
     return tokenize_identifier(term)
 
 
+def tokenize_bounded_term(term: str, *, truncated: bool) -> list[str]:
+    """Tokenize a retained term prefix without trusting a clipped word.
+
+    When a character cap cut the input, the final word hunk may only be a
+    prefix of the real word (``payment`` from ``paymentgateway``). Complete
+    earlier hunks remain sound positive evidence. A trailing separator proves
+    the preceding hunk complete, so nothing is discarded in that case.
+    """
+    normalized = (
+        term if term.isascii() else unicodedata.normalize("NFKC", term)
+    )
+    if truncated:
+        searchable = normalized.replace("_", " ")
+        final_hunk = None
+        for match in _WORD_HUNK_RE.finditer(searchable):
+            final_hunk = match
+        if final_hunk is not None and final_hunk.end() == len(searchable):
+            normalized = normalized[:final_hunk.start()]
+    return tokenize_identifier(normalized)
+
+
 def _identifier_hunks(name: str) -> list[str]:
     return _WORD_HUNK_RE.findall(name.replace("_", " "))
 

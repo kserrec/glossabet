@@ -6,7 +6,7 @@ usefulness review. It tests concrete contracts and known examples; it does not
 establish that Glossabet improves arbitrary real projects or that agent
 behavior is reliable in every future session.
 
-The manifest is [`evaluation/corpus.json`](evaluation/corpus.json). Recorded
+The schema-6 manifest is [`evaluation/corpus.json`](evaluation/corpus.json). Recorded
 results are immutable testimony about the exact inputs identified inside each
 JSON file. During ordinary development they may lag the source tree but must
 remain internally genuine. A release requires separate `--current` checks and,
@@ -66,9 +66,9 @@ in [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
 
 ### Recorded result
 
-[`evaluation/results.json`](evaluation/results.json) is schema 7 and records
-Glossabet 0.1.0 on CPython 3.12.3, Linux 6.17, with evidence schema 15, drift
-schema 6, and validation schema 8.
+[`evaluation/results.json`](evaluation/results.json) is schema 8 and records
+Glossabet 0.1.0 on CPython 3.12.3, Linux 6.17, with evidence schema 17, drift
+schema 7, and validation schema 11.
 
 | Observation | Recorded value |
 | --- | ---: |
@@ -80,17 +80,17 @@ schema 6, and validation schema 8.
 | Register accuracy | 1.0 |
 | False alarms | 0 |
 | Minimum cache reuse; warm output parity | 1.0; true |
-| Cold / warm median total | 0.429637 s / 0.404239 s |
-| Cold seconds per 1,000 source files | 4.34 s |
+| Cold / warm median total | 0.497004 s / 0.533848 s |
+| Cold seconds per 1,000 source files | 5.02 s |
 | Cases with any deliberate truncation | 2 |
 | Corpus-budget truncations | 0 |
-| Distinctive nomination quality | 0.8889 |
+| Distinctive nomination quality | 0.75 |
 
 Fourteen of the fifteen configured checks pass. The recorded distinctive-term
-nomination score misses its deliberately exact 1.0 threshold. Therefore this
-artifact does not claim that all deterministic release thresholds pass. It is
-still valid evidence: the default verifier checks that the failure and all
-underlying results are represented honestly.
+nomination score of 0.75 misses its deliberately exact 1.0 threshold.
+Therefore this artifact does not claim that all deterministic release
+thresholds pass. It is still valid evidence: the default verifier checks that
+the failure and all underlying results are represented honestly.
 
 Run the local/genuine verifier with:
 

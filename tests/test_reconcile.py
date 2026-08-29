@@ -99,7 +99,16 @@ def validation_for(tmp_path, graph=GRAPH):
 
 
 def test_unnamed_structure_detected(tmp_path):
-    items = validation_for(tmp_path)["unnamed_structure"]["items"]
+    validation = validation_for(tmp_path)
+    assert validation["finding_checks"] == {
+        "all_executed": True,
+        "skipped": [],
+    }
+    assert validation["total_findings_exact"] is True
+    assert not (
+        {"graph_available", "total_findings_complete"} & validation.keys()
+    )
+    items = validation["unnamed_structure"]["items"]
     finding = next(f for f in items if "community 1" in f["group"])
     assert finding["signal_strength"] == "strong"  # size 5
     assert "LeaseManager" in finding["evidence"]["members_sample"]
@@ -178,7 +187,7 @@ def test_uncertain_symbol_binding_does_not_create_a_false_orphan(tmp_path):
 
     assert validation["unresolved_bindings"]["items"] == []
     assert validation["orphaned_concepts"]["items"] == []
-    assert validation["total_findings_complete"] is False
+    assert validation["total_findings_exact"] is False
 
 
 def test_partial_inventory_does_not_claim_missing_bindings_or_orphans(
@@ -229,7 +238,7 @@ def test_partial_inventory_does_not_claim_missing_bindings_or_orphans(
         "inventory" in reason
         for reason in collections["unresolved_bindings"]["reasons"]
     ), collections["unresolved_bindings"]
-    assert validation["total_findings_complete"] is False
+    assert validation["total_findings_exact"] is False
 
 
 def test_fragmentation_detected(tmp_path):
@@ -248,7 +257,19 @@ def test_drift_sections_embedded(tmp_path):
 
 def test_without_graph_structural_checks_skip_cleanly(tmp_path):
     validation = validation_for(tmp_path, graph=None)
-    assert validation["graph_available"] is False
+    assert validation["schema_version"] == 11
+    assert validation["finding_checks"]["all_executed"] is False
+    assert [
+        item["name"] for item in validation["finding_checks"]["skipped"]
+    ] == [
+        "unnamed_structure",
+        "boundary_mismatch",
+        "overloaded_structural_region",
+    ]
+    assert validation["total_findings_exact"] is True
+    assert not (
+        {"graph_available", "total_findings_complete"} & validation.keys()
+    )
     graph = validation["graph"]
     assert graph["present"] is False
     assert graph["usable"] is False
@@ -262,6 +283,12 @@ def test_without_graph_structural_checks_skip_cleanly(tmp_path):
         assert validation[key]["skipped"] is True
         assert validation[key]["items"] == []
         assert "absent" in validation[key]["skip_reason"]
+        skipped = next(
+            item
+            for item in validation["finding_checks"]["skipped"]
+            if item["name"] == key
+        )
+        assert skipped["reason"] == validation[key]["skip_reason"]
     # direction B still works
     assert validation["orphaned_concepts"]["items"]
 
@@ -326,7 +353,7 @@ def test_graph_group_cap_makes_structural_validation_explicitly_partial(
     )
 
     assert validation["total_findings"] == 2
-    assert validation["total_findings_complete"] is False
+    assert validation["total_findings_exact"] is False
     assert validation["graph"]["groups_dropped"] == 1
     assert validation["graph"]["groups_complete"] is False
     assert validation["unnamed_structure"]["partial"] is True
@@ -515,7 +542,15 @@ def test_structural_scope_limit_is_explicit_instead_of_guessing(tmp_path):
     assert "do not carry repository paths" in validation["unnamed_structure"][
         "skip_reason"
     ]
+    assert validation["unnamed_structure"]["partial"] is False
+    assert validation["unnamed_structure"]["partial_reason"] is None
     assert validation["boundary_mismatch"]["partial"] is True
+    assert validation["finding_checks"]["all_executed"] is False
+    assert validation["finding_checks"]["skipped"] == [{
+        "name": "unnamed_structure",
+        "reason": validation["unnamed_structure"]["skip_reason"],
+    }]
+    assert validation["total_findings_exact"] is False
 
 
 def test_seventh_graph_member_participates_in_structural_matching(tmp_path):
@@ -548,6 +583,142 @@ def test_seventh_graph_member_participates_in_structural_matching(tmp_path):
     assert "payment" in group["member_tokens"]
     assert group["coverage"]["member_tokens"]["complete"] is True
     assert validation["unnamed_structure"]["items"] == []
+
+
+def test_incomplete_graph_tokens_and_labels_do_not_prove_unnamed_structure(
+    tmp_path,
+):
+    from glossabet.analysis.graphify import MEMBER_TOKEN_CAP
+
+    graph = {
+        "nodes": [
+            *[
+                {
+                    "id": f"token-{index}",
+                    "label": f"tok{index:05d}",
+                    "community": 0,
+                }
+                for index in range(MEMBER_TOKEN_CAP)
+            ],
+            {"id": "hidden-zeta", "label": "Zeta", "community": 0},
+            {
+                "id": "hidden-payment",
+                "label": "a" * 512 + "Payment",
+                "community": 1,
+            },
+            {
+                "id": "hidden-invoice",
+                "label": "OrdinaryNode",
+                "community": 2,
+                "community_name": "b" * 512 + "Invoice",
+            },
+            {"id": "complete", "label": "LeaseManager", "community": 3},
+        ],
+        "edges": [],
+    }
+    (tmp_path / "main.py").write_text("ordinary_name = 1\n")
+    gout = tmp_path / "graphify-out"
+    gout.mkdir()
+    gout.joinpath("graph.json").write_text(json.dumps(graph))
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": term.casefold(),
+                "term": term,
+                "definition": f"The {term} concept.",
+                "status": "canonical",
+            }
+            for term in ("Zeta", "Payment", "Invoice")
+        ],
+    }
+
+    evidence = build_evidence(tmp_path)
+    groups = {
+        group["id"]: group
+        for group in evidence["structural_groups"]["groups"]
+    }
+    validation = build_validation(evidence, glossary)
+
+    assert groups["0"]["coverage"]["member_tokens"]["complete"] is False
+    assert groups["1"]["coverage"]["member_tokens"][
+        "total_items_exact"
+    ] is False
+    assert groups["2"]["label_truncated"] is True
+    assert [
+        item["group"] for item in validation["unnamed_structure"]["items"]
+    ] == ["community 3"]
+    assert validation["unnamed_structure"]["partial"] is True
+    assert validation["unnamed_structure"]["coverage"][
+        "total_items_exact"
+    ] is False
+    assert validation["coverage"]["work"]["structural_matches"][
+        "total_items_exact"
+    ] is False
+
+
+def test_truncated_graph_fragments_do_not_create_structural_matches(tmp_path):
+    raw_label = "x" * 504 + " paymentgateway"
+    graph = {
+        "nodes": [
+            {
+                "id": "truncated-member",
+                "label": raw_label,
+                "community": 0,
+            },
+            {"id": "invoice-0", "label": "Invoice", "community": 0},
+            {"id": "tenant-0", "label": "Tenant", "community": 0},
+            {
+                "id": "named-member",
+                "label": "OrdinaryNode",
+                "community": 1,
+                "community_name": raw_label,
+            },
+            {"id": "invoice-1", "label": "Invoice", "community": 1},
+            {"id": "tenant-1", "label": "Tenant", "community": 1},
+        ],
+        "edges": [],
+    }
+    (tmp_path / "main.py").write_text("ordinary_name = 1\n")
+    gout = tmp_path / "graphify-out"
+    gout.mkdir()
+    gout.joinpath("graph.json").write_text(json.dumps(graph))
+    glossary = {
+        "schema_version": 1,
+        "concepts": [
+            {
+                "id": term.casefold(),
+                "term": term,
+                "definition": f"The {term} concept.",
+                "status": "canonical",
+            }
+            for term in ("Payment", "Invoice", "Tenant")
+        ],
+    }
+
+    evidence = build_evidence(tmp_path)
+    groups = {
+        group["id"]: group
+        for group in evidence["structural_groups"]["groups"]
+    }
+    validation = build_validation(evidence, glossary)
+    structural_items = [
+        *validation["boundary_mismatch"]["items"],
+        *validation["overloaded_structural_region"]["items"],
+    ]
+
+    assert groups["0"]["coverage"]["member_tokens"][
+        "total_items_exact"
+    ] is False
+    assert groups["1"]["label_truncated"] is True
+    assert all(
+        "payment" not in item["concepts"] for item in structural_items
+    )
+    assert {
+        tuple(item["concepts"])
+        for item in validation["boundary_mismatch"]["items"]
+    } == {("invoice", "tenant")}
+    assert validation["overloaded_structural_region"]["items"] == []
 
 
 def test_structural_matching_uses_inverted_token_candidates(
@@ -642,7 +813,7 @@ def test_structural_match_budget_reports_omitted_candidate_evaluations(
     assert validation["boundary_mismatch"]["coverage"][
         "total_items_exact"
     ] is False
-    assert validation["total_findings_complete"] is False
+    assert validation["total_findings_exact"] is False
 
 
 def test_boundary_pair_total_is_counted_while_only_details_are_retained(
@@ -700,6 +871,7 @@ def test_validate_cli_surfaces_adapter_warning_and_skipped_coverage(
     )
     assert main(["validate", str(root)]) == 0
     captured = capsys.readouterr()
+    assert "finding(s) from evaluated checks" in captured.out
     assert "graph present but no usable structural groups" in captured.out
     assert "structural checks skipped" in captured.out
     assert "graphify adapter:" in captured.err
@@ -732,7 +904,60 @@ def test_scoped_sampled_fragmentation_is_confessed(tmp_path):
 
     ledger = validation["fragmentation"]["coverage"]
     assert ledger["complete"] is False
-    assert any("location sample" in reason for reason in ledger["reasons"])
+    assert any(
+        "required occurrence evidence was inexact" in reason
+        for reason in ledger["reasons"]
+    )
+
+
+@pytest.mark.parametrize("retained_modules", [4, 5])
+def test_clipped_compound_fragmentation_uses_a_lower_bound_rule(
+    tmp_path, retained_modules
+):
+    source = tmp_path / "src"
+    source.mkdir()
+    for index in range(retained_modules):
+        module = source / f"m{index}"
+        module.mkdir()
+        (module / "code.py").write_text("payment_request = 1\n" * 10)
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "code.py").write_text("payment_request = 1\n")
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "payment-request",
+            "term": "Payment Request",
+            "definition": "d",
+            "status": "canonical",
+            "scope": {"path_prefixes": ["src"]},
+        }],
+    }
+
+    validation = build_validation(
+        build_evidence(
+            tmp_path,
+            Limits(locations_per_term=retained_modules),
+        ),
+        glossary,
+    )
+    fragmentation = validation["fragmentation"]
+
+    if retained_modules == 4:
+        assert fragmentation["items"] == []
+        assert fragmentation["coverage"]["complete"] is False
+        assert any(
+            "required occurrence evidence was inexact" in reason
+            for reason in fragmentation["coverage"]["reasons"]
+        )
+    else:
+        [finding] = fragmentation["items"]
+        assert "at least 5 modules" in finding["summary"]
+        assert finding["evidence"] == {
+            "module_spread": 5,
+            "module_spread_exact": False,
+        }
+        assert fragmentation["coverage"]["complete"] is True
 
 
 def test_clip_only_compound_spread_is_not_reported_as_sampled(tmp_path):
@@ -743,10 +968,9 @@ def test_clip_only_compound_spread_is_not_reported_as_sampled(tmp_path):
     src.mkdir()
     for index in range(6):
         (src / f"f{index}.py").write_text("payment_request = 1\n")
-    # The concept is SCOPED (the guard reads `scope is not None and
-    # match_kind == "token" and locations_truncated`): only a scoped compound
-    # reaches the match-kind branch this test exists to pin — an unscoped one
-    # short-circuits before it and proves nothing about compounds.
+    # The concept is scoped so the matcher derives its spread from locations.
+    # Keep all six upstream locations, then let the shared occurrence display
+    # clip to five; display clipping alone must not make module spread inexact.
     glossary = {
         "schema_version": 1,
         "concepts": [{
@@ -757,18 +981,17 @@ def test_clip_only_compound_spread_is_not_reported_as_sampled(tmp_path):
             "scope": {"path_prefixes": ["src"]},
         }],
     }
-    evidence = build_evidence(tmp_path)
+    evidence = build_evidence(tmp_path, Limits(locations_per_term=6))
     validation = build_validation(evidence, glossary)
 
     ledger = validation["fragmentation"]["coverage"]
     assert ledger["complete"] is True
     assert ledger["reasons"] == []
-    # And the single-token sibling in the same scope IS suppressed when its
-    # entry-level location sample was clipped: the guard fires for tokens.
+    # A single-token sibling with an inexact module total follows the same
+    # below-threshold suppression rule.
     for index in range(6, 12):
         (tmp_path / "src" / f"f{index}.py").write_text("payment = 1\n")
     glossary["concepts"][0]["term"] = "Payment"
-    from glossabet.analysis.evidence import Limits
     evidence = build_evidence(tmp_path, Limits(locations_per_term=2))
     ledger = build_validation(evidence, glossary)["fragmentation"]["coverage"]
     assert ledger["complete"] is False
@@ -803,7 +1026,7 @@ def test_paths_match_scopes_and_bindings_across_unicode_forms(
     occurrence = EvidenceIndex(evidence, ["Cafe"]).code_term_occurrence(
         "Cafe", (typed,)
     )
-    assert occurrence["count"] == 1 and occurrence["count_complete"] is True
+    assert occurrence["count"] == 1 and occurrence["count_exact"] is True
 
 
 def test_only_canonical_concepts_are_judged_for_orphans_and_bindings(tmp_path):
@@ -933,3 +1156,82 @@ def test_bindings_into_paths_the_scan_excluded_are_uncertain_not_unresolved(tmp_
     assert sorted(f["ref"] for f in written["unresolved_bindings"]["items"]) == [
         "file:../outside", "file:/etc/hosts", "file:src/gone.py",
     ]
+
+
+def test_uncertain_binding_qualifies_only_orphan_decisions_it_can_change(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "core.py").write_text(
+        "ordinary_concept_first = 1\n"
+        "ordinary_concept_second = 2\n"
+        "ordinary_concept_third = 3\n"
+    )
+    (tmp_path / "vendor" / "lib").mkdir(parents=True)
+    (tmp_path / "vendor" / "lib" / "dep.py").write_text(
+        "dependency_value = 1\n"
+    )
+    uncertain_binding = [{"ref": "file:vendor/lib/dep.py"}]
+    vanished = {
+        "id": "vanished",
+        "term": "Vanished Concept",
+        "definition": "A concept absent from scanned code.",
+        "status": "canonical",
+        "bindings": uncertain_binding,
+    }
+    ordinary = {
+        "id": "ordinary",
+        "term": "Ordinary Concept",
+        "definition": "A concept in ordinary use.",
+        "status": "canonical",
+        "bindings": uncertain_binding,
+    }
+    evidence = build_evidence(tmp_path, graphify=False)
+
+    withheld = build_validation(
+        evidence, {"schema_version": 1, "concepts": [vanished, ordinary]},
+        root=tmp_path,
+    )
+    orphan_ledger = withheld["orphaned_concepts"]["coverage"]
+    assert withheld["orphaned_concepts"]["items"] == []
+    assert orphan_ledger["total_items_exact"] is False
+    assert (
+        "1 orphaned-concept check(s) suppressed because one or more bindings "
+        "were uncertain"
+    ) in orphan_ledger["reasons"]
+
+    ordinary_only = build_validation(
+        evidence, {"schema_version": 1, "concepts": [ordinary]}, root=tmp_path
+    )
+    assert ordinary_only["orphaned_concepts"]["coverage"][
+        "total_items_exact"
+    ] is True
+
+
+def test_inexact_orphan_occurrence_survives_an_uncertain_binding(tmp_path):
+    (tmp_path / "aaa").mkdir()
+    (tmp_path / "aaa" / "outside.py").write_text("payment_service = 1\n")
+    (tmp_path / "zzz").mkdir()
+    (tmp_path / "zzz" / "inside.py").write_text("payment_service = 1\n")
+    glossary = {
+        "schema_version": 1,
+        "concepts": [{
+            "id": "payment-service",
+            "term": "Payment Service",
+            "definition": "A scoped payment component.",
+            "status": "canonical",
+            "scope": {"path_prefixes": ["zzz"]},
+            "bindings": [{"ref": "symbol:payment_service"}],
+        }],
+    }
+    evidence = build_evidence(
+        tmp_path, Limits(locations_per_term=1), graphify=False
+    )
+
+    validation = build_validation(evidence, glossary, root=tmp_path)
+
+    assert validation["orphaned_concepts"]["items"] == []
+    orphan_ledger = validation["orphaned_concepts"]["coverage"]
+    assert orphan_ledger["total_items_exact"] is False
+    assert (
+        "1 orphaned-concept check(s) suppressed because required occurrence "
+        "evidence was inexact"
+    ) in orphan_ledger["reasons"]

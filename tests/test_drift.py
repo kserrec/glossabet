@@ -76,7 +76,9 @@ def drift_for(tmp_path):
 
 
 def test_seeded_rename_is_detected_with_evidence(tmp_path):
-    parallel = drift_for(tmp_path)["parallel_terms"]["items"]
+    drift = drift_for(tmp_path)
+    assert drift["schema_version"] == 7
+    parallel = drift["parallel_terms"]["items"]
     finding = next(f for f in parallel if f["new_term"] == "execution")
     assert finding["canonical_term"] == "Run"
     assert finding["concept_id"] == "run"
@@ -399,6 +401,10 @@ def test_truncated_locations_cannot_prove_a_scoped_term_is_absent(tmp_path):
     drift = build_drift(evidence, glossary)
 
     assert drift["canonical_fading"]["items"] == []
+    assert any(
+        "canonical-fading check(s) suppressed" in reason
+        for reason in drift["canonical_fading"]["coverage"]["reasons"]
+    )
 
 
 def test_partial_production_corpus_cannot_prove_a_term_is_absent(
@@ -422,6 +428,10 @@ def test_partial_production_corpus_cannot_prove_a_term_is_absent(
     assert drift["canonical_fading"]["items"] == []
     assert drift["coverage"]["production_corpus_complete"] is False
     assert drift["total_findings_complete"] is False
+    assert any(
+        "canonical-fading check(s) suppressed" in reason
+        for reason in drift["canonical_fading"]["coverage"]["reasons"]
+    )
 
 
 def test_terminology_cap_propagates_to_drift_collection_coverage(
@@ -480,6 +490,10 @@ def test_compound_matching_budget_suppresses_unproven_absence(tmp_path):
     assert drift["canonical_fading"]["coverage"][
         "total_items_exact"
     ] is False
+    assert any(
+        "canonical-fading check(s) suppressed" in reason
+        for reason in drift["canonical_fading"]["coverage"]["reasons"]
+    )
 
 
 def test_build_drift_indexes_duplicate_compound_terms_once(tmp_path):
@@ -554,7 +568,10 @@ def test_scoped_zero_from_a_clipped_location_sample_is_confessed(tmp_path):
     assert section["items"] == []
     ledger = section["coverage"]
     assert ledger["complete"] is False
-    assert any("location sample" in reason for reason in ledger["reasons"])
+    assert any(
+        "required occurrence evidence was inexact" in reason
+        for reason in ledger["reasons"]
+    )
 
 
 def test_parallel_term_scope_checks_are_bounded_against_many_owner_scopes(tmp_path):
@@ -656,7 +673,7 @@ def test_parallel_term_budget_charges_prefix_pair_work_not_owner_count(tmp_path)
 
 def test_terms_the_doc_index_cannot_hold_are_not_reported_as_fading(tmp_path):
     """`ID`/`S3` (too short, digits) and a possessive-only mention
-    (`tenant's`) used to score `doc_mentions: 0, count_complete: true` and
+    (`tenant's`) used to score `doc_mentions: 0, count_exact: true` and
     yield a false "canonical … is fading"; the doc index cannot represent the
     first two (so absence proves nothing) and now folds the possessive."""
     (tmp_path / "app.py").write_text(
@@ -673,36 +690,90 @@ def test_terms_the_doc_index_cannot_hold_are_not_reported_as_fading(tmp_path):
     ]}
     evidence = build_evidence(tmp_path)
     matcher = EvidenceIndex(evidence, ["ID", "S3", "Tenant"])
-    assert matcher.doc_term_occurrence("ID")["count_complete"] is False
-    assert matcher.doc_term_occurrence("S3")["count_complete"] is False
+    assert matcher.doc_term_occurrence("ID")["count_exact"] is False
+    assert matcher.doc_term_occurrence("S3")["count_exact"] is False
     assert matcher.doc_term_occurrence("Tenant") == {
-        "count": 3, "count_complete": True, "scope": {"kind": "repository"},
+        "count": 3, "count_exact": True, "scope": {"kind": "repository"},
     }
     # A term that is one doc word but splits on its apostrophe as an
     # identifier is looked up the way the doc index was built.
     (tmp_path / "README.md").write_text("O'Brien wrote it. Ask O'Brien. O'Brien.\n")
     matcher = EvidenceIndex(build_evidence(tmp_path), ["O'Brien"])
     assert matcher.doc_term_occurrence("O'Brien")["count"] == 3
-    fading = build_drift(evidence, glossary)["canonical_fading"]["items"]
-    assert [f["term"] for f in fading] == []
+    fading = build_drift(evidence, glossary)["canonical_fading"]
+    assert [f["term"] for f in fading["items"]] == []
+    assert fading["coverage"]["complete"] is False
+    assert any(
+        "canonical-fading check(s) suppressed" in reason
+        for reason in fading["coverage"]["reasons"]
+    )
 
 
 def test_compound_occurrence_file_total_stays_exact_when_only_the_sample_is_clipped(tmp_path):
-    """Two matching identifiers across six files: `files: 6` is exact, so
-    `files_complete` must be True even though only five locations are
-    displayed (`locations_truncated` reports the display clip)."""
-    for index in range(3):  # each identifier stays under the per-entry cap
-        (tmp_path / f"a{index}.py").write_text("create_payment_request = 1\n")
-        (tmp_path / f"b{index}.py").write_text("payment_request = 2\n")
+    """Final location sampling does not make compound numeric totals inexact."""
+    for index in range(6):
+        module = tmp_path / f"module_{index}"
+        module.mkdir()
+        identifier = "create_payment_request" if index < 3 else "payment_request"
+        (module / "service.py").write_text(f"{identifier} = 1\n")
     evidence = build_evidence(tmp_path)
     occurrence = EvidenceIndex(evidence, ["Payment Request"]).code_term_occurrence(
         "Payment Request"
     )
     assert occurrence["match_kind"] == "lexical-unit"
-    assert occurrence["count"] == 6 and occurrence["count_complete"] is True
-    assert occurrence["files"] == 6 and occurrence["files_complete"] is True
+    assert occurrence["count"] == 6 and occurrence["count_exact"] is True
+    assert occurrence["files"] == 6 and occurrence["files_exact"] is True
+    assert occurrence["modules"] == 6 and occurrence["modules_exact"] is True
     assert len(occurrence["locations"]) == 5
     assert occurrence["locations_truncated"] is True
+    assert "count_complete" not in occurrence
+    assert "files_complete" not in occurrence
+
+
+def test_scoped_single_token_final_sample_is_separate_from_exact_totals(tmp_path):
+    """A scoped total can use every upstream location while displaying five."""
+    source = tmp_path / "src"
+    source.mkdir()
+    for index in range(6):
+        module = source / f"module_{index}"
+        module.mkdir()
+        (module / "service.py").write_text("payment = 1\n")
+
+    evidence = build_evidence(tmp_path, Limits(locations_per_term=10))
+    entry = next(
+        item for item in evidence["vocabulary"]["tokens"]["items"]
+        if item["term"] == "payment"
+    )
+    assert entry["locations_truncated"] is False
+
+    occurrence = EvidenceIndex(evidence, ["Payment"]).code_term_occurrence(
+        "Payment", ("src",)
+    )
+    assert occurrence["count"] == 6 and occurrence["count_exact"] is True
+    assert occurrence["files"] == 6 and occurrence["files_exact"] is True
+    assert occurrence["modules"] == 6 and occurrence["modules_exact"] is True
+    assert len(occurrence["locations"]) == 5
+    assert occurrence["locations_truncated"] is True
+
+
+def test_unscoped_single_token_final_sample_is_separate_from_exact_totals(tmp_path):
+    """Global token and identifier totals also survive final display sampling."""
+    for index in range(6):
+        module = tmp_path / f"module_{index}"
+        module.mkdir()
+        (module / "service.py").write_text("payment = 1\n")
+
+    evidence = build_evidence(tmp_path, Limits(locations_per_term=10))
+    index = EvidenceIndex(evidence, ["Payment"])
+    for occurrence in (
+        index.code_term_occurrence("Payment"),
+        index.code_identifier_occurrence("payment"),
+    ):
+        assert occurrence["count"] == 6 and occurrence["count_exact"] is True
+        assert occurrence["files"] == 6 and occurrence["files_exact"] is True
+        assert occurrence["modules"] == 6 and occurrence["modules_exact"] is True
+        assert len(occurrence["locations"]) == 5
+        assert occurrence["locations_truncated"] is True
 
 
 def test_compound_terms_match_only_contiguous_token_runs(tmp_path):
@@ -722,7 +793,7 @@ def test_compound_terms_match_only_contiguous_token_runs(tmp_path):
         "Payment Request"
     )
     assert occurrence["match_kind"] == "lexical-unit"
-    assert occurrence["count"] == 2 and occurrence["count_complete"] is True
+    assert occurrence["count"] == 2 and occurrence["count_exact"] is True
     assert occurrence["locations"] == [{"path": "a.py", "count": 2}]
     # And which two: each adjacent form alone is one, each other form none.
     for identifier, expected in (
@@ -755,7 +826,7 @@ def test_watched_count_is_qualified_under_a_partial_corpus(tmp_path, monkeypatch
     assert evidence["skipped"]["corpus_budget"]["complete"] is False
     drift = build_drift(evidence, glossary)
     (finding,) = drift["watched_terms_in_use"]["items"]
-    assert finding["evidence"]["count_complete"] is False
+    assert finding["evidence"]["count_exact"] is False
     assert "at least 2 lexical occurrence(s)" in finding["summary"]
     assert drift["watched_terms_in_use"]["coverage"]["complete"] is False
 
@@ -763,7 +834,7 @@ def test_watched_count_is_qualified_under_a_partial_corpus(tmp_path, monkeypatch
     (finding,) = build_drift(build_evidence(tmp_path), glossary)[
         "watched_terms_in_use"
     ]["items"]
-    assert finding["evidence"]["count_complete"] is True
+    assert finding["evidence"]["count_exact"] is True
     assert "3 lexical occurrence(s)" in finding["summary"]
     assert "at least" not in finding["summary"]
 
@@ -845,14 +916,21 @@ def test_entry_level_location_clip_makes_scoped_compound_counts_inexact(tmp_path
     assert entry["locations_truncated"] is True and entry["count"] == 5
 
     index = EvidenceIndex(evidence, ["Payment Request"])
+    identifier = index.code_identifier_occurrence("payment_request")
+    assert identifier["modules"] == 2
+    assert identifier["modules_exact"] is True
+    assert identifier["locations_truncated"] is True
+
     scoped = index.code_term_occurrence("Payment Request", ("pay",))
-    assert scoped["count_complete"] is False
-    assert scoped["files_complete"] is False
+    assert scoped["count_exact"] is False
+    assert scoped["files_exact"] is False
+    assert scoped["modules_exact"] is False
     assert scoped["locations_truncated"] is True
 
     unscoped = index.code_term_occurrence("Payment Request")
-    assert unscoped["count"] == 5 and unscoped["count_complete"] is True
-    assert unscoped["files"] == 2 and unscoped["files_complete"] is False
+    assert unscoped["count"] == 5 and unscoped["count_exact"] is True
+    assert unscoped["files"] == 2 and unscoped["files_exact"] is False
+    assert unscoped["modules_exact"] is False
 
 
 def test_over_long_compound_terms_are_reported_as_unmatched_not_absent(tmp_path):
@@ -874,9 +952,9 @@ def test_over_long_compound_terms_are_reported_as_unmatched_not_absent(tmp_path)
     assert any(f"{MAX_COMPOUND_TERM_TOKENS}-token" in r for r in ledger["reasons"])
     # The over-cap term is the only one affected: its neighbour in the same
     # index keeps an exact count (a bughunt found the flag was index-wide).
-    assert index.code_term_occurrence(at_cap)["count_complete"] is True
+    assert index.code_term_occurrence(at_cap)["count_exact"] is True
     unmatched = index.code_term_occurrence(over)
-    assert unmatched["count"] == 0 and unmatched["count_complete"] is False
+    assert unmatched["count"] == 0 and unmatched["count_exact"] is False
 
     glossary = {"schema_version": 1, "concepts": [
         {"id": "long", "term": over, "definition": "d", "status": "canonical"},
@@ -885,6 +963,10 @@ def test_over_long_compound_terms_are_reported_as_unmatched_not_absent(tmp_path)
     coverage = drift["canonical_fading"]["coverage"]
     assert coverage["complete"] is False
     assert any(f"{MAX_COMPOUND_TERM_TOKENS}-token" in r for r in coverage["reasons"])
+    assert any(
+        "canonical-fading check(s) suppressed" in reason
+        for reason in coverage["reasons"]
+    )
     # A "strong: absent" fading finding here would be the false claim.
     assert [f["signal_strength"] for f in drift["canonical_fading"]["items"]
             if f["term"] == over and f["signal_strength"] == "strong"] == []

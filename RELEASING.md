@@ -30,7 +30,7 @@ Before preparing a candidate, all of the following must be true:
   that exact commit.
 
 Current evidence does not meet this gate: it predates the final candidate, the
-recorded deterministic nomination-quality score is 0.8889 against a 1.0
+recorded deterministic nomination-quality score is 0.75 against a 1.0
 threshold, and trusted-alpha evidence does not exist. See
 [`EVALUATION.md`](EVALUATION.md).
 

@@ -19,7 +19,7 @@
       "false_alarms": 0,
       "false_alarms_per_1000_production_code_files": 0.0,
       "lexical_contract_rate": 1.0,
-      "nomination_quality": 0.8889,
+      "nomination_quality": 0.75,
       "overall_precision": 1.0,
       "register_accuracy": 1.0,
       "reviewer_usefulness": 1.0,
@@ -30,10 +30,10 @@
       "terminology_recall_where_complete": 1.0
     },
     "runtime": {
-      "cold_median_seconds_total": 0.429637,
-      "cold_seconds_per_1000_source_files": 4.34,
-      "warm_median_seconds_total": 0.404239,
-      "warm_seconds_per_1000_source_files": 4.083
+      "cold_median_seconds_total": 0.497004,
+      "cold_seconds_per_1000_source_files": 5.02,
+      "warm_median_seconds_total": 0.533848,
+      "warm_seconds_per_1000_source_files": 5.392
     },
     "source_bytes": 661164,
     "source_files": 99,
@@ -283,15 +283,16 @@
         {
           "evidence": {
             "count": 0,
-            "count_complete": true,
+            "count_exact": true,
             "doc_mentions": 1,
             "files": 0,
-            "files_complete": true,
+            "files_exact": true,
             "lexical_occurrences": 0,
             "locations": [],
             "locations_truncated": false,
             "match_kind": "token",
             "modules": 0,
+            "modules_exact": true,
             "scope": {
               "kind": "repository"
             },
@@ -385,9 +386,9 @@
           "evidence": {
             "canonical_occurrence": {
               "count": 4,
-              "count_complete": true,
+              "count_exact": true,
               "files": 1,
-              "files_complete": true,
+              "files_exact": true,
               "locations": [
                 {
                   "count": 4,
@@ -397,6 +398,7 @@
               "locations_truncated": false,
               "match_kind": "token",
               "modules": 1,
+              "modules_exact": true,
               "scope": {
                 "kind": "repository"
               },
@@ -406,9 +408,9 @@
             },
             "new_occurrence": {
               "count": 4,
-              "count_complete": true,
+              "count_exact": true,
               "files": 1,
-              "files_complete": true,
+              "files_exact": true,
               "locations": [
                 {
                   "count": 4,
@@ -418,6 +420,7 @@
               "locations_truncated": false,
               "match_kind": "token",
               "modules": 1,
+              "modules_exact": true,
               "scope": {
                 "kind": "repository"
               },
@@ -443,9 +446,9 @@
         {
           "evidence": {
             "count": 2,
-            "count_complete": true,
+            "count_exact": true,
             "files": 1,
-            "files_complete": true,
+            "files_exact": true,
             "locations": [
               {
                 "count": 2,
@@ -455,6 +458,7 @@
             "locations_truncated": false,
             "match_kind": "token",
             "modules": 1,
+            "modules_exact": true,
             "scope": {
               "kind": "repository"
             },
@@ -471,21 +475,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.009919,
+        "cold_median": 0.013783,
         "cold_samples": [
-          0.011016,
-          0.010177,
-          0.009843,
-          0.009919,
-          0.009808
+          0.013783,
+          0.012666,
+          0.012839,
+          0.013929,
+          0.01538
         ],
-        "warm_median": 0.013033,
+        "warm_median": 0.016348,
         "warm_samples": [
-          0.012941,
-          0.013033,
-          0.017089,
-          0.015256,
-          0.012352
+          0.015744,
+          0.015693,
+          0.026557,
+          0.020673,
+          0.016348
         ]
       },
       "source": {
@@ -632,21 +636,21 @@
       },
       "review_items": [],
       "runtime_seconds": {
-        "cold_median": 0.010554,
+        "cold_median": 0.01483,
         "cold_samples": [
-          0.01066,
-          0.010693,
-          0.010459,
-          0.010554,
-          0.010521
+          0.01483,
+          0.015191,
+          0.014629,
+          0.015648,
+          0.013358
         ],
-        "warm_median": 0.016168,
+        "warm_median": 0.023684,
         "warm_samples": [
-          0.020041,
-          0.014238,
-          0.013576,
-          0.016168,
-          0.018323
+          0.022538,
+          0.043398,
+          0.050224,
+          0.021205,
+          0.023684
         ]
       },
       "source": {
@@ -803,15 +807,16 @@
         {
           "evidence": {
             "count": 0,
-            "count_complete": true,
+            "count_exact": true,
             "doc_mentions": 6,
             "files": 0,
-            "files_complete": true,
+            "files_exact": true,
             "lexical_occurrences": 0,
             "locations": [],
             "locations_truncated": false,
             "match_kind": "token",
             "modules": 0,
+            "modules_exact": true,
             "scope": {
               "kind": "repository"
             },
@@ -832,9 +837,9 @@
         {
           "evidence": {
             "count": 6,
-            "count_complete": false,
+            "count_exact": false,
             "files": 1,
-            "files_complete": false,
+            "files_exact": false,
             "locations": [
               {
                 "count": 6,
@@ -844,6 +849,7 @@
             "locations_truncated": false,
             "match_kind": "lexical-unit",
             "modules": 1,
+            "modules_exact": false,
             "scope": {
               "kind": "repository"
             },
@@ -862,9 +868,9 @@
         {
           "evidence": {
             "count": 2,
-            "count_complete": false,
+            "count_exact": false,
             "files": 1,
-            "files_complete": false,
+            "files_exact": false,
             "locations": [
               {
                 "count": 2,
@@ -874,6 +880,7 @@
             "locations_truncated": false,
             "match_kind": "lexical-unit",
             "modules": 1,
+            "modules_exact": false,
             "scope": {
               "kind": "repository"
             },
@@ -893,9 +900,9 @@
         {
           "evidence": {
             "count": 2,
-            "count_complete": false,
+            "count_exact": false,
             "files": 1,
-            "files_complete": false,
+            "files_exact": false,
             "locations": [
               {
                 "count": 2,
@@ -905,6 +912,7 @@
             "locations_truncated": false,
             "match_kind": "lexical-unit",
             "modules": 1,
+            "modules_exact": false,
             "scope": {
               "kind": "repository"
             },
@@ -923,21 +931,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.268319,
+        "cold_median": 0.308453,
         "cold_samples": [
-          0.268319,
-          0.29224,
-          0.294465,
-          0.257253,
-          0.25479
+          0.308453,
+          0.314445,
+          0.315944,
+          0.306347,
+          0.282716
         ],
-        "warm_median": 0.219539,
+        "warm_median": 0.228741,
         "warm_samples": [
-          0.195968,
-          0.219539,
-          0.229618,
-          0.211874,
-          0.22432
+          0.20847,
+          0.228741,
+          0.244495,
+          0.216639,
+          0.232483
         ]
       },
       "source": {
@@ -1089,21 +1097,21 @@
       },
       "review_items": [],
       "runtime_seconds": {
-        "cold_median": 0.057987,
+        "cold_median": 0.062186,
         "cold_samples": [
-          0.065484,
-          0.057987,
-          0.055668,
-          0.057271,
-          0.062702
+          0.10557,
+          0.059123,
+          0.062186,
+          0.058255,
+          0.068532
         ],
-        "warm_median": 0.057909,
+        "warm_median": 0.066159,
         "warm_samples": [
-          0.057909,
-          0.050316,
-          0.079771,
-          0.068073,
-          0.053211
+          0.063302,
+          0.069145,
+          0.066159,
+          0.057573,
+          0.071626
         ]
       },
       "source": {
@@ -1250,15 +1258,16 @@
         {
           "evidence": {
             "count": 0,
-            "count_complete": true,
+            "count_exact": true,
             "doc_mentions": null,
             "files": 0,
-            "files_complete": true,
+            "files_exact": true,
             "lexical_occurrences": 0,
             "locations": [],
             "locations_truncated": false,
             "match_kind": "lexical-unit",
             "modules": 0,
+            "modules_exact": true,
             "scope": {
               "kind": "repository"
             },
@@ -1276,21 +1285,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.058514,
+        "cold_median": 0.065406,
         "cold_samples": [
-          0.075667,
-          0.058514,
-          0.056486,
-          0.05522,
-          0.065396
+          0.071072,
+          0.065406,
+          0.058401,
+          0.064924,
+          0.084261
         ],
-        "warm_median": 0.057495,
+        "warm_median": 0.088521,
         "warm_samples": [
-          0.066595,
-          0.057495,
-          0.050773,
-          0.062865,
-          0.05596
+          0.088521,
+          0.077128,
+          0.069345,
+          0.096298,
+          0.094175
         ]
       },
       "source": {
@@ -1437,15 +1446,16 @@
         {
           "evidence": {
             "count": 0,
-            "count_complete": true,
+            "count_exact": true,
             "doc_mentions": 0,
             "files": 0,
-            "files_complete": true,
+            "files_exact": true,
             "lexical_occurrences": 0,
             "locations": [],
             "locations_truncated": false,
             "match_kind": "token",
             "modules": 0,
+            "modules_exact": true,
             "scope": {
               "kind": "repository"
             },
@@ -1524,7 +1534,8 @@
         },
         {
           "evidence": {
-            "module_spread": 5
+            "module_spread": 5,
+            "module_spread_exact": true
           },
           "finding_key": "fragmentation:tenant",
           "kind": "fragmentation",
@@ -1538,14 +1549,15 @@
             "bindings_resolved": 0,
             "bindings_total": 0,
             "count": 0,
-            "count_complete": true,
+            "count_exact": true,
             "files": 0,
-            "files_complete": true,
+            "files_exact": true,
             "lexical_occurrences": 0,
             "locations": [],
             "locations_truncated": false,
             "match_kind": "token",
             "modules": 0,
+            "modules_exact": true,
             "scope": {
               "kind": "repository"
             },
@@ -1598,21 +1610,21 @@
         }
       ],
       "runtime_seconds": {
-        "cold_median": 0.011043,
+        "cold_median": 0.013731,
         "cold_samples": [
-          0.01102,
-          0.011043,
-          0.012916,
-          0.011674,
-          0.011002
+          0.014185,
+          0.013907,
+          0.013731,
+          0.013661,
+          0.013703
         ],
-        "warm_median": 0.023855,
+        "warm_median": 0.061673,
         "warm_samples": [
-          0.019138,
-          0.03123,
-          0.023855,
-          0.017099,
-          0.024259
+          0.060094,
+          0.083514,
+          0.063601,
+          0.057038,
+          0.061673
         ]
       },
       "source": {
@@ -1636,12 +1648,18 @@
         ],
         "configured": true,
         "contracts": {
-          "checks": 17,
+          "checks": 23,
           "failures": [],
           "passed": true,
-          "passed_checks": 17
+          "passed_checks": 23
         },
         "coverage": {
+          "graph_state": {
+            "freshness": "unverified",
+            "present": true,
+            "usable": true,
+            "warnings": []
+          },
           "groups": {
             "complete": true,
             "dropped_items": 0,
@@ -1650,7 +1668,11 @@
             "total_items": 5,
             "total_items_exact": true
           },
-          "validation_complete": true
+          "validation_finding_checks": {
+            "all_executed": true,
+            "skipped": []
+          },
+          "validation_total_findings_exact": true
         },
         "false_negative": [],
         "false_positive": [],
@@ -1794,21 +1816,21 @@
       },
       "review_items": [],
       "runtime_seconds": {
-        "cold_median": 0.013301,
+        "cold_median": 0.018615,
         "cold_samples": [
-          0.012255,
-          0.01371,
-          0.013503,
-          0.011703,
-          0.013301
+          0.022185,
+          0.022104,
+          0.018615,
+          0.01789,
+          0.01384
         ],
-        "warm_median": 0.01624,
+        "warm_median": 0.048722,
         "warm_samples": [
-          0.014302,
-          0.014698,
-          0.027279,
-          0.020903,
-          0.01624
+          0.044032,
+          0.050859,
+          0.156269,
+          0.048722,
+          0.040491
         ]
       },
       "source": {
@@ -1823,12 +1845,18 @@
         "actual": [],
         "configured": true,
         "contracts": {
-          "checks": 9,
+          "checks": 15,
           "failures": [],
           "passed": true,
-          "passed_checks": 9
+          "passed_checks": 15
         },
         "coverage": {
+          "graph_state": {
+            "freshness": "unverified",
+            "present": true,
+            "usable": true,
+            "warnings": []
+          },
           "groups": {
             "complete": false,
             "dropped_items": 1,
@@ -1839,7 +1867,11 @@
             "total_items": 51,
             "total_items_exact": true
           },
-          "validation_complete": false
+          "validation_finding_checks": {
+            "all_executed": true,
+            "skipped": []
+          },
+          "validation_total_findings_exact": false
         },
         "false_negative": [],
         "false_positive": [],
@@ -1872,12 +1904,12 @@
     }
   ],
   "engine": {
-    "drift_schema_version": 6,
-    "evaluation_schema_version": 7,
-    "evidence_schema_version": 15,
+    "drift_schema_version": 7,
+    "evaluation_schema_version": 8,
+    "evidence_schema_version": 17,
     "name": "glossabet",
-    "source_sha256": "45a7d17392450ab9bd6367cca9d45ea888382faa9b3179c29ddab8c56e29a0c1",
-    "validation_schema_version": 8,
+    "source_sha256": "8cb63d3f77c0677756fadb6f7aa8572df7dbfcf15b604004236086a79c567ee0",
+    "validation_schema_version": 11,
     "version": "0.1.0"
   },
   "environment": {
@@ -1886,7 +1918,7 @@
     "python": "3.12.3",
     "python_implementation": "CPython"
   },
-  "manifest_sha256": "6c7c6fd60ffd37252e12af029275336abdd5c43e6f3aaaa28409cb0b3467e95c",
+  "manifest_sha256": "81a6a990b2a1517b87bccb59a68be4ca7357fc394516f22872189216dd44d346",
   "method": {
     "external_source_vendored": false,
     "graphify": "per-case",
@@ -1938,7 +1970,7 @@
         "target": 50.0
       },
       {
-        "actual": 4.34,
+        "actual": 5.02,
         "name": "cold_seconds_per_1000_source_files_max",
         "passed": true,
         "target": 10.0
@@ -1968,7 +2000,7 @@
         "target": 1.0
       },
       {
-        "actual": 0.8889,
+        "actual": 0.75,
         "name": "nomination_quality_min",
         "passed": false,
         "target": 1.0
@@ -1989,15 +2021,11 @@
     "configured": true,
     "passed": false
   },
-  "schema_version": 7,
+  "schema_version": 8,
   "self_nominations": {
     "actual": [
       {
         "nomination_kind": "deserves a canonical name",
-        "term": "brief"
-      },
-      {
-        "nomination_kind": "deserves disambiguation",
         "term": "bytes"
       },
       {
@@ -2005,11 +2033,7 @@
         "term": "cache"
       },
       {
-        "nomination_kind": "deserves disambiguation",
-        "term": "config"
-      },
-      {
-        "nomination_kind": "deserves disambiguation",
+        "nomination_kind": "deserves a canonical name",
         "term": "context"
       },
       {
@@ -2021,12 +2045,16 @@
         "term": "drift"
       },
       {
-        "nomination_kind": "deserves a canonical name",
-        "term": "glossary"
+        "nomination_kind": "deserves disambiguation",
+        "term": "evidence"
       },
       {
-        "nomination_kind": "deserves a canonical name",
-        "term": "hook"
+        "nomination_kind": "deserves disambiguation",
+        "term": "file"
+      },
+      {
+        "nomination_kind": "deserves disambiguation",
+        "term": "identity"
       },
       {
         "nomination_kind": "deserves disambiguation",
@@ -2034,11 +2062,11 @@
       },
       {
         "nomination_kind": "deserves a canonical name",
-        "term": "plugin"
+        "term": "packet"
       },
       {
-        "nomination_kind": "deserves disambiguation",
-        "term": "run"
+        "nomination_kind": "deserves a canonical name",
+        "term": "scope"
       },
       {
         "nomination_kind": "deserves disambiguation",
@@ -2046,14 +2074,18 @@
       },
       {
         "nomination_kind": "deserves disambiguation",
+        "term": "terminology"
+      },
+      {
+        "nomination_kind": "deserves disambiguation",
         "term": "vocabulary"
       },
       {
         "nomination_kind": "deserves a canonical name",
-        "term": "warm"
+        "term": "x1"
       }
     ],
-    "checks": 9,
+    "checks": 8,
     "configured": true,
     "expected": {
       "forbidden_terms": [
@@ -2065,10 +2097,6 @@
       ],
       "require_all_typed": true,
       "required": [
-        {
-          "nomination_kind": "deserves a canonical name",
-          "term": "plugin"
-        },
         {
           "nomination_kind": "deserves disambiguation",
           "term": "coverage"
@@ -2085,11 +2113,17 @@
         "expected": "deserves a canonical name",
         "name": "required:drift",
         "passed": false
+      },
+      {
+        "actual": true,
+        "expected": false,
+        "name": "forbidden:file",
+        "passed": false
       }
     ],
     "id": "glossabet",
     "passed": false,
-    "passed_checks": 8,
+    "passed_checks": 6,
     "source": {
       "kind": "local",
       "path": "."
@@ -2099,17 +2133,17 @@
     "actual": {
       "composition": {
         "excluded_by_reason": {
-          "language_tagged_flat": 25,
-          "no_lexical_tokens": 137,
-          "prose_dominated_flat": 1751
+          "language_tagged_flat": 27,
+          "no_lexical_tokens": 141,
+          "prose_dominated_flat": 2037
         },
-        "excluded_spellings": 1913,
-        "total_spellings": 5696,
+        "excluded_spellings": 2205,
+        "total_spellings": 6984,
         "used_by_reason": {
-          "corroborated_flat": 1680,
-          "structurally_styled": 2103
+          "corroborated_flat": 1985,
+          "structurally_styled": 2794
         },
-        "used_spellings": 3783
+        "used_spellings": 4779
       },
       "dominant_style": "snake_case",
       "multi_word_pct": 100.0,

@@ -20,6 +20,7 @@ from glossabet.glossary.drift import (
 )
 from glossabet.glossary.matching import EvidenceIndex
 from glossabet.glossary.structural_validation import _structure_findings
+from glossabet.runtime.coverage import coverage_ledger
 
 # ---- a hand-built RepositoryEvidence, only the parts the producers read ----
 
@@ -40,12 +41,16 @@ def token(term, count, locations, *, truncated=False):
     }
 
 
-def identifier(name, count, locations, *, tokens=None):
+def identifier(name, count, locations, *, tokens=None, truncated=False):
     return {
         "name": name, "tokens": tokens or name.split("_"), "count": count,
         "files": len(locations),
+        "modules": len({
+            path.rsplit("/", 1)[0] if "/" in path else "."
+            for path in locations
+        }),
         "locations": [{"path": p, "count": c} for p, c in locations.items()],
-        "locations_truncated": False,
+        "locations_truncated": truncated,
     }
 
 
@@ -147,9 +152,51 @@ def test_parallel_term_sampled_zero_is_suppressed_not_silent():
     )
     assert findings == []
     assert reasons == [
-        "1 parallel-term check(s) suppressed because scoped occurrence "
-        "evidence retains only a location sample"
+        "1 parallel-term check(s) suppressed because required occurrence "
+        "evidence was inexact"
     ]
+
+
+def test_parallel_term_partial_corpus_zero_is_suppressed_not_silent():
+    g = glossary(concept("run", "Run"))
+    canonical, _watched, known = _index_glossary(g)
+    ev = evidence(
+        tokens=[token("run", 4, {"runs.py": 4})],
+        synonyms=[{"a": "run", "b": "execution", "similarity": 0.8,
+                   "shared_contexts": ["record"]}],
+        complete=False,
+    )
+
+    findings, reasons = _parallel_terms(
+        ev, canonical, known, EvidenceIndex(ev, ["Run"])
+    )
+
+    assert findings == []
+    assert reasons == [
+        "1 parallel-term check(s) suppressed because required occurrence "
+        "evidence was inexact"
+    ]
+
+
+def test_parallel_term_exact_zero_is_decisive_when_other_zero_is_unproven():
+    scope = {"path_prefixes": ["svc"]}
+    g = glossary(concept("run", "Run", scope=scope))
+    canonical, _watched, known = _index_glossary(g)
+    ev = evidence(
+        tokens=[
+            token("run", 1, {"lib/run.py": 1}),
+            token("execution", 1, {"lib/exec.py": 1}, truncated=True),
+        ],
+        synonyms=[{"a": "run", "b": "execution", "similarity": 0.8,
+                   "shared_contexts": ["record"]}],
+    )
+
+    findings, reasons = _parallel_terms(
+        ev, canonical, known, EvidenceIndex(ev, ["Run"])
+    )
+
+    assert findings == []
+    assert reasons == []
 
 
 def test_watched_term_in_use_finding_record():
@@ -181,6 +228,23 @@ def test_watched_term_absent_is_no_finding():
     assert _watched_in_use(watched, EvidenceIndex(ev, ["Run"])) == ([], [])
 
 
+def test_watched_term_partial_corpus_zero_is_suppressed_not_silent():
+    g = glossary(concept("run", "Run", aliases=[
+        {"term": "charge", "status": "discouraged"}]))
+    _canonical, watched, _known = _index_glossary(g)
+    ev = evidence(complete=False)
+
+    findings, reasons = _watched_in_use(
+        watched, EvidenceIndex(ev, ["charge"])
+    )
+
+    assert findings == []
+    assert reasons == [
+        "1 watched-term check(s) suppressed because required occurrence "
+        "evidence was inexact"
+    ]
+
+
 def test_canonical_fading_absent_and_fading_records():
     g = glossary(concept("workspace", "Workspace"), concept("ledger", "Ledger"),
                  concept("run", "Run"))
@@ -189,8 +253,11 @@ def test_canonical_fading_absent_and_fading_records():
                 token("run", 12, {"a.py": 12})],       # healthy
         doc_terms=[],
     )
-    findings = _canonical_fading(g, EvidenceIndex(ev, ["Workspace", "Ledger", "Run"]))
+    findings, reasons = _canonical_fading(
+        g, EvidenceIndex(ev, ["Workspace", "Ledger", "Run"])
+    )
 
+    assert reasons == []
     assert [f["term"] for f in findings] == ["Ledger", "Workspace"]  # sorted
     ledger, workspace = findings
     assert workspace["kind"] == "canonical-fading"
@@ -208,7 +275,38 @@ def test_canonical_fading_needs_complete_counts():
     g = glossary(concept("workspace", "Workspace"))
     ev = evidence(tokens=[token("run", 12, {"a.py": 12})])
     ev["vocabulary"]["tokens"]["truncated"] = {"dropped_terms": 1}
-    assert _canonical_fading(g, EvidenceIndex(ev, ["Workspace"])) == []
+    assert _canonical_fading(g, EvidenceIndex(ev, ["Workspace"])) == (
+        [],
+        [
+            "1 canonical-fading check(s) suppressed because required "
+            "occurrence evidence was inexact"
+        ],
+    )
+
+
+def test_canonical_fading_reports_an_unrepresentable_term_as_incomplete():
+    g = glossary(concept("numeric", "123"))
+    ev = evidence()
+
+    assert _canonical_fading(g, EvidenceIndex(ev, ["123"])) == (
+        [],
+        [
+            "1 canonical-fading check(s) suppressed because required "
+            "occurrence evidence was inexact"
+        ],
+    )
+
+
+def test_canonical_fading_positive_docs_are_decisive_with_inexact_low_code():
+    g = glossary(concept(
+        "ledger", "Ledger", scope={"path_prefixes": ["svc"]}
+    ))
+    ev = evidence(
+        tokens=[token("ledger", 1, {"svc/code.py": 1}, truncated=True)],
+        doc_terms=[doc_term("ledger", 1, {"svc/README.md": 1})],
+    )
+
+    assert _canonical_fading(g, EvidenceIndex(ev, ["Ledger"])) == ([], [])
 
 
 def _overload_item(term, dispersion, modules):
@@ -334,6 +432,93 @@ def test_concept_findings_orphan_binding_and_fragmentation_records():
     assert spread["signal_strength"] == "weak"
     assert spread["concept_id"] == "tenant"
     assert spread["evidence"]["module_spread"] == 5
+    assert spread["evidence"]["module_spread_exact"] is True
+
+
+def test_unproven_symbol_and_orphan_zeros_record_suppression():
+    canonical = [
+        concept("bound", "Bound", bindings=[{"ref": "symbol:missing_symbol"}]),
+        concept("orphan", "Orphan"),
+    ]
+    ev = evidence()
+    ev["vocabulary"]["tokens"]["truncated"] = {"dropped_terms": 1}
+    ev["vocabulary"]["identifiers"]["truncated"] = {"dropped_terms": 1}
+
+    findings = build_binding_findings(
+        canonical,
+        build_concept_vocabulary(canonical),
+        EvidenceIndex(ev, ["Bound", "Orphan"]),
+    )
+
+    assert findings.orphaned_concepts == []
+    assert findings.unresolved_bindings == []
+    assert findings.orphan_incompleteness_reasons == [
+        "2 orphaned-concept check(s) suppressed because required occurrence "
+        "evidence was inexact"
+    ]
+    assert findings.binding_ledger_reasons == [
+        "1 symbol-binding check(s) suppressed because required occurrence "
+        "evidence was inexact"
+    ]
+
+
+def test_simple_and_compound_inexact_spread_below_threshold_are_suppressed():
+    scope = {"path_prefixes": ["svc"]}
+    canonical = [
+        concept("payment", "Payment", scope=scope),
+        concept("payment-request", "Payment Request", scope=scope),
+    ]
+    locations = {"svc/a/code.py": 1, "svc/b/code.py": 1}
+    ev = evidence(
+        tokens=[token("payment", 2, locations, truncated=True)],
+        identifiers=[
+            identifier("payment_request", 2, locations, truncated=True)
+        ],
+    )
+
+    findings = build_binding_findings(
+        canonical,
+        build_concept_vocabulary(canonical),
+        EvidenceIndex(ev, ["Payment", "Payment Request"]),
+    )
+
+    assert findings.fragmentation == []
+    assert findings.fragmentation_incompleteness_reasons == [
+        "2 fragmentation check(s) suppressed because required occurrence "
+        "evidence was inexact"
+    ]
+
+
+def test_simple_and_compound_lower_bound_spread_above_threshold_are_emitted():
+    scope = {"path_prefixes": ["svc"]}
+    canonical = [
+        concept("payment", "Payment", scope=scope),
+        concept("payment-request", "Payment Request", scope=scope),
+    ]
+    locations = {f"svc/m{index}/code.py": 1 for index in range(5)}
+    ev = evidence(
+        tokens=[token("payment", 5, locations, truncated=True)],
+        identifiers=[
+            identifier("payment_request", 5, locations, truncated=True)
+        ],
+    )
+
+    findings = build_binding_findings(
+        canonical,
+        build_concept_vocabulary(canonical),
+        EvidenceIndex(ev, ["Payment", "Payment Request"]),
+    )
+
+    assert findings.fragmentation_incompleteness_reasons == []
+    assert {finding["concept_id"] for finding in findings.fragmentation} == {
+        "payment", "payment-request",
+    }
+    for finding in findings.fragmentation:
+        assert "at least 5 modules" in finding["summary"]
+        assert finding["evidence"] == {
+            "module_spread": 5,
+            "module_spread_exact": False,
+        }
 
 
 def test_concept_findings_out_of_scope_binding_and_resolved_binding_is_no_orphan():
@@ -358,12 +543,18 @@ def test_concept_findings_out_of_scope_binding_and_resolved_binding_is_no_orphan
 
 
 def _group(gid, label, members, member_tokens=None):
+    tokens = member_tokens if member_tokens is not None else [
+        t for m in members for t in m.lower().split()
+    ]
     return {
         "id": gid, "label": label, "size": len(members),
+        "label_truncated": False,
         "members_sample": members,
-        "member_tokens": member_tokens if member_tokens is not None else [
-            t for m in members for t in m.lower().split()
-        ],
+        "member_tokens": tokens,
+        "coverage": {
+            "members_sample": coverage_ledger(len(members), len(members)),
+            "member_tokens": coverage_ledger(len(tokens), len(tokens)),
+        },
     }
 
 
@@ -410,6 +601,7 @@ def test_structure_findings_confess_missing_member_tokens():
     vocab = build_concept_vocabulary(canonical)
     structural = {"groups": [{
         "id": "g", "label": "community 0", "size": 2,
+        "label_truncated": False,
         "members_sample": ["PaymentFlow", "Ledger"],  # no member_tokens
     }]}
     unnamed, boundary, overloaded, _work = _structure_findings(
@@ -422,3 +614,36 @@ def test_structure_findings_confess_missing_member_tokens():
             "1 structural group(s) lack complete member_tokens and fell back "
             "to the display sample"
         ) in section["coverage"]["reasons"]
+
+
+def test_incomplete_group_evidence_suppresses_only_unsupported_unnamed_findings():
+    canonical = [concept("payment", "Payment")]
+    vocab = build_concept_vocabulary(canonical)
+    token_capped = _group("token-capped", "token capped", ["Ledger"], ["ledger"])
+    token_capped["coverage"]["member_tokens"] = coverage_ledger(
+        2,
+        1,
+        reasons=["structural member-token cap is 1 item"],
+    )
+    label_capped = _group("label-capped", "label capped", ["Ledger"], ["ledger"])
+    label_capped["label_truncated"] = True
+    legacy = {
+        "id": "legacy",
+        "label": "legacy sample",
+        "label_truncated": False,
+        "size": 1,
+        "members_sample": ["Ledger"],
+    }
+    complete = _group("complete", "complete group", ["Ledger"], ["ledger"])
+
+    unnamed, boundary, overloaded, work = _structure_findings(
+        {"groups": [token_capped, label_capped, legacy, complete]},
+        canonical,
+        vocab,
+        [],
+    )
+
+    assert [item["group"] for item in unnamed["items"]] == ["complete group"]
+    for section in (unnamed, boundary, overloaded):
+        assert section["coverage"]["total_items_exact"] is False
+    assert work["total_items_exact"] is False

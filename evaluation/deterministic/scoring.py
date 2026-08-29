@@ -406,6 +406,17 @@ def evaluate_self_nominations(expectation: object, evidence: EvidenceDocument) -
     return nomination_score(evidence, expectation)
 
 
+def _graph_state(evidence: dict) -> dict[str, object]:
+    structural = evidence["structural_groups"]
+    freshness = structural["freshness"]
+    return {
+        "present": structural["present"],
+        "usable": structural["usable"],
+        "freshness": freshness["status"] if freshness is not None else None,
+        "warnings": structural["warnings"],
+    }
+
+
 def structural_contract_score(
     evidence: dict,
     validation: dict,
@@ -491,11 +502,33 @@ def structural_contract_score(
     for name, expected in sorted(coverage_contract.items()):
         check(f"group-coverage:{name}", group_coverage.get(name), expected)
 
-    if "validation_total_findings_complete" in contracts:
+    graph_state_contract = contracts.get("graph_state", {})
+    if not isinstance(graph_state_contract, dict):
+        raise EvaluationError("structural graph_state contract must be an object")
+    graph_state = _graph_state(evidence)
+    for name, expected in sorted(graph_state_contract.items()):
+        if name not in graph_state:
+            raise EvaluationError(f"unknown graph-state contract field: {name}")
+        check(f"graph-state:{name}", graph_state[name], expected)
+
+    finding_checks_contract = contracts.get("validation_finding_checks", {})
+    if not isinstance(finding_checks_contract, dict):
+        raise EvaluationError(
+            "structural validation_finding_checks contract must be an object"
+        )
+    finding_checks = validation["finding_checks"]
+    for name, expected in sorted(finding_checks_contract.items()):
+        if name not in finding_checks:
+            raise EvaluationError(
+                f"unknown validation-finding-checks contract field: {name}"
+            )
+        check(f"validation-finding-checks:{name}", finding_checks[name], expected)
+
+    if "validation_total_findings_exact" in contracts:
         check(
-            "validation:total-findings-complete",
-            validation.get("total_findings_complete", True),
-            contracts["validation_total_findings_complete"],
+            "validation:total-findings-exact",
+            validation["total_findings_exact"],
+            contracts["validation_total_findings_exact"],
         )
     partial_sections = contracts.get("partial_sections", [])
     if not isinstance(partial_sections, list):
@@ -564,7 +597,11 @@ def structural_score(
         ),
         "coverage": {
             "groups": evidence["structural_groups"]["coverage"]["groups"],
-            "validation_complete": validation.get("total_findings_complete", True),
+            "graph_state": _graph_state(evidence),
+            "validation_finding_checks": validation["finding_checks"],
+            "validation_total_findings_exact": validation[
+                "total_findings_exact"
+            ],
         },
     }, validation)
 

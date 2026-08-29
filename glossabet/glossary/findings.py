@@ -145,6 +145,18 @@ class ValidationScopeSummary(TypedDict):
     structural_scope_complete: bool
 
 
+class SkippedValidationCheck(TypedDict):
+    name: str
+    reason: str
+
+
+class ValidationFindingChecks(TypedDict):
+    """Whether every finding-producing check ran, with skips named."""
+
+    all_executed: bool
+    skipped: list[SkippedValidationCheck]
+
+
 class GraphState(TypedDict):
     """The Graphify adapter state a validation embeds: presence, usability,
     freshness, warnings, and the group cap."""
@@ -155,7 +167,7 @@ class GraphState(TypedDict):
     warnings: list[str]
     groups_dropped: int
     groups_complete: bool | None
-    coverage: CoverageLedger | None
+    coverage: CoverageLedger
 
 
 class ValidationDocument(TypedDict):
@@ -163,10 +175,10 @@ class ValidationDocument(TypedDict):
     canonical_concepts: int
     scope_summary: ValidationScopeSummary
     coverage: ValidationCoverage
+    finding_checks: ValidationFindingChecks
     graph: GraphState
-    graph_available: bool
     total_findings: int
-    total_findings_complete: bool
+    total_findings_exact: bool
     managed_context: ManagedContextReport
     repository_glossary: RepositoryGlossarySection
     unnamed_structure: FindingSection
@@ -199,8 +211,8 @@ def suppressed_reason(suppressed: int, name: str) -> list[str]:
     if not suppressed:
         return []
     return [
-        f"{suppressed} {name} check(s) suppressed because scoped occurrence "
-        "evidence retains only a location sample"
+        f"{suppressed} {name} check(s) suppressed because required occurrence "
+        "evidence was inexact"
     ]
 
 
@@ -322,9 +334,13 @@ def capped_section(
 
 
 def empty_section(reason: str, *, total_items_exact: bool = True) -> FindingSection:
-    """A section holding no findings *for a stated reason* — the check was
-    skipped (``total_items_exact`` true: nothing was there to count) or
-    could not be run over some inputs (false: the zero is a lower bound)."""
+    """A section holding no findings *for a stated reason*.
+
+    A skipped check contributes zero to the evaluated-finding total because it
+    evaluated no work; validation records that skip separately and ignores the
+    section when deciding whether the evaluated total is exact. Pass false when
+    the check ran over incomplete inputs and zero is only a lower bound.
+    """
     return {
         "items": [],
         "dropped_items": 0,

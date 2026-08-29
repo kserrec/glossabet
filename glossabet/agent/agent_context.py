@@ -66,17 +66,17 @@ from glossabet.runtime.coverage import (
     coverage_reasons,
 )
 
-AGENT_CONTEXT_SCHEMA_VERSION = 3
+AGENT_CONTEXT_SCHEMA_VERSION = 6
 MAX_AGENT_CONTEXT_BYTES = 1_000_000
 ROUTINE_AGENT_CONTEXT_TARGET_BYTES = 100_000
 MAX_AGENT_CONTEXT_STRING_CHARS = 512
-MAX_AGENT_CONTEXT_OMISSION_RECORDS = 100
+MAX_AGENT_CONTEXT_COVERAGE_RECORDS = 100
 DEFAULT_AGENT_LIST_LIMIT = 50
 REGISTER_EXEMPLAR_LIMIT = 24
 
 # Routine context favors the evidence the skill actually consumes. The full
 # bounded engine evidence remains in evidence.json for deterministic commands;
-# every projection omission is explicit in coverage.context.
+# every designed exclusion or lost detail is explicit in coverage.context.
 _LIST_LIMITS: dict[tuple[str, ...], int] = {
     ("modules",): 150,
     ("files", "code"): 250,
@@ -108,14 +108,17 @@ class AgentContextError(ArtifactError):
     """A safe agent context could not be produced within its contract."""
 
 
-# -- the AgentContext v3 document -------------------------------------------
+# -- the AgentContext v6 document -------------------------------------------
 
 Projection = Literal["lean", "full"]
 
 
-class ContextOmission(TypedDict):
-    """One bounded-projection omission: a key pattern (list indexes folded
-    to ``*``), what was left out, and how much."""
+class ContextCoverageRecord(TypedDict):
+    """One exclusion, source omission, or truncation.
+
+    List indexes fold to ``*`` so repeated losses with the same meaning can be
+    coalesced without hiding their total amount.
+    """
 
     path: str
     kind: str
@@ -124,25 +127,22 @@ class ContextOmission(TypedDict):
 
 class ContextLimits(TypedDict):
     serialized_bytes: int
-    routine_target_bytes: int
     string_characters: int
     default_list_items: int
     list_items: dict[str, int]
-    omission_records: int
-    register_exemplars: int
+    coverage_records: int
 
 
 class ContextCoverage(TypedDict):
-    """``coverage.context``: whether the projection is complete and every
-    reason it is not."""
+    """The selected projection, its source/projection truth, and why."""
 
-    complete: bool
     projection: Projection
-    omissions: list[ContextOmission]
-    affected_sections: list[str]
-    omission_counts: dict[str, int]
-    omitted_amounts: dict[str, int]
-    limits: ContextLimits
+    projection_complete: bool
+    source_complete: bool
+    intentional_exclusions: list[ContextCoverageRecord]
+    source_omissions: list[ContextCoverageRecord]
+    truncations: list[ContextCoverageRecord]
+    applied_limits: ContextLimits
 
 
 class AgentContextCoverage(TypedDict):
@@ -260,66 +260,88 @@ class _ContextSource(TypedDict):
 
 
 class AgentContextDocument(_ContextSource):
-    """AgentContext v3: what ``inspect`` prints."""
+    """AgentContext v6: what ``inspect`` prints."""
 
     coverage: AgentContextCoverage
 
 
 @dataclass
-class _ProjectionOmissions:
-    omissions: list[ContextOmission] = field(default_factory=list)
-    affected_sections: set[str] = field(default_factory=set)
-    omission_counts: dict[str, int] = field(default_factory=dict)
-    omitted_amounts: dict[str, int] = field(default_factory=dict)
+class _ProjectionCoverage:
+    intentional_exclusions: list[ContextCoverageRecord] = field(
+        default_factory=list
+    )
+    source_omissions: list[ContextCoverageRecord] = field(default_factory=list)
+    truncations: list[ContextCoverageRecord] = field(default_factory=list)
 
-    def record(self, path: tuple[str, ...], kind: str, amount: int) -> None:
+    def _record(
+        self,
+        records: list[ContextCoverageRecord],
+        path: tuple[str, ...],
+        kind: str,
+        amount: int,
+    ) -> None:
         # One record per (pattern, kind): every list index folds to ``*``,
         # so 500 long glossary definitions are one
         # ``glossary.concepts.*.definition`` record whose amount is the sum,
         # not 500 records that exhaust the ceiling and fail the command for
         # a glossary the engine itself accepted.
         pattern = ".".join("*" if part.isdigit() else part for part in path)
-        for record in self.omissions:
+        for record in records:
             if record["path"] == pattern and record["kind"] == kind:
                 record["amount"] += amount
                 break
         else:
-            if len(self.omissions) >= MAX_AGENT_CONTEXT_OMISSION_RECORDS:
+            record_count = (
+                len(self.intentional_exclusions)
+                + len(self.source_omissions)
+                + len(self.truncations)
+            )
+            if record_count >= MAX_AGENT_CONTEXT_COVERAGE_RECORDS:
                 raise AgentContextError(
                     "agent context requires more than "
-                    f"{MAX_AGENT_CONTEXT_OMISSION_RECORDS} omission records"
+                    f"{MAX_AGENT_CONTEXT_COVERAGE_RECORDS} coverage records"
                 )
-            self.omissions.append(
+            records.append(
                 {"path": pattern, "kind": kind, "amount": amount}
             )
-        self.affected_sections.add(path[0] if path else "<root>")
-        self.omission_counts[kind] = self.omission_counts.get(kind, 0) + 1
-        self.omitted_amounts[kind] = self.omitted_amounts.get(kind, 0) + amount
+
+    def exclude(self, path: tuple[str, ...], kind: str, amount: int) -> None:
+        self._record(self.intentional_exclusions, path, kind, amount)
+
+    def omit_source(self, path: tuple[str, ...], kind: str, amount: int) -> None:
+        self._record(self.source_omissions, path, kind, amount)
+
+    def truncate(self, path: tuple[str, ...], kind: str, amount: int) -> None:
+        self._record(self.truncations, path, kind, amount)
 
     def as_dict(
         self,
         *,
         projection: Projection,
         list_limits: Mapping[tuple[str, ...], int],
+        source_complete: bool,
     ) -> ContextCoverage:
+        applied_list_limits = dict(list_limits)
+        if projection == "lean":
+            applied_list_limits[
+                ("terminology", "register", "exemplars", "items")
+            ] = REGISTER_EXEMPLAR_LIMIT
         return {
-            "complete": not self.omissions,
             "projection": projection,
-            "omissions": self.omissions,
-            "affected_sections": sorted(self.affected_sections),
-            "omission_counts": dict(sorted(self.omission_counts.items())),
-            "omitted_amounts": dict(sorted(self.omitted_amounts.items())),
-            "limits": {
+            "projection_complete": not self.truncations,
+            "source_complete": source_complete and not self.source_omissions,
+            "intentional_exclusions": self.intentional_exclusions,
+            "source_omissions": self.source_omissions,
+            "truncations": self.truncations,
+            "applied_limits": {
                 "serialized_bytes": MAX_AGENT_CONTEXT_BYTES,
-                "routine_target_bytes": ROUTINE_AGENT_CONTEXT_TARGET_BYTES,
                 "string_characters": MAX_AGENT_CONTEXT_STRING_CHARS,
                 "default_list_items": DEFAULT_AGENT_LIST_LIMIT,
                 "list_items": {
                     ".".join(path): limit
-                    for path, limit in sorted(list_limits.items())
+                    for path, limit in sorted(applied_list_limits.items())
                 },
-                "omission_records": MAX_AGENT_CONTEXT_OMISSION_RECORDS,
-                "register_exemplars": REGISTER_EXEMPLAR_LIMIT,
+                "coverage_records": MAX_AGENT_CONTEXT_COVERAGE_RECORDS,
             },
         }
 
@@ -330,7 +352,7 @@ _Section = TypeVar("_Section")
 def _bounded_copy(
     value: object,
     path: tuple[str, ...],
-    omissions: _ProjectionOmissions,
+    coverage: _ProjectionCoverage,
     list_limits: Mapping[tuple[str, ...], int],
 ) -> object:
     if value is None or isinstance(value, (bool, int, float)):
@@ -338,7 +360,7 @@ def _bounded_copy(
     if isinstance(value, str):
         if len(value) <= MAX_AGENT_CONTEXT_STRING_CHARS:
             return value
-        omissions.record(
+        coverage.truncate(
             path, "string_characters",
             len(value) - MAX_AGENT_CONTEXT_STRING_CHARS,
         )
@@ -346,9 +368,9 @@ def _bounded_copy(
     if isinstance(value, list):
         limit = list_limits.get(path, DEFAULT_AGENT_LIST_LIMIT)
         if len(value) > limit:
-            omissions.record(path, "list_items", len(value) - limit)
+            coverage.truncate(path, "list_items", len(value) - limit)
         return [
-            _bounded_copy(item, (*path, str(index)), omissions, list_limits)
+            _bounded_copy(item, (*path, str(index)), coverage, list_limits)
             for index, item in enumerate(value[:limit])
         ]
     if isinstance(value, dict):
@@ -360,7 +382,7 @@ def _bounded_copy(
                 "non-string object key"
             )
         return {
-            key: _bounded_copy(item, (*path, key), omissions, list_limits)
+            key: _bounded_copy(item, (*path, key), coverage, list_limits)
             for key, item in value.items()
         }
     raise AgentContextError(
@@ -371,20 +393,20 @@ def _bounded_copy(
 
 def _bounded(
     section: _Section,
-    omissions: _ProjectionOmissions,
+    coverage: _ProjectionCoverage,
     list_limits: Mapping[tuple[str, ...], int],
 ) -> _Section:
     """Bound a whole document. Bounding preserves shape — every key, scalar
     type, and list element type survives; only string lengths and list
     lengths shrink — so the bounded value has the document's own type. The
     cast states that invariant of ``_bounded_copy`` for the type checker."""
-    return cast(_Section, _bounded_copy(section, (), omissions, list_limits))
+    return cast(_Section, _bounded_copy(section, (), coverage, list_limits))
 
 
 def _module_rollup_section(
     section: VocabularyTable,
     section_name: str,
-    omissions: _ProjectionOmissions,
+    coverage: _ProjectionCoverage,
 ) -> ModuleRollupTable:
     """Replace repeated file paths with compact per-module occurrence counts."""
     projected_items: list[ModuleRollupEntry] = []
@@ -406,7 +428,7 @@ def _module_rollup_section(
         )
         projected_items.append(projected_item)
     if location_records:
-        omissions.record(
+        coverage.exclude(
             ("vocabulary", section_name, "items", "*", "locations"),
             "file_locations_rolled_up",
             location_records,
@@ -420,7 +442,7 @@ def _module_rollup_section(
 
 def _register_exemplars(
     identifier_section: IdentifierTable,
-    omissions: _ProjectionOmissions,
+    projection_coverage: _ProjectionCoverage,
 ) -> RegisterExemplars:
     eligible: list[RegisterExemplar] = []
     for item in identifier_section["items"]:
@@ -440,7 +462,7 @@ def _register_exemplars(
         incomplete_reasons=coverage_reasons(source_ledger, "identifier input"),
     )
     if len(eligible) > len(kept):
-        omissions.record(
+        projection_coverage.truncate(
             ("terminology", "register", "exemplars", "items"),
             "list_items",
             len(eligible) - len(kept),
@@ -450,7 +472,7 @@ def _register_exemplars(
 
 def _naming_with_locations(
     evidence: EvidenceDocument,
-    omissions: _ProjectionOmissions,
+    projection_coverage: _ProjectionCoverage,
 ) -> ContextNamingCandidates:
     naming = deepcopy(evidence["naming_candidates"])
     token_entries = {
@@ -476,7 +498,7 @@ def _naming_with_locations(
             }
         terms.append(projected)
     if unavailable:
-        omissions.record(
+        projection_coverage.omit_source(
             ("naming_candidates", "terms", "*", "locations"),
             "source_items_unavailable",
             unavailable,
@@ -533,15 +555,15 @@ def build_agent_context(
         glossary_section["schema_version"] = glossary["schema_version"]
         glossary_section["concepts"] = glossary["concepts"]
 
-    omissions = _ProjectionOmissions()
+    projection_coverage = _ProjectionCoverage()
     projection: Projection = "full" if full else "lean"
     list_limits = _FULL_LIST_LIMITS if full else _LIST_LIMITS
 
     # Imports are engine plumbing rather than a skill protocol field. Naming
     # candidates already carry the import-derived importance signal the agent
     # needs, without exposing an additional potentially large graph. Record the
-    # section exclusion so context completeness is always literal.
-    omissions.record(("imports",), "section_excluded", 1)
+    # section exclusion so the selected protocol shape stays explicit.
+    projection_coverage.exclude(("imports",), "section_excluded", 1)
 
     terminology = _context_terminology(evidence["terminology"])
     vocabulary: VocabularySection | LeanVocabularySection
@@ -553,19 +575,23 @@ def build_agent_context(
         vocabulary = {
             "normalization": deepcopy(evidence["vocabulary"]["normalization"]),
             "tokens": _module_rollup_section(
-                evidence["vocabulary"]["tokens"], "tokens", omissions
+                evidence["vocabulary"]["tokens"], "tokens", projection_coverage
             ),
             "identifiers": _module_rollup_section(
-                evidence["vocabulary"]["identifiers"], "identifiers", omissions
+                evidence["vocabulary"]["identifiers"],
+                "identifiers",
+                projection_coverage,
             ),
             "doc_terms": _module_rollup_section(
-                evidence["vocabulary"]["doc_terms"], "doc_terms", omissions
+                evidence["vocabulary"]["doc_terms"],
+                "doc_terms",
+                projection_coverage,
             ),
         }
         terminology["register"]["exemplars"] = _register_exemplars(
-            evidence["vocabulary"]["identifiers"], omissions
+            evidence["vocabulary"]["identifiers"], projection_coverage
         )
-        naming_candidates = _naming_with_locations(evidence, omissions)
+        naming_candidates = _naming_with_locations(evidence, projection_coverage)
 
     source: _ContextSource = {
         "context_schema_version": AGENT_CONTEXT_SCHEMA_VERSION,
@@ -594,14 +620,15 @@ def build_agent_context(
             else repository_glossary
         ),
     }
-    bounded = _bounded(source, omissions, list_limits)
+    bounded = _bounded(source, projection_coverage, list_limits)
     context: AgentContextDocument = {
         **bounded,
         "coverage": {
             "corpus": bounded["skipped"]["corpus_budget"],
-            "context": omissions.as_dict(
+            "context": projection_coverage.as_dict(
                 projection=projection,
                 list_limits=list_limits,
+                source_complete=bounded["skipped"]["corpus_budget"]["complete"],
             ),
         },
     }

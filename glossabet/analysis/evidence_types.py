@@ -113,6 +113,7 @@ class IdentifierEntry(TypedDict):
     tokens: list[str]
     count: int
     files: int
+    modules: int
     locations: list[LocationSample]
     locations_truncated: bool
 
@@ -411,7 +412,8 @@ class StructuralCoverage(_StructuralCoverageRequired, total=False):
 class _StructuralGroupsRequired(TypedDict):
     adapter_enabled: bool
     present: bool | None
-    available: bool
+    usable: bool
+    freshness: FreshnessRecord | None
     coverage: StructuralCoverage
     warnings: list[str]
 
@@ -419,10 +421,10 @@ class _StructuralGroupsRequired(TypedDict):
 class StructuralGroups(_StructuralGroupsRequired, total=False):
     """The adapter's section: the required keys are always present; the
     rest exist only when a graph was loaded (``present`` true) and carry
-    its normalized content."""
+    its normalized content. Presence, usability, freshness, and warnings are
+    explicit in every state."""
 
     source: str
-    freshness: FreshnessRecord
     source_nodes: int
     nodes: int
     edges: int

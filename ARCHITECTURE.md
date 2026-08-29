@@ -114,7 +114,9 @@ of that decomposition.
 Missing, malformed, oversized, unsupported, or over-budget Graphify data
 produces warnings and lexical-only analysis. It does not make the whole command
 fail. Structural coverage records whether groups, nodes, member tokens, labels,
-or work were omitted.
+or work were omitted. Every structural state explicitly carries graph
+`present`, group `usable`, `freshness`, and `warnings` fields; disabled, absent,
+present-but-unusable, and usable inputs never rely on a missing key for meaning.
 
 ### Glossary maintenance
 
@@ -153,8 +155,12 @@ changes code or vocabulary.
 
 [`agent.agent_context`](glossabet/agent/agent_context.py) projects fresh
 evidence, optional validated glossary state, and root-glossary metadata into a
-bounded schema-v3 document. The normal projection is compact; `inspect --full`
-retains the diagnostic detail. Both enumerate omissions.
+bounded schema-v6 document. The normal projection is compact; `inspect --full`
+retains the diagnostic detail. Both name their selected projection and actual
+limits. Context coverage separately records source completeness, projection
+completeness, intentional protocol exclusions, source omissions, and
+limit-driven truncations, so a designed lean exclusion is not a failed
+projection.
 
 [`agent.brief`](glossabet/agent/brief.py) reads only the validated structured
 glossary and hardened Git stamp, then emits at most 4 KiB of canonical
@@ -181,11 +187,11 @@ dependency-free wheel behind a version- and digest-checking runner.
 | Data | Producer and schema owner | Consumers | Location and lifecycle |
 | --- | --- | --- | --- |
 | Configuration, schema 1 | [`corpus.config`](glossabet/corpus/config.py) | Scanner | Optional root `glossabet.json`; maintainer-owned input |
-| Repository evidence, schema 15 | [`analysis.evidence`](glossabet/analysis/evidence.py), types in [`evidence_types`](glossabet/analysis/evidence_types.py) | Reports, agent context, drift, validation | `glossabet-out/evidence.json`; derived and replaceable |
+| Repository evidence, schema 17 | [`analysis.evidence`](glossabet/analysis/evidence.py), types in [`evidence_types`](glossabet/analysis/evidence_types.py) | Reports, agent context, drift, validation | `glossabet-out/evidence.json`; derived and replaceable |
 | Glossary, schema 1 | [`glossary.model`](glossabet/glossary/model.py), validator in [`glossary.schema`](glossabet/glossary/schema.py) | Every maintained-vocabulary path | `glossabet-out/glossary.json`; human-governed state, not disposable |
-| Drift, schema 6 | [`glossary.drift`](glossabet/glossary/drift.py), common finding types in [`glossary.findings`](glossabet/glossary/findings.py) | Maintainers and skill | `glossabet-out/drift.json`; derived |
-| Validation, schema 8 | [`glossary.reconcile`](glossabet/glossary/reconcile.py) | Maintainers and skill | `glossabet-out/validation.json`; derived |
-| Agent context, schema 3 | [`agent.agent_context`](glossabet/agent/agent_context.py) | Agent skill via stdout | Not persisted by the CLI; bounded projection |
+| Drift, schema 7 | [`glossary.drift`](glossabet/glossary/drift.py), common finding types in [`glossary.findings`](glossabet/glossary/findings.py) | Maintainers and skill | `glossabet-out/drift.json`; derived |
+| Validation, schema 11 | [`glossary.reconcile`](glossabet/glossary/reconcile.py) | Maintainers and skill | `glossabet-out/validation.json`; derived |
+| Agent context, schema 6 | [`agent.agent_context`](glossabet/agent/agent_context.py) | Agent skill via stdout | Not persisted by the CLI; bounded projection |
 | Managed context, schema 1 | [`agent.managed_context`](glossabet/agent/managed_context.py) | `sync-context`, drift, validation, host | One marked block in root `AGENTS.md` or `CLAUDE.md`; explicit project state |
 | Repository glossary | Maintainers; safely described by [`repository_glossary`](glossabet/glossary/repository_glossary.py) | Skill and validation | Root `GLOSSARY.md`; never regenerated wholesale by the engine |
 | Health report | Agent skill | Maintainers | Root `GLOSSABET.md`; derived, excluded from evidence, replaceable |
@@ -209,6 +215,17 @@ centralizes only compatibility-tolerant or derived evidence meaning, while
 - Traversal, vocabulary, matching, Graphify, findings, brief, and context caps
   all carry coverage ledgers. A lower bound is never serialized as an exact
   total.
+- Occurrence scalars carry literal `count_exact`, `files_exact`, and
+  `modules_exact` truth flags. `locations_truncated` governs only the bounded
+  location display, so final display sampling cannot make an already-computed
+  total inexact; upstream clipping is reflected in the affected scalar flags.
+- Analytical decisions consume those scalar truth flags, not display state. A
+  lower bound already at a positive threshold proves that threshold; one below
+  it cannot prove the negative and suppresses the decision with a coverage
+  reason. Only an exact zero supports an absence claim.
+- Validation records finding-check execution separately from the exactness of
+  the total produced by checks that ran. A skipped structural check is named;
+  it cannot turn an exact evaluated total into a claim that every check ran.
 - Deterministic inputs produce deterministic JSON ordering and bytes where the
   artifact contract promises it.
 - Glossabet-generated reports and managed blocks cannot become evidence for

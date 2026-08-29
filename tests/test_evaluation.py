@@ -20,7 +20,7 @@ def test_manifest_pins_licensed_varied_sources():
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     sources = manifest["sources"]
 
-    assert manifest["schema_version"] == 5
+    assert manifest["schema_version"] == 6
     assert len(sources) == 7
     assert len({source["id"] for source in sources}) == len(sources)
     assert {source["primary_language"] for source in sources} == {
@@ -46,11 +46,27 @@ def test_manifest_pins_licensed_varied_sources():
         if source["kind"] == "external-git":
             assert len(source["commit"]) == 40
             assert source["url"].startswith("https://github.com/")
+        structural = source["expectations"].get("structural")
+        if structural is not None:
+            contracts = structural["contracts"]
+            assert "validation_total_findings_exact" in contracts
+            assert "validation_total_findings_complete" not in contracts
+            assert contracts["graph_state"] == {
+                "present": True,
+                "usable": True,
+                "freshness": "unverified",
+                "warnings": [],
+            }
+            assert contracts["validation_finding_checks"] == {
+                "all_executed": True,
+                "skipped": [],
+            }
     assert manifest["self_register"] == {
         "dominant_style": "snake_case",
         "predominantly_multi_word": True,
     }
-    # `coverage` has three referents (ledger, corpus completeness, context omissions),
+    # `coverage` has several referents (collection ledgers, corpus completeness,
+    # and context source/projection accounting),
     # `run` stopped being a generic-only token once `command_run.Run` existed,
     # and `structural` is an adjective whose noun is `structural_groups`.
     # `drift` keeps its truthful label and is the recorded open finding.
@@ -193,10 +209,20 @@ def test_structural_cases_pin_findings_provenance_and_truncation(tmp_path):
     assert complete["structural"]["false_positive"] == []
     assert complete["structural"]["false_negative"] == []
     assert complete["structural"]["contracts"] == {
-        "checks": 17,
-        "passed_checks": 17,
+        "checks": 23,
+        "passed_checks": 23,
         "passed": True,
         "failures": [],
+    }
+    assert complete["structural"]["coverage"]["graph_state"] == {
+        "present": True,
+        "usable": True,
+        "freshness": "unverified",
+        "warnings": [],
+    }
+    assert complete["structural"]["coverage"]["validation_finding_checks"] == {
+        "all_executed": True,
+        "skipped": [],
     }
     assert truncated["structural"]["actual"] == []
     assert truncated["structural"]["coverage"]["groups"] == {
@@ -207,7 +233,9 @@ def test_structural_cases_pin_findings_provenance_and_truncation(tmp_path):
         "total_items": 51,
         "total_items_exact": True,
     }
-    assert truncated["structural"]["coverage"]["validation_complete"] is False
+    assert truncated["structural"]["coverage"][
+        "validation_total_findings_exact"
+    ] is False
     assert truncated["structural"]["contracts"]["passed"] is True
     assert result["aggregate"]["quality"]["structural_precision"] == 1.0
     assert (

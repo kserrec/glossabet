@@ -22,6 +22,7 @@ from glossabet.analysis.evidence_facts import (
 from glossabet.analysis.evidence_types import (
     EvidenceDocument,
     IdentifierEntry,
+    TokenEntry,
     VocabularyEntry,
 )
 from glossabet.corpus.imports import module_of
@@ -102,27 +103,28 @@ class DocOccurrence(TypedDict):
     is exact for the corpus the scan read."""
 
     count: int
-    count_complete: bool
+    count_exact: bool
     scope: ScopeEvidence
 
 
-class _ScopedCounts(TypedDict):
+class _CodeOccurrenceFacts(TypedDict):
     count: int
-    count_complete: bool
+    count_exact: bool
     files: int
-    files_complete: bool
+    files_exact: bool
     modules: int
+    modules_exact: bool
     locations: list[LocationSample]
     locations_truncated: bool
 
 
 class IdentifierOccurrence(DocOccurrence):
-    """One identifier's occurrence in code: counts, spread, and a
-    location sample, each with its own completeness."""
+    """One identifier's numeric occurrence facts and bounded location display."""
 
     files: int
-    files_complete: bool
+    files_exact: bool
     modules: int
+    modules_exact: bool
     locations: list[LocationSample]
     locations_truncated: bool
 
@@ -133,6 +135,16 @@ class TermOccurrence(IdentifierOccurrence):
 
     term_tokens: list[str]
     match_kind: str
+
+
+def is_unproven_zero(occurrence: DocOccurrence) -> bool:
+    """Whether zero is only a lower bound, not evidence of absence.
+
+    ``count_exact`` already combines corpus, table, scope-location, matching
+    work, and term-representability limits. Consumers should not reconstruct
+    those causes from display or coverage fields.
+    """
+    return occurrence["count"] == 0 and not occurrence["count_exact"]
 
 
 def _matching_locations(
@@ -148,18 +160,38 @@ def _scoped_entry_occurrence(
     entry: VocabularyEntry,
     scope: tuple[str, ...],
     corpus_complete: bool,
-) -> _ScopedCounts:
+) -> _CodeOccurrenceFacts:
     locations = _matching_locations(entry, scope)
     modules = {module_of(location["path"]) for location in locations}
-    locations_complete = not entry.get("locations_truncated", False)
+    upstream_locations_exact = not entry.get("locations_truncated", False)
+    display_truncated = len(locations) > LOCATION_SAMPLE
     return {
         "count": sum(location["count"] for location in locations),
-        "count_complete": locations_complete and corpus_complete,
+        "count_exact": upstream_locations_exact and corpus_complete,
         "files": len(locations),
-        "files_complete": locations_complete and corpus_complete,
+        "files_exact": upstream_locations_exact and corpus_complete,
         "modules": len(modules),
+        "modules_exact": upstream_locations_exact and corpus_complete,
         "locations": locations[:LOCATION_SAMPLE],
-        "locations_truncated": bool(entry.get("locations_truncated", False)),
+        "locations_truncated": not upstream_locations_exact or display_truncated,
+    }
+
+
+def _unscoped_entry_occurrence(
+    entry: TokenEntry | IdentifierEntry,
+    corpus_complete: bool,
+) -> _CodeOccurrenceFacts:
+    locations = list(entry["locations"])
+    display_truncated = len(locations) > LOCATION_SAMPLE
+    return {
+        "count": entry["count"],
+        "count_exact": corpus_complete,
+        "files": entry["files"],
+        "files_exact": corpus_complete,
+        "modules": entry["modules"],
+        "modules_exact": corpus_complete,
+        "locations": locations[:LOCATION_SAMPLE],
+        "locations_truncated": entry["locations_truncated"] or display_truncated,
     }
 
 
@@ -274,16 +306,22 @@ class EvidenceIndex:
             "term_tokens": wanted,
             "match_kind": "token" if len(wanted) <= 1 else "lexical-unit",
             "count": 0,
-            "count_complete": corpus_complete,
+            "count_exact": corpus_complete,
             "files": 0,
-            "files_complete": corpus_complete,
+            "files_exact": corpus_complete,
             "modules": 0,
+            "modules_exact": corpus_complete,
             "locations": [],
             "locations_truncated": False,
             "scope": scope_evidence(scope),
         }
         if not wanted:
-            return empty
+            return {
+                **empty,
+                "count_exact": False,
+                "files_exact": False,
+                "modules_exact": False,
+            }
         if len(wanted) == 1:
             return self._single_token_occurrence(
                 wanted, scope, corpus_complete, empty
@@ -302,8 +340,9 @@ class EvidenceIndex:
             )
             return {
                 **empty,
-                "count_complete": complete,
-                "files_complete": complete,
+                "count_exact": complete,
+                "files_exact": complete,
+                "modules_exact": complete,
             }
         if scope is not None:
             return {
@@ -315,13 +354,7 @@ class EvidenceIndex:
         return {
             "term_tokens": wanted,
             "match_kind": "token",
-            "count": entry["count"],
-            "count_complete": corpus_complete,
-            "files": entry["files"],
-            "files_complete": corpus_complete,
-            "modules": entry["modules"],
-            "locations": list(entry["locations"]),
-            "locations_truncated": entry["locations_truncated"],
+            **_unscoped_entry_occurrence(entry, corpus_complete),
             "scope": scope_evidence(scope),
         }
 
@@ -333,16 +366,16 @@ class EvidenceIndex:
         entries = self._compound_matches.get(wanted_tuple, [])
         count = 0
         locations: Counter[str] = Counter()
-        locations_truncated = False
-        scoped_count_complete = True
+        upstream_locations_truncated = False
         index_complete = (
             wanted_tuple in self._compound_matches and self.compound_complete
         )
-        files_complete = (
+        indexed_corpus_exact = (
             self.identifier_section.get("truncated") is None
             and corpus_complete
             and index_complete
         )
+        upstream_locations_exact = True
         for entry in entries:
             entry_locations = entry.get("locations", [])
             if scope is None:
@@ -353,31 +386,29 @@ class EvidenceIndex:
             for location in entry_locations:
                 locations[location["path"]] += location["count"]
             if entry.get("locations_truncated"):
-                locations_truncated = True
-                files_complete = False
-                if scope is not None:
-                    scoped_count_complete = False
+                upstream_locations_truncated = True
+                upstream_locations_exact = False
 
         # The display sample may be clipped without making the file total a
         # lower bound: ``files`` counts every aggregated location. Only an
         # upstream entry-level clip (handled above) makes ``files`` inexact.
         kept, sample_truncated = location_sample(locations, LOCATION_SAMPLE)
-        locations_truncated = locations_truncated or sample_truncated
         return {
             "term_tokens": wanted,
             "match_kind": "lexical-unit",
             "count": count,
-            "count_complete": (
-                self.identifier_section.get("truncated") is None
-                and scoped_count_complete
-                and corpus_complete
-                and index_complete
+            "count_exact": (
+                indexed_corpus_exact
+                and (scope is None or upstream_locations_exact)
             ),
             "files": len(locations),
-            "files_complete": files_complete,
+            "files_exact": indexed_corpus_exact and upstream_locations_exact,
             "modules": len({module_of(path) for path in locations}),
+            "modules_exact": indexed_corpus_exact and upstream_locations_exact,
             "locations": kept,
-            "locations_truncated": locations_truncated,
+            "locations_truncated": (
+                upstream_locations_truncated or sample_truncated
+            ),
             "scope": scope_evidence(scope),
         }
 
@@ -393,10 +424,11 @@ class EvidenceIndex:
             )
             return {
                 "count": 0,
-                "count_complete": complete,
+                "count_exact": complete,
                 "files": 0,
-                "files_complete": complete,
+                "files_exact": complete,
                 "modules": 0,
+                "modules_exact": complete,
                 "locations": [],
                 "locations_truncated": False,
                 "scope": scope_evidence(scope),
@@ -407,16 +439,7 @@ class EvidenceIndex:
                 "scope": scope_evidence(scope),
             }
         return {
-            "count": entry["count"],
-            "count_complete": corpus_complete,
-            "files": entry["files"],
-            "files_complete": corpus_complete,
-            "modules": len({
-                module_of(location["path"])
-                for location in entry.get("locations", [])
-            }),
-            "locations": list(entry.get("locations", [])),
-            "locations_truncated": entry.get("locations_truncated", False),
+            **_unscoped_entry_occurrence(entry, corpus_complete),
             "scope": scope_evidence(scope),
         }
 
@@ -434,14 +457,14 @@ class EvidenceIndex:
         if len(wanted) != 1 or len(doc_keys) != 1:
             return {
                 "count": 0,
-                "count_complete": False,
+                "count_exact": False,
                 "scope": scope_evidence(scope),
             }
         entry = self.doc_entries.get(doc_keys[0])
         if entry is None:
             return {
                 "count": 0,
-                "count_complete": (
+                "count_exact": (
                     self.doc_section.get("truncated") is None
                     and corpus_complete
                 ),
@@ -450,12 +473,12 @@ class EvidenceIndex:
         if scope is None:
             return {
                 "count": entry["count"],
-                "count_complete": corpus_complete,
+                "count_exact": corpus_complete,
                 "scope": scope_evidence(scope),
             }
         scoped = _scoped_entry_occurrence(entry, scope, corpus_complete)
         return {
             "count": scoped["count"],
-            "count_complete": scoped["count_complete"],
+            "count_exact": scoped["count_exact"],
             "scope": scope_evidence(scope),
         }

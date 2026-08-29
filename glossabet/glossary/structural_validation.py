@@ -13,7 +13,12 @@ from collections import defaultdict
 from dataclasses import dataclass
 from itertools import combinations, islice
 
-from glossabet.analysis.evidence_types import StructuralGroup, StructuralGroups
+from glossabet.analysis.evidence_types import (
+    FreshnessRecord,
+    StructuralGroup,
+    StructuralGroups,
+)
+from glossabet.corpus.tokenize import tokenize_bounded_term
 from glossabet.glossary import findings
 from glossabet.glossary.binding_validation import (
     ConceptVocabulary,
@@ -49,63 +54,104 @@ def _group_match_contexts(
     structural: StructuralGroups,
     canonical: list[ConceptRecord],
     vocabulary: ConceptVocabulary,
-) -> tuple[list[tuple[StructuralGroup, set[str], set[str], list[str]]], int]:
+) -> tuple[
+    list[tuple[StructuralGroup, set[str], set[str], list[str], bool]],
+    list[str],
+]:
     """Per structural group: (group, label tokens, label+member tokens,
-    candidate concept ids reached through an inverted token index), sorted
-    by label then id; plus how many groups lacked complete member_tokens."""
+    candidate concept ids reached through an inverted token index, whether
+    those tokens are complete), sorted by label then id; plus incompleteness
+    reasons shared by the structural sections and match-work ledger."""
     token_index: dict[str, set[str]] = defaultdict(set)
     for concept in canonical:
         words = vocabulary[concept["id"]]
         for token in words.term_tokens | words.binding_tokens:
             token_index[token].add(concept["id"])
 
-    contexts: list[tuple[StructuralGroup, set[str], set[str], list[str]]] = []
+    contexts: list[
+        tuple[StructuralGroup, set[str], set[str], list[str], bool]
+    ] = []
     missing_member_tokens = 0
+    incomplete_member_tokens = 0
+    incomplete_group_labels = 0
     for group in structural["groups"]:
-        label_tokens = vocabulary_tokens(group["label"])
+        label_tokens = set(tokenize_bounded_term(
+            group["label"], truncated=group.get("label_truncated") is True
+        ))
         raw_member_tokens = group.get("member_tokens")
         if isinstance(raw_member_tokens, list):
             member_tokens = {
                 token for token in raw_member_tokens if isinstance(token, str)
             }
+            group_coverage = group.get("coverage")
+            member_coverage = (
+                group_coverage.get("member_tokens")
+                if isinstance(group_coverage, dict) else None
+            )
+            member_tokens_complete = (
+                isinstance(member_coverage, dict)
+                and member_coverage.get("complete") is True
+            )
+            incomplete_member_tokens += not member_tokens_complete
         else:
             missing_member_tokens += 1
+            member_tokens_complete = False
             member_tokens = set()
             for member in group.get("members_sample", []):
                 member_tokens |= vocabulary_tokens(member)
+        label_complete = group.get("label_truncated") is False
+        incomplete_group_labels += not label_complete
         combined = label_tokens | member_tokens
         candidate_ids = sorted({
             concept_id
             for token in combined
             for concept_id in token_index.get(token, ())
         })
-        contexts.append((group, label_tokens, combined, candidate_ids))
+        contexts.append((
+            group,
+            label_tokens,
+            combined,
+            candidate_ids,
+            member_tokens_complete and label_complete,
+        ))
     contexts.sort(key=lambda item: (item[0]["label"], item[0]["id"]))
-    return contexts, missing_member_tokens
+    reasons: list[str] = []
+    if missing_member_tokens:
+        reasons.append(
+            f"{missing_member_tokens} structural group(s) lack complete "
+            "member_tokens and fell back to the display sample"
+        )
+    if incomplete_member_tokens:
+        reasons.append(
+            f"{incomplete_member_tokens} structural group(s) have incomplete "
+            "member-token evidence"
+        )
+    if incomplete_group_labels:
+        reasons.append(
+            f"{incomplete_group_labels} structural group label(s) were "
+            "truncated or lack exactness metadata"
+        )
+    return contexts, reasons
 
 
 def _structural_incompleteness(
     upstream_reasons: list[str],
-    missing_member_tokens: int,
+    group_evidence_reasons: list[str],
     partial_group_matches: bool,
     total_match_work: int,
     processed_match_work: int,
 ) -> tuple[list[str], bool, CoverageLedger]:
     """Section incompleteness reasons, whether totals are exact, and the
     match-work ledger."""
-    reasons = list(upstream_reasons)
-    if missing_member_tokens:
-        reasons.append(
-            f"{missing_member_tokens} structural group(s) lack complete "
-            "member_tokens and fell back to the display sample"
-        )
+    evidence_reasons = [*upstream_reasons, *group_evidence_reasons]
+    reasons = list(evidence_reasons)
     if partial_group_matches:
         reasons.append(
             "structural concept matching reached its "
             f"{STRUCTURAL_MATCH_BUDGET}-candidate evaluation budget"
         )
     exact = not reasons
-    work_reasons: list[str] = []
+    work_reasons = list(evidence_reasons)
     if processed_match_work < total_match_work:
         work_reasons.append(
             "structural concept matching reached its "
@@ -114,6 +160,7 @@ def _structural_incompleteness(
     work_coverage = coverage_ledger(
         total_match_work,
         processed_match_work,
+        total_items_exact=not evidence_reasons,
         reasons=work_reasons,
     )
     return reasons, exact, work_coverage
@@ -132,7 +179,7 @@ def _structure_findings(
     totals use n*(n-1)/2 and only the report prefix is streamed, so a group
     matching many concepts never materializes every pair.
     """
-    contexts, missing_member_tokens = _group_match_contexts(
+    contexts, group_evidence_reasons = _group_match_contexts(
         structural, canonical, vocabulary
     )
 
@@ -144,12 +191,18 @@ def _structure_findings(
     boundary_total = 0
     partial_group_matches = False
 
-    for group, label_tokens, combined, candidate_ids in contexts:
+    for (
+        group,
+        label_tokens,
+        combined,
+        candidate_ids,
+        group_evidence_complete,
+    ) in contexts:
         remaining = max(0, STRUCTURAL_MATCH_BUDGET - processed_match_work)
         evaluated_ids = candidate_ids[:remaining]
         processed_match_work += len(evaluated_ids)
-        group_complete = len(evaluated_ids) == len(candidate_ids)
-        partial_group_matches |= not group_complete
+        group_match_complete = len(evaluated_ids) == len(candidate_ids)
+        partial_group_matches |= not group_match_complete
         strengths = {
             concept_id: _match_strength_from_tokens(
                 label_tokens,
@@ -164,7 +217,11 @@ def _structure_findings(
             for concept_id, strength in strengths.items()
             if strength >= MATCH_STRONG
         )
-        if group_complete and max(strengths.values(), default=MATCH_NONE) == MATCH_NONE:
+        if (
+            group_evidence_complete
+            and group_match_complete
+            and max(strengths.values(), default=MATCH_NONE) == MATCH_NONE
+        ):
             unnamed.append((group["size"], group["label"], heuristic_finding(
                 "unnamed-structure",
                 f"structural group '{group['label']}' "
@@ -200,7 +257,7 @@ def _structure_findings(
     overloaded.sort(key=lambda f: f["group"])
 
     reasons, exact, work_coverage = _structural_incompleteness(
-        upstream_reasons, missing_member_tokens, partial_group_matches,
+        upstream_reasons, group_evidence_reasons, partial_group_matches,
         total_match_work, processed_match_work,
     )
     return (
@@ -223,10 +280,15 @@ def _structure_findings(
 
 @dataclass(frozen=True)
 class GraphStatus:
-    """What validation needs to know about the Graphify structure once."""
+    """The complete Graphify state validation consumes and serializes."""
+
+    present: bool | None
     usable: bool
+    freshness: FreshnessRecord | None
+    warnings: tuple[str, ...]
     groups_dropped: int
     groups_complete: bool | None
+    coverage: CoverageLedger
     skip_reason: str | None
 
     @property
@@ -238,7 +300,7 @@ class GraphStatus:
 
 
 def _graph_status(structural: StructuralGroups) -> GraphStatus:
-    usable = bool(structural.get("available"))
+    usable = structural["usable"]
     groups_dropped = int(structural.get("groups_dropped", 0))
     if usable:
         skip_reason = None
@@ -247,12 +309,16 @@ def _graph_status(structural: StructuralGroups) -> GraphStatus:
     else:
         skip_reason = "Graphify graph absent; structural checks require it"
     return GraphStatus(
+        present=structural["present"],
         usable=usable,
+        freshness=structural["freshness"],
+        warnings=tuple(structural["warnings"]),
         groups_dropped=groups_dropped,
         groups_complete=(
             structural.get("groups_complete", groups_dropped == 0)
             if usable else None
         ),
+        coverage=structural["coverage"]["groups"],
         skip_reason=skip_reason,
     )
 
@@ -311,7 +377,7 @@ def build_structural_validation(
         section: FindingSection, *, skipped: bool, skip_reason: str | None
     ) -> FindingSection:
         ledger = section["coverage"]
-        partial = graph.usable and not ledger["total_items_exact"]
+        partial = not skipped and graph.usable and not ledger["total_items_exact"]
         return {
             **section,
             "skipped": skipped,

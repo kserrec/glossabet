@@ -30,7 +30,7 @@ from glossabet.analysis.graphify_input import (
     first_value,
     load_graph_input,
 )
-from glossabet.corpus.tokenize import tokenize_term
+from glossabet.corpus.tokenize import tokenize_bounded_term
 from glossabet.runtime.coverage import (
     CoverageLedger,
     capped_collection,
@@ -64,7 +64,8 @@ def _unavailable(
     return {
         "adapter_enabled": not disabled,
         "present": present,
-        "available": False,
+        "usable": False,
+        "freshness": None,
         "coverage": {
             "groups": coverage_ledger(
                 0,
@@ -199,7 +200,9 @@ def _node_tokens(node: GraphNode) -> list[str]:
     communities list it."""
     tokens = node.get("tokens")
     if tokens is None:
-        tokens = node["tokens"] = tokenize_term(node["label"])
+        tokens = node["tokens"] = tokenize_bounded_term(
+            node["label"], truncated=node["label_truncated"]
+        )
     return tokens
 
 
@@ -223,12 +226,23 @@ def _group_items(
             key=lambda member: (-degree[member], nodes[member]["label"]),
         )
         member_labels = [nodes[member]["label"] for member in sample]
+        truncated_member_labels = sum(
+            nodes[member]["label_truncated"] for member in visible
+        )
+        member_label_reasons = (
+            [
+                f"{truncated_member_labels} structural member label(s) were "
+                "truncated before tokenization"
+            ]
+            if truncated_member_labels else []
+        )
         members_sample, sample_coverage = capped_collection(
             member_labels,
             MEMBER_SAMPLE,
             cap_reason=(
                 f"structural member display cap is {MEMBER_SAMPLE} items"
             ),
+            incomplete_reasons=member_label_reasons,
         )
         all_member_tokens = sorted({
             token
@@ -239,6 +253,8 @@ def _group_items(
             all_member_tokens,
             MEMBER_TOKEN_CAP,
             cap_reason=f"structural member-token cap is {MEMBER_TOKEN_CAP} items",
+            total_items_exact=not truncated_member_labels,
+            incomplete_reasons=member_label_reasons,
         )
         items.append({
             "id": group_id,
@@ -247,9 +263,9 @@ def _group_items(
             "cohesion": group["cohesion"],
             "size": len(visible),
             "members_sample": members_sample,
-            # Reconciliation matches against every normalized token in the
-            # bounded Graphify input.  The six labels above remain display
-            # evidence only and can no longer hide a seventh matching member.
+            # Reconciliation matches the retained normalized tokens, and reads
+            # this collection's ledger before making a negative conclusion.
+            # The six labels above remain display evidence only.
             "member_tokens": member_tokens,
             "coverage": {
                 "members_sample": sample_coverage,
@@ -319,7 +335,7 @@ def build_structural_groups(
     return {
         "adapter_enabled": True,
         "present": True,
-        "available": bool(group_items),
+        "usable": bool(group_items),
         "source": GRAPH_PATH,
         "freshness": graph.freshness,
         "source_nodes": len(graph.nodes),
@@ -344,7 +360,7 @@ def build_structural_groups(
 def structure_candidates(structural: StructuralGroups) -> StructureNaming:
     """Group-based naming nominations for the importance section."""
     source_groups_dropped = structural.get("naming_groups_dropped", 0)
-    if not structural["available"]:
+    if not structural["usable"]:
         group_coverage = structural["coverage"]["groups"]
         total_exact = group_coverage["total_items_exact"] is not False
         reasons = [] if total_exact else [

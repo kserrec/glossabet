@@ -194,11 +194,11 @@ the document.
 | Document | Producer and consumers | Location and schema owner | Compatibility and coverage |
 | --- | --- | --- | --- |
 | Configuration evidence | [`corpus.config.load_config`](../glossabet/corpus/config.py) produces a `RepositoryConfig`; the scanner consumes its rules and `build_evidence` embeds `as_evidence()`. | Optional root `glossabet.json`, schema 1; [`corpus.config`](../glossabet/corpus/config.py) owns both accepted input and the embedded `ConfigurationEvidence` shape. | Absence is explicit and valid. Other versions, unknown fields, malformed paths, duplicate role ownership, or unsafe files fail closed. The embedded record repeats every effective user rule and the accepted shape; path omissions appear in repository coverage. |
-| Repository evidence | [`analysis.evidence.build_evidence`](../glossabet/analysis/evidence.py) assembles it; `persist_evidence` refreshes and writes it for scan/analyze/inspect/drift/validate. Reports, agent context, matching, drift, and reconciliation consume it. | `glossabet-out/evidence.json`, schema 15; [`analysis.evidence_types`](../glossabet/analysis/evidence_types.py) owns field types and [`analysis.evidence`](../glossabet/analysis/evidence.py) owns assembly. | Normal consumers use freshly rebuilt evidence, not a legacy artifact loader. [`evidence_facts`](../glossabet/analysis/evidence_facts.py) is the narrow tolerant boundary for older or hand-built omission data and defaults missing completeness proof to incomplete. `skipped.corpus_budget` and per-collection `CoverageLedger` records separate known drops from unknown upstream omissions. |
+| Repository evidence | [`analysis.evidence.build_evidence`](../glossabet/analysis/evidence.py) assembles it; `persist_evidence` refreshes and writes it for scan/analyze/inspect/drift/validate. Reports, agent context, matching, drift, and reconciliation consume it. | `glossabet-out/evidence.json`, schema 17; [`analysis.evidence_types`](../glossabet/analysis/evidence_types.py) owns field types and [`analysis.evidence`](../glossabet/analysis/evidence.py) owns assembly. | Normal consumers use freshly rebuilt evidence, not a legacy artifact loader. [`evidence_facts`](../glossabet/analysis/evidence_facts.py) is the narrow tolerant boundary for older or hand-built omission data and defaults missing completeness proof to incomplete. `skipped.corpus_budget` and per-collection `CoverageLedger` records separate known drops from unknown upstream omissions. |
 | Glossary document | The skill submits a human-settled document to `save`; [`glossary.store.save_glossary`](../glossabet/glossary/store.py) validates, normalizes, and writes it. Every maintained-vocabulary path consumes it. | `glossabet-out/glossary.json`, schema 1; [`glossary.model`](../glossabet/glossary/model.py) owns meaning, [`glossary.schema`](../glossabet/glossary/schema.py) validation, and [`glossary.store`](../glossabet/glossary/store.py) persistence/hash. | Only schema 1 is accepted; unknown fields and ambiguous ownership are rejected rather than migrated silently. Semantic ceilings reject an over-large state. This is human-governed state, so it has no “partial glossary” coverage mode. |
-| Drift document | [`glossary.drift.build_drift`](../glossabet/glossary/drift.py) produces it from fresh evidence and a glossary; `drift_command` persists and renders it. Maintainers and the skill consume it. | `glossabet-out/drift.json`, schema 6; [`glossary.drift`](../glossabet/glossary/drift.py) owns its sections while [`glossary.findings`](../glossabet/glossary/findings.py) owns shared finding/coverage shapes. | Rebuilt rather than migrated. Each section carries exact/lower-bound totals, drops, and reasons; top-level completeness is true only when all relevant section totals are exact. |
-| Validation document | [`glossary.reconcile.build_validation`](../glossabet/glossary/reconcile.py) combines drift, bindings, structure, managed context, and root-glossary metadata; `validate_command` persists and renders it. | `glossabet-out/validation.json`, schema 8; [`glossary.reconcile`](../glossabet/glossary/reconcile.py) owns composition and [`glossary.findings`](../glossabet/glossary/findings.py) owns common shapes. | Rebuilt rather than migrated. Lexical, inventory, matching-work, structural-work, graph, and per-section coverage stay separate. A skipped structural check is not serialized as a clean zero. `graph_available` remains a compatibility convenience; `graph` owns the complete state. |
-| Agent context | [`agent.agent_context.build_agent_context`](../glossabet/agent/agent_context.py) projects fresh evidence and optional glossary metadata; `inspect_command` serializes it to stdout for the skill. | Not persisted by `inspect`; context schema 3 declares evidence schema 15 alongside it. [`agent.agent_context`](../glossabet/agent/agent_context.py) owns the projection. | The skill refuses an unexpected context version. Lean and full projections share one schema but deliberately retain different detail. `coverage.corpus` carries source completeness and `coverage.context` records every list, string, rollup, or excluded-section omission. |
+| Drift document | [`glossary.drift.build_drift`](../glossabet/glossary/drift.py) produces it from fresh evidence and a glossary; `drift_command` persists and renders it. Maintainers and the skill consume it. | `glossabet-out/drift.json`, schema 7; [`glossary.drift`](../glossabet/glossary/drift.py) owns its sections while [`glossary.findings`](../glossabet/glossary/findings.py) owns shared finding/coverage shapes. | Rebuilt rather than migrated. Each section carries exact/lower-bound totals, drops, and reasons; top-level completeness is true only when all relevant section totals are exact. |
+| Validation document | [`glossary.reconcile.build_validation`](../glossabet/glossary/reconcile.py) combines drift, bindings, structure, managed context, and root-glossary metadata; `validate_command` persists and renders it. | `glossabet-out/validation.json`, schema 11; [`glossary.reconcile`](../glossabet/glossary/reconcile.py) owns composition and [`glossary.findings`](../glossabet/glossary/findings.py) owns common shapes. | Rebuilt rather than migrated. `finding_checks` names every skipped finding-producing check; `total_findings_exact` describes only the total from checks that ran. The `graph` object is the sole graph state and always carries presence, usability, freshness, warnings, and group coverage. |
+| Agent context | [`agent.agent_context.build_agent_context`](../glossabet/agent/agent_context.py) projects fresh evidence and optional glossary metadata; `inspect_command` serializes it to stdout for the skill. | Not persisted by `inspect`; context schema 6 declares evidence schema 17 alongside it. [`agent.agent_context`](../glossabet/agent/agent_context.py) owns the projection. | The skill refuses an unexpected context version. Lean and full projections share one schema but deliberately retain different detail. `coverage.corpus` retains detailed scanner-budget evidence. `coverage.context` names the selected projection and actual limits, then separates source completeness, projection completeness, intentional exclusions, source omissions, and limit-driven truncations. |
 | Managed context | [`agent.managed_context.render_block`](../glossabet/agent/managed_context.py) derives one block from the glossary; [`agent.context_sync.sync_context`](../glossabet/agent/context_sync.py) is the explicit writer. Agent hosts consume the block; drift and validation inspect it. | One marked range in root `AGENTS.md` or `CLAUDE.md`. [`managed_block`](../glossabet/managed_block.py) owns wire format 1; [`agent.managed_context`](../glossabet/agent/managed_context.py) owns report schema 1. | Exact content and semantic glossary hashes distinguish current, stale, edited, absent, and uninspectable. An older format is stale; a newer or changed block is edited and is never replaced without an unambiguous range plus explicit `--force`. The embedded brief carries its own byte/entry coverage, while the report names every target issue. |
 
 The shared [`CoverageLedger`](../glossabet/runtime/coverage.py) is the key
@@ -344,7 +344,9 @@ over-budget input produces visible warnings and lexical-only fallback rather
 than failing the whole scan. A stale or unverified graph remains explicitly
 labelled by its freshness record instead of masquerading as current.
 `--no-graphify` records an explicitly disabled adapter instead of pretending
-the file was absent.
+the file was absent. Every emitted state has explicit `present`, `usable`,
+`freshness`, and `warnings` fields; optional normalized details exist only when
+their source was loaded.
 
 ## 8. Glossary lifecycle
 
@@ -396,6 +398,23 @@ an ordered contiguous token run inside one identifier, not unrelated word hits
 in a file. Scope filtering and compound-start work each retain completeness
 ledgers.
 
+Every numeric occurrence fact says whether its value is exact through
+`count_exact`, `files_exact`, or `modules_exact`. The separate
+`locations_truncated` flag describes only the location list shown to a
+consumer. Upstream location clipping can therefore make a scoped total a lower
+bound, while sampling five locations after all totals are computed leaves those
+totals exact. Identifier evidence persists its exact module total from every
+accepted scanned file instead of reconstructing it from a location sample.
+
+Analytical producers use [`is_unproven_zero`](../glossabet/glossary/matching.py)
+when table truncation, a scoped location sample, partial corpus coverage,
+matching work, or a term limit makes zero only a lower bound. Such a zero
+cannot establish absence. Threshold checks follow the same one-sided rule for
+simple and compound terms: a lower bound already at the threshold proves the
+positive finding and is labelled “at least”; an inexact lower bound below the
+threshold cannot prove the negative, so the finding is suppressed and the
+section records why its total is incomplete.
+
 [`build_drift`](../glossabet/glossary/drift.py) asks how already governed
 vocabulary is changing:
 
@@ -413,6 +432,13 @@ glossary still reconciles with the repository. It combines:
   unnamed groups, boundary mismatch, and overloaded structural regions;
 - selected drift sections; and
 - managed-context and root-glossary reports.
+
+Its eight finding-producing checks have a separate `finding_checks` execution
+record. `all_executed` is false and `skipped` names reasons when optional
+structure or path scope prevents a check from running. Independently,
+`total_findings_exact` says whether the numeric total from checks that did run
+is exact. The graph object is authoritative; no parallel availability flag is
+serialized.
 
 Drift is about change in vocabulary use. Validation is the broader consistency
 check between canonical concepts, code bindings, lexical evidence, optional
@@ -434,9 +460,14 @@ metadata, builds context, and prints deterministic compact JSON.
 
 The normal lean projection rolls repeated file locations up to modules, adds
 useful naming-candidate locations and identifier-style exemplars, and omits
-the raw approximate import section. `inspect --full` retains detailed
-vocabulary locations for diagnosis. Both bound list and string sizes, enforce
-a hard serialized-byte limit, and enumerate every projection omission.
+the raw approximate import section. Exact token and identifier `modules`
+scalars survive that projection; `module_counts_truncated` applies only to the
+detailed rollup. `inspect --full` retains detailed vocabulary locations for
+diagnosis. Both bound list and string sizes, enforce a hard serialized-byte
+limit, and report the limits actually applied. Their context ledger keeps
+designed protocol exclusions separate from unavailable source evidence and
+limit-driven truncations; only the last category makes the selected projection
+incomplete.
 
 ### `brief`
 

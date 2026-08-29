@@ -474,7 +474,7 @@ def test_validate_reports_repository_glossary_divergence(tmp_path, capsys):
     validation = json.loads(
         (tmp_path / "glossabet-out" / "validation.json").read_text(encoding="utf-8")
     )
-    assert validation["schema_version"] == 8
+    assert validation["schema_version"] == 11
     section = validation["repository_glossary"]
     assert section["readable"] is True
     assert section["divergence"]["canonical_missing_from_markdown"] == [

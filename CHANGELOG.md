@@ -33,8 +33,11 @@ not been published to PyPI or a public plugin directory.
 - A derived root `GLOSSABET.md` vocabulary-health report written by the skill
   and excluded from future evidence so its proposals cannot support
   themselves.
-- A bounded schema-v3 agent context with lean and full projections, plus a
-  deterministic 4 KiB `brief` containing canonical vocabulary only.
+- A bounded schema-v6 agent context with lean and full projections. Its
+  coverage separates source completeness, projection completeness,
+  intentional protocol exclusions, source omissions, limit-driven
+  truncations, and the limits actually applied. A separate deterministic 4
+  KiB `brief` contains canonical vocabulary only.
 - Explicit managed-context synchronization into one marked block in root
   `AGENTS.md` or `CLAUDE.md`, with read-only stale/edit detection in drift and
   validation.
@@ -95,6 +98,23 @@ not been published to PyPI or a public plugin directory.
   disagreement with an earlier managed-host observation is a detected change,
   not absence or a filename collision. An existing host file whose portable
   identity is unavailable is uninspectable rather than assumed unchanged.
+- Numeric occurrence facts now pair `count`, `files`, and `modules` with
+  literal `count_exact`, `files_exact`, and `modules_exact` flags. Exact global
+  identifier module totals survive bounded location samples, while
+  `locations_truncated` describes only the displayed locations. Repository
+  evidence, drift, validation, and agent-context schemas advance together.
+- Drift and validation now share one unproven-zero rule across corpus, table,
+  scope-location, matching-work, and term-limit omissions. Fragmentation uses
+  `modules_exact` identically for simple and compound terms: an above-threshold
+  lower bound is reported as “at least,” while an inexact below-threshold
+  result is suppressed and recorded as incomplete. Fragmentation findings now
+  persist `module_spread_exact`, advancing the derived validation schema to 10.
+- Graph state now uses the same always-present `present`, `usable`, `freshness`,
+  and `warnings` fields in evidence, agent context, and validation. Validation
+  separately records which finding checks ran and whether their produced total
+  is exact; the duplicate `graph_available` and ambiguous validation
+  `total_findings_complete` fields are removed. Evidence, context, validation,
+  and deterministic-evaluation schemas advance together.
 - Active documentation now describes the current artifact. Completed plans,
   refactor specifications, and stale handoffs are preserved and clearly
   labelled under `docs/history/`.

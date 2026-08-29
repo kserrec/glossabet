@@ -232,7 +232,7 @@ def build_cases(work: Path, cache_dir: Path) -> list[Case]:
     def structural_ledger(result: object) -> dict[str, object]:
         assert isinstance(result, dict)
         return {
-            "available": result["available"],
+            "usable": result["usable"],
             "groups": len(result["groups"]),
             "groups_dropped": result["groups_dropped"],
             "groups_complete": result["coverage"]["groups"]["complete"],
@@ -244,8 +244,11 @@ def build_cases(work: Path, cache_dir: Path) -> list[Case]:
         context = document["coverage"]["context"]
         return {
             "projection": context["projection"],
-            "complete": context["complete"],
-            "omissions": len(context["omissions"]),
+            "projection_complete": context["projection_complete"],
+            "source_complete": context["source_complete"],
+            "intentional_exclusions": len(context["intentional_exclusions"]),
+            "source_omissions": len(context["source_omissions"]),
+            "truncations": len(context["truncations"]),
         }
 
     def context_case(full: bool) -> str:
@@ -477,8 +480,11 @@ def build_scale_cases(work: Path, sizes: ScaleSizes) -> list[Case]:
         return {
             "source_files": evidence["totals"]["source_files"],
             "projection": context["projection"],
-            "projection_complete": context["complete"],
-            "omissions": len(context["omissions"]),
+            "projection_complete": context["projection_complete"],
+            "source_complete": context["source_complete"],
+            "intentional_exclusions": len(context["intentional_exclusions"]),
+            "source_omissions": len(context["source_omissions"]),
+            "truncations": len(context["truncations"]),
         }
 
     stamp = {"head": "a" * 40, "dirty": False}

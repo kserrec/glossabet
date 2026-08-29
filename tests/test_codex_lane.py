@@ -11,8 +11,10 @@ from pathlib import Path
 
 import pytest
 
-from evaluation.codex import host, results, runner
+from evaluation.codex import host, results, runner, scenarios
 from evaluation.codex.contract import DEFAULT_RESULTS, AgentEvaluationError
+from glossabet import __version__
+from glossabet.agent.agent_context import AGENT_CONTEXT_SCHEMA_VERSION
 
 ROOT = Path(__file__).resolve().parents[1]
 LANE = ROOT / "evaluation" / "codex"
@@ -68,6 +70,102 @@ def test_judgment_modules_spawn_nothing(module):
     install, remove, or invoke a plugin."""
     names = _imports(LANE / f"{module}.py")
     assert not names & {"subprocess", "shutil", "tempfile", "os"}, names
+
+
+def _absent_context(intentional_exclusions: list[object]) -> dict:
+    return {
+        "context_schema_version": AGENT_CONTEXT_SCHEMA_VERSION,
+        "generator": {"name": "glossabet", "version": __version__},
+        "freshness": {"status": "current"},
+        "coverage": {
+            "corpus": {"complete": True},
+            "context": {
+                "projection": "lean",
+                "projection_complete": True,
+                "source_complete": True,
+                "intentional_exclusions": intentional_exclusions,
+                "source_omissions": [],
+                "truncations": [],
+            },
+        },
+        "structural_groups": {"present": False},
+        "glossary": {"present": False},
+    }
+
+
+STANDARD_LEAN_EXCLUSIONS = [
+    {"path": "imports", "kind": "section_excluded", "amount": 1},
+    {
+        "path": "vocabulary.tokens.items.*.locations",
+        "kind": "file_locations_rolled_up",
+        "amount": 2,
+    },
+    {
+        "path": "vocabulary.identifiers.items.*.locations",
+        "kind": "file_locations_rolled_up",
+        "amount": 1,
+    },
+]
+
+
+@pytest.mark.parametrize(
+    ("extra", "expected_failure"),
+    [
+        (
+            {"path": "glossary", "kind": "section_excluded", "amount": 1},
+            "context intentional_exclusions contained unexpected records",
+        ),
+        (
+            "not-a-record",
+            "context intentional_exclusions contained malformed records",
+        ),
+        (
+            {"path": "imports", "kind": "section_excluded"},
+            "context intentional_exclusions contained malformed records",
+        ),
+        (
+            {
+                "path": "vocabulary.tokens.items.*.locations",
+                "kind": "file_locations_rolled_up",
+                "amount": 1,
+            },
+            "context intentional_exclusions contained duplicate records",
+        ),
+    ],
+)
+def test_context_judgment_rejects_unapproved_intentional_exclusions(
+    extra, expected_failure
+):
+    baseline = _absent_context([*STANDARD_LEAN_EXCLUSIONS])
+    baseline_failures, _ = scenarios.check_context("absent", baseline)
+    assert baseline_failures == []
+    optional_doc_rollup = _absent_context([
+        *STANDARD_LEAN_EXCLUSIONS,
+        {
+            "path": "vocabulary.doc_terms.items.*.locations",
+            "kind": "file_locations_rolled_up",
+            "amount": 1,
+        },
+    ])
+    optional_failures, _ = scenarios.check_context("absent", optional_doc_rollup)
+    assert optional_failures == []
+
+    context = _absent_context([*STANDARD_LEAN_EXCLUSIONS, extra])
+    failures, _ = scenarios.check_context("absent", context)
+    assert expected_failure in failures
+
+
+def test_context_judgment_requires_the_single_fixed_import_exclusion():
+    exclusions = [dict(item) for item in STANDARD_LEAN_EXCLUSIONS]
+    exclusions[0]["amount"] = 2
+
+    failures, _ = scenarios.check_context(
+        "absent", _absent_context(exclusions)
+    )
+
+    assert (
+        "context imports exclusion amount was not 1"
+    ) in failures
 
 
 def test_fixtures_only_ever_run_git():

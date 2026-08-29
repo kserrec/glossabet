@@ -28,16 +28,45 @@ def test_inspect_emits_versioned_context_and_refreshes_evidence(tmp_path, capsys
     captured = capsys.readouterr()
     context = json.loads(captured.out)
     assert captured.err == ""
-    assert context["context_schema_version"] == 3
-    assert context["evidence_schema_version"] == 15
+    assert context["context_schema_version"] == 6
+    assert context["evidence_schema_version"] == 17
     assert context["freshness"]["status"] == "current"
     assert context["files"]["code"] == [
         {"language": "python", "path": "service.py", "role": "production"}
     ]
     assert context["glossary"] == {"present": False}
     assert context["coverage"]["corpus"]["complete"] is True
-    assert context["coverage"]["context"]["projection"] == "lean"
-    assert context["coverage"]["context"]["complete"] is False
+    projection = context["coverage"]["context"]
+    assert projection["projection"] == "lean"
+    assert projection["projection_complete"] is True
+    assert projection["source_complete"] is True
+    assert projection["truncations"] == []
+    assert projection["source_omissions"] == []
+    assert {
+        (item["path"], item["kind"])
+        for item in projection["intentional_exclusions"]
+    } >= {
+        ("imports", "section_excluded"),
+        (
+            "vocabulary.tokens.items.*.locations",
+            "file_locations_rolled_up",
+        ),
+        (
+            "vocabulary.identifiers.items.*.locations",
+            "file_locations_rolled_up",
+        ),
+    }
+    assert set(projection["applied_limits"]) == {
+        "serialized_bytes",
+        "string_characters",
+        "default_list_items",
+        "list_items",
+        "coverage_records",
+    }
+    assert projection["applied_limits"]["list_items"][
+        "terminology.register.exemplars.items"
+    ] == 24
+    assert not ({"complete", "omissions", "limits"} & projection.keys())
     assert captured.out.endswith("\n")
     assert "\n " not in captured.out
     assert (tmp_path / "glossabet-out" / "evidence.json").is_file()
@@ -78,12 +107,12 @@ def test_glossary_projection_truncation_is_visible_at_section_level(
 
     context = json.loads(capsys.readouterr().out)
     coverage = context["coverage"]["context"]
-    assert coverage["complete"] is False
-    assert "glossary" in coverage["affected_sections"]
+    assert coverage["projection_complete"] is False
+    assert coverage["source_complete"] is True
     assert any(
         omission["path"] == "glossary.concepts.*.definition"
         and omission["kind"] == "string_characters"
-        for omission in coverage["omissions"]
+        for omission in coverage["truncations"]
     )
 
 
@@ -96,12 +125,12 @@ def test_context_sampling_is_explicit(tmp_path, capsys, monkeypatch):
 
     context = json.loads(capsys.readouterr().out)
     coverage = context["coverage"]["context"]
-    assert coverage["complete"] is False
+    assert coverage["projection_complete"] is False
+    assert coverage["source_complete"] is True
     assert {
         "path": "files.code", "kind": "list_items", "amount": 1
-    } in coverage["omissions"]
-    assert coverage["omission_counts"]["list_items"] >= 1
-    assert coverage["omitted_amounts"]["list_items"] >= 1
+    } in coverage["truncations"]
+    assert coverage["applied_limits"]["list_items"]["files.code"] == 1
     assert len(context["files"]["code"]) == 1
 
 
@@ -144,6 +173,7 @@ def test_lean_projection_rolls_up_locations_and_keeps_read_targets(tmp_path):
         for item in context["terminology"]["register"]["exemplars"]["items"]
         if item["name"] == "payment_service"
     )
+    assert exemplar["modules"] == 1
     assert exemplar["style"] == "snake_case"
     assert {location["path"] for location in exemplar["locations"]} == {
         "auth/service.py",
@@ -151,7 +181,9 @@ def test_lean_projection_rolls_up_locations_and_keeps_read_targets(tmp_path):
     }
     rollup_omission = next(
         omission
-        for omission in context["coverage"]["context"]["omissions"]
+        for omission in context["coverage"]["context"][
+            "intentional_exclusions"
+        ]
         if omission["path"] == "vocabulary.tokens.items.*.locations"
     )
     assert rollup_omission["kind"] == "file_locations_rolled_up"
@@ -167,10 +199,68 @@ def test_full_projection_retains_detailed_vocabulary_locations(tmp_path, capsys)
 
     context = json.loads(capsys.readouterr().out)
     token = context["vocabulary"]["tokens"]["items"][0]
-    assert context["coverage"]["context"]["projection"] == "full"
+    projection = context["coverage"]["context"]
+    assert projection["projection"] == "full"
+    assert projection["projection_complete"] is True
+    assert projection["source_complete"] is True
+    assert projection["truncations"] == []
+    assert projection["source_omissions"] == []
+    assert projection["intentional_exclusions"] == [
+        {"path": "imports", "kind": "section_excluded", "amount": 1}
+    ]
+    assert projection["applied_limits"]["list_items"][
+        "vocabulary.tokens.items"
+    ] == 300
+    assert (
+        "terminology.register.exemplars.items"
+        not in projection["applied_limits"]["list_items"]
+    )
+    assert "routine_target_bytes" not in projection["applied_limits"]
+    assert "register_exemplars" not in projection["applied_limits"]
     assert "locations" in token
     assert "module_counts" not in token
     assert "exemplars" not in context["terminology"]["register"]
+
+
+def test_source_and_projection_completeness_are_independent(tmp_path):
+    (tmp_path / "service.py").write_text("payment_service = 1\n")
+    evidence = build_evidence(tmp_path, cache=False)
+    evidence["skipped"]["corpus_budget"]["complete"] = False
+
+    context = agent_context.build_agent_context(evidence, None)
+    projection = context["coverage"]["context"]
+
+    assert projection["source_complete"] is False
+    assert projection["projection_complete"] is True
+    assert projection["source_omissions"] == []
+    assert projection["truncations"] == []
+
+
+def test_unavailable_projection_source_is_not_a_projection_truncation(tmp_path):
+    auth = tmp_path / "auth"
+    auth.mkdir()
+    (auth / "service.py").write_text("payment_service = payment_router\n")
+    (auth / "worker.py").write_text("payment_service = payment_worker\n")
+    database = tmp_path / "database"
+    database.mkdir()
+    (database / "store.py").write_text("payment_store = payment_router\n")
+    evidence = build_evidence(tmp_path, cache=False)
+    evidence["vocabulary"]["tokens"]["items"] = [
+        item for item in evidence["vocabulary"]["tokens"]["items"]
+        if item["term"] != "payment"
+    ]
+
+    context = agent_context.build_agent_context(evidence, None)
+    projection = context["coverage"]["context"]
+
+    assert projection["source_complete"] is False
+    assert projection["projection_complete"] is True
+    assert projection["truncations"] == []
+    assert projection["source_omissions"] == [{
+        "path": "naming_candidates.terms.*.locations",
+        "kind": "source_items_unavailable",
+        "amount": 1,
+    }]
 
 
 def test_glossabet_routine_context_fits_the_soft_target():
@@ -183,12 +273,12 @@ def test_glossabet_routine_context_fits_the_soft_target():
     assert size <= ROUTINE_AGENT_CONTEXT_TARGET_BYTES, size
 
 
-def test_too_many_context_omissions_fail_instead_of_becoming_ambiguous(
+def test_too_many_context_coverage_records_fail_instead_of_becoming_ambiguous(
     tmp_path, capsys, monkeypatch
 ):
     (tmp_path / "a.py").write_text("alpha_beta_gamma = 1\n")
     (tmp_path / "b.py").write_text("delta_epsilon_zeta = 2\n")
-    monkeypatch.setattr(agent_context, "MAX_AGENT_CONTEXT_OMISSION_RECORDS", 1)
+    monkeypatch.setattr(agent_context, "MAX_AGENT_CONTEXT_COVERAGE_RECORDS", 1)
     monkeypatch.setitem(agent_context._LIST_LIMITS, ("files", "code"), 1)
     monkeypatch.setitem(
         agent_context._LIST_LIMITS, ("vocabulary", "tokens", "items"), 1
@@ -198,7 +288,7 @@ def test_too_many_context_omissions_fail_instead_of_becoming_ambiguous(
 
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert "requires more than 1 omission records" in captured.err
+    assert "requires more than 1 coverage records" in captured.err
 
 
 def test_context_hard_byte_limit_fails_cleanly(tmp_path, capsys, monkeypatch):
@@ -244,10 +334,10 @@ def test_inspect_rejects_oversized_glossary(tmp_path, capsys, monkeypatch):
     assert "larger than 20 bytes" in captured.err
 
 
-def test_many_long_glossary_strings_do_not_exhaust_the_omission_ceiling(tmp_path):
+def test_many_long_glossary_strings_do_not_exhaust_the_coverage_ceiling(tmp_path):
     """`save` accepts 16 KB definitions and 10,000 concepts; `inspect` used
-    to spend one omission record per over-long string and fail with 'requires
-    more than 100 omission records' for a glossary the engine itself accepted
+    to spend one coverage record per over-long string and fail with 'requires
+    more than 100 coverage records' for a glossary the engine itself accepted
     — which the skill reads as a broken engine. Records coalesce per pattern."""
     (tmp_path / "a.py").write_text("payment_service = 1\n")
     concepts = [
@@ -259,10 +349,9 @@ def test_many_long_glossary_strings_do_not_exhaust_the_omission_ceiling(tmp_path
     save_glossary(tmp_path, glossary)
     context = agent_context.build_agent_context(build_evidence(tmp_path), glossary)
     records = [
-        o for o in context["coverage"]["context"]["omissions"]
+        o for o in context["coverage"]["context"]["truncations"]
         if o["path"] == "glossary.concepts.*.definition"
     ]
     assert len(records) == 1
     assert records[0]["kind"] == "string_characters"
     assert records[0]["amount"] == 150 * (600 - 512)
-    assert context["coverage"]["context"]["omission_counts"]["string_characters"] == 150

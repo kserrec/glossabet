@@ -106,7 +106,8 @@ def test_normalized_graph_input_is_one_cohesive_handoff(tmp_path):
 
 def test_groups_map_with_provenance_and_discounting(tmp_path):
     structural = build_evidence(make_repo(tmp_path))["structural_groups"]
-    assert structural["available"] is True
+    assert structural["usable"] is True
+    assert "available" not in structural
     assert structural["nodes"] == 5
     assert structural["source_nodes"] == 6
     assert structural["edges"] == 3
@@ -129,7 +130,7 @@ def test_graphify_0_9_42_export_contract_is_consumed(tmp_path):
     )
 
     assert structural["present"] is True
-    assert structural["available"] is True
+    assert structural["usable"] is True
     assert structural["nodes"] == 3 and structural["edges"] == 2
     assert len(structural["groups"]) == 1
     group = structural["groups"][0]
@@ -171,7 +172,7 @@ def test_glossary_only_groups_are_not_usable_structure(tmp_path):
     assert structural["nodes"] == 0
     assert structural["edges"] == 0
     assert structural["groups"] == []
-    assert structural["available"] is False
+    assert structural["usable"] is False
     assert evidence["naming_candidates"]["structures"] == []
 
 
@@ -322,7 +323,9 @@ def test_unrecognized_shape_degrades_with_warning(tmp_path):
         make_repo(tmp_path, graph={"weird": True})
     )["structural_groups"]
     assert structural["present"] is True
-    assert structural["available"] is False
+    assert structural["usable"] is False
+    assert structural["freshness"] is None
+    assert "available" not in structural
     assert any("no recognizable node list" in w for w in structural["warnings"])
 
 
@@ -330,7 +333,7 @@ def test_corrupt_graph_degrades_with_warning(tmp_path):
     root = make_repo(tmp_path, graph=None)
     (root / "graphify-out" / "graph.json").write_text("{broken")
     structural = build_evidence(root)["structural_groups"]
-    assert structural["available"] is False
+    assert structural["usable"] is False
     assert any("unreadable" in w for w in structural["warnings"])
 
 
@@ -339,7 +342,9 @@ def test_no_graphify_escape_hatch(tmp_path):
     structural = build_evidence(root, graphify=False)["structural_groups"]
     assert structural["adapter_enabled"] is False
     assert structural["present"] is None
-    assert structural["available"] is False and structural["warnings"] == []
+    assert structural["usable"] is False and structural["warnings"] == []
+    assert structural["freshness"] is None
+    assert "available" not in structural
 
 
 def test_with_and_without_graph_stay_compatible(tmp_path):
@@ -348,8 +353,8 @@ def test_with_and_without_graph_stay_compatible(tmp_path):
     without = build_evidence(root, graphify=False)
     # Lexical evidence identical; only the structural section differs.
     assert with_graph["vocabulary"] == without["vocabulary"]
-    assert with_graph["structural_groups"]["available"] is True
-    assert without["structural_groups"]["available"] is False
+    assert with_graph["structural_groups"]["usable"] is True
+    assert without["structural_groups"]["usable"] is False
 
 
 def test_graphify_output_never_enters_lexical_walk(tmp_path):
@@ -391,7 +396,7 @@ def test_malformed_community_nodes_degrade_gracefully(tmp_path):
     }
     structural = build_evidence(make_repo(tmp_path, graph))["structural_groups"]
     assert structural["present"] is True
-    assert structural["available"] is False
+    assert structural["usable"] is False
     assert structural["groups"] == []
     assert any("no community structure" in w for w in structural["warnings"])
 
@@ -412,7 +417,7 @@ def test_oversized_graph_degrades_lexical_only(tmp_path, monkeypatch):
     monkeypatch.setattr("glossabet.runtime.artifacts.MAX_JSON_BYTES", 100)
     graph = {"nodes": [{"id": "a", "label": "A"} for _ in range(50)]}
     structural = build_evidence(make_repo(tmp_path, graph))["structural_groups"]
-    assert structural["available"] is False
+    assert structural["usable"] is False
     assert any("larger than" in w for w in structural["warnings"])
 
 
@@ -428,7 +433,7 @@ def test_symlinked_graph_degrades_without_reading_target(tmp_path):
 
     structural = build_evidence(repo)["structural_groups"]
     assert structural["present"] is True
-    assert structural["available"] is False
+    assert structural["usable"] is False
     assert any("symlinked artifact" in warning
                for warning in structural["warnings"])
 
@@ -574,12 +579,12 @@ def test_graph_input_work_is_bounded_before_any_member_is_materialized(tmp_path,
     structural = build_structural_groups(root, {"head": None, "dirty": None})
     monkeypatch.undo()
     assert structural["present"] is True
-    assert structural["available"] is False
+    assert structural["usable"] is False
     assert any("work budget" in w for w in structural["warnings"])
     # A graph just under the budget still loads.
     graph["communities"] = graph["communities"][:900]
     (root / "graphify-out" / "graph.json").write_text(json.dumps(graph))
-    assert build_structural_groups(root, {"head": None, "dirty": None})["available"] is True
+    assert build_structural_groups(root, {"head": None, "dirty": None})["usable"] is True
 
 
 def test_graph_label_tokenizing_is_budgeted_and_memoized(tmp_path, monkeypatch):
@@ -598,13 +603,17 @@ def test_graph_label_tokenizing_is_budgeted_and_memoized(tmp_path, monkeypatch):
     from glossabet.analysis import graphify_groups as graphify_module
 
     calls = []
-    real_tokenize = graphify_module.tokenize_term
+    real_tokenize = graphify_module.tokenize_bounded_term
     monkeypatch.setattr(
-        graphify_module, "tokenize_term",
-        lambda label: calls.append(label) or real_tokenize(label),
+        graphify_module,
+        "tokenize_bounded_term",
+        lambda label, *, truncated: (
+            calls.append(label)
+            or real_tokenize(label, truncated=truncated)
+        ),
     )
     structural = build_structural_groups(root, {"head": None, "dirty": None})
-    assert structural["available"] is True
+    assert structural["usable"] is True
     assert len(calls) == 1000
 
     # Over the label-character budget: refused before any tokenizing at all.
@@ -615,7 +624,7 @@ def test_graph_label_tokenizing_is_budgeted_and_memoized(tmp_path, monkeypatch):
     }))
     calls.clear()
     structural = build_structural_groups(root, {"head": None, "dirty": None})
-    assert structural["available"] is False
+    assert structural["usable"] is False
     assert any("tokenizing budget" in w for w in structural["warnings"])
     assert calls == []
 

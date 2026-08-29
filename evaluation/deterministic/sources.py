@@ -147,7 +147,7 @@ def read_manifest(path: Path) -> tuple[dict, str]:
         manifest = json.loads(raw)
     except (ValueError, RecursionError) as exc:
         raise EvaluationError(f"{path}: unreadable JSON ({exc})") from exc
-    if not isinstance(manifest, dict) or manifest.get("schema_version") != 5:
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != 6:
         raise EvaluationError(f"{path}: unsupported evaluation manifest")
     sources = manifest.get("sources")
     if not isinstance(sources, list) or not sources:
