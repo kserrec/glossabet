@@ -1173,11 +1173,81 @@ chunk is Step 4.1.
 
 ### Phase 6 — cold review and stopping decision
 
-- [ ] **Step 6.1 — complete regression and deterministic-artifact surface.** Run
-  the full local gates, all declared CI lanes, distribution/plugin builds and
-  smoke tests, representative public workflows, repeated cold/warm fixture and
-  repository runs, and semantic before/after artifact comparisons for ordering,
-  omissions, exactness, skipped state, and size. Investigate unrelated drift.
+- [ ] **Step 6.1 — complete regression and deterministic-artifact surface.**
+  Local implementation, regression, artifact comparison, and pre-closure
+  distribution work are complete; the post-change hosted matrix remains the
+  completion gate (2026-08-29).
+
+  The verified starting hosted run was
+  [33232538121](https://github.com/kserrec/glossabet/actions/runs/33232538121)
+  on exact commit `5fe39e7`. Its static job and all five Linux Python 3.10–3.14
+  lanes passed. All five macOS lanes failed the same five tests, and all five
+  Windows lanes failed the same three-test subset. Every failure required two
+  simultaneously existing directory entries whose names differed only by case,
+  or asserted a spelling change through case-insensitive path resolution. On
+  those runners the spellings resolved to one entry, so setup or the final
+  assertion failed before proving the intended filesystem-race contract. No
+  product failure was observed; the dependent package job was skipped because
+  the matrix failed.
+
+  The test invariant is now literal: a scenario requiring two case-distinct
+  entries runs only when its own temporary directory supports them. The
+  stale-`DirEntry` scenario inspects exact directory-entry names rather than
+  asking whether a differently cased path resolves. Case-insensitive behavior
+  remains covered by the existing deterministic lookup/identity emulations.
+  Only `tests/conftest.py`, `tests/test_cli.py`, and
+  `tests/test_filesystem_races.py` changed; no product statement, schema,
+  dependency, command, artifact format, or runtime behavior changed.
+
+  The six focused cases pass on local CPython 3.10.20, 3.11.15, 3.12.3,
+  3.13.15, and 3.14.7. The complete local suite passes with 893 tests and three
+  platform-specific skips. Ruff, strict mypy over all 56 product files,
+  workflow policy, and checksum-verified actionlint 1.7.12 pass. Default
+  deterministic, installed-agent, blinded-reviewer, and Claude-history
+  verification pass.
+
+  A fresh seven-case deterministic run fetched the three pinned public
+  repositories into temporary storage and ran five cold plus five warm builds
+  per case. All 99 source-file case artifacts, case order, findings,
+  truncations, exactness states, and cold/warm parity match the retained result
+  after removing timing samples; their semantic SHA-256 is
+  `25c33f10b37830e2a939e05f435a4db3e9da935786c491f1d19ad5c9141ab490`.
+  Self-nominations are also identical. The only non-timing self-scan delta is
+  three register spellings moving from corroborated to prose-dominated in the
+  project-root evidence that includes the changed tests. Fresh cold throughput
+  passed at 8.431 seconds per 1,000 source files. Fourteen of fifteen release
+  thresholds passed; the only miss remains distinctive nomination quality at
+  0.75 against 1.0. The producer-owned retained result was not overwritten
+  before final roadmap wording.
+
+  The binding baseline `db5e76a` and current engine each ran the payment-service
+  workflow cold and warm. Evidence, full agent context, drift, and validation
+  JSON were byte-identical between cold and warm runs. After removing only the
+  fields deliberately replaced by Phases 2–5, their before/after semantic
+  hashes match. The remaining differences are the intended contracts: module
+  totals and explicit graph state; intentional exclusions separated from
+  omissions; one inexact canonical-fading absence suppressed instead of
+  claimed; and three absent-Graphify checks named as skipped while the zero
+  produced by evaluated checks remains exact. Evidence/context/drift/validation
+  sizes changed from 31,033/18,127/2,922/6,753 bytes to
+  31,533/18,306/3,141/7,188 bytes. A three-repeat full-scale benchmark kept the
+  1,000-file evidence at 1,311,787 bytes and full agent context at 140,752 bytes
+  under its 1,000,000-byte cap, with every limit and truncation visible.
+
+  The source public walkthrough passed. A temporary source distribution and
+  wheel passed current distribution parity; the release and checked-in plugin
+  wheels remained byte-identical at SHA-256
+  `c1da46d739d0810560ef51daf2a7023dc433d82e4b095570e32335c61770ca0b`.
+  Isolated wheel smoke and the Codex plugin install, update, SessionStart,
+  invocation, removal, and exact-state cleanup smoke passed. Rebuilding the
+  checked-in plugin produced no diff.
+
+  Completion still requires a hosted run containing this test-only change to
+  pass all fifteen Python/operating-system lanes, static checks, and the
+  dependent package job. After that observed result, closure must mark this
+  Step complete, regenerate deterministic evidence after the final wording,
+  rebuild the wheel/plugin/source distribution to a fixed point, and rerun
+  current parity and smoke checks. No commit or push has been made.
 - [ ] **Step 6.2 — fresh inheritance review, residue audit, and stop.** A fresh
   reviewer uses only current source and top-level docs to identify subsystem,
   I/O, validation, matching, partial-evidence, canonical/derived,

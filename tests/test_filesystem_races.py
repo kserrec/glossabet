@@ -70,10 +70,16 @@ def test_bounded_read_stays_bounded_when_the_file_grows_after_the_check(
 
 @pytest.mark.parametrize("with_casefold_sibling", [False, True])
 def test_host_file_vanishing_during_exact_name_confirmation_is_uncertain(
-    tmp_path, monkeypatch, with_casefold_sibling
+    tmp_path,
+    monkeypatch,
+    with_casefold_sibling,
+    case_distinct_names_supported,
 ):
     """A successful path lookup followed by a listing with no target is a
     concurrent disappearance, even when a casefold-equivalent sibling remains."""
+    if with_casefold_sibling and not case_distinct_names_supported:
+        pytest.skip("requires two case-distinct entries in one directory")
+
     target = tmp_path / "AGENTS.md"
     target.write_text("human text\n", encoding="utf-8")
     sibling = tmp_path / "agents.md"
@@ -235,8 +241,9 @@ def test_stale_exact_directory_entry_after_rename_is_uncertain(
     monkeypatch.setattr(path_policy.os, "scandir", lambda _root: RenameBeforeYield())
 
     assert path_policy.entry_named_exactly(tmp_path, requested.name) is None
-    assert not requested.exists()
-    assert alternate.is_file()
+    names = set(os.listdir(tmp_path))
+    assert requested.name not in names
+    assert alternate.name in names
 
 
 # --- managed host-context read: identity is compared across the open ------

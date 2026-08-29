@@ -244,10 +244,13 @@ def test_output_ancestor_name_uses_filesystem_identity(
 
 
 def test_lowercase_symlink_does_not_claim_differently_cased_directory(
-    tmp_path, capsys
+    tmp_path, capsys, case_distinct_names_supported
 ):
     """Glossabet refuses symlinked artifact paths, so a lowercase symlink
     cannot turn an ordinary differently cased directory into owned output."""
+    if not case_distinct_names_supported:
+        pytest.skip("requires two case-distinct entries in one directory")
+
     output = tmp_path / "Glossabet-Out"
     root = output / "ordinary-repository"
     root.mkdir(parents=True)
@@ -457,10 +460,13 @@ def test_output_artifact_vanishing_during_name_confirmation_is_uncertain(
 
 
 def test_vanishing_output_artifact_is_not_explained_by_casefold_sibling(
-    tmp_path, capsys, monkeypatch
+    tmp_path, capsys, monkeypatch, case_distinct_names_supported
 ):
     """A surviving differently cased file is not proof that it was the exact
     artifact reached before that separate exact file concurrently vanished."""
+    if not case_distinct_names_supported:
+        pytest.skip("requires two case-distinct entries in one directory")
+
     from glossabet.corpus import path_policy
 
     output = tmp_path / "glossabet-out"
@@ -492,10 +498,13 @@ def test_vanishing_output_artifact_is_not_explained_by_casefold_sibling(
 
 @pytest.mark.skipif(os.name == "nt", reason="requires two case-distinct hardlinks")
 def test_restored_exact_hardlink_is_not_hidden_by_casefold_sibling(
-    tmp_path, capsys, monkeypatch
+    tmp_path, capsys, monkeypatch, case_distinct_names_supported
 ):
     """Hardlinks share inode identity but remain separate directory entries.
     Restoring the exact link after the first listing must trigger uncertainty."""
+    if not case_distinct_names_supported:
+        pytest.skip("requires two case-distinct entries in one directory")
+
     from glossabet.corpus import path_policy
 
     output = tmp_path / "glossabet-out"
