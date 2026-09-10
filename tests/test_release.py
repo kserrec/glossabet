@@ -19,10 +19,8 @@ def test_release_metadata_matches_package_version_and_supported_pythons():
     assert 'requires-python = ">=3.10"' in pyproject
     assert 'requires = ["hatchling>=1.32,<1.33"]' in pyproject
     assert "dependencies =" not in pyproject
-    assert (
-        'dev = ["pytest", "PyYAML==6.0.3", "ruff==0.16.4", "mypy==2.3.1"]'
-        in pyproject
-    )
+    # CI's `uv sync --locked` checks dependency consistency. Duplicating exact
+    # development versions here would reject routine Dependabot updates.
 
 
 def _workflow_texts() -> dict[str, str]:
