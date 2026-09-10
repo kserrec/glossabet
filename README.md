@@ -116,34 +116,51 @@ against the code and edit only what you agree to change.
 Choosing names doesn't rename your code. If you want identifiers, comments,
 or other docs updated to match, ask for that as a separate change.
 
+**After you finalize:** you can keep using those names in ordinary coding
+sessions.
+
+- **Claude Code:** with the normal installation and its startup hook enabled,
+  new sessions load the latest saved vocabulary automatically.
+- **Codex:** run `glossabet sync-context .` from your project's root after
+  finalizing. This copies a short summary into `AGENTS.md` for future
+  sessions. Run it again whenever the glossary changes.
+
+This doesn't start a background scan or enforce the names. Ask Glossabet when
+you want it to check for naming issues.
+
 ## 4. Use the names during normal work
 
-Use the agreed names in issues, reviews, and ordinary coding requests:
-“Add a timeout to Dispatch.” You don't need a Glossabet conversation for every
-task. Here's how to make the names available in new agent sessions.
+Your coding agent can use the agreed names during ordinary work, such as
+“Add a timeout to Dispatch.” You don't need to invoke Glossabet for every task.
+The setup below gives future sessions a summary of your accepted names.
+It doesn't rename code, continuously rescan the repository, or enforce
+terminology.
 
 ### If you use Codex
 
-From your project's root, run:
+For the source installation described above, this step is required if you want
+future Codex sessions to load your saved names automatically. After you
+finalize or update the glossary, run this from your project's root:
 
 ```bash
 glossabet sync-context .
 ```
 
-For the source installation above, this puts a short vocabulary summary in
-`AGENTS.md`, the project instruction file Codex reads. It creates the file if
-needed and preserves text outside its marked Glossabet section. Review and
-commit the change.
+This puts a short vocabulary summary in `AGENTS.md`, the project instruction
+file Codex reads. It creates the file if needed and preserves text outside its
+marked Glossabet section. Review and commit the change.
 
 **Run it again when the glossary changes.** The summary is a saved copy.
 Installing the skill and saving names don't update it automatically.
 
 ### If you use Claude Code
 
-The default installation includes a startup command, called a hook. With the
-hook enabled, Claude Code runs `glossabet brief .` to load a short summary of
-your accepted names at the start of a session. With no saved glossary, it
-adds nothing.
+With the normal Claude Code installation and its hook enabled, you don't need
+an extra command after finalizing. The startup hook (`SessionStart`) loads a
+summary of the latest saved vocabulary automatically when a new session starts.
+
+The hook runs `glossabet brief .`, which reads accepted names from the saved
+glossary without scanning the code. With no saved glossary, it adds nothing.
 
 If you're not using the hook, save the summary in `CLAUDE.md` instead:
 
@@ -162,14 +179,17 @@ also has a Codex plugin bundle with a startup hook, but no public listing yet.
 See [Distribution](DISTRIBUTION.md) for that route and the versions tested.
 
 These are short summaries and report when names have been left out. Loading
-one doesn't check the code for changes or enforce naming. It can send project
-vocabulary to your model provider during ordinary work, even when you haven't
-invoked Glossabet.
+one can send project vocabulary to your model provider during ordinary work,
+even when you haven't invoked Glossabet.
 
 ## 5. Come back when the project changes
 
-Come back when you add a component, change its job, or notice two people
-using different names for the same thing. Ask your agent:
+Once the vocabulary is available to your agent, keep working normally.
+Glossabet doesn't watch your repository for changes in the background.
+
+Come back when you add an important concept, change what something means,
+notice inconsistent names, or want to check whether the code still matches
+the glossary. Ask your agent:
 
 > Run glossabet drift . and glossabet validate . and explain what needs a look.
 
