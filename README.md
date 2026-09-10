@@ -11,10 +11,10 @@ the naming conversation.
 
 ## Status
 
-Glossabet 0.1.0 is an unreleased source alpha. Kyle is still testing it on his
-own projects; public release and outside contributions are paused. The
-[plan](PLAN.md) records what's next, and the [changelog](CHANGELOG.md) records
-what has changed. The instructions below use a source checkout.
+Glossabet 0.1.0 is in beta. You're welcome to try it on your projects and share
+what works, what doesn't, and what could be clearer. The [plan](PLAN.md) tracks
+what's next, and the [changelog](CHANGELOG.md) records what's changed. The
+instructions below walk you through installing it from source.
 
 ## 1. Install it
 
@@ -294,8 +294,8 @@ The complete pre-release verification and publication procedure is in
 
 ## Provenance and affiliation
 
-Glossabet is an independent open-source project by Kyle Serrecchia, released
-under the [Apache License 2.0](LICENSE). It is not affiliated with, endorsed
+Glossabet is an independent open-source project licensed under the
+[Apache License 2.0](LICENSE). It is not affiliated with, endorsed
 by, or sponsored by OpenAI, Anthropic, GitHub, or Graphify Labs. Those names
 identify third-party hosts or optional tools and remain their owners' marks.
 
